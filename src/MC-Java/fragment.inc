@@ -665,7 +665,7 @@ ${p_operand_rval.body}\
   .assign attr_dt_id = p_left_operand_rval.dt_id
   .select any real_dt from instances of S_DT where ( selected.Name == "real" )
   .select any rightType from instances of S_DT where ("${selected.dt_id}" == p_right_operand_rval.dt_id)
-  .select one coreType related by rightType->S_UDT[R17]->S_CDT[R18]->S_DT[R17]
+  .select one coreType related by rightType->S_UDT[R17]->S_DT[R18]
   .if (not_empty coreType) 
     .assign rightType = coreType;
   .end if
