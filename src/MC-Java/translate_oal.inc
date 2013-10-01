@@ -1,8 +1,8 @@
 .//====================================================================
 .//
 .// File:      $RCSfile: translate_oal.inc,v $
-.// Version:   $Revision: 1.9 $
-.// Modified:  $Date: 2013/01/10 23:16:50 $
+.// Version:   $Revision: 1.9.32.1 $
+.// Modified:  $Date: 2013/07/19 12:26:01 $
 .//
 .// (c) Copyright 2003-2013 Mentor Graphics Corporation  All rights reserved.
 .//
@@ -55,7 +55,6 @@
   .invoke gen_bridge_values()
   .invoke gen_transform_values()
   .invoke gen_synch_service_values()
-  .invoke gen_paren_expr_values()
 .end function
 .//
 .//
@@ -70,27 +69,47 @@
 .function translate_other_statements
   .param string main_class_name
   .param boolean output_change_messages
-  .invoke gen_asgn_trans_statements()
-  .invoke gen_asgn_attr_statements()
+  .print "************** generate assignments *****************"
+  .invoke gen_asgn_statements()
+  .print "************** generate creates *****************"
   .invoke gen_create_instance_statements(main_class_name, output_change_messages)
+  .print "************** generate deletes *****************"
   .invoke gen_delete_instance_statements(main_class_name, output_change_messages)
+  .print "************** generate event creates *****************"
   .invoke gen_create_event_instance_statements()
+  .print "************** generate relates *****************"
   .invoke gen_relate_statements()
+  .print "************** generate unrelates *****************"
   .invoke gen_unrelate_statements()
+  .print "************** generate select from instances *****************"
   .invoke gen_select_statements()
+  .print "************** generate select from instances where *****************"
   .invoke gen_select_inst_where_statements()
+  .print "************** generate select rel *****************"
   .invoke gen_select_inst_rel_by_statements()
+  .print "************** generate select rel where *****************"
   .invoke gen_select_rel_where_statements()
+  .print "************** generate relate using *****************"
   .invoke gen_relate_using_statements()
+  .print "************** generate unrelate using *****************"
   .invoke gen_unrelate_using_statements()
+  .print "************** generate ism events *****************"
   .invoke gen_event_gen_statements()
+  .print "************** generate csm events *****************"
   .invoke gen_event_gen_ass_statements()
+  .print "************** generate operations *****************"
   .invoke gen_transform_statements()
+  .print "************** generate bridges *****************"
   .invoke gen_bridge_statements()
+  .print "************** generate functions *****************"
   .invoke gen_function_statements()
+  .print "************** generate returns *****************"
   .invoke gen_return_statements()
+  .print "************** generate arch controls *****************"
   .invoke gen_control_statements(main_class_name)
+  .print "************** generate breaks *****************"
   .invoke gen_break_statements()
+  .print "************** generate continues *****************"
   .invoke gen_continue_statements()
 .end function
 .//
@@ -105,6 +124,18 @@
 .end function
 .//
 .// $Log: translate_oal.inc,v $
+.// Revision 1.9.32.1  2013/07/19 12:26:01  campbell
+.// Job: dts0100919690
+.// Create new consolidated branch. Warning: Cannot be built by directly with HEAD. See Design Note.
+.//
+.// Revision 1.9.24.2  2013/06/27 11:48:14  campbell
+.// Job: dts0100919690
+.// Remove generation of transient assignments, now all done through generic assignment statement. Add more progress feedback.
+.//
+.// Revision 1.9.24.1  2013/05/29 12:53:45  campbell
+.// Job: dts0100919690
+.// Check in work in progress.
+.//
 .// Revision 1.9  2013/01/10 23:16:50  rmulvey
 .// job:dts0100939343
 .// Updated the copyright to 2013
