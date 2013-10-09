@@ -56,6 +56,11 @@ This file is the plugin manifest for the BridgePoint core plugin.
                name="*">
         </export>
       </library>
+      <library name="svx.jar">
+        <export
+               name="*">
+        </export>
+      </library>
    </runtime>
    <requires>
       <import plugin="org.eclipse.core.runtime"/>
