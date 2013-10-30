@@ -188,8 +188,8 @@ IPreferencePage {
 		tableData.heightHint = 200;
 		MainTable.setLayoutData(tableData);
 		String[] titles = { "Port Name ", "Channel Name", "Port Number",
-				"isAppSequencer", "IP      ", "lookUpName  ", "seconds  ", "value   ",
-				"BIGendTime"};
+				"Application Sequencer", "IP       ", "Look Up Name", "Seconds  ", "Value   ",
+				"Big End Time"};
 		for (int j = 0; j < titles.length; j++) {
 			TableColumn column = new TableColumn(MainTable, SWT.NONE);
 			column.setText(titles[j]);
