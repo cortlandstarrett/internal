@@ -106,6 +106,7 @@ import com.mentor.nucleus.bp.core.ui.RenameAction;
 import com.mentor.nucleus.bp.core.ui.marker.DelayedMarkerJob;
 import com.mentor.nucleus.bp.core.ui.marker.ProblemModelChangeListener;
 import com.mentor.nucleus.bp.core.ui.preferences.BridgePointProjectReferencesPreferenceNode;
+import com.mentor.nucleus.bp.core.ui.preferences.SVXBridgePointProjectReferencesPreferenceNode;
 
 /**
  * The main plugin class to be used in the desktop.
@@ -980,9 +981,11 @@ public class CorePlugin extends AbstractUIPlugin {
 		}
 
 		public static PreferenceManager getProjectPreferenceManager(Preferences projectNode) {
-			PreferenceManager pm = new PreferenceManager();
+	        PreferenceManager pm = new PreferenceManager();
 			PreferenceNode pn = new BridgePointProjectReferencesPreferenceNode(projectNode);
 			pm.addToRoot(pn);
+			PreferenceNode pn2 = new SVXBridgePointProjectReferencesPreferenceNode(projectNode);
+			pm.addToRoot(pn2);
 			return pm;
         }
         
