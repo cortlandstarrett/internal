@@ -18,7 +18,8 @@ public class MSI_Director {
 
     private String eclipseVersion = "3.7.2";
     private String productVersion = "4.1.1";
-    private String productName = "BridgePoint";
+    private String productName = "xtUML Editor";
+    private String productNameNoSpace = "xtUMLEditor";
 
     public MSI_Director(String pathToSelf) {
         initWizard(pathToSelf);
@@ -168,7 +169,7 @@ public class MSI_Director {
     }
 
     private int showProducts() {
-        int result = DirectorHelper.showDialog(
+        /*int result = DirectorHelper.showDialog(
                 "BridgePoint/bp_prodSelDialog.html", new HashMap() {
                     {
                         put(DirectorHelper.PROPERTY_TITLE, String.format("%s %s Installation", productName, productVersion));
@@ -199,7 +200,9 @@ public class MSI_Director {
                 });
 
         String sel = DirectorHelper.getProperty("selection");
-        int selLoc = Integer.parseInt(sel);
+        int selLoc = Integer.parseInt(sel);*/
+        int result = DirectorHelper.BTN_NEXT;
+        int selLoc = 0;
 
         // Ideally, this is how we would get the product, but since we inverted the display list in the for loop earlier (starting  
         // at the end of the products and working backwards, the location doesn't correspond correctly to the product
@@ -233,9 +236,9 @@ public class MSI_Director {
                         put(DirectorHelper.PROPERTY_BTN_SET, Integer.toString(DirectorHelper.BTN_NEXT | DirectorHelper.BTN_BACK | DirectorHelper.BTN_CANCEL));
                         put(DirectorHelper.PROPERTY_BTN_SET_FOCUS, Integer.toString(DirectorHelper.BTN_NEXT));
                         put("messageIcon", "Question.gif");
-                        put("messagePrompt", String.format("Please specify the target directory for the installation.<br><br>This is the top-level folder where the application files will be stored.<br><br>For example: C:\\MentorGraphics\\%s", productName));
+                        put("messagePrompt", String.format("Please specify the target directory for the installation.<br><br>This is the top-level folder where the application files will be stored.<br><br>For example: C:\\MentorGraphics\\%s", productNameNoSpace));
                         put("fileBrowser:visible", "true");
-                        put("inputText", String.format("C:\\MentorGraphics\\%s", productName));
+                        put("inputText", String.format("C:\\MentorGraphics\\%s", productNameNoSpace));
                     }
                 });
 
@@ -272,7 +275,7 @@ public class MSI_Director {
                         put(DirectorHelper.PROPERTY_TITLE, "Invalid Target Specification");
                         put(DirectorHelper.PROPERTY_BTN_SET, Integer.toString(DirectorHelper.BTN_BACK | DirectorHelper.BTN_CANCEL));
                         put(DirectorHelper.PROPERTY_BTN_SET_FOCUS, Integer.toString(DirectorHelper.BTN_BACK));
-                        put("messagePrompt", "Invalid target specified.<br> <br>Please provide a valid target location (that does not contain spaces) for the installation of your software.");
+                        put("messagePrompt", String.format("The %s installation has completed.<br><br>You can now use the desktop shortcut or %s/BridgePoint_Launcher.bat to start the application.", productName, eclipseLocation));
                     }
                 });
     }

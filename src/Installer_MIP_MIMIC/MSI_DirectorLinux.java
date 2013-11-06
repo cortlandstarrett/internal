@@ -19,7 +19,8 @@ public class MSI_Director {
 
     private String eclipseVersion = "3.7.2";
     private String productVersion = "4.1.1";
-    private String productName = "BridgePoint";
+    private String productName = "xtUML Editor";
+    private String productNameNoSpace = "xtUMLEditor";
 
     public MSI_Director(String pathToSelf) {
         initWizard(pathToSelf);
@@ -219,9 +220,9 @@ public class MSI_Director {
                         put(DirectorHelper.PROPERTY_BTN_SET, Integer.toString(DirectorHelper.BTN_NEXT | DirectorHelper.BTN_BACK | DirectorHelper.BTN_CANCEL));
                         put(DirectorHelper.PROPERTY_BTN_SET_FOCUS, Integer.toString(DirectorHelper.BTN_NEXT));
                         put("messageIcon", "Question.gif");
-                        put("messagePrompt", String.format("<em>Eclipse version %s software is included as a convenience for %s %s customers and is licensed by the Eclipse Foundation under their EPL License.</em><br><br>Please specify the target directory for the installation. This is the top-level folder where the application files will be stored.<br><br>For example: /home/bpuser/MentorGraphics/%s<br><br>", eclipseVersion, productName, productVersion, productName));
+                        put("messagePrompt", String.format("<em>Eclipse version %s software is included as a convenience for %s %s customers and is licensed by the Eclipse Foundation under their EPL License.</em><br><br>Please specify the target directory for the installation. This is the top-level folder where the application files will be stored.<br><br>For example: /home/bpuser/MentorGraphics/%s<br><br>", eclipseVersion, productName, productVersion, productNameNoSpace));
                         put("fileBrowser:visible", "true");
-                        put("inputText", String.format("%s/MentorGraphics/%s", homeDir, productName));
+                        put("inputText", String.format("%s/MentorGraphics/%s", homeDir, productNameNoSpace));
                     }
                 });
 
