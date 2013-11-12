@@ -190,7 +190,6 @@ public class MergeWorkbenchAdvisor extends BPCLIWorkbenchAdvisor {
 				exporter.run(new NullProgressMonitor());
 				// run an integrity report if possible
 				if(!disableIntegrityChecks) {
-					System.out.println("11/11/03 9:51pm");
 					NonRootModelElement realElement = (NonRootModelElement) Ooaofooa.getDefaultInstance()
 							.getInstanceList(leftRoot.getClass())
 							.getGlobal(leftRoot.getInstanceKey());
