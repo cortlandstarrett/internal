@@ -1,7 +1,7 @@
 package com.mentor.nucleus.bp.model.compare.providers.custom;
 //=====================================================================
 //
-//File:      ComparableProvider.java
+//File:      com.mentor.nucleus.bp.model.compare/src/com/mentor/nucleus/bp/model/compare/providers/custom/GraphicalElementComparable.java
 //
 //(c) Copyright 2013 by Mentor Graphics Corp. All rights reserved.
 //
