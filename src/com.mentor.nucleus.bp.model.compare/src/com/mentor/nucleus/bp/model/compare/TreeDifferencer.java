@@ -7,6 +7,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Set;
 
+import org.eclipse.compare.contentmergeviewer.TokenComparator;
+import org.eclipse.compare.rangedifferencer.RangeDifference;
+import org.eclipse.compare.rangedifferencer.RangeDifferencer;
 import org.eclipse.compare.structuremergeviewer.Differencer;
 import org.eclipse.core.runtime.Assert;
 import org.eclipse.jface.viewers.ITreeContentProvider;
@@ -322,6 +325,16 @@ public class TreeDifferencer extends Differencer {
 			}
 		}
 		int direction = description & DIRECTION_MASK;
+		if (left instanceof ObjectElementComparable && direction == CONFLICTING) {
+			ObjectElementComparable comparable = (ObjectElementComparable) left;
+			if (((ObjectElement) comparable.getRealElement()).getValue() instanceof String) {
+				// we need to use a range differencer to correctly determine
+				// equality, otherwise a resolved conflict will remain a conflict
+				// at the textual level as the whole of left and right will not
+				// equal the ancestor
+				return handleTextualEquality(left, right, ancestor, description);
+			}
+		}
 		if(direction == CONFLICTING && left instanceof ObjectElementComparable) {
 			ObjectElementComparable comparable = (ObjectElementComparable) left;
 			ObjectElement objEle = (ObjectElement) comparable.getRealElement();
@@ -334,6 +347,63 @@ public class TreeDifferencer extends Differencer {
 		return description;
 	}
 
+	private int handleTextualEquality(Object left, Object right,
+			Object ancestor, int initialDifferenceType) {
+		ObjectElementComparable comparable = (ObjectElementComparable) left;
+		ObjectElement lObjEle = (ObjectElement) comparable.getRealElement();
+		String lString = (String) lObjEle.getValue();
+		ObjectElementComparable rComparable = (ObjectElementComparable) right;
+		ObjectElement rObjEle = (ObjectElement) rComparable.getRealElement();
+		String rString = (String) rObjEle.getValue();
+		ObjectElementComparable aComparable = (ObjectElementComparable) ancestor;
+		ObjectElement aObjEle = (ObjectElement) aComparable.getRealElement();
+		String aString = (String) aObjEle.getValue();
+		String[] lLines = lString.split(System.getProperty("line.separator")); //$NON-NLS-1$
+		String[] rLines = rString.split(System.getProperty("line.separator")); //$NON-NLS-1$
+		String[] aLines = aString.split(System.getProperty("line.separator")); //$NON-NLS-1$
+		// get the largest line count
+		int lineCount = Math.max(lLines.length, rLines.length);
+		lineCount = Math.max(lineCount, aLines.length);
+		boolean foundConflict = false;
+		boolean foundRight = false;
+		for (int i = 0; i < lineCount; i++) {
+			String lLine = "";
+			if (lLines.length > i) {
+				lLine = lLines[i];
+			}
+			String rLine = "";
+			if (rLines.length > i) {
+				rLine = rLines[i];
+			}
+			String aLine = "";
+			if (aLines.length > i) {
+				aLine = aLines[i];
+			}
+			TokenComparator leftComparator = new TokenComparator(lLine);
+			TokenComparator rightComparator = new TokenComparator(rLine);
+			TokenComparator ancestorComparator = new TokenComparator(aLine);
+			RangeDifference[] findDifferences = RangeDifferencer
+					.findDifferences(ancestorComparator, leftComparator,
+							rightComparator);
+			for (RangeDifference difference : findDifferences) {
+				if (difference.kind() == RangeDifference.CONFLICT) {
+					foundConflict = true;
+				}
+				if (difference.kind() == RangeDifference.RIGHT) {
+					foundRight = true;
+				}
+			}
+		}
+		if (!foundConflict) {
+			if(foundRight) {
+				return Differencer.RIGHT + Differencer.CHANGE;
+			} else {
+				return Differencer.LEFT + Differencer.CHANGE;
+			}
+		}
+		return initialDifferenceType;
+	}
+
 	private boolean elementsEqualIncludingValues(Object left, Object right, boolean excludeLocationComparison) {
 		if (!elementsEqual(left, right)) {
 			return false;
@@ -343,7 +413,8 @@ public class TreeDifferencer extends Differencer {
 		ComparableTreeObject rightComparable = contentProvider
 				.getComparableTreeObject(right);
 		boolean result = leftComparable.treeItemValueEquals(rightComparable);
-		if(result && !excludeLocationComparison) {
+		if (result
+				&& !excludeLocationComparison && leftComparable.considerLocation()) {
 			// check the location as well
 			int leftLocation = getLocationOfElement(
 					contentProvider.getParent(left), left,

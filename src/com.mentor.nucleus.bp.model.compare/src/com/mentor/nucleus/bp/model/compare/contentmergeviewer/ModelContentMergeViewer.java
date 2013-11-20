@@ -828,6 +828,13 @@ public class ModelContentMergeViewer extends ContentMergeViewer implements IMode
 					located = differencer.getDifferences(parent, left);
 					if (!located.isEmpty()) {
 						if (located.size() == 1) {
+							// do not include missing elements
+							if (located.get(0).getElement() == null) {
+								parent = ((ITreeContentProvider) viewer
+										.getContentProvider())
+										.getParent(parent);
+								continue;
+							}
 							if (located.get(0).getIncludeChildren()) {
 								differences.addAll(located);
 								break;

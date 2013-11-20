@@ -60,7 +60,6 @@ import com.mentor.nucleus.bp.core.Transition_c;
 import com.mentor.nucleus.bp.core.common.BaseModelDelta;
 import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.IPersistableElementParentDetails;
-import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.ModelElement;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.common.ModelStreamProcessor;
@@ -663,40 +662,6 @@ public class ModelMergeProcessor {
 			}
 			for (NonRootModelElement elem : loadedInstances) {
 				if(!elem.isProxy()) {
-					IPersistableElementParentDetails parentDetails = PersistenceManager.getHierarchyMetaData().getParentDetails(elem);
-					if(parentDetails == null) {
-						// old data type that has a packageable element with
-						// no package or component, these have PEs so that they
-						// can be used in the chooser dialog
-						continue;
-					}
-					if(parentDetails.isMany()) {
-						Object[] localDetails = new Object[] { parentDetails.getParent(),
-								parentDetails.getChild(),
-								parentDetails.getAssociationNumber(),
-								parentDetails.getAssociationPhrase(),
-								parentDetails.getChildKeyLetters() };
-						if(newElementLocation == -1) {
-							IPersistableElementParentDetails remoteParentDetails = PersistenceManager.getHierarchyMetaData().getParentDetails(getMatchingElement(elem));
-							Object[] remoteDetails = new Object[] { remoteParentDetails.getParent(),
-									remoteParentDetails.getChild(),
-									remoteParentDetails.getAssociationNumber(),
-									remoteParentDetails.getAssociationPhrase(),
-									remoteParentDetails.getChildKeyLetters() };
-							newElementLocation = getLocationForElementInSource(remoteDetails);
-						}
-						callSetOrderOperation(newElementLocation, localDetails);
-						Method getLocationInOrdering = findMethod("Getlocationinordering", getMatchingElement(elem).getClass(), new Class[0]);
-						if(getLocationInOrdering != null) {
-							// adjust user configurable order, to do this we unassociate the new
-							// element from the ordering association first
-							int order = (Integer) invokeMethod(getLocationInOrdering, getMatchingElement(elem), new Object[0]);
-							Method mergeOrdering = findMethod("Mergeordering", elem.getClass(), new Class[] {Integer.TYPE});
-							if(mergeOrdering != null) {
-								invokeMethod(mergeOrdering, elem, new Object[] {order});
-							}
-						}
-					}
 					if (elem.cachedIdentityEquals(remoteObject)) {
 						newObject = elem;
 					}
@@ -790,6 +755,13 @@ public class ModelMergeProcessor {
 						NonRootModelElementComparable remoteComp = (NonRootModelElementComparable) ComparableProvider
 								.getComparableTreeObject(value);
 						if(localComp != null && localComp.equals(remoteComp)) {
+							continue;
+						}
+						// do not copy graphical element referentials
+						if (element.getName().equals(
+								"referential_Source_Element") //$NON-NLS-1$
+								|| element.getName().equals(
+										"referential_Target_Element")) { //$NON-NLS-1$
 							continue;
 						}
 						handleReferential(element, localElement,
@@ -1375,40 +1347,6 @@ public class ModelMergeProcessor {
 			CoreImport.createUniqueIds = true;
 		}
         return newObject;
-	}
-
-	private static NonRootModelElement getMatchingElement(
-			NonRootModelElement elem) {
-		ModelRoot otherRoot = elem.getModelRoot();
-		if (elem.getModelRoot().getId().startsWith(Ooaofooa.leftCompareRootId)) {
-			if (otherRoot instanceof Ooaofooa) {
-				otherRoot = Ooaofooa.getInstance(elem.getModelRoot().getId()
-						.replaceAll(Ooaofooa.leftCompareRootId,
-								Ooaofooa.rightCompareRootId));
-			} else {
-				otherRoot = Ooaofgraphics.getInstance(elem.getModelRoot()
-						.getId().replaceAll(Ooaofooa.leftCompareRootId,
-								Ooaofooa.rightCompareRootId));
-			}
-		} else {
-			if (otherRoot instanceof Ooaofooa) {
-				otherRoot = Ooaofooa.getInstance(elem.getModelRoot().getId()
-						.replaceAll(Ooaofooa.rightCompareRootId,
-								Ooaofooa.leftCompareRootId));
-			} else {
-				otherRoot = Ooaofgraphics.getInstance(elem.getModelRoot()
-						.getId().replaceAll(Ooaofooa.rightCompareRootId,
-								Ooaofooa.leftCompareRootId));
-			}
-		}
-		InstanceList instanceList = otherRoot.getInstanceList(elem.getClass());
-		for(Object instance : instanceList) {
-			NonRootModelElement other = (NonRootModelElement) instance;
-			if(other.cachedIdentityEquals(elem)) {
-				return other;
-			}
-		}
-		return null;
 	}
 
 	private static NonRootModelElement getElement(NonRootModelElement value) {

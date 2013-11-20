@@ -21,6 +21,7 @@ import org.eclipse.compare.CompareConfiguration;
 import org.eclipse.compare.IEditableContent;
 import org.eclipse.compare.internal.CompareDialog;
 import org.eclipse.compare.internal.CompareUIPlugin;
+import org.eclipse.compare.structuremergeviewer.Differencer;
 import org.eclipse.jface.action.Action;
 import org.eclipse.jface.action.IAction;
 import org.eclipse.jface.action.IMenuListener;
@@ -436,6 +437,21 @@ public class SynchronizedTreeViewer extends TreeViewer implements
 									highlightBounds.y + highlightBounds.height);
 						}
 						continue;
+					}
+				}
+				// we need to scan all differences under this parent
+				// so that we can make sure that the conflict color
+				// is used (if a conflict exists)
+				List<TreeDifference> childrenDiffs = scanChildrenForDifferences(
+						item.getData(), mergeViewer.getDifferencer(),
+						(ITreeContentProvider) getContentProvider(),
+						this == mergeViewer.getLeftViewer());
+				for(TreeDifference childDiff : childrenDiffs) {
+					if ((childDiff.getKind() & Differencer.DIRECTION_MASK) == Differencer.CONFLICTING) {
+						gc.setForeground(getMergeViewer().getColor(
+								PlatformUI.getWorkbench().getDisplay(),
+								getMergeViewer().getStrokeColor(childDiff)));
+						break;
 					}
 				}
 				gc.setLineDash(new int[] { 3 });

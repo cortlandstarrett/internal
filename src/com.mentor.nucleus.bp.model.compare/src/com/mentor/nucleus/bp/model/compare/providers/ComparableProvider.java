@@ -40,11 +40,13 @@ import com.mentor.nucleus.bp.model.compare.providers.custom.AssignedEventCompara
 import com.mentor.nucleus.bp.model.compare.providers.custom.AssociationComparable;
 import com.mentor.nucleus.bp.model.compare.providers.custom.DerivedBaseAttributeComparable;
 import com.mentor.nucleus.bp.model.compare.providers.custom.EventMatrixComparable;
+import com.mentor.nucleus.bp.model.compare.providers.custom.GraphicalElementComparable;
 import com.mentor.nucleus.bp.model.compare.providers.custom.MessageComparable;
 import com.mentor.nucleus.bp.model.compare.providers.custom.NewBaseAttributeComparable;
 import com.mentor.nucleus.bp.model.compare.providers.custom.PolymorphicEventComparable;
 import com.mentor.nucleus.bp.model.compare.providers.custom.SemEventComparable;
 import com.mentor.nucleus.bp.model.compare.providers.custom.TransitionComparable;
+import com.mentor.nucleus.bp.ui.canvas.GraphicalElement_c;
 
 public class ComparableProvider {
 
@@ -72,6 +74,9 @@ public class ComparableProvider {
 
 	private static ComparableTreeObject getNonRootModelElementComparable(
 			Object element) {
+		if (element instanceof GraphicalElement_c) {
+			return new GraphicalElementComparable((GraphicalElement_c) element);
+		}
 		if (element instanceof SemEvent_c) {
 			return new SemEventComparable((SemEvent_c) element);
 		}
