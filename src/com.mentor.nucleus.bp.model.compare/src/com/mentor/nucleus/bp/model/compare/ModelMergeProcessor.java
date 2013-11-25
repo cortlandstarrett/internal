@@ -133,10 +133,6 @@ public class ModelMergeProcessor {
 					&& difference.getMatchingDifference().getParent() == null) {
 				return false;
 			}
-			if (mergeProducesInvalidGraphic(difference, differencer,
-					rightToLeft)) {
-				return false;
-			}
 			if (mergeProducesInvalidConnection(difference, differencer,
 					rightToLeft)) {
 				return false;
@@ -159,36 +155,6 @@ public class ModelMergeProcessor {
 				handleReferential(element, localElement, contentProvider,
 						modelRoot, differencer, rightToLeft, difference);
 				return true;
-			}
-		}
-		return false;
-	}
-
-	/**
-	 * Check that the element when copied would still have a valid represents
-	 * if not the produced graphical element will be invalid
-	 *
-	 * @param difference
-	 * @param differencer
-	 * @param rightToLeft
-	 * @return
-	 */
-	private static boolean mergeProducesInvalidGraphic(
-			TreeDifference difference, TreeDifferencer differencer,
-			boolean rightToLeft) {
-		Object elementToBeMerged = difference.getElement();
-		if (elementToBeMerged instanceof NonRootModelElementComparable) {
-			NonRootModelElementComparable elementComparable = (NonRootModelElementComparable) elementToBeMerged;
-			if(elementComparable.getRealElement() instanceof GraphicalElement_c) {
-				GraphicalElement_c graphicalElement = (GraphicalElement_c) elementComparable
-						.getRealElement();
-				// allow if the graphical element being copied already had a null
-				// represents
-				if (graphicalElement.getRepresents() != null) {
-					return !elementExistsInDestination(difference, differencer,
-							(NonRootModelElement) graphicalElement.getRepresents(),
-							rightToLeft);
-				}
 			}
 		}
 		return false;
