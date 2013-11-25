@@ -465,11 +465,6 @@ public class CanvasPasteAction extends PasteAction {
 		Object contents = cb
 				.getContents(TextTransfer.getInstance());
 		for(NonRootModelElement destination : getDestinations()) {
-			if(destination == null) {
-				// destination can be null when a graphical element
-				// has no represents value
-				continue;
-			}
 			if (contents instanceof String) {
 				String types[] = getClipboardTypes((String) contents, destination);
 				for (int i = 0; i < types.length; i++) {

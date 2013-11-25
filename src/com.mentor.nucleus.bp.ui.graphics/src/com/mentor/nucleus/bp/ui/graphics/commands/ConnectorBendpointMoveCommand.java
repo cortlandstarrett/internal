@@ -81,12 +81,6 @@ public class ConnectorBendpointMoveCommand extends Command implements
 		// the original location then this command
 		// should not execute
 		Connector_c connector = (Connector_c) part.getModel();
-		if (((Connection) request.getSource().getFigure()).getPoints().size() <= request
-				.getIndex()) {
-			// bendpoints have changed, proceed with the
-			// command execution
-			return true;
-		}
 		Point location = ((Connection) request.getSource().getFigure())
 				.getPoints().getPoint(request.getIndex());
 		UUID waypointID = connector.Getwaypointatindex(request.getIndex());
