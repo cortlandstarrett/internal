@@ -49,7 +49,6 @@ import com.mentor.nucleus.bp.core.ui.marker.UmlProblem;
 import com.mentor.nucleus.bp.core.util.OoaofgraphicsUtil;
 import com.mentor.nucleus.bp.core.util.PersistenceUtil;
 import com.mentor.nucleus.bp.core.util.RTOUtil;
-import com.mentor.nucleus.bp.core.util.SupertypeSubtypeUtil;
 
 
 public abstract class NonRootModelElement extends ModelElement implements IAdaptable {
@@ -211,33 +210,29 @@ public abstract class NonRootModelElement extends ModelElement implements IAdapt
     					(Object[]) newKey))) {
     		
     		getInstanceList().updateKey(oldKey, newKey, this);
-    		if(getModelRoot() instanceof Ooaofooa) {
-    			updateSubtypeKeys(this, oldKey, newKey);
-    		}
+    		updateSubtypeKeys(this, oldKey, newKey);
     	}
     }
     public boolean hasSuperType(){
     	return false;
     }
     
-
-    private static void updateSubtypeKeys(NonRootModelElement supertype, Object oldSupKey, Object newKey ) {
-    	BPElementID oldSupertypeKey = new BPElementID((Object[]) oldSupKey);
-		List<NonRootModelElement> subtypes = SupertypeSubtypeUtil
-				.getSubtypes(supertype);
+	private static void updateSubtypeKeys(NonRootModelElement supertype,
+			Object oldSupKey, Object newKey) {
+		BPElementID oldSupertypeKey = new BPElementID((Object[]) oldSupKey);
+		List<NonRootModelElement> subtypes = supertype.getSubtypes();
 		for (NonRootModelElement subtype : subtypes) {
 			// update the key for this subtype
 			Object oldSubtypeKey = subtype.getInstanceKey();
 			BPElementID oldKey = new BPElementID((Object[]) oldSubtypeKey);
-			if(oldKey != null) {
-				if ( ( oldKey.size() == oldSupertypeKey.size() ) ) {
-						subtype.updateInstanceKey(oldSubtypeKey, newKey);
+			if (oldKey != null) {
+				if ((oldKey.size() == oldSupertypeKey.size())) {
+					subtype.updateInstanceKey(oldSubtypeKey, newKey);
 					if (oldKey.size() == 1 && oldSupertypeKey.size() == 1) {
 						if (newKey instanceof Object[]) {
 							Object[] p_newKey = (Object[]) newKey;
 							if (p_newKey[0] instanceof UUID) {
-								subtype.setInstanceKey((UUID)p_newKey[0] );
-								
+								subtype.setInstanceKey((UUID) p_newKey[0]);
 							}
 						}
 					}
@@ -245,7 +240,7 @@ public abstract class NonRootModelElement extends ModelElement implements IAdapt
 			}
 		}
 	}
-	
+
 	public boolean delete() {
         if (!isOrphaned()) {
             // if there are associated RGO instances
@@ -924,6 +919,18 @@ public abstract class NonRootModelElement extends ModelElement implements IAdapt
 
 	public void Collectreferencesforsynchronization(Object referenceList, int syncType) {
 		// do nothing, subtypes will override if necessary
+	}
+
+	public List<NonRootModelElement> getSubtypes() {
+		return getModelRoot().getSupertypeSubtypeUtil().getSubtypes(this);
+	}
+	
+	public List<NonRootModelElement> getSubtypes(boolean load) {
+		return getModelRoot().getSupertypeSubtypeUtil().getSubtypes(this, load);
+	}
+	
+	public boolean isSupertypeOf(NonRootModelElement element) {
+		return SupertypeSubtypeUtil.getSupertypeSubtypeUtil(element).isSupertypeOf(element, this);
 	}
 	
 }

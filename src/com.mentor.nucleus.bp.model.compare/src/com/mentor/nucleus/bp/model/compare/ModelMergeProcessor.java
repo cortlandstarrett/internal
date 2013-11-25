@@ -71,7 +71,6 @@ import com.mentor.nucleus.bp.core.inspector.ObjectElement;
 import com.mentor.nucleus.bp.core.sorter.MetadataSortingManager;
 import com.mentor.nucleus.bp.core.ui.IModelImport;
 import com.mentor.nucleus.bp.core.ui.Selection;
-import com.mentor.nucleus.bp.core.util.SupertypeSubtypeUtil;
 import com.mentor.nucleus.bp.io.core.CoreExport;
 import com.mentor.nucleus.bp.io.core.CoreImport;
 import com.mentor.nucleus.bp.model.compare.providers.ComparableProvider;
@@ -196,10 +195,17 @@ public class ModelMergeProcessor {
 								.getRepresents();
 						NonRootModelElement targetRepresents = (NonRootModelElement) targetGraphicalElement
 								.getRepresents();
-						boolean sourceExists = elementExistsInDestination(difference, differencer, sourceRepresents, rightToLeft);
-						boolean targetExists = elementExistsInDestination(difference, differencer, targetRepresents, rightToLeft);
-						if (!sourceExists || !targetExists) {
-							return true;
+						if (sourceRepresents != null
+								&& targetRepresents != null) {
+							boolean sourceExists = elementExistsInDestination(
+									difference, differencer, sourceRepresents,
+									rightToLeft);
+							boolean targetExists = elementExistsInDestination(
+									difference, differencer, targetRepresents,
+									rightToLeft);
+							if (!sourceExists || !targetExists) {
+								return true;
+							}
 						}
 					}
 				}
@@ -549,7 +555,7 @@ public class ModelMergeProcessor {
 		// some situations required other data to be created first
 		handleCopyNew(newObject, differencer, contentProvider, modelRoot, rightToLeft);
 		// export the element
-		String export = copyExternal(modelRoot, newObject, false, false);
+		String export = copyExternal(modelRoot, newObject, false, true);
 		newObject = importExternal(newObject, export, parent, modelRoot, newElementLocation);
 		// some elements require a bit of clean-up after merging
 		// in the data
@@ -870,13 +876,6 @@ public class ModelMergeProcessor {
 						NonRootModelElementComparable remoteComp = (NonRootModelElementComparable) ComparableProvider
 								.getComparableTreeObject(value);
 						if(localComp != null && localComp.equals(remoteComp)) {
-							continue;
-						}
-						// do not copy graphical element referentials
-						if (element.getName().equals(
-								"referential_Source_Element") //$NON-NLS-1$
-								|| element.getName().equals(
-										"referential_Target_Element")) { //$NON-NLS-1$
 							continue;
 						}
 						handleReferential(element, localElement,
@@ -1270,14 +1269,14 @@ public class ModelMergeProcessor {
 			parent = parentDetails.getChild();
 		}
 		NonRootModelElement supertype = null;
-		if(parent != null && SupertypeSubtypeUtil.isSupertypeOf(element, parent)) {
+		if(parent != null && parent.isSupertypeOf(element)) {
 			supertype = parent;
 		}
 		while(supertype != null) {
 			supertype.batchRelate(modelRoot, true, false);
 			parentDetails = PersistenceManager.getHierarchyMetaData().getParentDetails(supertype);
 			parent = parentDetails.getParent();
-			if(parent != null && SupertypeSubtypeUtil.isSupertypeOf(supertype, parent)) {
+			if(parent != null && parent.isSupertypeOf(supertype)) {
 				supertype = parent;
 			} else {
 				supertype = null;
@@ -1422,10 +1421,9 @@ public class ModelMergeProcessor {
 			// only consider this as existing if the subtypes are the same
 			StateEventMatrixEntry_c remoteSeme = (StateEventMatrixEntry_c) remoteElement;
 			StateEventMatrixEntry_c localSeme = (StateEventMatrixEntry_c) object;
-			List<NonRootModelElement> remoteSubtypes = SupertypeSubtypeUtil
-					.getSubtypes(remoteSeme);
-			List<NonRootModelElement> localSubtypes = SupertypeSubtypeUtil
-					.getSubtypes(localSeme);
+			List<NonRootModelElement> remoteSubtypes = remoteSeme.getSubtypes();
+			List<NonRootModelElement> localSubtypes = localSeme
+					.getSubtypes();
 			if (localSubtypes.isEmpty() || !remoteSubtypes.get(0).getClass().isInstance(
 					localSubtypes.get(0))) {
 				object = null;
@@ -1468,7 +1466,7 @@ public class ModelMergeProcessor {
 
 	private static NonRootModelElement getElement(NonRootModelElement value) {
 		if(value instanceof DataType_c) {
-			return SupertypeSubtypeUtil.getSubtypes(value).get(0);
+			return value.getSubtypes().get(0);
 		}
 		return value;
 	}
@@ -1540,7 +1538,7 @@ public class ModelMergeProcessor {
 		}
 		NonRootModelElement supertype = null;
 		NonRootModelElement lastSupertype = null;
-		if(parent != null && SupertypeSubtypeUtil.isSupertypeOf((NonRootModelElement) element, parent)) {
+		if(parent != null && parent.isSupertypeOf((NonRootModelElement) element)) {
 			lastSupertype = parent;
 			supertype = parent;
 		}
@@ -1552,7 +1550,7 @@ public class ModelMergeProcessor {
 			if(parentDetails.getChild() instanceof PackageableElement_c) {
 				parent = parentDetails.getChild();
 			}
-			if(parent != null && SupertypeSubtypeUtil.isSupertypeOf(supertype, parent)) {
+			if(parent != null && parent.isSupertypeOf(supertype)) {
 				supertype = parent;
 				lastSupertype = parent;
 			} else {

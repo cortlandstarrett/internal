@@ -85,15 +85,20 @@ INSERT INTO C VALUES ( '${obj.Name}', '${attr.Name}', '${next_attr.Name}', '${dt
 , true\
         .end if
         .if ( empty battr )
-          .select any rel related by attr->O_RATTR[R106]->O_REF[R108]->R_RGO[R111]->R_SUB[R205]->R_SUBSUP[R213]->R_REL[R206]
-          .if (not_empty rel)
-            .if ("${rel.Descrip:Optional}" != ""))
-, true, ${rel.Descrip:Optional} );
+          .select one rattr related by attr->O_RATTR[R106]
+          .select any sub_rel related by rattr->O_REF[R108]->R_RGO[R111]->R_SUB[R205]->R_SUBSUP[R213]->R_REL[R206]
+          .select one ref_class related by rattr->O_REF[R108]->O_RTIDA[R111]->O_OIAD[R110]->O_ATTR[R115]->O_OBJ[R102]
+          .// TODO: generate selection for referential in order to check it as a proxy (we do not want to check the local element)
+          .select one rto_rel related by ratter->O_REF[R108]->O_RTIDA[R111]->R_RTO[R110]->
+          .invoke gnfn = get_nav_func_name( form_obj, rel, "one" )
+          .if (not_empty sub_rel)
+            .if ("${sub_rel.Descrip:Optional}" != ""))
+, true, ${rel.Descrip:Optional}, '${rel_chain}' );
             .else
-, true, false );
+, true, false, '${rel_chain}' );
             .end if
           .else
-, true, false );
+, true, false, '${rel_chain}' );
           .end if
         .else
 , false, false );

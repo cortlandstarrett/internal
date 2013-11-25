@@ -807,4 +807,6 @@ public abstract class ModelRoot extends ModelElement implements IModelChangeProv
 	public static String getAncestorCompareRootPrefix() {
 		return ancestorCompareRootId;
 	}
+
+	public abstract SupertypeSubtypeUtil getSupertypeSubtypeUtil();
 }

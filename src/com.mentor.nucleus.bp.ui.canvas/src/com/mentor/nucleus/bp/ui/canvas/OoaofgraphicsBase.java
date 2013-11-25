@@ -15,15 +15,15 @@ package com.mentor.nucleus.bp.ui.canvas;
 
 import java.util.Hashtable;
 import java.util.Map;
-import java.util.Set;
-import java.util.Map.Entry;
 
 import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.common.ILogger;
 import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
+import com.mentor.nucleus.bp.core.common.SupertypeSubtypeUtil;
 import com.mentor.nucleus.bp.core.common.TraceLogger;
+import com.mentor.nucleus.bp.ui.canvas.util.CanvasSupertypeSubtypeUtil;
 
 /**
  * Holds all the Java-only methods of Ooaofgraphics.  All instances of this class
@@ -37,6 +37,8 @@ public class OoaofgraphicsBase extends ModelRoot
     public static ILogger log = new TraceLogger("com.mentor.nucleus.bp.ui.canvas/debug");
 
     protected static Map<String, OoaofgraphicsBase> rootInstanceMap = new Hashtable<String, OoaofgraphicsBase>();
+
+	private CanvasSupertypeSubtypeUtil supertypeSubtypeUtil;
 
     /**
      * Constructor 
@@ -121,6 +123,14 @@ public class OoaofgraphicsBase extends ModelRoot
 	
 	public static Ooaofgraphics findInstance(String id) {
 		return (Ooaofgraphics) rootInstanceMap.get(id);
+	}
+
+	@Override
+	public SupertypeSubtypeUtil getSupertypeSubtypeUtil() {
+		if(supertypeSubtypeUtil == null) {
+			supertypeSubtypeUtil = new CanvasSupertypeSubtypeUtil();
+		}
+		return supertypeSubtypeUtil;
 	}
 }
 

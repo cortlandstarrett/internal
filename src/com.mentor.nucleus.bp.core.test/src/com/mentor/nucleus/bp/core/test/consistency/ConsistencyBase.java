@@ -18,6 +18,7 @@ import java.util.Map;
 
 import com.mentor.nucleus.bp.core.common.ILogger;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
+import com.mentor.nucleus.bp.core.common.SupertypeSubtypeUtil;
 import com.mentor.nucleus.bp.core.common.TraceLogger;
 
 /**
@@ -84,6 +85,11 @@ public class ConsistencyBase extends ModelRoot {
 
 	public boolean isPersisting() {
 		return false;
+	}
+
+	@Override
+	public SupertypeSubtypeUtil getSupertypeSubtypeUtil() {
+		return null;
 	}
 }
 

@@ -1801,35 +1801,8 @@ ${blck.body}
               .if ( not_empty referential )
   public $r{typedecl.body} ${aa.body}CachedValue()
   {
-			    .// generate a check to see if the attribute value is the one
-			    .// for non-participation (if such a value has been defined)
-                .assign default_value = "${attribute.Descrip:Not_participating_value}"
-                .assign checkReference = true
-                .if (type.Name == "string")
-    if ( !${an1.body}.equals("${default_value}") )
-                .elif (type.Name == "unique_id")
-    if ( !IdAssigner.NULL_UUID.equals(${an1.body}) )
-                .elif ( default_value != "" )
-    if ( ${an1.body} != ${default_value} )
-                .else 
-                  .assign checkReference = false
-                .end if
-                .// here's where we return the local attribute value, under
-                .// normal circumstances
       return ${an1.body};
-                .// this will get hit if the attribute value was found to be the
-                .// one for non-participation; we return the corresponding 
-                .// attribute value in the referred-to instance, instead;
-                .// this lets calls to batchRelate work properly when the instances 
-                .// were related using relateAcross.. methods (which do not copy 
-                .// the attribute value into the referrer), rather than by 
-                .// supplying ID's to the persistence-oriented constructors
-                .if (checkReference)
-    else
-      return ${aa.body}();
-                .end if
-  }
-  
+  }  
               .end if
               .invoke iuia = is_uniqueid_id_attr(attribute)
               .// if this attribute is of the type unique_id

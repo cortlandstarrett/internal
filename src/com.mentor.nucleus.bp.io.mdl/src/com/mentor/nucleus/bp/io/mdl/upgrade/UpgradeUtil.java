@@ -44,7 +44,6 @@ import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.PersistableModelComponent;
 import com.mentor.nucleus.bp.core.common.PersistenceManager;
 import com.mentor.nucleus.bp.core.util.GlobalsUtil;
-import com.mentor.nucleus.bp.core.util.SupertypeSubtypeUtil;
 import com.mentor.nucleus.bp.core.util.TransactionUtil;
 import com.mentor.nucleus.bp.core.util.UIUtil;
 import com.mentor.nucleus.bp.ui.canvas.Cl_c;
@@ -200,10 +199,8 @@ public class UpgradeUtil {
 	                                                                            .getManyPE_PEsOnR8003((Component_c) rootModelElement);
 	                                                                }
 	                                                                for (PackageableElement_c pe : pes) {
-	                                                                    List<NonRootModelElement> subtypes = SupertypeSubtypeUtil
-	                                                                            .getSubtypes(
-	                                                                                    pe,
-	                                                                                    false);
+	                                                                    List<NonRootModelElement> subtypes = pe
+	                                                                            .getSubtypes(false);
 	                                                                    if (!subtypes
 	                                                                            .isEmpty()) {
 	                                                                        final NonRootModelElement subtype = subtypes

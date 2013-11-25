@@ -389,7 +389,6 @@ package com.mentor.nucleus.bp.io.mdl;
 
 import com.mentor.nucleus.bp.core.*;
 import com.mentor.nucleus.bp.core.common.*;
-import com.mentor.nucleus.bp.core.util.SupertypeSubtypeUtil;
 import com.mentor.nucleus.bp.ui.canvas.*;
 import java.util.HashMap;
 import java.util.List;
@@ -584,7 +583,7 @@ public class ${class_name} extends AbstractPersistenceHierarchyMetaData{
         // special case for PEs as their parent is not where they are stored
         // they are persisted with their subtype
         if(element instanceof PackageableElement_c) {
-    		List<NonRootModelElement> subtypes = SupertypeSubtypeUtil.getSubtypes(element);
+    		List<NonRootModelElement> subtypes = element.getSubtypes();
     		if(subtypes.size() != 0) {
     			return subtypes.get(0);
     		}

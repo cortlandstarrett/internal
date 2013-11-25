@@ -56,7 +56,6 @@ import com.mentor.nucleus.bp.core.SystemModel_c;
 import com.mentor.nucleus.bp.core.XtUMLNature;
 import com.mentor.nucleus.bp.core.ui.IModelImport;
 import com.mentor.nucleus.bp.core.ui.IModelImport.IFileHeader;
-import com.mentor.nucleus.bp.core.util.SupertypeSubtypeUtil;
 import com.mentor.nucleus.bp.core.util.UIUtil;
 
 public class PersistenceManager {
@@ -155,7 +154,7 @@ public class PersistenceManager {
 			NonRootModelElement candidate) {
     	if(candidate instanceof PackageableElement_c) {
     		// consider the subtype
-    		List<NonRootModelElement> subtypes = SupertypeSubtypeUtil.getSubtypes(candidate);
+    		List<NonRootModelElement> subtypes = candidate.getSubtypes();
     		if(!subtypes.isEmpty()) {
     			candidate = subtypes.get(0);
     			if(candidate instanceof Message_c || candidate instanceof InteractionParticipant_c) {
@@ -171,7 +170,7 @@ public class PersistenceManager {
 				return null;
     		}
     	} else if(candidate instanceof Message_c) {
-    		List<NonRootModelElement> subtypes = SupertypeSubtypeUtil.getSubtypes(candidate);
+    		List<NonRootModelElement> subtypes = candidate.getSubtypes();
     		if(!subtypes.isEmpty()) {
     			candidate = subtypes.get(0);
     		} else {
@@ -183,7 +182,7 @@ public class PersistenceManager {
 				return null;
     		}
     	} else if(candidate instanceof InteractionParticipant_c) {
-    		List<NonRootModelElement> subtypes = SupertypeSubtypeUtil.getSubtypes(candidate);
+    		List<NonRootModelElement> subtypes = candidate.getSubtypes();
     		if(!subtypes.isEmpty()) {
     			candidate = subtypes.get(0);
     		} else {
@@ -263,7 +262,7 @@ public class PersistenceManager {
         	// skip child PE if the supertype of the parent
         	if(candidate instanceof PackageableElement_c) {
         		PackageableElement_c pe = (PackageableElement_c) candidate;
-        		List<NonRootModelElement> subtypes = SupertypeSubtypeUtil.getSubtypes(pe);
+        		List<NonRootModelElement> subtypes = pe.getSubtypes();
         		if(!subtypes.isEmpty()) {
         			if(subtypes.get(0) == parent) {
         				continue;

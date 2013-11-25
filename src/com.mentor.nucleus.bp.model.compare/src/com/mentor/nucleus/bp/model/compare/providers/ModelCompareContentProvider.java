@@ -111,9 +111,7 @@ public class ModelCompareContentProvider implements ITreeDifferencerProvider {
 			// convert child relations to NonRootModelElements
 			for(int i = 0; i < objectElementRelations.length; i++) {
 				if(objectElementRelations[i].getValue() instanceof NonRootModelElement) {
-					if(!((NonRootModelElement) objectElementRelations[i].getValue()).isProxy()) {
-						childRelations.add(objectElementRelations[i].getValue());	
-					}
+					childRelations.add(objectElementRelations[i].getValue());	
 				} else {
 					childRelations.add(objectElementRelations[i]);
 				}

@@ -199,7 +199,9 @@ public class InstanceList extends ArrayList<NonRootModelElement> {
     }
     
     public void updateKey(Object oldKey, Object newKey, Object object) {
-    	updateKey(oldKey, newKey, object, true);
+    	if(!isNull(newKey)) {
+    		updateKey(oldKey, newKey, object, true);
+    	}
     }
     
     private synchronized void removeOldKey(Object key, Object object) {

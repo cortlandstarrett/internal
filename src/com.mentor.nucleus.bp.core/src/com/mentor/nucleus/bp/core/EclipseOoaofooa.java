@@ -36,6 +36,8 @@ import com.mentor.nucleus.bp.core.common.ModelChangedEvent;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.common.PersistableModelComponent;
 import com.mentor.nucleus.bp.core.common.PersistenceManager;
+import com.mentor.nucleus.bp.core.common.SupertypeSubtypeUtil;
+import com.mentor.nucleus.bp.core.util.CoreSupertypeSubtypeUtil;
 import com.mentor.nucleus.bp.core.util.OoaofgraphicsUtil;
 import com.mentor.nucleus.bp.core.util.PlaceHolderUtil;
 
@@ -319,6 +321,8 @@ public class EclipseOoaofooa extends OoaofooaBase {
     }
 
     public String loadErrorMessage = ""; //$$NON-NLS-1$$
+
+	private CoreSupertypeSubtypeUtil superTypeSubtypeUtil;
     public boolean loadedOk() {
         return loadErrorMessage.equals(""); //$$NON-NLS-1$$
     }
@@ -472,5 +476,13 @@ public class EclipseOoaofooa extends OoaofooaBase {
 
 	public static void addInstance(ModelRoot modelRoot) {
 		rootInstanceMap.put(modelRoot.getId(), (OoaofooaBase) modelRoot);
+	}
+
+	@Override
+	public SupertypeSubtypeUtil getSupertypeSubtypeUtil() {
+		if(superTypeSubtypeUtil == null) {
+			superTypeSubtypeUtil = new CoreSupertypeSubtypeUtil();
+		}
+		return superTypeSubtypeUtil;
 	}
 }

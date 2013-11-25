@@ -78,7 +78,6 @@ import com.mentor.nucleus.bp.core.Transition_c;
 import com.mentor.nucleus.bp.core.UserDataType_c;
 import com.mentor.nucleus.bp.core.ui.IModelImport;
 import com.mentor.nucleus.bp.core.util.OoaofgraphicsUtil;
-import com.mentor.nucleus.bp.core.util.SupertypeSubtypeUtil;
 
 public class ModelStreamProcessor {
 
@@ -575,7 +574,7 @@ public class ModelStreamProcessor {
 		NonRootModelElement parent = PersistenceManager.getHierarchyMetaData()
 				.getParent(element);
 		while (parent != null
-				&& SupertypeSubtypeUtil.isSupertypeOf(child, parent)) {
+				&& parent.isSupertypeOf(child)) {
 			child = parent;
 			parent = PersistenceManager.getHierarchyMetaData()
 					.getParent(parent);
