@@ -111,7 +111,7 @@ public class TreeDifferencer extends Differencer {
 		Object ancestor = locateElementInOtherVersion(ancestorParent, left, contentProvider, this.ancestor);
 		if(right != null) {
 			// now check for equivalence, values matching + location matching
-			if(!elementsEqualIncludingValues(left, right, false) && !left.isDerived()) {
+			if(!elementsEqualIncludingValues(left, right, false, false) && !left.isDerived()) {
 				int description = getDifferenceType(left, right, ancestor, threeWay);
 				TreeDifference leftDifference = new TreeDifference(left,
 						TreeDifference.VALUE_DIFFERENCE, true,
@@ -246,7 +246,7 @@ public class TreeDifferencer extends Differencer {
 						description= LEFT | ADDITION;
 					} else {
 						description= CONFLICTING | ADDITION;
-						if (elementsEqualIncludingValues(left, right, false))
+						if (elementsEqualIncludingValues(left, right, false, false))
 							description|= PSEUDO_CONFLICT;
 					}
 				}
@@ -255,20 +255,20 @@ public class TreeDifferencer extends Differencer {
 					if (right == null) {
 						description= CONFLICTING | DELETION | PSEUDO_CONFLICT;
 					} else {
-						if (elementsEqualIncludingValues(ancestor, right, true))		
+						if (elementsEqualIncludingValues(ancestor, right, true, true))		
 							description= LEFT | DELETION;
 						else
 							description= CONFLICTING | CHANGE;	
 					}
 				} else {
 					if (right == null) {
-						if (elementsEqualIncludingValues(ancestor, left, true))	
+						if (elementsEqualIncludingValues(ancestor, left, true, true))	
 							description= RIGHT | DELETION;
 						else
 							description= CONFLICTING | CHANGE;	
 					} else {
-						boolean ay= elementsEqualIncludingValues(ancestor, left, false);
-						boolean am= elementsEqualIncludingValues(ancestor, right, false);
+						boolean ay= elementsEqualIncludingValues(ancestor, left, false, false);
+						boolean am= elementsEqualIncludingValues(ancestor, right, false, false);
 						
 						// we need to compare the location of left and right
 						// otherwise a difference may be skipped
@@ -301,7 +301,7 @@ public class TreeDifferencer extends Differencer {
 							description= LEFT | CHANGE;
 						} else {
 							description= CONFLICTING | CHANGE;
-							if (elementsEqualIncludingValues(left, right, false))
+							if (elementsEqualIncludingValues(left, right, false, false))
 								description|= PSEUDO_CONFLICT;
 						}
 					}
@@ -319,7 +319,7 @@ public class TreeDifferencer extends Differencer {
 				if (right == null) {
 					description= LEFT | DELETION;
 				} else {
-					if (! elementsEqualIncludingValues(left, right, false))
+					if (! elementsEqualIncludingValues(left, right, false, false))
 						description= LEFT | CHANGE;
 				}
 			}
@@ -404,7 +404,8 @@ public class TreeDifferencer extends Differencer {
 		return initialDifferenceType;
 	}
 
-	private boolean elementsEqualIncludingValues(Object left, Object right, boolean excludeLocationComparison) {
+	private boolean elementsEqualIncludingValues(Object left, Object right,
+			boolean excludeLocationComparison, boolean compareFullStructure) {
 		if (!elementsEqual(left, right)) {
 			return false;
 		}
@@ -426,7 +427,29 @@ public class TreeDifferencer extends Differencer {
 				return false;
 			}
 		}
+		// if compare full structure is true then we need to
+		// navigate the children as well comparing each as we go
+		if(compareFullStructure && result) {
+			result = structureIsEqual(left, right, excludeLocationComparison);
+		}
 		return result;
+	}
+
+	private boolean structureIsEqual(Object left, Object right, boolean excludeLocationComparison) {
+		Object[] leftChildren = contentProvider.getChildren(left);
+		Object[] rightChildren = contentProvider.getChildren(right);
+		if(leftChildren.length != rightChildren.length) {
+			return false;
+		}
+		boolean result = true;
+		for(int i = 0; i < leftChildren.length; i++) {
+			result = elementsEqualIncludingValues(leftChildren[i], rightChildren[i], excludeLocationComparison, true);
+			if(!result) {
+				// early exit as we know the structure is not equal
+				return false;
+			}
+		}
+		return true;
 	}
 
 	public boolean elementsEqual(Object element1, Object element2) {

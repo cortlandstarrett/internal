@@ -39,6 +39,6 @@ public abstract class ComparableTreeObject {
 		return false;
 	}
 	public boolean considerLocation() {
-		return true;
+		return false;
 	}
 }

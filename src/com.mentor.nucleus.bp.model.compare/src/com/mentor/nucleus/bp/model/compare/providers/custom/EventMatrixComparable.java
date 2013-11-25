@@ -1,15 +1,8 @@
 package com.mentor.nucleus.bp.model.compare.providers.custom;
 
-import java.util.UUID;
-
 import com.mentor.nucleus.bp.core.CantHappen_c;
-import com.mentor.nucleus.bp.core.ClassAsAssociatedOneSide_c;
-import com.mentor.nucleus.bp.core.ClassAsAssociatedOtherSide_c;
-import com.mentor.nucleus.bp.core.ClassAsSimpleFormalizer_c;
-import com.mentor.nucleus.bp.core.ClassAsSimpleParticipant_c;
 import com.mentor.nucleus.bp.core.EventIgnored_c;
 import com.mentor.nucleus.bp.core.NewStateTransition_c;
-import com.mentor.nucleus.bp.core.StateEventMatrixEntry_c;
 import com.mentor.nucleus.bp.core.common.BPElementID;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.model.compare.providers.NonRootModelElementComparable;

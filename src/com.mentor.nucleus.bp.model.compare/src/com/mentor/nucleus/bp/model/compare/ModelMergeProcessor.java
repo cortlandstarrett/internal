@@ -77,7 +77,11 @@ import com.mentor.nucleus.bp.io.core.CoreImport;
 import com.mentor.nucleus.bp.model.compare.providers.ComparableProvider;
 import com.mentor.nucleus.bp.model.compare.providers.NonRootModelElementComparable;
 import com.mentor.nucleus.bp.model.compare.providers.ObjectElementComparable;
+import com.mentor.nucleus.bp.ui.canvas.Connector_c;
 import com.mentor.nucleus.bp.ui.canvas.ElementSpecification_c;
+import com.mentor.nucleus.bp.ui.canvas.Graphconnector_c;
+import com.mentor.nucleus.bp.ui.canvas.Graphedge_c;
+import com.mentor.nucleus.bp.ui.canvas.Graphelement_c;
 import com.mentor.nucleus.bp.ui.canvas.GraphicalElement_c;
 import com.mentor.nucleus.bp.ui.canvas.Model_c;
 import com.mentor.nucleus.bp.ui.canvas.Ooaofgraphics;
@@ -129,6 +133,14 @@ public class ModelMergeProcessor {
 					&& difference.getMatchingDifference().getParent() == null) {
 				return false;
 			}
+			if (mergeProducesInvalidGraphic(difference, differencer,
+					rightToLeft)) {
+				return false;
+			}
+			if (mergeProducesInvalidConnection(difference, differencer,
+					rightToLeft)) {
+				return false;
+			}
 			return handleNewElement(difference, contentProvider, diffElement,
 					modelRoot, differencer, rightToLeft);
 		} else if (difference.getElement() instanceof ObjectElementComparable) {
@@ -152,6 +164,122 @@ public class ModelMergeProcessor {
 		return false;
 	}
 
+	/**
+	 * Check that the element when copied would still have a valid represents
+	 * if not the produced graphical element will be invalid
+	 *
+	 * @param difference
+	 * @param differencer
+	 * @param rightToLeft
+	 * @return
+	 */
+	private static boolean mergeProducesInvalidGraphic(
+			TreeDifference difference, TreeDifferencer differencer,
+			boolean rightToLeft) {
+		Object elementToBeMerged = difference.getElement();
+		if (elementToBeMerged instanceof NonRootModelElementComparable) {
+			NonRootModelElementComparable elementComparable = (NonRootModelElementComparable) elementToBeMerged;
+			if(elementComparable.getRealElement() instanceof GraphicalElement_c) {
+				GraphicalElement_c graphicalElement = (GraphicalElement_c) elementComparable
+						.getRealElement();
+				// allow if the graphical element being copied already had a null
+				// represents
+				if (graphicalElement.getRepresents() != null) {
+					return !elementExistsInDestination(difference, differencer,
+							(NonRootModelElement) graphicalElement.getRepresents(),
+							rightToLeft);
+				}
+			}
+		}
+		return false;
+	}
+	
+	/**
+	 * Check that the element when copied would still have the appropriate
+	 * end elements, if not the produced connection will be invalid.
+	 * 
+	 * @param difference
+	 * @param contentProvider
+	 * @param modelRoot
+	 * @param differencer
+	 * @param rightToLeft
+	 * @return
+	 */
+	private static boolean mergeProducesInvalidConnection(
+			TreeDifference difference,	TreeDifferencer differencer, boolean rightToLeft) {
+		Object elementToBeMerged = difference.getElement();
+		if (elementToBeMerged instanceof NonRootModelElementComparable) {
+			NonRootModelElementComparable elementComparable = (NonRootModelElementComparable) elementToBeMerged;
+			if(elementComparable.getRealElement() instanceof GraphicalElement_c) {
+				GraphicalElement_c graphicalElement = (GraphicalElement_c) elementComparable
+						.getRealElement();
+				Connector_c connector = Connector_c
+						.getOneGD_CONOnR2(graphicalElement);
+				if (connector != null) {
+					GraphicalElement_c sourceGraphicalElement = GraphicalElement_c
+							.getOneGD_GEOnR23(Graphelement_c.getManyDIM_GEsOnR311(Graphconnector_c
+									.getManyDIM_CONsOnR320(Graphedge_c
+											.getManyDIM_EDsOnR20(connector))));
+					GraphicalElement_c targetGraphicalElement = GraphicalElement_c
+							.getOneGD_GEOnR23(Graphelement_c.getManyDIM_GEsOnR311(Graphconnector_c
+									.getManyDIM_CONsOnR321(Graphedge_c
+											.getManyDIM_EDsOnR20(connector))));
+					if (sourceGraphicalElement != null
+							&& targetGraphicalElement != null) {
+						NonRootModelElement sourceRepresents = (NonRootModelElement) sourceGraphicalElement
+								.getRepresents();
+						NonRootModelElement targetRepresents = (NonRootModelElement) targetGraphicalElement
+								.getRepresents();
+						boolean sourceExists = elementExistsInDestination(difference, differencer, sourceRepresents, rightToLeft);
+						boolean targetExists = elementExistsInDestination(difference, differencer, targetRepresents, rightToLeft);
+						if (!sourceExists || !targetExists) {
+							return true;
+						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	private static boolean elementExistsInDestination(
+			TreeDifference difference, TreeDifferencer differencer,
+			NonRootModelElement element, boolean rightToLeft) {
+		Object container = difference.getMatchingDifference().getParent();
+		if (container instanceof NonRootModelElementComparable) {
+			NonRootModelElementComparable cto = (NonRootModelElementComparable) container;
+			NonRootModelElement destinationContainer = (NonRootModelElement) cto
+					.getRealElement();
+			ModelRoot destinationRoot = Ooaofooa
+					.getInstance(destinationContainer.getModelRoot().getId());
+			Object destinationElement = destinationRoot.getInstanceList(
+					element.getClass()).get(element.getInstanceKey());
+			if (destinationElement != null) {
+				return true;
+			}
+		}
+		// if the element could not be found in the destination
+		// we need to look for it in the differences as it
+		// may just not have been merged yet
+		int direction = Differencer.RIGHT;
+		if (!rightToLeft) {
+			direction = Differencer.LEFT;
+		}
+		List<TreeDifference> differences = differencer.getDifferences(
+				ComparableProvider.getComparableTreeObject(element),
+				!rightToLeft);
+		for (TreeDifference sourceRepresentsDifference : differences) {
+			if (sourceRepresentsDifference.getMatchingDifference().getElement() == null) {
+				// it has to be an incoming difference to mean
+				// that the element will be added
+				if (sourceRepresentsDifference.getKind() == (direction | Differencer.ADDITION)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	
 	/**
 	 * This method will move the element to the same location as 
 	 * determined by the difference
@@ -457,6 +585,9 @@ public class ModelMergeProcessor {
 		// export the element
 		String export = copyExternal(modelRoot, newObject, false, false);
 		newObject = importExternal(newObject, export, parent, modelRoot, newElementLocation);
+		// some elements require a bit of clean-up after merging
+		// in the data
+		cleanUpMerge(newObject);
 		// if this element is a graphical element we need to
 		// associate it with an element specification so the
 		// proper ooa_type is exported
@@ -541,7 +672,19 @@ public class ModelMergeProcessor {
 		batchRelateAll(newObject, modelRoot, contentProvider);
 		return true;
 	}
-	
+
+	private static void cleanUpMerge(NonRootModelElement newObject) {
+		// For SEME elements that were copied along with a transition
+		// we need to remove the event ignored or cant happen subtype
+		if(newObject instanceof Transition_c) {
+			NewStateTransition_c nst = NewStateTransition_c.getOneSM_NSTXNOnR507((Transition_c) newObject);
+			if(nst != null) {
+				StateEventMatrixEntry_c entry = StateEventMatrixEntry_c.getOneSM_SEMEOnR504(nst);
+				entry.Disposechorei();
+			}
+		}
+	}
+
 	private static void batchRelateAll(NonRootModelElement newObject, ModelRoot modelRoot, ITreeContentProvider provider) {
 		newObject.batchRelate(modelRoot, false, false);
 		Object[] children = provider.getChildren(newObject);
@@ -1273,9 +1416,11 @@ public class ModelMergeProcessor {
 																	.getTrans_id());
 										}
 									});
-					gelem.Setcachedrepresentspath(remoteGelem
-							.Getcachedrepresentspath());
-					newObject.batchRelate(modelRoot, true, false);
+					if(gelem != null) {
+						gelem.Setcachedrepresentspath(remoteGelem
+								.Getcachedrepresentspath());
+						newObject.batchRelate(modelRoot, true, false);
+					}
 					return true;
 				}
 			}

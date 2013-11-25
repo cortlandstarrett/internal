@@ -20,6 +20,7 @@ import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.common.BPElementID;
 import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
+import com.mentor.nucleus.bp.core.sorter.MetadataSortingManager;
 
 public class NonRootModelElementComparable extends ComparableTreeObject implements IAdaptable {
 
@@ -112,4 +113,10 @@ public class NonRootModelElementComparable extends ComparableTreeObject implemen
 		}
 		return null;
 	}
+	
+	@Override
+	public boolean considerLocation() {
+		return MetadataSortingManager.isOrderedElement(realElement);
+	}
+	
 }

@@ -207,9 +207,7 @@ public class SEMEditorPage extends Composite {
 								StateMachineState_c newState = StateMachineState_c
 										.getOneSM_STATEOnR506(Transition_c
 												.getOneSM_TXNOnR507(transition));
-								if(newState != null) {
-									return newState.getName();
-								}
+								return newState.getName();
 							}
 							CantHappen_c ch = CantHappen_c.getOneSM_CHOnR504(matrixEntry);
 							if(ch != null) {
