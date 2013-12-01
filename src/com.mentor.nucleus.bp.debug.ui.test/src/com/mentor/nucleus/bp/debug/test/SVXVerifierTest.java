@@ -1,6 +1,6 @@
 //========================================================================
 //
-//File:      $RCSfile: VIECTest.java,v $
+//File:      $RCSfile: VIECTest.java ,v $
 //Version:   $Revision: 1.4 $
 //Modified:  $Date: 2013/05/10 04:28:33 $
 //
@@ -68,7 +68,7 @@ public class SVXVerifierTest extends BaseTest {
 		super.setUp();
 		if (!initialized){
 			//Load Java Project
-			 TestingUtilities.importTestingJavaProjectIntoWorkspace(javaProjectName);
+			 TestingUtilities.importTestingProjectIntoWorkspace(javaProjectName);
 		     javaProject = ResourcesPlugin.getWorkspace().getRoot().getProject(javaProjectName);
 			
 		     //Load xtuml projrct
