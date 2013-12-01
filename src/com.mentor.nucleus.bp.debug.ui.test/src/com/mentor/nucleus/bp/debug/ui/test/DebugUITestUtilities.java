@@ -571,7 +571,26 @@ public class DebugUITestUtilities {
 		}
 		return "";
 	}
-
+	
+	
+	public static String getCertainConsoleTextByName(String consoleNameContains) {
+		// wait for all outstanding events to complete
+		TestingUtilities.processDisplayEvents();
+		IConsole[] consoles = ConsolePlugin.getDefault().getConsoleManager()
+				.getConsoles();
+		for (int i = 0; i < consoles.length; i++) {
+			if (consoles[i] instanceof TextConsole) {
+				TextConsole console = (TextConsole) consoles[i];
+				if (console.getType().equals(
+						"org.eclipse.debug.ui.ProcessConsoleType")&&console.getName().contains(consoleNameContains)) {
+					waitForConsoleUpdate(console, "");
+					String consoleText = console.getDocument().get();
+					return consoleText;
+				}
+			}
+		}
+		return "";
+	}
 	static long maxWaitTime = 2000;
 
 	private static void waitForConsoleUpdate(TextConsole console,
