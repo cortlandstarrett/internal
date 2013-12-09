@@ -251,14 +251,20 @@ public abstract class CoreImport implements IModelImport {
     protected boolean doLoadSql(IProgressMonitor pm) {
         // here's where the code is actually read
         try {
+            Reader reader = getInputReader();
+        	// first extract all patch data (if present)
+        	SqlPatchLexer patchLexer = new SqlPatchLexer(reader);
+        	SqlPatchParser patchParser = new SqlPatchParser(patchLexer);
+        	StringBuffer parsed_buffer = new StringBuffer();
+        	patchParser.create_non_patch_data(parsed_buffer);
+        	StringReader parsedReader = new StringReader(parsed_buffer.toString());
             // read the version number from the file, in case
             // countAndValidateInsertStatements() hasn't been called
-            Reader reader = getInputReader();
             readHeader();
 
             performCleanUp(pm);
             
-            SqlLexer lexer = new SqlLexer(reader);
+            SqlLexer lexer = new SqlLexer(parsedReader);
 
             // add 401 for the batchRelateAll additions (found by searching for pm.worked(1) in ImportModelComponent
             pm.beginTask("Importing data...", m_numInserts + 401);

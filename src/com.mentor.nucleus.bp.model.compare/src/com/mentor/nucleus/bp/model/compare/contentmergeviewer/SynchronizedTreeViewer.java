@@ -879,7 +879,7 @@ public class SynchronizedTreeViewer extends TreeViewer implements
 			@Override
 			public void selectionChanged(SelectionChangedEvent event) {
 				if(!getSelection().equals(event.getSelection()) && !event.getSelection().isEmpty()) {
-					setSelection(event.getSelection());
+					setSelectionToWidget(event.getSelection(), true);
 				}
 			}
 		});

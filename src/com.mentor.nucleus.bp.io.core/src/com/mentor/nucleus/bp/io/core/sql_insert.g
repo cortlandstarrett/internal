@@ -144,9 +144,6 @@ SL_COMMENT
   ('\n' { newline(); } )
     { _ttype = Token.SKIP; }
   ; 
-PATCH_CONFLICT : "<<<<<<<" ( options {greedy=false;} : . )*  ( '\n' { newline(); }) { _ttype = Token.SKIP; };
-PATCH_CONFLICT_BACK_HALF : "=======" ( options {greedy=false;} : . )* ">>>>>>>"  ( options {greedy=false;} : . )* ( '\n' { newline(); }) { _ttype = Token.SKIP; };
-
 WS
   : (WS1 | WS2)+
 	{ _ttype = Token.SKIP; }
