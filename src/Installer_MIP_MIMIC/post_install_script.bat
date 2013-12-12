@@ -11,7 +11,7 @@
 @echo off
 
 echo Starting post-install script
-SET BPVER=4.1.0
+SET BPVER=4.1.4
 
 :: Localization Note: To support UNICODE paths for Source, Target, or MIP 
 :: location, the scripts should ignore the command line $1, $2 arguments and use
@@ -94,6 +94,14 @@ DEL "%CSFLAGFILE%"
 GOTO CreateShortcutDone
 :CreateShortcutDone
 echo Done
+
+:: FOR DEMO INSTALLS ONLY!
+:: Delete unwanted MCs
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.c.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.cpp.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.vhdl.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.systemc.source_%BPVER%"
+:: END - FOR DEMO INSTALLS ONLY!
 
 :: Show release notes or not depending on their selection in the installer.
 echo Release notes display (or not)
