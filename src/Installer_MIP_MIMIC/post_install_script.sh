@@ -27,7 +27,7 @@
 #
 
 echo Starting post-install script
-BPVER=4.1.0
+BPVER=4.1.4
 
 #===============================================================================
 # UTILITY FUNCTIONS
@@ -159,6 +159,14 @@ configure_mc_files
 MC_NAME="com.mentor.nucleus.bp.mc.systemc.source"
 configure_mc_files
 # Done moving files for wine-based generation
+
+# FOR DEMO INSTALLS ONLY!
+# Delete unwanted MCs
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.c.source_${BPVER}"
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.cpp.source_${BPVER}"
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.vhdl.source_${BPVER}"
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.systemc.source_${BPVER}"
+# END - FOR DEMO INSTALLS ONLY!
 
 # Show release notes or not depending on their selection in the installer.
 echo "Release notes display (or not)"
