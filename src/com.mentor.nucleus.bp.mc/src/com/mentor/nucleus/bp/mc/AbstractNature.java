@@ -370,54 +370,56 @@ public abstract class AbstractNature implements IProjectNature {
 		}
 	}
 
+	protected void addBuilderToBuildSpec(IProject project, String builderID) throws CoreException {
+	    addBuilderToBuildSpec(project, builderID, true);
+	}
 	/**
 	 * Adds the builder to the project description for the selected project if
 	 * it does not already exist.
 	 */
-	protected void addBuilderToBuildSpec(IProject project, String builderID) throws CoreException {
+	protected void addBuilderToBuildSpec(IProject project, String builderID, boolean addMCLaunchBuilder) throws CoreException {
 
 		// Get project description and then the associated build commands
 		IProjectDescription desc = project.getDescription();
 		ICommand[] commands = desc.getBuildSpec();
 
-		// Determine if MC-3020 code gen builder already associated
-		boolean custBuilderFound = false;
+		if (addMCLaunchBuilder) {
+		    // Determine if MC-3020 code gen builder already associated
+		    boolean custBuilderFound = false;
 
-		for (int i = 0; i < commands.length; ++i) {
-			if (commands[i].getBuilderName().equals(CUST_BUILDER_ID)) {
-				custBuilderFound = true;
-				break;
-			}
+		    for (int i = 0; i < commands.length; ++i) {
+		        if (commands[i].getBuilderName().equals(CUST_BUILDER_ID)) {
+		            custBuilderFound = true;
+		            break;
+		        }
+		    }
 
-		}
-
-		// Add builder if not already in project
-		if (!custBuilderFound) {
-
-			ICommand custCommand = desc.newCommand();
-			custCommand.setBuilderName(CUST_BUILDER_ID);
-			// Create map with arguments specific to builder in project here
-			// custCommand.setArguments(Map args);
-			final Map<String, String> buildsetting;
-			buildsetting = new HashMap<String, String>();
-			buildsetting
+		    // Add builder if not already in project
+		    if (!custBuilderFound) {
+		        ICommand custCommand = desc.newCommand();
+		        custCommand.setBuilderName(CUST_BUILDER_ID);
+		        // Create map with arguments specific to builder in project here
+		        // custCommand.setArguments(Map args);
+		        final Map<String, String> buildsetting;
+		        buildsetting = new HashMap<String, String>();
+		        buildsetting
 					.put(
 							"LaunchConfigHandle", "<project>/" + EXTERNALTOOLBUILDER_FOLDER + "/" + MC_LAUNCH_ID); //$NON-NLS-1$//$NON-NLS-2$//$NON-NLS-3$
 
-			custCommand.setArguments(buildsetting);
+		        custCommand.setArguments(buildsetting);
 
-			ICommand[] newCommands = new ICommand[commands.length + 1];
+		        ICommand[] newCommands = new ICommand[commands.length + 1];
 
-			// Add it before other builders.
-			System.arraycopy(commands, 0, newCommands, 1, commands.length);
+		        // Add it before other builders.
+		        System.arraycopy(commands, 0, newCommands, 1, commands.length);
 
-			newCommands[0] = custCommand;
-			desc.setBuildSpec(newCommands);
-			project.setDescription(desc, null);
-
+		        newCommands[0] = custCommand;
+		        desc.setBuildSpec(newCommands);
+		        project.setDescription(desc, null);
+		    }
 		}
 
-		// Determine if MC-3020 pre-gen (export) builder already associated
+		// Determine if builder is already associated.  Add it if not.
 		if (hasBuilder(project, builderID) == -1) {
 			commands = desc.getBuildSpec();
 
