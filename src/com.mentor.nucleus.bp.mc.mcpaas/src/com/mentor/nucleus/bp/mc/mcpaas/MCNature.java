@@ -14,7 +14,6 @@ import org.eclipse.core.variables.VariablesPlugin;
 
 import com.mentor.nucleus.bp.mc.AbstractActivator;
 import com.mentor.nucleus.bp.mc.AbstractNature;
-import com.mentor.nucleus.bp.mc.MCBuilderArgumentHandler;
 
 public class MCNature extends AbstractNature {
 	// The shared instance
@@ -26,13 +25,13 @@ public class MCNature extends AbstractNature {
 	public static final String MC_NATURE_ID = "com.mentor.nucleus.bp.mc.mcpaas.MCNature"; //NON-NLS-1
 
 	/**
-	 * identifier of this nature in plugin.xml - (concatenate
-	 * pluginid.exportbuilderid)
+	 * identifier of this nature in plugin.xml - (concatenate pluginid.exportbuilderid)
 	 */
+	public static final String MCPAAS_BUILDER_ID = "com.mentor.nucleus.bp.mc.mcpaas.mcpaas_builder"; //NON-NLS-1
 	public static final String EXPORT_BUILDER_ID = "com.mentor.nucleus.bp.mc.mcpaas.export_builder"; //NON-NLS-1
 
 	public MCNature() {
-		super(Activator.getDefault(), EXPORT_BUILDER_ID);
+		super(Activator.getDefault(), MCPAAS_BUILDER_ID);
 		singleton = this;
 	}
 
@@ -60,20 +59,17 @@ public class MCNature extends AbstractNature {
 
 	@Override
     public void configure() throws CoreException {
-	    // TODO - This could all be refactored in AbstractNature to configure_common()
+	    // TODO - This could be refactored in AbstractNature to configure_common()
 	    //   Then the AbstractNature::configure() would call configure_common() and the MCArgumentHandler bits
 	    //   where as this would call configure_common() and not do the argument handler stuff.
         String src = VariablesPlugin.getDefault().getStringVariableManager()
                 .performStringSubstitution(MC_ROOT_DIR_ENV_VAR_REF);
-        String dest = getProject().getLocation().toOSString();
 
         // Add required folders
         IFolder srcFolder = getProject().getFolder(AbstractActivator.SRC_FOLDER_NAME);
         IFolder genFolder = getProject().getFolder(AbstractActivator.GEN_FOLDER_NAME);
-        IFolder builderFolder = getProject().getFolder(EXTERNALTOOLBUILDER_FOLDER);
         createFolderIfNonexistent(srcFolder);
         createFolderIfNonexistent(genFolder);
-        createFolderIfNonexistent(builderFolder);
 
         String[] srcFileDef = getFiles("system", "src", ""); //$NON-NLS-1$ //$NON-NLS-2$  //$NON-NLS-3$
         String[] destFileDef = getFiles("system", "dest", ""); //$NON-NLS-1$ //$NON-NLS-2$  //$NON-NLS-3$
@@ -108,32 +104,10 @@ public class MCNature extends AbstractNature {
                 }
             }
         }
-        IPath srcLaunchFolder = getLauchSpecFolder();
-        // add builder specification file to builder folder
-        IPath srcLaunchFile = new Path(srcLaunchFolder + MC_LAUNCH_ID);
 
-        String tgtFilePath = dest.toString() + File.separator
-                + EXTERNALTOOLBUILDER_FOLDER + File.separator + MC_LAUNCH_ID;
-        IFolder destLaunchFolder = getProject()
-                .getFolder(EXTERNALTOOLBUILDER_FOLDER);
-        createFolderIfNonexistent(destLaunchFolder);
-        IFile destLaunchFile = destLaunchFolder.getFile(MC_LAUNCH_ID);
-
-        if (srcLaunchFile.toFile().exists()) {
-            if (!destLaunchFile.exists()) {
-                try {
-                    abstractActivator.copyFile(srcLaunchFile.toString(),
-                            tgtFilePath);
-                } catch (IOException e) {
-                    String err_msg = "Error copying file " + MC_LAUNCH_ID
-                            + " in the " + getProject().getName() + " project ";
-                    abstractActivator.logError(err_msg, e);
-                }
-            }
-        }
-
-        // Add the Builder to the project
-        addBuilderToBuildSpec(getProject(), getBuilderID());
+        // Add the MC-PaaS builder then the Export builder to the project
+        addBuilderToBuildSpec(getProject(), MCPAAS_BUILDER_ID, false);
+        addBuilderToBuildSpec(getProject(), EXPORT_BUILDER_ID, false);
 
         // refresh directory to pick up new files
         try {
