@@ -56,6 +56,41 @@ This file is the plugin manifest for the BridgePoint core plugin.
                name="*">
         </export>
       </library>
+      <library name="lib/httpcomponents-client-4.3.1-bin/lib/commons-codec-1.6.jar">
+         <export
+               name="*">
+         </export>
+      </library>
+      <library name="lib/httpcomponents-client-4.3.1-bin/lib/commons-logging-1.1.3.jar">
+         <export
+               name="*">
+         </export>
+      </library>
+      <library name="lib/httpcomponents-client-4.3.1-bin/lib/fluent-hc-4.3.1.jar">
+         <export
+               name="*">
+         </export>
+      </library>
+      <library name="lib/httpcomponents-client-4.3.1-bin/lib/httpclient-4.3.1.jar">
+         <export
+               name="*">
+         </export>
+      </library>
+      <library name="lib/httpcomponents-client-4.3.1-bin/lib/httpclient-cache-4.3.1.jar">
+         <export
+               name="*">
+         </export>
+      </library>
+      <library name="lib/httpcomponents-client-4.3.1-bin/lib/httpcore-4.3.jar">
+         <export
+               name="*">
+         </export>
+      </library>
+      <library name="lib/httpcomponents-client-4.3.1-bin/lib/httpmime-4.3.1.jar">
+         <export
+               name="*">
+         </export>
+      </library>
    </runtime>
    <requires>
       <import plugin="org.eclipse.core.runtime"/>
