@@ -36,15 +36,22 @@ public class MCPaaSBuilder extends IncrementalProjectBuilder {
     protected IProject[] build(int kind, Map args, IProgressMonitor monitor) {
         UUID buildID = UUID.randomUUID();
         String projDirStr = getProject().getLocation().toOSString();
-        File zipfile = new File(projDirStr + File.separator + buildID + ".zip");  // TODO - zip it up into the workspace/.metadata folder instead?
-        File genZipfile = new File(projDirStr + File.separator + "gen_" + buildID + ".zip");  // TODO - zip it up into the workspace/.metadata folder instead?
+        
+        // TODO - zip and unzip to <project>/.mcpaas_tmp instead of <project>/.  Call IResource.setDerived(true) on that temp folder
+        // TODO - IFolder newImagesFolder = myWebProject.getFolder("newimages");
+        // TODO - newImagesFolder.create(false, true, null);
+        // TODO - IPath renamedPath = newImagesFolder.getFullPath().append("renamedLogo.png");
+        // TODO - IFile renamedLogo = newImagesFolder.getFile("renamedLogo.png");
+        
+        File zipfile = new File(projDirStr + File.separator + buildID + ".zip");  // TODO - zip and unzip to <project>/.mcpaas_tmp instead of <project>/.  Call IResource.setDerived(true) on that temp folder
+        File genZipfile = new File(projDirStr + File.separator + "gen_" + buildID + ".zip");  // TODO - zip and unzip to <project>/.mcpaas_tmp instead of <project>/.  Call IResource.setDerived(true) on that temp folder
         boolean success = true;
         
 	    try {    
 	        // Zip up the gen/ folder
 	        IPath genDirPath = new Path(AbstractActivator.GEN_FOLDER_NAME + File.separator);
 	        IFolder genFolder = getProject().getFolder(genDirPath);
-	        genFolder.refreshLocal(IResource.DEPTH_ONE, null);
+	        genFolder.refreshLocal(IResource.DEPTH_INFINITE, null);
 	        if (genFolder.exists() && genFolder.members().length != 0) {
 	            File genDir = new File(projDirStr + File.separator + AbstractActivator.GEN_FOLDER_NAME);
 	            ZipUtil.zip(genDir, zipfile, true);	            
@@ -75,7 +82,7 @@ public class MCPaaSBuilder extends IncrementalProjectBuilder {
 	        boolean gotSrcFile = false;
 	        for (int i = 0; (i < MAX_GET_ITERATIONS) && !gotSrcFile; i++) {
 	            try {
-                    Thread.sleep(10000);// TODO - change back up and to 10s
+                    Thread.sleep(10000);// TODO - don't like this sleep, not really happy with this polling approach
 	                HttpUtil.getFile(mcpaasServer + "/" + buildID + ".zip", zipfile.getCanonicalPath());
 	                if (zipfile.exists()) {
 	                    gotSrcFile = true;
@@ -125,5 +132,14 @@ public class MCPaaSBuilder extends IncrementalProjectBuilder {
 		}
 		return MCPaaSBuilder.singleton;
 	}
+
+    /* (non-Javadoc)
+     * @see org.eclipse.core.resources.IncrementalProjectBuilder#clean(org.eclipse.core.runtime.IProgressMonitor)
+     */
+    @Override
+    protected void clean(IProgressMonitor monitor) throws CoreException {
+        // TODO - remove <project>/.mcpaas_tmp
+        super.clean(monitor);
+    }
 	
 }
