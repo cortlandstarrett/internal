@@ -14,6 +14,7 @@ package com.mentor.nucleus.bp.core;
 //
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -27,6 +28,7 @@ import org.eclipse.jface.text.Document;
 import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.IModelMatchListener;
 import com.mentor.nucleus.bp.core.common.IPersistenceHierarchyMetaData;
+import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.PersistenceManager;
 import com.mentor.nucleus.bp.core.search.DocumentCharSequence;
@@ -41,6 +43,7 @@ public class Search_c {
 	private static Matcher matcher;
 	private static Set<NonRootModelElement> descriptionElementsInScope = new HashSet<NonRootModelElement>();
 	private static Set<NonRootModelElement> actionLanguageElementsInScope = new HashSet<NonRootModelElement>();
+	private static Set<NonRootModelElement> allNamedElementsInScope = new HashSet<NonRootModelElement>();
 
 	public static UUID Locatecontentresults(final String p_Contents,
 			boolean isCaseSensitive, final String p_Pattern) {
@@ -85,6 +88,10 @@ public class Search_c {
 		DescriptionQuery_c dq = DescriptionQuery_c.getOneSQU_DEOnR9600(query);
 		if (dq != null) {
 			gatherDescriptionParticipants(query, monitor);
+		}
+		DeclarationQuery_c dcq = DeclarationQuery_c.getOneSQU_DOnR9600(query);
+		if (dcq != null) {
+			gatherDeclarationParticipants(query, monitor);
 		}
 	}
 
@@ -132,6 +139,27 @@ public class Search_c {
 			if(progressMonitor.isCanceled()) {
 				return;
 			}
+		}
+	}
+	
+	/**
+	 * Locate all elements in the configured scope.
+	 * 
+	 * @param query
+	 * @param monitor
+	 */
+	private static void gatherDeclarationParticipants(Query_c query, Object monitor) {
+		for (NonRootModelElement element : allNamedElementsInScope) {
+			Object uiElement = getUIInstance(element);
+			// create the necessary participant
+			query.Createparticipant(uiElement.getClass().getName(),
+					((NonRootModelElement) uiElement).getInstanceKey(),
+					((NonRootModelElement) uiElement).getModelRoot().getId(),
+					element.getName());
+			IProgressMonitor progressMonitor = (IProgressMonitor) monitor;
+			if(progressMonitor.isCanceled()) {
+				return;
+			}			
 		}
 	}
 
@@ -269,6 +297,20 @@ public class Search_c {
 							if (progressMonitor.isCanceled()) {
 								// user cancelled, return
 								return;
+							}
+						}
+					}
+					// TODO: This will likely miss some elements, like those which use a label
+					//       attribute and do not have a get_name operation.
+					Set<Class> keySet = instances[i].getILMap().keySet();
+					for(Iterator<?> iterator = keySet.iterator(); iterator.hasNext();) {
+						Class next = (Class) iterator.next();
+						InstanceList instanceList = instances[i].getInstanceList(next);
+						Object[] elements = instanceList.toArray();
+						for(int j = 0; j < elements.length; j++) {
+							NonRootModelElement element = (NonRootModelElement) elements[j];
+							if(!element.getName().equals("")) {
+								allNamedElementsInScope.add(element);
 							}
 						}
 					}

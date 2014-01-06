@@ -20,6 +20,7 @@ public class ModelMatch extends Match {
 	
 	public static final int DESCRIPTION = 0;
 	public static final int ACTION_LANGUAGE = 1;
+	public static final int NAME = 2;
 	
 	private int type = DESCRIPTION;
 	private Match_c modelMatch;

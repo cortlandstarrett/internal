@@ -39,14 +39,14 @@ public class ModelSearchInput {
 
 	public ModelSearchInput(String pattern, boolean isCaseSensitive,
 			boolean isRegExSearch, boolean isOALSearch,
-			boolean isDeclerationsSearch, boolean isReferencesSearch,
+			boolean isDeclarationsSearch, boolean isReferencesSearch,
 			boolean isDescriptionSearch, int scope, NonRootModelElement[] selected,
 			IWorkingSet[] workingSets) {
 		this.pattern = pattern;
 		this.isCaseSensitive = isCaseSensitive;
 		this.isRegExSearch = isRegExSearch;
 		this.isOALSearch = isOALSearch;
-		this.isDeclarationsSearch = isDeclerationsSearch;
+		this.isDeclarationsSearch = isDeclarationsSearch;
 		this.isReferencesSearch = isReferencesSearch;
 		this.isDescriptionSearch = isDescriptionSearch;
 		this.scope = scope;
@@ -67,8 +67,8 @@ public class ModelSearchInput {
 	}
 
 	public boolean isOALSearch() {
-		if(!isOALSearch && !isDescriptionSearch) {
-			// return true as neither is selected, so there is no limitation
+		if(!isOALSearch && !isDescriptionSearch && !isDeclarationsSearch) {
+			// return true as none are selected, so there is no limitation
 			return true;
 		}
 		return isOALSearch;
@@ -79,11 +79,15 @@ public class ModelSearchInput {
 	}
 
 	public boolean isDeclarationsSearch() {
+		if(!isOALSearch && !isDescriptionSearch && !isDeclarationsSearch) {
+			// return true as neither is selected, so there is no limitation
+			return true;
+		}		
 		return isDeclarationsSearch;
 	}
 
 	public boolean isDescriptionSearch() {
-		if(!isOALSearch && !isDescriptionSearch) {
+		if(!isOALSearch && !isDescriptionSearch && !isDeclarationsSearch) {
 			// return true as neither is selected, so there is no limitation
 			return true;
 		}
@@ -162,11 +166,12 @@ public class ModelSearchInput {
 		boolean isRegExSearch = settings.getBoolean("isRegExSearch"); //$NON-NLS-1$
 		boolean caseSensitive = settings.getBoolean("caseSensitive"); //$NON-NLS-1$
 		boolean descriptionSearch = settings.getBoolean("descriptionSearch"); // $NON-NLS-1$
+		boolean declarationsSearch = settings.getBoolean("declarationsSearch"); // $NON-NLS-1$
 		boolean actionLanguageSearch = settings
 				.getBoolean("actionLanguageSearch"); // $NON-NLS-1$
 
 		return new ModelSearchInput(pattern, caseSensitive, isRegExSearch,
-				actionLanguageSearch, false, false, descriptionSearch, scope,
+				actionLanguageSearch, declarationsSearch, false, descriptionSearch, scope,
 				new NonRootModelElement[0], workingSets);
 	}
 

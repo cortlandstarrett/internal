@@ -222,15 +222,17 @@ public class ModelSearchResultPage extends AbstractTextSearchViewPage {
 							.getOneSR_SROnR9800((Match_c) element));
 			Match[] matches = ((ModelSearchResult) getViewer().getInput())
 					.getMatches(elementForResult);
-			ContentMatch_c modelMatch = ContentMatch_c
+			ContentMatch_c contentMatch = ContentMatch_c
 					.getOneSR_CMOnR9801((Match_c) element);
-			for (int i = 0; i < matches.length; i++) {
-				if (matches[i].getOffset() == modelMatch.getStartposition()
-						&& matches[i].getLength() == modelMatch
-								.getMatchlength()
-						&& getMatchType(modelMatch) == ((ModelMatch) matches[i])
-								.getType()) {
-					count++;
+			if(contentMatch != null) {
+				for (int i = 0; i < matches.length; i++) {
+					if (matches[i].getOffset() == contentMatch.getStartposition()
+							&& matches[i].getLength() == contentMatch
+									.getMatchlength()
+							&& getMatchType(contentMatch) == ((ModelMatch) matches[i])
+									.getType()) {
+						count++;
+					}
 				}
 			}
 			return count;

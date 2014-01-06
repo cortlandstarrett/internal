@@ -29,6 +29,8 @@ import com.mentor.nucleus.bp.core.ContentMatch_c;
 import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.Match_c;
 import com.mentor.nucleus.bp.core.Modeleventnotification_c;
+import com.mentor.nucleus.bp.core.NameMatch_c;
+import com.mentor.nucleus.bp.core.NamedSearchable_c;
 import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.SearchParticipant_c;
 import com.mentor.nucleus.bp.core.SearchResult_c;
@@ -209,9 +211,24 @@ public class ModelSearchResult extends AbstractTextSearchResult {
 		if (actionLanguageSearchable != null) {
 			type = ModelMatch.ACTION_LANGUAGE;
 		}
+		NamedSearchable_c namedSearchable = NamedSearchable_c
+				.getOneSP_NSOnR9702(SearchableElement_c
+						.getOneSP_SEOnR9700(SearchParticipant_c
+								.getOneSP_SPOnR9802(result)));
+		if(namedSearchable != null) {
+			type = ModelMatch.NAME;
+		}
 		ContentMatch_c cm = ContentMatch_c.getOneSR_CMOnR9801(match);
-		ModelMatch modelMatch = new ModelMatch(getElementForResult(result),
-				cm.getStartposition(), cm.getMatchlength(), type, match);
-		addMatch(modelMatch);
+		if(cm != null) {
+			ModelMatch modelMatch = new ModelMatch(getElementForResult(result),
+					cm.getStartposition(), cm.getMatchlength(), type, match);
+			addMatch(modelMatch);
+		}
+		NameMatch_c nm = NameMatch_c.getOneSR_NMOnR9801(match);
+		if(nm != null) {
+			ModelMatch modelMatch = new ModelMatch(getElementForResult(result),
+					0, 0, type, match);
+			addMatch(modelMatch);
+		}
 	}
 }

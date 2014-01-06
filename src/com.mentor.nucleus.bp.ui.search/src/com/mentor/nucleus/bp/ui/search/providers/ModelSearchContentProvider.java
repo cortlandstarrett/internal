@@ -161,7 +161,11 @@ public class ModelSearchContentProvider implements ITreeContentProvider {
 		    // from the ModelContentProvider
 			Match_c[] matches = Match_c.getManySR_MsOnR9800(searchResults[i]);
 			for(int j = 0; j < matches.length; j++) {
-				insertChild(elementSearched, matches[j]);
+				// only add if a content match
+				ContentMatch_c cm = ContentMatch_c.getOneSR_CMOnR9801(matches[j]);
+				if(cm != null) {
+					insertChild(elementSearched, matches[j]);
+				}
 			}
 			insertChild(modelInspector.getParent(elementSearched), elementSearched);
 			// now at the parent of the search result's parent
@@ -174,18 +178,35 @@ public class ModelSearchContentProvider implements ITreeContentProvider {
 		NonRootModelElement elementSearched = (NonRootModelElement) ModelSearchResult
 				.getElementForResult(result);
 		elementSearched = (NonRootModelElement) getSpecialElementFor(elementSearched);
-		insertChild(elementSearched, match);
+		// only add for a content match
+		ContentMatch_c cm = ContentMatch_c.getOneSR_CMOnR9801(match);
+		if(cm != null) {
+			insertChild(elementSearched, match);
+		}
 		insertChild(modelInspector.getParent(elementSearched), elementSearched);
 		addParents(modelInspector.getParent(elementSearched));
 	}
 	
 	private boolean insertChild(Object parent, Object child) {
-		Set<Object> children= (Set<Object>) childMap.get(parent);
-		if (children == null) {
-			children= new HashSet<Object>();
-			childMap.put(parent, children);
+		if(child instanceof Match_c) {
+			ContentMatch_c cm = ContentMatch_c.getOneSR_CMOnR9801((Match_c) child);
+			if(cm != null) {
+				Set<Object> children= (Set<Object>) childMap.get(parent);
+				if (children == null) {
+					children= new HashSet<Object>();
+					childMap.put(parent, children);
+				}
+				return children.add(child);
+			}
+		} else {
+			Set<Object> children= (Set<Object>) childMap.get(parent);
+			if (children == null) {
+				children= new HashSet<Object>();
+				childMap.put(parent, children);
+			}
+			return children.add(child);
 		}
-		return children.add(child);
+		return false;
 	}
 
 	private void addParents(Object child) {

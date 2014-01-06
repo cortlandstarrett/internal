@@ -90,6 +90,7 @@ public class ModelSearchPage extends DialogPage implements ISearchPage {
 	private boolean isDeclerationsSearch;
 	private List<ModelSearchInput> previousSearchInputData = new ArrayList<ModelSearchInput>();
 	private boolean firstTime = true;
+	private Button declarationsButton;
 
 	// Dialog store id constants
 	private static final String PAGE_NAME = "ModelSearchPage"; //$NON-NLS-1$
@@ -99,7 +100,8 @@ public class ModelSearchPage extends DialogPage implements ISearchPage {
 	private static final String STORE_HISTORY_SIZE = "HISTORY_SIZE"; //$NON-NLS-1$
 	private static final String STORE_SEARCH_DESCRIPTION = "DESCRIPTION_SEARCH"; // $NON-NLS-1$
 	private static final String STORE_SEARCH_ACTION_LANGUAGE = "ACTION_LANGUAGE_SEARCH"; // $NON-NLS-1$
-
+	private static final String STORE_SEARCH_DECLARATION = "DECLARATION_SEARCH"; //$NON-NLS-1$
+	
 	private static final int HISTORY_SIZE = 12;
 
 	public ModelSearchPage() {
@@ -131,6 +133,24 @@ public class ModelSearchPage extends DialogPage implements ISearchPage {
 		limitGroup.setText("Limit To");
 		GridData limitGroupData = new GridData(SWT.FILL, SWT.FILL, true, true,
 				1, 1);
+		declarationsButton = new Button(limitGroup, SWT.CHECK);
+		declarationsButton.setText("Declarations");
+		declarationsButton.setSelection(isDeclerationsSearch);
+		declarationsButton.setLayoutData(new GridData(SWT.FILL, SWT.FILL, false,
+				true, 1, 1));
+		declarationsButton.addSelectionListener(new SelectionAdapter() {
+
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+				isDeclerationsSearch = declarationsButton.getSelection();
+			}
+
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				isDeclerationsSearch = declarationsButton.getSelection();
+			}
+
+		});
 		oalTextButton = new Button(limitGroup, SWT.CHECK);
 		oalTextButton.setText("Action Language");
 		oalTextButton.setSelection(isActionLanguageSearch);
@@ -299,6 +319,7 @@ public class ModelSearchPage extends DialogPage implements ISearchPage {
 		settings.put(STORE_IS_REG_EX_SEARCH, isRegExSearch);
 		settings.put(STORE_SEARCH_DESCRIPTION, isDescriptionSearch);
 		settings.put(STORE_SEARCH_ACTION_LANGUAGE, isActionLanguageSearch);
+		settings.put(STORE_SEARCH_DECLARATION, isDeclerationsSearch);
 
 		int historySize = Math
 				.min(previousSearchInputData.size(), HISTORY_SIZE);
@@ -322,6 +343,7 @@ public class ModelSearchPage extends DialogPage implements ISearchPage {
 		isDescriptionSearch = settings.getBoolean(STORE_SEARCH_DESCRIPTION);
 		isActionLanguageSearch = settings
 				.getBoolean(STORE_SEARCH_ACTION_LANGUAGE);
+		isDeclerationsSearch = settings.getBoolean(STORE_SEARCH_DECLARATION);
 
 		try {
 			int historySize = settings.getInt(STORE_HISTORY_SIZE);
@@ -411,13 +433,14 @@ public class ModelSearchPage extends DialogPage implements ISearchPage {
 	private ModelSearchInput createSearchInput() {
 		boolean actionLanguage = isActionLanguageSearch;
 		boolean description = isDescriptionSearch;
+		boolean declarationSearch = isDeclerationsSearch;
 		// if not regEx adjust the pattern, adding
 		// any necessary escapes
 		String patternString = pattern.getText();
 		NonRootModelElement[] selectedElements = configureSelectionForInput(getContainer().getSelectedScope());
 		ModelSearchInput input = new ModelSearchInput(patternString,
 				isCaseSensitive, isRegExSearch, actionLanguage,
-				isDeclerationsSearch, isReferencesSearch, description,
+				declarationSearch, isReferencesSearch, description,
 				getContainer().getSelectedScope(), selectedElements,
 				getContainer().getSelectedWorkingSets());
 		ModelSearchInput remove = null;

@@ -84,6 +84,22 @@ public class ModelSearchQuery implements ISearchQuery, IModelMatchListener {
 					});
 			queries.add(query);
 		}
+		if (input.isDeclarationsSearch()) {
+			final UUID queryId = Query_c.Createdeclarationquery(
+					Ooaofooa.getDefaultInstance(), input.isCaseSensitive(),
+					input.getPattern(), input.isRegExSearch(),
+					input.getModelScope());
+			Query_c query = Query_c.QueryInstance(
+					Ooaofooa.getDefaultInstance(), new ClassQueryInterface_c() {
+
+						@Override
+						public boolean evaluate(Object candidate) {
+							return ((Query_c) candidate).getId()
+									.equals(queryId);
+						}
+					});
+			queries.add(query);
+		}
 		instances.add(this);
 	}
 
