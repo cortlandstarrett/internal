@@ -188,6 +188,9 @@
       parms.setSize(${no_of_cols});
         .// set columns size in case of backward compatibility
     .end if
+    .if(table.Key_Lett == "C_PO")
+      parms.setSize(${no_of_cols});
+    .end if
     .if(table.Key_Lett == "S_EE")
       parms.setSize(${no_of_cols});
     .end if

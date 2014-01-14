@@ -306,6 +306,11 @@
           parms.elementAt(${attr_col_num}) != null ? removeTics((String)parms.elementAt(${attr_col_num})) : ""\
           .assign special_case = true
         .end if
+       .elif (table.Key_lett == "C_PO")
+        .if(col.Name == "isSVX")
+          parms.elementAt(${attr_col_num}) != null && ((String)parms.elementAt(${attr_col_num})).equals( "true" ) ? true : false\
+          .assign special_case = true
+        .end if 
       .elif(table.Key_lett == "S_EE")
         .if(col.Name == "Realized_Class_Path")
           parms.elementAt(${attr_col_num}) != null ? removeTics((String)parms.elementAt(${attr_col_num})) : ""\
