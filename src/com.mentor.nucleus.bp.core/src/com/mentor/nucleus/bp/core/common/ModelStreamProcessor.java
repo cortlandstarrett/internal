@@ -57,6 +57,7 @@ import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.Operation_c;
 import com.mentor.nucleus.bp.core.Package_c;
 import com.mentor.nucleus.bp.core.PackageableElement_c;
+import com.mentor.nucleus.bp.core.PortReference_c;
 import com.mentor.nucleus.bp.core.Port_c;
 import com.mentor.nucleus.bp.core.Provision_c;
 import com.mentor.nucleus.bp.core.Requirement_c;
@@ -489,9 +490,8 @@ public class ModelStreamProcessor {
 			}
 		}
 		if (element instanceof ImportedProvision_c) {
-			ComponentReference_c ref = ComponentReference_c
-					.getOneCL_ICOnR4700(ImportedReference_c
-							.getOneCL_IIROnR4703((ImportedProvision_c) element));
+			ComponentReference_c ref = ComponentReference_c.getOneCL_ICOnR4707(PortReference_c.getOneCL_POROnR4708(ImportedReference_c
+							.getOneCL_IIROnR4703((ImportedProvision_c) element)));
 			if (PersistenceManager.getHierarchyMetaData().getParent(ref) == null
 					|| PersistenceManager.getHierarchyMetaData().getParent(ref)
 							.isProxy()) {
@@ -499,9 +499,8 @@ public class ModelStreamProcessor {
 			}
 		}
 		if (element instanceof ImportedRequirement_c) {
-			ComponentReference_c ref = ComponentReference_c
-					.getOneCL_ICOnR4700(ImportedReference_c
-							.getOneCL_IIROnR4703((ImportedRequirement_c) element));
+			ComponentReference_c ref = ComponentReference_c.getOneCL_ICOnR4707(PortReference_c.getOneCL_POROnR4708(ImportedReference_c
+							.getOneCL_IIROnR4703((ImportedRequirement_c) element)));
 			if (PersistenceManager.getHierarchyMetaData().getParent(ref) == null
 					|| PersistenceManager.getHierarchyMetaData().getParent(ref)
 							.isProxy()) {
