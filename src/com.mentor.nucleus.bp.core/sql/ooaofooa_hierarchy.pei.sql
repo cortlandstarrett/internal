@@ -369,8 +369,8 @@ INSERT INTO T_TPS VALUES (206, 124, 124, '->CP_CPINP[R4600]->CP_CP[R4601]', '', 
 INSERT INTO T_TPS VALUES (207, 125, 291, '->C_PO[R4010]', '', false);
 INSERT INTO T_TPS VALUES (381, 125, 126, '->CL_IC[R4205]', 'Contained Component References', false, false, '', '', true);
 INSERT INTO T_TPS VALUES (365, 126, 125, '->C_C[R4201]', 'Referenced Component', false);
-INSERT INTO T_TPS VALUES (211, 126, 292, '->CL_IIR[R4700]->CL_IP[R4703]', '', false);
-INSERT INTO T_TPS VALUES (212, 126, 293, '->CL_IIR[R4700]->CL_IR[R4703]', '', false);
+INSERT INTO T_TPS VALUES (211, 126, 292, '->CL_POR[R4707]->CL_IIR[R4708]->CL_IP[R4703]', '', false);
+INSERT INTO T_TPS VALUES (212, 126, 293, '->CL_POR[R4707]->CL_IIR[R4708]->CL_IR[R4703]', '', false);
 INSERT INTO T_TPS VALUES (213, 127, 130, '->C_IR[R4009]->C_I[R4012]', 'Referenced Interface', false);
 INSERT INTO T_TPS VALUES (214, 128, 130, '->C_IR[R4009]->C_I[R4012]', 'Referenced Interface', false);
 INSERT INTO T_TPS VALUES (215, 1, 129, '->IP_IP[R4302]', '', false);
