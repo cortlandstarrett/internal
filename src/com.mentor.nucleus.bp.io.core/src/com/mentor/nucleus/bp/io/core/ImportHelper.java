@@ -85,6 +85,7 @@ import com.mentor.nucleus.bp.core.Package_c;
 import com.mentor.nucleus.bp.core.PackageableElement_c;
 import com.mentor.nucleus.bp.core.Parsestatus_c;
 import com.mentor.nucleus.bp.core.ParticipantInUseCase_c;
+import com.mentor.nucleus.bp.core.PortReference_c;
 import com.mentor.nucleus.bp.core.Port_c;
 import com.mentor.nucleus.bp.core.PropertyParameter_c;
 import com.mentor.nucleus.bp.core.Provision_c;
@@ -2900,25 +2901,29 @@ public class ImportHelper
 						targetPKG = Package_c
 								.getOneEP_PKGOnR8000(PackageableElement_c
 										.getManyPE_PEsOnR8001(ComponentReference_c
-												.getManyCL_ICsOnR4700(ImportedReference_c
-														.getManyCL_IIRsOnR4703(pro))));
+												.getManyCL_ICsOnR4707(PortReference_c
+														.getManyCL_PORsOnR4708(ImportedReference_c
+																.getManyCL_IIRsOnR4703(pro)))));
 						targetCOMP = Component_c
 								.getOneC_COnR8003(PackageableElement_c
 										.getManyPE_PEsOnR8001(ComponentReference_c
-												.getManyCL_ICsOnR4700(ImportedReference_c
-														.getManyCL_IIRsOnR4703(pro))));
+												.getManyCL_ICsOnR4707(PortReference_c
+														.getManyCL_PORsOnR4708(ImportedReference_c
+																.getManyCL_IIRsOnR4703(pro)))));
 					} else if (req != null) {
 						targetPKG = Package_c
 								.getOneEP_PKGOnR8000(PackageableElement_c
 										.getManyPE_PEsOnR8001(ComponentReference_c
-												.getManyCL_ICsOnR4700(ImportedReference_c
-														.getManyCL_IIRsOnR4703(req))));
+												.getManyCL_ICsOnR4707(PortReference_c
+														.getManyCL_PORsOnR4708(ImportedReference_c
+																.getManyCL_IIRsOnR4703(req)))));
 
 						targetCOMP = Component_c
 								.getOneC_COnR8003(PackageableElement_c
 										.getManyPE_PEsOnR8001(ComponentReference_c
-												.getManyCL_ICsOnR4700(ImportedReference_c
-														.getManyCL_IIRsOnR4703(req))));
+												.getManyCL_ICsOnR4707(PortReference_c
+														.getManyCL_PORsOnR4708(ImportedReference_c
+																.getManyCL_IIRsOnR4703(req)))));
 					}
 
 					boolean disconnectedOld = false;
