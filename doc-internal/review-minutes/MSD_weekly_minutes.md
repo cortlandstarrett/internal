@@ -31,6 +31,235 @@ MSD Weekly Meeting Minutes
 
 ---
 
+    Date:     Jan 15, 2014
+    Start:    12:00 EDT
+    End:      time EDT
+    Elapsed:  time minutes
+    Present:  Bob, Keith, Travis, Campbell, Cort, Heba, Nehad, others...
+            Dean, Robert, others...
+
+### Engineering Status
+
+**Campbell -**
+- Ericsson Budapest reported very slow performance with Verifier. Campbell uncovered that Ericsson model produced 15000 instance population, so it is a very large model. Further testing found that significant portion of time spent deleting instances. Changes to strategy for locating and delete instances have been made and produced a 50x speedup. Still looking at this issue and Campbell feels there is more to find.
+- There is potential to split this SR into several DRs and to provide Ericsson with a test build containing this performance enhancement. Timeframe will depend on Unit testing and interest from Ericsson Budapest
+
+**Cort -**
+- Working on an Analysis note for the revised training material. Changes initiated in response to Ericsson requirements but these changes will benefit all xtUML training and users of xtUML.org
+- Material to be split into self-paced technique training and in-class methodology training.
+- Team will be asked to participate in the creation of several 5-minute How To videos that collectively describe the mechanics of using BridgePoint.
+- John Wolfe to produce high level outline for instructor led portion of the training.
+
+**Keith -**
+- Investigated an issue from FujiXerox related to non-ascii characters causing model compilation to fail. Analysis note reviewed and completed work has been delivered to MGJ for final testing. Expect customer to receive it later this week.
+- Change had the potential to break DocGen support when non-ascii characters are present in the model. Keith has identified a DocGen change that will resolve this potential issue.
+
+
+### Marketing Status
+**Tier 1 Services -** 
+- Dean is working the the Ericsson and Sony account teams to construct a services proposal that will target each customer's top 5 SRs and accelerate engineering closure of the issues. Ericsson proposal is in review by Mentor Finance and Sony proposal is expected to be sent to account team next week.
+
+- SKO preparations are in high gear and BridgePoint will have its own 90 minute breakout session. 
+
+ 
+### Customer Support Status
+**Ericsson Performance issue -** 
+Worked with Campbell to fully characterize issue and now waiting for opportunity to test fix.
+
+**Ericsson OAL Bridges binding issue -**
+Working with Campbell to fully characterize the issue and DR is expected soon.
+
+**Japanese character support -**
+This is a high priority issue with FujiXerox actively contacting MGJ CSD. Keith's solution will be welcomed by Robert's counterpart in Japan
+
+
+---
+
+    Date:     Jan 8, 2014
+    Start:    12:00 EDT
+    End:      12:45 EDT
+    Elapsed:  45 min
+    Present:  Bob, Keith, Travis, Campbell, Cort, others...
+            Dean, Robert, others...
+
+### Engineering Status
+**Cort -**
+- Delivered compiled MC in 4.1, including performance improvements.  Feedback from Saab for a model dealing largely with string data: the speedup was very nice, but some expressions and param lists are exceeding some buffer limitations in the mcmc (size greater than 870 chars). They indicate the max is probably 2000-3000 chars. We are making progress on a dynamic memory allocation solution.  Worked on a bit over the holiday and will finish late this week or early next week.  This could be made into a marking feature.  Will discuss with marketing.
+
+**Bob -**
+- Ericsson engineering still updates their priorities list (last did it 1/7/14).  Robert Rice triages the list.  We have tried to start always using the BCC SR email CC to have e-mail conversations go into SR tracking.
+- Working with Heba on Saab request analysis.
+- Working on an Ericsson issue for dynamic array size being 1 when it should be 0
+- Will set up a meeting to talk about CLI and code split.
+  
+**Keith -**
+- Not much has happend on MC-PaaS since the last update.  Will be synching up with Willie and getting this moving again next week.
+- Working on another encoding problem that came from Japan.  Similar to the last one with Japanese chars at the end of an activity field.  This time the problem area is description fields.
+- Met with TheOtherFirm to discuss new enhancements to xtuml.org they are giving us to test.  These include podcasting, mail blaster integration, and a daily digest feature for the forum.
+- Working on removing the long-deprecated mc.mc3020 plug-in.  The changes to remove it are done.  Hit some problems during unit testing.  Still in progress.
+
+**Heba -**
+- Working on Saab request that has to do with Ports not showing on component refs in session explorer.  Analysis note ready for review. The lack of ports is confusing when they component using the same interface more than once.
+- SVX work is done.  Created a demo video.  
+  
+**Nehad -**
+- Saab requested to have the ability to show the state machine diagram aside to state event matrix, I spent sometime on it tryin to find out if GEF can allow this, but I could not find easy way, and meanwhile I found a workaround for this using Eclipse functionality. Bob sent Saab mail to ask their acceptence regarding this workaround and we did not hear from them since that due to Holidays 
+- There was a previous work done to enahnce the variable view, by displaying more info for model classes instance, one of these enhacement to list all related instances with the selected instance, this work is brought up because of customer request to display the associations text phrases in SE.  The work is almost done, a design note was previously reviewed. 
+- Currently working on an issue reported by both Ericsson and Saab, dts0100533805, and have some difficulty to reproduce it.
+
+**Campbell -**
+- Picking up high priority Ericsson issues.  One is a "Works as designed".  Also looking at Verifier performance.  There is no immediate smoking gun, so investigation is ongoing.
+- Will talk to Cort about priorities and how that affects open tasks like training, issues, and code split. 
+  
+**Travis -**
+- Working on issue to show text phrase in session explorer.  Testing now.
+- Over my vacation time I introduced declaration searching.  The support allows for entering text and searching for that text in named elements.  There are limitations in that the element will have to have either a Name attribute or a get_name operation.  Additionally there should be a "Show in Model Explorer" or "Show in Canvas" action.  There is also an issue with double clicking to open, but that should be fixed easily.  This is one item on the report from Ericsson.  I estimate that it would be 4 days to promote the issue (including documentation and tests).  
+
+### Marketing Status
+**Dean -** 
+- Getting things ready for Sales Kickoff
+- Pushing to get deals done for this quarter, Sony and Ericsson Tier 1 Services
+ 
+### Customer Support Status
+**Robert -**
+- Ericsson and Saab have now returned from holiday and are opening issues. No suprises so far.
+
+---
+
+    Date:     Dec 18, 3013
+    Start:    12:00 EDT
+    End:      12:45 EDT
+    Elapsed:  45 minutes
+    Present:  Bob, Keith, Travis, Campbell, Cort, others...
+            Dean, Robert, Jayne, others...
+
+### Engineering Status
+#### holiday vacation plans
+* Cairo office is closed on 7 Jan.
+* Travis London: Travis: Dec 23 - Jan 4
+* Keith: Dec 23 - 27
+* Bob: Dec 23 - 27
+* Dean: Dec 20 - 31st 
+* Cort: Dec 21 - Jan 4th
+* Campbell: Now - Dec 31st
+
+Note: everyone above will be monitoring email
+
+#### MC-PaaS Update (Keith)
+
+###### PaaS Intro Meeting (Keith, Bob, Dean, Subba, Willy)
+- Keith gave a PPT presentation discussing the MC-PaaS prototype that relied on rsync
+ to shuttle data from client to build server and layed out some phase2 requirements
+- Willy shared a presentation that discussed some of the technologies he has built
+ the SystemVision PaaS simulator on.
+- In a follow up meeting Willy gave an live demo to Keith, Bob, and Dean
+
+
+###### MC-PaaS Phase 2 Done:
+- Client and server updated to transfer files via HTTP instead of rsync
+- Client-side implementation now completely Java-based, got rid of cygwin dependencies from phase 1
+- Server now supports multiple simultaneous builds
+
+######  MC-PaaS Phase 2 TODO:
+- Productize MC-PaaS plugin.  Clean up TODOs, read some settings from preferences
+- Change Export Builder to not include OAL Instance data
+- User authentication.  Collaborate with Willy as he is ahead in this area.
+- Secure file transfer, either via the user auth middleware or another mechanism
+- Per-user usage tracking on the server
+
+#### Made in Japan 2013 (Cort)
+
+###### Thurs:
+- MGJ Office
+  - Fujitsu and Yazaki meetings with account teams
+  - AE training
+  - FXAT prep (with Ichimasa and Watanabe)
+  
+###### Fri:
+- Sony LSI (on-site)
+  - "Help us expand into other projects and disciplines."
+  - Training class at was not a "canned classes", it was built on the requirements of the moment.  The goal was to help them expand their usage.
+  
+###### Mon-Fri:
+- FXAT in Yokohama, 5 days of training
+  - 8 engineers + 1 manager + sporadic visits from others
+    - Converted their models from old BP format to the new format
+    - Worked on these models and taught how to update these models to work with the newer version of BridgePoint (Component-based vs the old Domain-based models)
+  - dinner on Thurs w/ FXAT was positive for Mentor, FXAT wants to expand
+
+
+### Marketing/Sales Status
+#### Tier 1 Package for Ericsson (Dean)
+* In Sept/Oct Ericsson made a commitment to move BridgePoint to a more prevalent production role
+  * Since then discussions have been in progress to determine how to best handle this ramp-up
+  * this tier-1 package is what is being offered
+  * Over the 5 months discussion has been focused on how to help with this ramp-up
+    1) Eductiion/training - Updated current course material tailored to their industry and even their specific needs
+    2) Rapid response for any tool enhancement requests (prioritization for Ericsson SRs)
+    3) Project management/engineering process help - They would like to work with John Wolfe on this
+
+  * Timeframe is to focus enginnering in the first quarter.  
+  * From a business point of view, this will likely not come in until later in the year, but this is still being negotiated.  Software versus service deals are what are causing this delay.
+
+
+#### Ericsson Feedback/Response (Cort)
+* Dec 12th Serge met with Ericsson and we have all seen the feedback from this.   It was in the form of a presentation that Ericsson gave to Serge.  Ericsson bascially says BP is the best tool availble, but it has many problems they want to see fixed and they want commitment that issues will be addressed.
+
+* Serge says we had opportunity for $700K and now it is 1/2 of that.  The reason is that there is a large training component.
+
+* If we do win the tier 1 and the expansion that brings 1 - 1.4 million that would make our numbers for 2014 all by itself.  Therefore we could consider an Ericsson focus.  The options around this are currently being worked on by Cort.
+
+
+
+#### Upcoming businessiness (Jayne)
+* Model package from Ericsson
+* Sony Renewal
+
+#### Upcoming marketing (Jayne)
+* A January promotion for BP is being done through Tech Brief.  There was a good result from this company with SystemVision that brought it some new good leads, and we are hopeful for the same with BridgePoint.
+
+* There was a new bubble of acivity on xtUML.org during Cort's trip to Japan that was seen
+
+ 
+### Customer Support Status (Robert Rice)
+
+- Cleaning up a flurry of Sony issues, which are now resolved with the exception of one ER that John Wolfe wanted to look into
+
+- Working with Erik at Saab to get a "user archetype not run issue" solved
+
+- Working on two critical Ericsson SRs describing problems with Verifier and large numbers of init functions: they mention slow performance at load, and non-sequential execution of OAL code 
+
+---
+
+    Date:     Dec 11,2013
+    Start:    12:00 EDT
+    End:      12:01 EDT
+    Elapsed:  time minutes
+    Present:  Bob, Keith, Travis, Dean
+
+**This meeting moved to online forum:**
+
+### Engineering Status
+**Keith:**
+ Assisted with Saab and Japanese support issues as well as working on the Phase 2 implementation of MC-PaaS (Model Compiler Platform as a Service)
+ 
+**Bob:**
+ Assisted Cort by creating a simple model compiler that works against sequence diagrams.   Currently, working on an model import parser bug involving model merge, and building the BP 4.1.4 demo which has a end-date of 20130331.
+
+**Travis:**
+Working on dts0100836686, provided a screenshot to SAAB.  SAAB requested further work on it.  Currently trying to determine a way to display the tree as they requested.
+Investigated Sony build issue.  The problem is that generator does not support UTF-8.
+
+**Nehad:**
+I am working on tooltip enhancement request. The enhacements are to change focus to the tooltip, scrollbars and may be resizable tooltip windows as well. JDT tooltip is a very good example of what we want. Unfortunately, JDT tooltip is not reusable and coupled with text editor, and we need one can be used with GEF . I found more than one implementation appraoch, and investigating estimated amount of work needed for them
+
+### Marketing Status
+**Dean -** 
+This week Cort is in Japan providing training to FujiXerox and sales training to MGJ AEs. Campbell has completed the xtUML training class at Ericsson and Serge will be visiting with management to establish a dialog on BridgePoint production usage. Efforts continue to complete the description of the Ericsson Tier 1 package and negotiate the list of deliverables.
+ 
+
+---
+
     Date:     Nov 13, 2013
     Start:    time EDT
     End:      time EDT
