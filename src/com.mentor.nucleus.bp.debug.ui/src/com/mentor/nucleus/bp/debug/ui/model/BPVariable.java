@@ -6,6 +6,7 @@ import org.eclipse.debug.core.model.IDebugTarget;
 import org.eclipse.debug.core.model.IValue;
 import org.eclipse.debug.core.model.IVariable;
 
+import com.mentor.nucleus.bp.core.Association_c;
 import com.mentor.nucleus.bp.core.AttributeValue_c;
 import com.mentor.nucleus.bp.core.Attribute_c;
 import com.mentor.nucleus.bp.core.BridgeParameter_c;
@@ -14,6 +15,8 @@ import com.mentor.nucleus.bp.core.FunctionParameter_c;
 import com.mentor.nucleus.bp.core.InstanceHandle_c;
 import com.mentor.nucleus.bp.core.InstanceSet_c;
 import com.mentor.nucleus.bp.core.Instance_c;
+import com.mentor.nucleus.bp.core.LinkParticipation_c;
+import com.mentor.nucleus.bp.core.Link_c;
 import com.mentor.nucleus.bp.core.LocalReference_c;
 import com.mentor.nucleus.bp.core.LocalValue_c;
 import com.mentor.nucleus.bp.core.Local_c;
@@ -21,7 +24,10 @@ import com.mentor.nucleus.bp.core.OperationParameter_c;
 import com.mentor.nucleus.bp.core.PropertyParameter_c;
 import com.mentor.nucleus.bp.core.RuntimeValue_c;
 import com.mentor.nucleus.bp.core.StateMachineEventDataItem_c;
+import com.mentor.nucleus.bp.core.StateMachineEvent_c;
+import com.mentor.nucleus.bp.core.StateMachineState_c;
 import com.mentor.nucleus.bp.core.TransientVar_c;
+import com.mentor.nucleus.bp.core.Transition_c;
 import com.mentor.nucleus.bp.core.ValueInArray_c;
 import com.mentor.nucleus.bp.core.ValueInStructure_c;
 import com.mentor.nucleus.bp.core.Variable_c;
@@ -29,16 +35,29 @@ import com.mentor.nucleus.bp.core.Variable_c;
 public class BPVariable extends BPDebugElement implements IVariable {
 	
 	Object value = null;
+	Object[] linkedValues  = null;
 
-	public BPVariable(IDebugTarget debugTarget, ILaunch launch, Object variable) {
+	public BPVariable(IDebugTarget debugTarget, ILaunch launch, Object variable, String Name) {
 		super((BPDebugTarget)debugTarget, launch);
 		value = variable;
+		name = Name;
+		linkedValues = null;
+	}
+	public BPVariable(IDebugTarget debugTarget, ILaunch launch, Object variable, String Name, Object[] LinkedValues) {
+		super((BPDebugTarget)debugTarget, launch);
+		value = variable;
+		name = Name;
+		linkedValues = LinkedValues;
 	}
 
 	public IValue getValue() throws DebugException {
 		if (value != null)
-		  return new BPValue(getDebugTarget(), getLaunch(), value);
+		  return new BPValue(getDebugTarget(), getLaunch(), value, name, this);
 		return null;
+	}
+	
+	public void setName(String Name){
+		super.setName(Name);
 	}
 
 	public String getReferenceTypeName() throws DebugException {
@@ -106,6 +125,12 @@ public class BPVariable extends BPDebugElement implements IVariable {
     	if(param != null) {
     		return param.getName();
     	}
+      }else if (value instanceof Association_c){ // Link_c){
+    	  Association_c assoc = ((Association_c)value);// Association_c.getOneR_RELOnR2904((Link_c)value);
+    	  return "R" + assoc.getNumb();
+      }else if (value instanceof  Link_c){
+    	Association_c assoc = Association_c.getOneR_RELOnR2904((Link_c)value);
+    	return "R" + assoc.getNumb();
       }
       else if (value instanceof AttributeValue_c) {
       	Attribute_c attr = Attribute_c.getOneO_ATTROnR2910((AttributeValue_c)value);
@@ -139,6 +164,12 @@ public class BPVariable extends BPDebugElement implements IVariable {
       }
       else if (value instanceof Instance_c){
     	  return "instance";
+      }
+      else if (value instanceof StateMachineState_c){
+    	  return "Current State";
+      }
+      else if (value instanceof StateMachineEvent_c){
+    	  return "Current State entered via";
       }
       return "Error: Variable for local value not found.";
     }
