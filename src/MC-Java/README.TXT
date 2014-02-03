@@ -16,11 +16,14 @@ primarily to support plugin development for eclipse, how ever it also generates
 generic java code. The configuration can be done by setting different coloring 
 information.
 
-MC-Java does two pass parsing to translate a model into code. See section 
-“Translating model using MC-Java” for further details. 
-The first pass is to scan the action language, the result of this scan are than 
-loaded back into the generation database, the second pass then generates the 
-code from this database.
+Until completion of issue #35, MC-Java did a two pass parse to translate a model
+into code. This process relied on the action language parser built into the
+generator executable. This tool is implemented in C++ and maintenance is limited
+to critical defects only. For this reason, MC-Java now uses the fully supported
+BridgePoint Pre-Builder infrastructure which uses a single parse step before
+export.  See section ï¿½Translating model using MC-Javaï¿½ for further details. The
+original second step parse archetypes are modified to use the output of the Pre-
+Builder directly to generate the action code.
 
 MC-Java Components
 ------------------
@@ -69,27 +72,20 @@ model_element.inc:
 			This file generates code for different classes to be used of event 
 			handling for an eclipse plugin.
 			
-ooa_oal_pop.arc:
-			This file uses the functions in fragment.inc to generate the 
-			SQL INSERT INTO statements used to populate the database for 
-			generating the final call. This file referenced in build.xml
-			
-fragment.inc:
-			See description of ooa_oal_pop.arc
-			
 pg_schema_gen.arc:
 			This archetype extracts the schema for a user model from a .gen 
 			database, which is output as an SQL file suitable for use in a 
 			subsequent gen_import for building an instance database.
 			
 schema_gen.arc:
-			Same as pg_schema.arc
-			
-reffering.inc:
+			This archetype transforms a user model into a SQL file suitable for
+            use in a subsequent gen_import for building an instance database.
+
+referring.inc:
 			This file generates code for association references made from a 
 			class (whose code is being generated) to the other.
 			
-reffered_to.inc:
+referred_to.inc:
 			This file generates code for association referring to the class 
 			(whose code is being generated) to the other.
 
@@ -180,13 +176,13 @@ If the attr_is_eclipse_plugin is false, it generates a main function, hence
 acting as the main class for the program.
 
 - attr_threading_model
-The values that this can possibly have are “polling” or “one_shot”. This 
+The values that this can possibly have are ï¿½pollingï¿½ or ï¿½one_shotï¿½. This 
 variable effects the behavior of the application_root_class, by making it an 
 event based class or a one go class. 
 By making the application one_shot, the one_shot function of activePoller_c 
 class is to be called manually from application_root_class, and than after each 
 event is received one manually needs to add a call to one_shot function.
-The “polling” makes the activePoller_c to continue polling for event until the 
+The ï¿½pollingï¿½ makes the activePoller_c to continue polling for event until the 
 halt() is not called. Method start() of activePoller_c must be called to start 
 the polling thread.
 
@@ -206,7 +202,7 @@ IModelChangeListener.java
 IModelChangeProvider.java
 ModelDelta.java
 
-If this variable is true then every class of domain “extends” ModelElement and 
+If this variable is true then every class of domain ï¿½extendsï¿½ ModelElement and 
 implements IAdaptable and Cloneable.
 This variable is used in various decisions across the code generation. 
 
@@ -339,11 +335,11 @@ For Functions, Bridges and Class operations (also called Transformers) if this
 value is native then the output is the text written in action_semantics, else it
 parses the OAL in it and generate code accordingly.
 
-For an External entity if this value is “false” then MC-Java skips that External 
+For an External entity if this value is ï¿½falseï¿½ then MC-Java skips that External 
 Entity, else generates a class for each External Entity and parses the bridges 
 as well.
 
-For a subsystem if this value is “false” then MC-Java skips code generation for 
+For a subsystem if this value is ï¿½falseï¿½ then MC-Java skips code generation for 
 all the classes in the subsystem.
 
 3.	Data
@@ -352,7 +348,7 @@ the class. These variables can be added using this keyword. The variables are by
 default static and initialized to null.
 
 4.	PEI
-This has string values “true” to mention that this is PEI class. Hence exist 
+This has string values ï¿½trueï¿½ to mention that this is PEI class. Hence exist 
 only in Class Description.
 
 5.	Persistent

@@ -77,7 +77,8 @@ package com.mentor.nucleus.bp.core.ui;
 //====================================================================
 import java.util.Iterator;
 
-  .select any action from instances of ACT_ACT where (selected.Action_Id == "${wfl.Sync_ID}")
+  .select any function from instances of S_SYNC where (selected.Sync_Id == wfl.Sync_Id)
+  .select one action related by function->ACT_FNB[R695]->ACT_ACT[R698]
   .select one outer_block related by action->ACT_BLK[R601] where (selected.Block_Id == action.Block_Id)
   .invoke ui_result = ui_blck_xlate(outer_block, true)
 import org.eclipse.jface.viewers.IStructuredSelection;
@@ -147,9 +148,9 @@ public class ${wizard_class_name} extends Wizard
     .select any class from instances of O_OBJ where (selected.Key_Lett == context_item.Key_Lett)
     .assign class_name = class.Name
     .invoke gcn = get_class_name(class)
-    .if (context_item.Type == "ANY")
+    .if (context_item.Type == "any")
       public ${gcn.body} v_${context_item.Name} = null;
-    .elif (context_item.Type == "MANY")
+    .elif (context_item.Type == "many")
       public ${gcn.body} [] v_${field.Name};
     .end if
   .end for
@@ -205,7 +206,7 @@ public class ${wizard_class_name} extends Wizard
       this.m_selection = selection;
       this.m_viewer = viewer;
     .for each context_item in context_items
-      .if (context_item.Type == "MANY")
+      .if (context_item.Type == "many")
         .select any class from instances of O_OBJ where (selected.Key_Lett == context_item.Key_Lett)
       $Cr{class.Name}count = 0;
       .end if
@@ -215,10 +216,10 @@ public class ${wizard_class_name} extends Wizard
     .for each context_item in context_items
       .select any class from instances of O_OBJ where (selected.Key_Lett == context_item.Key_Lett)
         if (context instanceof $Cr{class.Name}_c) {
-      .if (context_item.Type == "ANY")
+      .if (context_item.Type == "any")
           v_${context_item.Name} = ($Cr{class.Name}_c)context;
       .end if
-      .if (context_item.Type == "MANY")
+      .if (context_item.Type == "many")
           v_${context_item.Name}[$Cr{class.Name}count] = ($Cr{class.Name}_c)context;
           $Cr{class.Name}count++;
       .end if
@@ -350,7 +351,7 @@ ${ui_result.body}
 		}
 		if (transactionGroup != null) TransactionUtil.endTransactions(transactionGroup);
     if (m_viewer != null) {
-    .if (context_item.Type == "ANY")
+    .if (context_item.Type == "any")
       if (m_viewer instanceof StructuredViewer) {
 		((StructuredViewer)m_viewer).refresh(v_${context_item.Name});
       }
