@@ -990,15 +990,16 @@ CREATE TABLE I_MON (
 	     Inst_ID	UNIQUE_ID,
 	     enabled	INTEGER );
 CREATE TABLE I_LIP (
+	     Participation_ID	UNIQUE_ID,
 	     Rel_ID	UNIQUE_ID,
 	     Inst_ID	UNIQUE_ID,
 	     Label	STRING );
 CREATE TABLE I_LNK (
 	     Link_ID	UNIQUE_ID,
 	     Rel_ID	UNIQUE_ID,
-	     fromInst_ID	UNIQUE_ID,
-	     toInst_ID	UNIQUE_ID,
-	     assocInst_ID	UNIQUE_ID );
+	     Participation_ID	UNIQUE_ID,
+	     Formalizing_Participation_ID	UNIQUE_ID,
+	     Associator_Participation_ID	UNIQUE_ID );
 CREATE TABLE I_ICQE (
 	     Stack_ID	UNIQUE_ID,
 	     Stack_Frame_ID	UNIQUE_ID,
@@ -2705,12 +2706,12 @@ CREATE ROP REF_ID R2958 FROM MC 	I_LIP 	( Inst_ID )
 		         TO 1  	I_INS 	( Inst_ID );
 CREATE ROP REF_ID R2959 FROM MC 	I_LIP 	( Rel_ID )
 		         TO 1  	R_REL 	( Rel_ID );
-CREATE ROP REF_ID R2901 FROM MC 	I_LNK 	( fromInst_ID , Rel_ID )
-		         TO 1  	I_LIP 	( Inst_ID , Rel_ID );
-CREATE ROP REF_ID R2902 FROM MC 	I_LNK 	( toInst_ID , Rel_ID )
-		         TO 1  	I_LIP 	( Inst_ID , Rel_ID );
-CREATE ROP REF_ID R2903 FROM MC 	I_LNK 	( assocInst_ID , Rel_ID )
-		         TO 1C  I_LIP 	( Inst_ID , Rel_ID );
+CREATE ROP REF_ID R2901 FROM 1C 	I_LNK 	( Rel_ID , Participation_ID )
+		         TO 1  	I_LIP 	( Rel_ID , Participation_ID );
+CREATE ROP REF_ID R2902 FROM 1C 	I_LNK 	( Rel_ID , Formalizing_Participation_ID )
+		         TO 1  	I_LIP 	( Rel_ID , Participation_ID );
+CREATE ROP REF_ID R2903 FROM 1C 	I_LNK 	( Rel_ID , Associator_Participation_ID )
+		         TO 1C  I_LIP 	( Rel_ID , Participation_ID );
 CREATE ROP REF_ID R2963 FROM MC 	I_EXE 	( ImportedComponent_Id )
 		         TO 1C  CL_IC 	( Id );
 CREATE ROP REF_ID R2964 FROM MC 	I_EVI 	( Execution_Engine_ID )
