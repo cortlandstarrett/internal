@@ -11,6 +11,7 @@ import org.eclipse.debug.core.ILaunch;
 import org.eclipse.debug.core.model.IDebugTarget;
 import org.eclipse.debug.core.model.IValue;
 import org.eclipse.debug.core.model.IVariable;
+import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.mentor.nucleus.bp.core.ArrayValue_c;
 import com.mentor.nucleus.bp.core.Association_c;
@@ -42,6 +43,7 @@ import com.mentor.nucleus.bp.core.StructuredValue_c;
 import com.mentor.nucleus.bp.core.Transition_c;
 import com.mentor.nucleus.bp.core.ValueInArray_c;
 import com.mentor.nucleus.bp.core.ValueInStructure_c;
+import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.Transaction;
 import com.sun.corba.se.spi.orbutil.fsm.State;
@@ -50,6 +52,8 @@ import com.sun.xml.internal.bind.v2.runtime.unmarshaller.XsiNilLoader.Array;
 public class BPValue extends BPDebugElement implements IValue {
     Object value = null;
     BPVariable  var = null;
+    int BPPReference_UseAdvancedVariableView = 1;
+    int BPPreference_UseGroupedInstanceStyle = 2;
 
 	public BPValue(IDebugTarget debugTarget, ILaunch launch, Object val, String Name, BPVariable BPVar) {
 		super((BPDebugTarget)debugTarget, launch);
@@ -143,6 +147,7 @@ public class BPValue extends BPDebugElement implements IValue {
 		if (insts.length == 0)
 			return "empty";
 		else {
+		  result = insts.length > 1 ?  "["+insts.length+"]  " : "";
 		  for (int i=0; i<insts.length;i++) {
 			result = result + sep + insts[i].getLabel();
 			sep = ", ";
@@ -151,6 +156,7 @@ public class BPValue extends BPDebugElement implements IValue {
 		return result;
 	}
 
+	
 	public String getValueString() throws DebugException {
 		if (value instanceof LocalValue_c) { 
 		  LocalValue_c localValue = (LocalValue_c)value;
@@ -204,131 +210,151 @@ public class BPValue extends BPDebugElement implements IValue {
 		else if (value instanceof Instance_c){
 			Instance_c inst = (Instance_c)value;
 			return inst.getLabel();
-		} else if (value instanceof Link_c) {
-			Instance_c firstInstance = null;
-			Instance_c secondInstance = null;
-
-			if (name == "Origin Of") {
-				firstInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2903((Link_c) value));
-//				secondInstance = Instance_c
-//						.getOneI_INSOnR2958(LinkParticipation_c
-//								.getOneI_LIPOnR2902((Link_c) value));
-			} else if (name == "Destination Of") {
-				firstInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2903((Link_c) value));
-//				firstInstance = Instance_c
-//						.getOneI_INSOnR2958(LinkParticipation_c
-//								.getOneI_LIPOnR2901((Link_c) value));
-			} else if (name == "Associator For") {
-				firstInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2901((Link_c) value));
-				secondInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2902((Link_c) value));
-		}
-			if (secondInstance == null) {
-				return firstInstance.getLabel();
-			} else {
-				return firstInstance.getLabel() + ","
-						+ secondInstance.getLabel();
-			}
-
-			// LinkParticipation_c[] linkeds = LinkParticipation_c
-			// .getManyI_LIPsOnR2959(Association_c
-			// .getOneR_RELOnR2959((LinkParticipation_c) value));
-			// LinkParticipation_c other = null;
-			// for (int i = 0; i < linkeds.length; i++) {
-			// if (linkeds[i] != value) {
-			// other = linkeds[i];
-			// break;
-			// }
-			// }
-			// if (other == null){
-			// return "";
-			// }
-			// Instance_c linkedInstance = Instance_c.getOneI_INSOnR2958(other);
-			// Link_c originLink = Link_c.getOneI_LNKOnR2901(other);
-			// Link_c destLink = Link_c.getOneI_LNKOnR2902(other);
-			// if ( originLink == null && destLink == null)
-			// return "";
-			// else
-			// return linkedInstance.getLabel();
-		}
-		else if (value instanceof StateMachineState_c){
-			return ((StateMachineState_c)value).getName();
-		}
-		else if (value instanceof StateMachineEvent_c){
-			return ((StateMachineEvent_c)value).getName();
-		}
+		} 
 		
-		/******************/
-		 else if (value instanceof Association_c) {
-				Instance_c[] firstInstance = null;
-//				Instance_c[] secondInstance = null;
-				
-				if (name == "Origin Of") {
-					Link_c[] instanceLinks = getDuplicatedElement();
-					
-					firstInstance = Instance_c .getManyI_INSsOnR2958(
-							LinkParticipation_c.getManyI_LIPsOnR2903(
-									instanceLinks));
-//									Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-					if (firstInstance.length == 0)
-						firstInstance = Instance_c .getManyI_INSsOnR2958(
-											LinkParticipation_c .getManyI_LIPsOnR2902(
-													instanceLinks));
-//					Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-
-				} else if (name == "Destination Of") {
-					Link_c[] instanceLinks = getDuplicatedElement();
-
-					firstInstance = Instance_c .getManyI_INSsOnR2958(
-							LinkParticipation_c .getManyI_LIPsOnR2903(
-									instanceLinks));
-//									Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-					if (firstInstance.length == 0)
-						firstInstance = Instance_c .getManyI_INSsOnR2958(
-								LinkParticipation_c .getManyI_LIPsOnR2901(
-										instanceLinks));
-//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-
-				} 
-				else if (name == "Associator For") {
-					Link_c[] instanceLinks = getDuplicatedElement();
-
-					
-					Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
-							LinkParticipation_c .getManyI_LIPsOnR2901(
-									instanceLinks));
-//					Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-					
-					Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
-							LinkParticipation_c .getManyI_LIPsOnR2902(
-									instanceLinks));
-//									Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-					
-					firstInstance = new Instance_c[first.length + second.length];
-					System.arraycopy(first, 0, firstInstance, 0, first.length);
-					System.arraycopy(second, 0,firstInstance , first.length, second.length);
+		
+		// Show More children for instance
+		try{
+			IPreferenceStore store = CorePlugin.getDefault()
+					.getPreferenceStore();
+			boolean enhancedVariableView = store
+					.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+			if (enhancedVariableView){
+				if (value instanceof StateMachineState_c){
+					return ((StateMachineState_c)value).getName();
 				}
-//				if (secondInstance == null) {
-//					return getInstanceChildern(firstInstance);
-//					return getChildern(firstInstance, null, null);
-//				} else {
-//					Object[] objects = { firstInstance, secondInstance };
-//					return getChildern(objects, "Association");
-				return printInstanceSet(firstInstance);
+				else if (value instanceof StateMachineEvent_c){
+					return ((StateMachineEvent_c)value).getName();
+				}
 
+
+				if ( BPPreference_UseGroupedInstanceStyle != 1){
+					if (value instanceof Link_c) {
+						Instance_c firstInstance = null;
+						Instance_c secondInstance = null;
+
+						if (name == "Origin Of") {
+							firstInstance = Instance_c
+									.getOneI_INSOnR2958(LinkParticipation_c
+											.getOneI_LIPOnR2902((Link_c) value));
+							secondInstance = Instance_c
+									.getOneI_INSOnR2958(LinkParticipation_c
+											.getOneI_LIPOnR2903((Link_c) value));
+						} else if (name == "Destination Of") {
+							firstInstance = Instance_c
+									.getOneI_INSOnR2958(LinkParticipation_c
+											.getOneI_LIPOnR2901((Link_c) value));
+							secondInstance = Instance_c
+									.getOneI_INSOnR2958(LinkParticipation_c
+											.getOneI_LIPOnR2903((Link_c) value));
+						} else if (name == "Associator For") {
+							firstInstance = Instance_c
+									.getOneI_INSOnR2958(LinkParticipation_c
+											.getOneI_LIPOnR2901((Link_c) value));
+							secondInstance = Instance_c
+									.getOneI_INSOnR2958(LinkParticipation_c
+											.getOneI_LIPOnR2902((Link_c) value));
+						}
+						if (secondInstance == null) {
+							return firstInstance.getLabel();
+						} else {
+							return firstInstance.getLabel() + ","
+									+ secondInstance.getLabel();
+						}
+
+						// LinkParticipation_c[] linkeds = LinkParticipation_c
+						// .getManyI_LIPsOnR2959(Association_c
+						// .getOneR_RELOnR2959((LinkParticipation_c) value));
+						// LinkParticipation_c other = null;
+						// for (int i = 0; i < linkeds.length; i++) {
+						// if (linkeds[i] != value) {
+						// other = linkeds[i];
+						// break;
+						// }
+						// }
+						// if (other == null){
+						// return "";
+						// }
+						// Instance_c linkedInstance = Instance_c.getOneI_INSOnR2958(other);
+						// Link_c originLink = Link_c.getOneI_LNKOnR2901(other);
+						// Link_c destLink = Link_c.getOneI_LNKOnR2902(other);
+						// if ( originLink == null && destLink == null)
+						// return "";
+						// else
+						// return linkedInstance.getLabel();
+					}
+				}else{
+					/******************/
+					if (value instanceof Association_c) {
+						Instance_c[] firstInstance = null;
+						//					Instance_c[] secondInstance = null;
+
+						if (name == "Origin Of") {
+							Link_c[] instanceLinks = getDuplicatedElement();
+
+							firstInstance = Instance_c .getManyI_INSsOnR2958(
+									LinkParticipation_c.getManyI_LIPsOnR2903(
+											instanceLinks));
+							//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+							if (firstInstance.length == 0)
+								firstInstance = Instance_c .getManyI_INSsOnR2958(
+										LinkParticipation_c .getManyI_LIPsOnR2902(
+												instanceLinks));
+							//						Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+						} else if (name == "Destination Of") {
+							Link_c[] instanceLinks = getDuplicatedElement();
+
+							firstInstance = Instance_c .getManyI_INSsOnR2958(
+									LinkParticipation_c .getManyI_LIPsOnR2903(
+											instanceLinks));
+							//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+							if (firstInstance.length == 0)
+								firstInstance = Instance_c .getManyI_INSsOnR2958(
+										LinkParticipation_c .getManyI_LIPsOnR2901(
+												instanceLinks));
+							//											Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+						} 
+						else if (name == "Associator For") {
+							Link_c[] instanceLinks = getDuplicatedElement();
+
+
+							Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
+									LinkParticipation_c .getManyI_LIPsOnR2901(
+											instanceLinks));
+							//						Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+							Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
+									LinkParticipation_c .getManyI_LIPsOnR2902(
+											instanceLinks));
+							//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+							firstInstance = new Instance_c[first.length + second.length];
+							System.arraycopy(first, 0, firstInstance, 0, first.length);
+							System.arraycopy(second, 0,firstInstance , first.length, second.length);
+						}
+						//					if (secondInstance == null) {
+						//						return getInstanceChildern(firstInstance);
+						//						return getChildern(firstInstance, null, null);
+						//					} else {
+						//						Object[] objects = { firstInstance, secondInstance };
+						//						return getChildern(objects, "Association");
+						return printInstanceSet(firstInstance);
+
+					}
+				}
 			}
-
-		/******************/
-		
+		}catch (Exception e) {
+			return "Undefined";
+		}
 		return "Undefined";
 	}
+
+	/**
+	 * @return 
+	 * 
+	 */
 
 	public boolean isAllocated() throws DebugException {
 		// TODO Auto-generated method stub
@@ -349,11 +375,11 @@ public class BPValue extends BPDebugElement implements IValue {
 			InstanceReferenceValue_c irv = InstanceReferenceValue_c.getOneRV_IRVOnR3308(simVal);
 			if ( scv != null){
 				rvs = new RuntimeValue_c[0];
-				return getChildern(rvs, null, null);
+				return getChildern(rvs, null, null, null);
 			}
 			else if  ( crv != null){
 				rvs = new RuntimeValue_c[0];
-				return getChildern(rvs, null, null);
+				return getChildern(rvs, null, null, null);
 			}
 			else if ( irv != null){
 				Instance_c[] insts = Instance_c.getManyI_INSsOnR3013(
@@ -362,11 +388,11 @@ public class BPValue extends BPDebugElement implements IValue {
 					return getInstanceChildern(insts[0]);
 				}
 				else if (insts.length > 1) {
-					return getChildern(insts, null, null);
+					return getChildern(insts, null, null, null);
 				}
 				else if (insts.length == 0) {
 					rvs = new RuntimeValue_c[0];
-					return getChildern(rvs, null, null);
+					return getChildern(rvs, null, null, null);
 				}
 			}
 			else {
@@ -377,49 +403,69 @@ public class BPValue extends BPDebugElement implements IValue {
 		else if ( strVal != null){
 		    rvs = RuntimeValue_c.getManyRV_RVLsOnR3301(
 	                   ValueInStructure_c.getManyRV_VISsOnR3301(strVal));
-		    return getChildern(rvs, null, null);
+		    return getChildern(rvs, null, null, null);
 		}
 		else if (arrVal !=null ){
 			ValueInArray_c [] vias = ValueInArray_c.getManyRV_VIAsOnR3302(arrVal);
 			rvs = RuntimeValue_c.getManyRV_RVLsOnR3302(vias);
-			return getChildern(rvs, null, null);
+			return getChildern(rvs, null, null, null);
 		}
 		else {
 
 		}
 		
 		
-		return getChildern(rvs, null, null);
+		return getChildern(rvs, null, null, null);
 		}
 		
 	private IVariable[] getInstanceChildern(Instance_c inst) {
 		AttributeValue_c[] vals = AttributeValue_c.getManyI_AVLsOnR2909(inst);
 
-		// 
-		Link_c[] originLinks = Link_c.getManyI_LNKsOnR2901(LinkParticipation_c
-				.getManyI_LIPsOnR2958(inst));
+		StateMachineState_c currentState  = null;
+		StateMachineEvent_c event = null;
+		IVariable[] originLinksChildern  = new IVariable[0];
+		IVariable[] destLinksChildern  = new IVariable[0];
+		IVariable[] assocLinksChildern  = new IVariable[0];
 		
-		Association_c[] originAssocs = Association_c.getManyR_RELsOnR2904(originLinks);
-		IVariable[] originLinksChildern = getChildern(originAssocs, "Origin Of", originLinks);
+		IPreferenceStore store = CorePlugin.getDefault()
+				.getPreferenceStore();
+		boolean enhancedVariableView = store
+				.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+		if (enhancedVariableView){
 
-		
-		Link_c[] destLinks = Link_c.getManyI_LNKsOnR2902(LinkParticipation_c
-				.getManyI_LIPsOnR2958(inst));
-		Association_c[] destAssocs = Association_c.getManyR_RELsOnR2904(destLinks);
-		IVariable[] destLinksChildern = getChildern(destAssocs, "Destination Of", destLinks);
+			currentState = StateMachineState_c.getOneSM_STATEOnR2915(inst);
 
-		Link_c[] assocLinks = Link_c.getManyI_LNKsOnR2903(LinkParticipation_c
-				.getManyI_LIPsOnR2958(inst));
-		Association_c[] linkedAsscos = Association_c.getManyR_RELsOnR2904(assocLinks);
-		IVariable[] assocLinksChildern = getChildern(linkedAsscos, "Associator For", assocLinks);
-		
-		StateMachineState_c currentState = StateMachineState_c.getOneSM_STATEOnR2915(inst);
-		
-		StateMachineEvent_c event = StateMachineEvent_c.getOneSM_EVTOnR525(
-				SemEvent_c.getOneSM_SEVTOnR503(
-						StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
-								NewStateTransition_c.getManySM_NSTXNsOnR507(
-										Transition_c.getOneSM_TXNOnR2953(inst)))));
+			event = StateMachineEvent_c.getOneSM_EVTOnR525(
+					SemEvent_c.getOneSM_SEVTOnR503(
+							StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
+									NewStateTransition_c.getManySM_NSTXNsOnR507(
+											Transition_c.getOneSM_TXNOnR2953(inst)))));
+
+			if ( BPPreference_UseGroupedInstanceStyle == 1){
+				Link_c[] originLinks = Link_c.getManyI_LNKsOnR2901(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+				Association_c[] originAssocs = Association_c.getManyR_RELsOnR2904(originLinks);
+				originLinksChildern = getChildern(originAssocs, "Origin Of", originLinks, inst);
+
+
+				Link_c[] destLinks = Link_c.getManyI_LNKsOnR2902(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+				Association_c[] destAssocs = Association_c.getManyR_RELsOnR2904(destLinks);
+				destLinksChildern = getChildern(destAssocs, "Destination Of", destLinks, inst);
+
+				Link_c[] assocLinks = Link_c.getManyI_LNKsOnR2903(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+				Association_c[] linkedAsscos = Association_c.getManyR_RELsOnR2904(assocLinks);
+				assocLinksChildern = getChildern(linkedAsscos, "Associator For", assocLinks, inst);
+			}
+			else {
+				Link_c[] originLinks = Link_c.getManyI_LNKsOnR2901(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+				originLinksChildern = getChildern(originLinks, "Origin Of", null, null);
+
+				Link_c[] destLinks = Link_c.getManyI_LNKsOnR2902(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+				destLinksChildern = getChildern(destLinks, "Destination Of", null, null);
+
+				Link_c[] assocLinks = Link_c.getManyI_LNKsOnR2903(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+				assocLinksChildern = getChildern(assocLinks, "Associator For", null, null);
+			}
+		}
 		
 		int validState = 0;
 		int validEvent = 0;
@@ -429,7 +475,7 @@ public class BPValue extends BPDebugElement implements IValue {
 			validEvent = 1;
 		
 		// IVariable[] childern1 = getChildern(links, null);
-		IVariable[] attibutesChildern = getChildern(vals, null, null);
+		IVariable[] attibutesChildern = getChildern(vals, null, null, null);
 		
 		IVariable[] childern = new IVariable[originLinksChildern.length
 				+ destLinksChildern.length + assocLinksChildern.length + attibutesChildern.length + validEvent + validState];
@@ -478,12 +524,13 @@ public class BPValue extends BPDebugElement implements IValue {
 	/**
 	 * @param objects : represents the child values for the select variable in Variable View
 	 * @param linkedValue TODO
+	 * @param Instance TODO
 	 * @return 
 	 */
-	private IVariable[] getChildern(Object[] objects, String Name, Object[] linkedValue) {
+	private IVariable[] getChildern(Object[] objects, String Name, Object[] linkedValue, Object Instance) {
 		IVariable [] result = new IVariable[objects.length];
 		  for (int i=0; i< objects.length; i++) {
-			result[i] = new BPVariable(getDebugTarget(), getLaunch(), objects[i], Name, linkedValue);
+			result[i] = new BPVariable(getDebugTarget(), getLaunch(), objects[i], Name, linkedValue, Instance);
 		  }
 		  return result;
 	}
@@ -522,99 +569,110 @@ public class BPValue extends BPDebugElement implements IValue {
 //					.getManyI_AVLsOnR2909((Instance_c) value);
 			
 			return getInstanceChildern((Instance_c)value);
-		} else if (value instanceof Association_c) {
-			Instance_c[] firstInstance = null;
-//			Instance_c[] secondInstance = null;
-			
-			if (name == "Origin Of") {
-				Link_c[] instanceLinks = getDuplicatedElement();
-				
-				firstInstance = Instance_c .getManyI_INSsOnR2958(
-						LinkParticipation_c.getManyI_LIPsOnR2903(
-								instanceLinks));
-//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-				if (firstInstance.length == 0)
-					firstInstance = Instance_c .getManyI_INSsOnR2958(
-										LinkParticipation_c .getManyI_LIPsOnR2902(
-												instanceLinks));
-//				Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-
-			} else if (name == "Destination Of") {
-				Link_c[] instanceLinks = getDuplicatedElement();
-
-				firstInstance = Instance_c .getManyI_INSsOnR2958(
-						LinkParticipation_c .getManyI_LIPsOnR2903(
-								instanceLinks));
-//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-				if (firstInstance.length == 0)
-					firstInstance = Instance_c .getManyI_INSsOnR2958(
-							LinkParticipation_c .getManyI_LIPsOnR2901(
-									instanceLinks));
-//									Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-
-			} 
-			else if (name == "Associator For") {
-				Link_c[] instanceLinks = getDuplicatedElement();
-
-				
-				Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
-						LinkParticipation_c .getManyI_LIPsOnR2901(
-								instanceLinks));
-//				Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-				
-				Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
-						LinkParticipation_c .getManyI_LIPsOnR2902(
-								instanceLinks));
-//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-				
-				firstInstance = new Instance_c[first.length + second.length];
-				System.arraycopy(first, 0, firstInstance, 0, first.length);
-				System.arraycopy(second, 0,firstInstance , first.length, second.length);
-			}
-//			if (secondInstance == null) {
-//				return getInstanceChildern(firstInstance);
-				return getChildern(firstInstance, null, null);
-//			} else {
-//				Object[] objects = { firstInstance, secondInstance };
-//				return getChildern(objects, "Association");
-
 		}
+		
+		IPreferenceStore store = CorePlugin.getDefault()
+				.getPreferenceStore();
+		boolean enhancedVariableView = store
+				.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+		if (enhancedVariableView){
+			if ( BPPreference_UseGroupedInstanceStyle == 1){
+				if (value instanceof Association_c) {
+					Instance_c[] firstInstance = null;
+					//			Instance_c[] secondInstance = null;
 
-			
-			/************************************************/
-		 
-		else if (value instanceof Link_c) {
-			Instance_c firstInstance = null;
-			Instance_c secondInstance = null;
-			
-			if (name == "Origin Of") {
-				firstInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2903((Link_c) value));
-//				secondInstance = Instance_c
-//						.getOneI_INSOnR2958(LinkParticipation_c
-//								.getOneI_LIPOnR2902((Link_c) value));
-			} else if (name == "Destination Of") {
-				firstInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2903((Link_c) value));
-//				firstInstance = Instance_c
-//						.getOneI_INSOnR2958(LinkParticipation_c
-//								.getOneI_LIPOnR2901((Link_c) value));
-			} else if (name == "Associator For") {
-				firstInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2901((Link_c) value));
-				secondInstance = Instance_c
-						.getOneI_INSOnR2958(LinkParticipation_c
-								.getOneI_LIPOnR2902((Link_c) value));
-			}
-			if (secondInstance == null) {
-				return getInstanceChildern(firstInstance);
-			} else {
-				Object[] objects = { firstInstance, secondInstance };
-				return getChildern(objects, "Association", null);
-				
+					if (name == "Origin Of") {
+						Link_c[] instanceLinks = getDuplicatedElement();
+
+						firstInstance = Instance_c .getManyI_INSsOnR2958(
+								LinkParticipation_c.getManyI_LIPsOnR2903(
+										instanceLinks));
+						//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+						if (firstInstance.length == 0)
+							firstInstance = Instance_c .getManyI_INSsOnR2958(
+									LinkParticipation_c .getManyI_LIPsOnR2902(
+											instanceLinks));
+						//				Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+					} else if (name == "Destination Of") {
+						Link_c[] instanceLinks = getDuplicatedElement();
+
+						firstInstance = Instance_c .getManyI_INSsOnR2958(
+								LinkParticipation_c .getManyI_LIPsOnR2903(
+										instanceLinks));
+						//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+						if (firstInstance.length == 0)
+							firstInstance = Instance_c .getManyI_INSsOnR2958(
+									LinkParticipation_c .getManyI_LIPsOnR2901(
+											instanceLinks));
+						//									Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+					} 
+
+					else if (name == "Associator For") {
+						Link_c[] instanceLinks = getDuplicatedElement();
+
+
+						Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
+								LinkParticipation_c .getManyI_LIPsOnR2901(
+										instanceLinks));
+						//				Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+						Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
+								LinkParticipation_c .getManyI_LIPsOnR2902(
+										instanceLinks));
+						//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+
+						firstInstance = new Instance_c[first.length + second.length];
+						System.arraycopy(first, 0, firstInstance, 0, first.length);
+						System.arraycopy(second, 0,firstInstance , first.length, second.length);
+					}
+					//			if (secondInstance == null) {
+					//				return getInstanceChildern(firstInstance);
+					return getChildern(firstInstance, null, null, null);
+					//			} else {
+					//				Object[] objects = { firstInstance, secondInstance };
+					//				return getChildern(objects, "Association");
+
+				}
+
+
+				/************************************************/
+			}else{
+				if (value instanceof Link_c) {
+					Instance_c firstInstance = null;
+					Instance_c secondInstance = null;
+
+					if (name == "Origin Of") {
+						firstInstance = Instance_c
+								.getOneI_INSOnR2958(LinkParticipation_c
+										.getOneI_LIPOnR2902((Link_c) value));
+						secondInstance = Instance_c
+								.getOneI_INSOnR2958(LinkParticipation_c
+										.getOneI_LIPOnR2903((Link_c) value));
+					} else if (name == "Destination Of") {
+						firstInstance = Instance_c
+								.getOneI_INSOnR2958(LinkParticipation_c
+										.getOneI_LIPOnR2901((Link_c) value));
+						secondInstance = Instance_c
+								.getOneI_INSOnR2958(LinkParticipation_c
+										.getOneI_LIPOnR2903((Link_c) value));
+					} else if (name == "Associator For") {
+						firstInstance = Instance_c
+								.getOneI_INSOnR2958(LinkParticipation_c
+										.getOneI_LIPOnR2901((Link_c) value));
+						secondInstance = Instance_c
+								.getOneI_INSOnR2958(LinkParticipation_c
+										.getOneI_LIPOnR2902((Link_c) value));
+					}
+					if (secondInstance == null) {
+						return getInstanceChildern(firstInstance);
+					} else {
+						Object[] objects = { firstInstance, secondInstance };
+						return getChildern(objects, "Association", null, null);
+
+					}
+				}
 			}
 		}
 //			
