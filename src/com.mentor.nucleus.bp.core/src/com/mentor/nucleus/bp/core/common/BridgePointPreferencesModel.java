@@ -39,6 +39,7 @@ public class BridgePointPreferencesModel implements IPreferenceModel {
     public boolean enableFLAs;
     public boolean enableDSAs;
     public boolean enableDeterministicVerifier;
+    public boolean enableEnhancedVariableView;
     public boolean enableInstanceReferences;
     public boolean enableVerifierAudit;
     public int enableSelectAudit;
@@ -89,6 +90,7 @@ public class BridgePointPreferencesModel implements IPreferenceModel {
         enableFLAs = syncTo.enableFLAs;
         enableDSAs = syncTo.enableDSAs;
         enableDeterministicVerifier = syncTo.enableDeterministicVerifier;
+        enableEnhancedVariableView = syncTo.enableEnhancedVariableView;
         enableInstanceReferences = syncTo.enableInstanceReferences;
 
         enableVerifierAudit = syncTo.enableVerifierAudit;
@@ -127,6 +129,7 @@ public class BridgePointPreferencesModel implements IPreferenceModel {
         prefs.enableFLAs = enableFLAs;
         prefs.enableDSAs = enableDSAs;
         prefs.enableDeterministicVerifier = enableDeterministicVerifier;
+        prefs.enableEnhancedVariableView = enableEnhancedVariableView;
         prefs.enableInstanceReferences = enableInstanceReferences;
 
         prefs.enableVerifierAudit = enableVerifierAudit;

@@ -53,6 +53,7 @@ public class VerifierPreferences
     private Label startUpTimeLabel;
     private Spinner startUpTime;
     private Button deterministicExecution;
+    private Button enhancedVariableView;
     
     public static final String deterministicExecutionBtnName = "Run deterministically";
     public static final String deterministicExecutionBtnTip = "Enabling this option runs the entire " + 
@@ -60,6 +61,7 @@ public class VerifierPreferences
     "repeatable. Disabling this option runs each component in\nits own thread, and " + 
     "allows the user to decide on the implementation of time used. Thus,\nexecution may " +
     "differ from run to run. This mode tests model concurrency and can help\nexpose race conditions.";
+    public static final String enhancedVariableViewBtnName = "Show more children for instances"; 
     
   public VerifierPreferences() {
     super();
@@ -156,6 +158,12 @@ public class VerifierPreferences
     deterministicExecution.setLayoutData(new GridData());
     deterministicExecution.setToolTipText(deterministicExecutionBtnTip);
     
+    // Create Preference for enhanced variable view 
+    enhancedVariableView = new Button(composite, SWT.CHECK | SWT.LEFT);
+    enhancedVariableView.setText(enhancedVariableViewBtnName);
+    enhancedVariableView.setLayoutData(new GridData());
+    enhancedVariableView.setToolTipText(enhancedVariableViewBtnName);
+   
     model = new BridgePointPreferencesModel();
     model.getStore().loadModel(getPreferenceStore(), null, model);
     
@@ -198,6 +206,11 @@ public class VerifierPreferences
 			bpPrefs.enableDeterministicVerifier = true;
 		} else {
 			bpPrefs.enableDeterministicVerifier = false;
+		}
+		if (enhancedVariableView.getSelection()) {
+			bpPrefs.enableEnhancedVariableView = true;
+		} else {
+			bpPrefs.enableEnhancedVariableView = false;
 		}
         
         model.getStore().saveModel(getPreferenceStore(), model);        
