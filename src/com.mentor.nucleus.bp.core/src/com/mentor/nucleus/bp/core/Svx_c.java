@@ -52,8 +52,8 @@ public class Svx_c {
 							+ " no svx connection is stablished and value of 0.0 is returned",
 					null);
 
-			Float result = (float) 0.0;
-			return Gd_c.Real_to_instance(result);
+			double result = (double) 0.0;
+			return  (Object) Double.toString(result);
 		}
 
 	} // End getSVXValue
@@ -131,7 +131,7 @@ public class Svx_c {
 	static HashMap<UUID, Boolean> portTimedOut = new HashMap<UUID, Boolean>();
 
 	static void initialize(Port_c port, SVXChannel retSvxChannel
-			/*,java.util.UUID p_Messagevalueid*/)
+			,double valueToBeSent)
 
 	{
 		// the following values are yet to be supported as configurable
@@ -153,7 +153,7 @@ public class Svx_c {
 		int generationLatencyValue = 0;
 
 		int signalMaxLatencyValue = 0;
-		double initialValue = 5.0;
+		double initialValue = valueToBeSent;
 
 		try {
 
@@ -305,7 +305,8 @@ public class Svx_c {
 			java.util.UUID p_Messagevalueid) {
 
 		if (!isInitialized(port)) {
-			initialize(port, retSvxChannel);
+			double initialVal = 0.0;
+			initialize(port, retSvxChannel,initialVal);
 		}
  
 
@@ -351,8 +352,8 @@ public class Svx_c {
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
-			Float result = (float) dum;
-			return Gd_c.Real_to_instance(result);
+			Double result = (double) dum;
+			return  (Object) Double.toString(result);
 		} else {
 			User_c.Logerror(
 					"This  Channel : "
@@ -361,8 +362,8 @@ public class Svx_c {
 							+ port.getName()
 							+ " has times out and value of 0.0 will be returned. Try Increasing the Big End Time",
 					null);
-			Float result = (float) 0.0;
-			return Gd_c.Real_to_instance(result);
+			Double result = (double) 0.0;
+			return  (Object) Double.toString(result);
 		}
 
 	}
@@ -426,9 +427,7 @@ public class Svx_c {
 		Value_c retrievedValue = retrieveValue(value_id);
 		double valueToBeSent = 0.0;
 		valueToBeSent = getValueToBeSent(retrievedValue);
- 		ProvidedOperation_c providedOp = retrieveProvicedOp(v_invocationId);
-		RequiredOperation_c requiredOp= retrieveRequiredOp(v_invocationId);
-		
+
 		SVXChannel retSvxChannel = retrieveChannel(retrievedPort);
 		if (retSvxChannel != null) {
 		
@@ -453,8 +452,8 @@ public class Svx_c {
 	
 	private static double getValueToBeSent(Value_c retrievedValue) {
 		 double valueToBeSent = 0.0;
-	//	 UUID stackFrameID = StackFrame_c.getOneI_STFOnR2923(Block_c.getOneACT_BLKOnR826(retrievedValue)).getStack_frame_id();
-		 Object value =  RuntimeValue_c.getOneRV_RVLOnR3310(StackFrame_c.getOneI_STFOnR2923(Block_c.getOneACT_BLKOnR826(retrievedValue))).Getvalue();
+
+		 Object value =  RuntimeValue_c.getOneRV_RVLOnR3305(ValueInStackFrame_c.getOneI_VSFOnR2978(retrievedValue)).Getvalue();
 		  
 		 if ( value  != null)
 			{
@@ -469,7 +468,7 @@ public class Svx_c {
 
 
 		if (!isInitialized(port)) {
-			initialize(port, retSvxChannel);
+			initialize(port, retSvxChannel,valueToBeSent);
 		}
 
 

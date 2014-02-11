@@ -167,7 +167,7 @@ IPreferencePage {
 				composite.layout();
 			}
 		});
-
+        this.noDefaultAndApplyButton();
 		composite.layout();
 		return composite;
 	}
