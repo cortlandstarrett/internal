@@ -220,7 +220,12 @@ public class BPVariable extends BPDebugElement implements IVariable {
 
     			  }
     			  return "R" + assoc.getNumb();
+    		  }else if ( value instanceof PendingEvent_c[]){
+    			  return "Pending Event";
+    		  }else if ( value instanceof PendingEvent_c){
+    			  return "Event";
     		  }
+    		  
     	  }
       }
       

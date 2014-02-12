@@ -361,6 +361,23 @@ public class BPValue extends BPDebugElement implements IValue {
 						//						return getChildern(objects, "Association");
 						return printInstanceSet(firstInstance);
 
+					}else if ( value instanceof PendingEvent_c){
+						return ((PendingEvent_c) value).getLabel();
+					}else if ( value instanceof PendingEvent_c[]){
+						PendingEvent_c[] events =  (PendingEvent_c[]) value;
+						String result = "";
+						String sep = "";
+						if (events.length == 0)
+							return "empty";
+						else {
+						  result = events.length > 1 ?  "["+events.length+"]  " : "";
+						  for (int i=0; i<events.length;i++) {
+							result = result + sep + events[i].getLabel();
+							sep = ", ";
+						  }
+						}
+						
+						return result;
 					}
 				}
 			}
@@ -487,6 +504,9 @@ public class BPValue extends BPDebugElement implements IValue {
 				
 				int validState = 0;
 				int validEvent = 0;
+				int validPendingEvents = 0;
+				if (pendingEvents.length != 0)
+					validPendingEvents = 1;
 				if (currentState != null )
 					validState = 1;
 				if (event!= null)
@@ -496,15 +516,16 @@ public class BPValue extends BPDebugElement implements IValue {
 				
 				
 				IVariable[] childern = new IVariable[originLinksChildern.length
-						+ destLinksChildern.length + assocLinksChildern.length + attibutesChildern.length + validEvent + validState];
+						+ destLinksChildern.length + assocLinksChildern.length + attibutesChildern.length + validEvent + validState + validPendingEvents];
 				
 				if (childern.length == 0)
 					return childern;
 				
 				childern[0] = new BPVariable(getDebugTarget(), getLaunch(), currentState, null);
 				childern[validState] = new BPVariable(getDebugTarget(), getLaunch(), event, null);
+				childern[validState + validEvent] = new BPVariable(getDebugTarget(), getLaunch(), pendingEvents, null); 
 				
-				int childernIndex = validState + validEvent;
+				int childernIndex = validState + validEvent + validPendingEvents;
 
 				
 				if (attibutesChildern.length !=0)
@@ -521,6 +542,7 @@ public class BPValue extends BPDebugElement implements IValue {
 				childernIndex = childernIndex + destLinksChildern.length;
 				if (assocLinksChildern.length !=0)
 					System.arraycopy(assocLinksChildern, 0, childern, childernIndex, assocLinksChildern.length);
+				return childern;
 			}
 			else {
 				Object[] instanceChildern = InstancesAdapter.getInstance().getChildren(inst);
@@ -542,7 +564,7 @@ public class BPValue extends BPDebugElement implements IValue {
 		}
 		
 	
-		return new IVariable[0] ;
+		//return new IVariable[0] ;
 	}
 
 	// private void getChildren(Instance_c[] insts) {
@@ -668,6 +690,8 @@ public class BPValue extends BPDebugElement implements IValue {
 					//				Object[] objects = { firstInstance, secondInstance };
 					//				return getChildern(objects, "Association");
 
+				} else if ( value instanceof PendingEvent_c[]){
+					return getChildern((Object[]) value, null , null, null);
 				}
 
 
