@@ -26,6 +26,7 @@ import com.mentor.nucleus.bp.core.LocalReference_c;
 import com.mentor.nucleus.bp.core.LocalValue_c;
 import com.mentor.nucleus.bp.core.Local_c;
 import com.mentor.nucleus.bp.core.OperationParameter_c;
+import com.mentor.nucleus.bp.core.PendingEvent_c;
 import com.mentor.nucleus.bp.core.PropertyParameter_c;
 import com.mentor.nucleus.bp.core.RuntimeValue_c;
 import com.mentor.nucleus.bp.core.StateMachineEventDataItem_c;
@@ -189,6 +190,17 @@ public class BPVariable extends BPDebugElement implements IVariable {
     		  if (value instanceof  Link_c){
     			  Association_c assoc = Association_c.getOneR_RELOnR2904((Link_c)value);
     			  return "R" + assoc.getNumb();
+    		  }
+    		  else if (value instanceof LinkParticipation_c) {
+    				String text = ((LinkParticipation_c) value).getLabel();
+    				if (text == null) {
+    					return "";
+    				} else {
+    					return text;
+    				}
+    			}
+    		  else if (value instanceof PendingEvent_c) {
+    			  return "Pedning Event";
     		  }
     	  }
     	  else{
