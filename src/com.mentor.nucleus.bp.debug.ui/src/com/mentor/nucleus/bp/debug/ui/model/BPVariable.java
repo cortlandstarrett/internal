@@ -183,7 +183,9 @@ public class BPVariable extends BPDebugElement implements IVariable {
     		  return "Current State entered via";
     	  }
     	  
-    	  if ( BPPreference_UseGroupedInstanceStyle != 1){
+    	  boolean groupedInstanceListing = store
+					.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+    	  if (!groupedInstanceListing){
     		  if (value instanceof  Link_c){
     			  Association_c assoc = Association_c.getOneR_RELOnR2904((Link_c)value);
     			  return "R" + assoc.getNumb();

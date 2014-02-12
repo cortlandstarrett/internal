@@ -227,8 +227,10 @@ public class BPValue extends BPDebugElement implements IValue {
 					return ((StateMachineEvent_c)value).getName();
 				}
 
-
-				if ( BPPreference_UseGroupedInstanceStyle != 1){
+				
+				boolean groupedInstanceListing = store
+						.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+				if (!groupedInstanceListing){
 					if (value instanceof Link_c) {
 						Instance_c firstInstance = null;
 						Instance_c secondInstance = null;
@@ -441,7 +443,9 @@ public class BPValue extends BPDebugElement implements IValue {
 									NewStateTransition_c.getManySM_NSTXNsOnR507(
 											Transition_c.getOneSM_TXNOnR2953(inst)))));
 
-			if ( BPPreference_UseGroupedInstanceStyle == 1){
+			boolean groupedInstanceListing = store
+					.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+			if (groupedInstanceListing){
 				Link_c[] originLinks = Link_c.getManyI_LNKsOnR2901(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
 				Association_c[] originAssocs = Association_c.getManyR_RELsOnR2904(originLinks);
 				originLinksChildern = getChildern(originAssocs, "Origin Of", originLinks, inst);
@@ -576,7 +580,9 @@ public class BPValue extends BPDebugElement implements IValue {
 		boolean enhancedVariableView = store
 				.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
 		if (enhancedVariableView){
-			if ( BPPreference_UseGroupedInstanceStyle == 1){
+			boolean groupedInstanceListing = store
+					.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+			if (groupedInstanceListing){
 				if (value instanceof Association_c) {
 					Instance_c[] firstInstance = null;
 					//			Instance_c[] secondInstance = null;
