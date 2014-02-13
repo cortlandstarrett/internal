@@ -1082,7 +1082,7 @@ public class BPDebugTarget extends BPDebugElement implements IDebugTarget {
           .getOneCL_ICOnR2963(exEng);
       if (icomp != null) {
         ImportedReference_c[] iRefs = ImportedReference_c
-                .getManyCL_IIRsOnR4708(PortReference_c.getManyCL_PORsOnR4707(icomp));
+                .getManyCL_IIRsOnR4708(PortReference_c.getManyCL_PORsOnR4707(icomp)); 
         for (int i = 0; i < iRefs.length; i++) {
           wireChannels(exEng, parentExEng, iRefs[i]);
         }
