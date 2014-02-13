@@ -156,6 +156,7 @@ INSERT INTO T_TNS VALUES (316, 'Event.gif',                          'MSG_E',  '
 INSERT INTO T_TNS VALUES (317, 'InterfaceSignal.gif',            'MSG_SIG',  '', '','',                 'Formal Signal', 						-1, '');
 INSERT INTO T_TNS VALUES (318, 'Operation.gif',            'MSG_IA',  '', '','',                 'Informal Argument', 						-1, '');
 INSERT INTO T_TNS VALUES (319, 'Transition.gif',            'SM_CRTXN',  '', '','',                 'Creation Transitions', 						-1, '');
+INSERT INTO T_TNS VALUES (382, 'Port.gif',                  'CL_POR',  '', 'Name', '',                 'Port Reference',                        -1, '');
 
 INSERT INTO T_TPS VALUES (1, 1,  2,  '->S_DOM[R28]', '', false);
 INSERT INTO T_TPS VALUES (2, 2,  72, '->S_DPK[R40]', '', false);
