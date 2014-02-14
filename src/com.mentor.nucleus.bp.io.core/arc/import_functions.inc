@@ -867,6 +867,7 @@ ${setSize.body}
                 		CorePlugin.getImportedElementKeyMap().put(loadedInstances.get(i), loadedInstances.get(i).getInstanceKey());
                 	}
                 }
+                helper.addPortReferenceInstances(loadedInstances);
                 if(createUniqueIds) {                
 	                // then for every loaded instance update
 	                // any unique id UUID value
@@ -1039,6 +1040,7 @@ ${setSize.body}
 		.else
 		helper.upgradeDatatypes(loadedInstances);
 		.end if
+		
         }
         finally {
             mr.enableDeltaCollection();

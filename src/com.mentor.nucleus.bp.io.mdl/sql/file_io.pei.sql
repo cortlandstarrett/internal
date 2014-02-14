@@ -107,7 +107,7 @@ INSERT INTO EO VALUES ( '12.4.6.1', '1.1',      '',           'Domain',         
 INSERT INTO EO VALUES ( '12.4.7',	'14.1.1', '12.4.8',     'Interface Package', 4206, 'many', 'none', true );
 INSERT INTO EO VALUES ( '12.4.8',       '12.4.8.1',    '12.4.9', 'Component Reference', 4205, 'many', 'first', false );
 INSERT INTO EO VALUES ( '12.4.8.1',       '12.4.8.1.1',    '12.4.8.2', 'Port Reference', 4707, 'many', 'first', false );
-INSERT INTO EO VALUES ( '12.4.8.1.1',      '12.4.8.1.1.1'  ,'12.4.8.3', 'Imported Reference', 4708, 'many', 'first', false );
+INSERT INTO EO VALUES ( '12.4.8.1.1',      '12.4.8.1.1.1'  ,'', 'Imported Reference', 4708, 'many', 'first', false );
 INSERT INTO EO VALUES ( '12.4.8.1.1.1',     '12.4.8.1.1.1.1',    '12.4.8.1.1.2', 'Imported Provision', 4703, 'one', 'first', false );
 INSERT INTO EO VALUES ( '12.4.8.1.1.1.1',       '',    '', 'Imported Provision In Satisfaction', 4705, 'many', 'first', false );
 INSERT INTO EO VALUES ( '12.4.8.1.1.2',       '',    '', 'Imported Requirement', 4703, 'one', 'first', false );
