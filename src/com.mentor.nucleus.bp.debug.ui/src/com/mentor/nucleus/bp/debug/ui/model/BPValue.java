@@ -316,7 +316,7 @@ public class BPValue extends BPDebugElement implements IValue {
 						//					Instance_c[] secondInstance = null;
 
 						if (name == "Origin Of") {
-							Link_c[] instanceLinks = removeExtraElements();
+							Link_c[] instanceLinks = getAssociationLinks();
 
 							firstInstance = Instance_c .getManyI_INSsOnR2958(
 									LinkParticipation_c.getManyI_LIPsOnR2903(
@@ -329,7 +329,7 @@ public class BPValue extends BPDebugElement implements IValue {
 							//						Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 
 						} else if (name == "Destination Of") {
-							Link_c[] instanceLinks = removeExtraElements();
+							Link_c[] instanceLinks = getAssociationLinks();
 
 							firstInstance = Instance_c .getManyI_INSsOnR2958(
 									LinkParticipation_c .getManyI_LIPsOnR2903(
@@ -343,7 +343,7 @@ public class BPValue extends BPDebugElement implements IValue {
 
 						} 
 						else if (name == "Associator For") {
-							Link_c[] instanceLinks = removeExtraElements();
+							Link_c[] instanceLinks = getAssociationLinks();
 
 
 							Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
@@ -645,7 +645,7 @@ public class BPValue extends BPDebugElement implements IValue {
 					//			Instance_c[] secondInstance = null;
 
 					if (name == "Origin Of") {
-						Link_c[] instanceLinks = removeExtraElements();
+						Link_c[] instanceLinks = getAssociationLinks();
 
 						firstInstance = Instance_c .getManyI_INSsOnR2958(
 								LinkParticipation_c.getManyI_LIPsOnR2903(
@@ -658,7 +658,7 @@ public class BPValue extends BPDebugElement implements IValue {
 						//				Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 
 					} else if (name == "Destination Of") {
-						Link_c[] instanceLinks = removeExtraElements();
+						Link_c[] instanceLinks = getAssociationLinks();
 
 						firstInstance = Instance_c .getManyI_INSsOnR2958(
 								LinkParticipation_c .getManyI_LIPsOnR2903(
@@ -673,7 +673,7 @@ public class BPValue extends BPDebugElement implements IValue {
 					} 
 
 					else if (name == "Associator For") {
-						Link_c[] instanceLinks = removeExtraElements();
+						Link_c[] instanceLinks = getAssociationLinks();
 
 
 						Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
@@ -795,7 +795,7 @@ public class BPValue extends BPDebugElement implements IValue {
 	/**
 	 * @return
 	 */
-	private Link_c[] removeExtraElements() {
+	private Link_c[] getAssociationLinks() {
 		Link_c[] allOriginlinks = (Link_c[]) var.linkedValues;
 		Link_c[] allAssocLinks = Link_c.getManyI_LNKsOnR2904((Association_c) value);
 		ArrayList<Link_c> validLinks = new ArrayList<Link_c>();
