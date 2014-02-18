@@ -64,9 +64,10 @@ public class VerifierPreferences
     "differ from run to run. This mode tests model concurrency and can help\nexpose race conditions.";
     public static final String enhancedVariableViewBtnName = "Show more children for instances in Variables View"; 
     public static final String enhancedVariableViewBtnTip = "When expanding class instance in Variables View, extra children will be listed (if exists)\n" +
-    		"- all related instances\n" +
-    		"- current state\n" +
-    		"- last executed transition "; 
+    		"- Current state\n" +
+    		"- Pending events\n" +
+    		"- Last executed transition\n" +
+    		"- All related instances";
     public static final String groupedInstancesListingBtnName = "Group related instances using same assocaition under single element in Variable view"; 
     
   public VerifierPreferences() {
@@ -188,7 +189,7 @@ public class VerifierPreferences
     groupedInstancesListing = new Button(composite, SWT.CHECK | SWT.LEFT);
     groupedInstancesListing.setText(groupedInstancesListingBtnName);
     groupedInstancesListing.setLayoutData(new GridData());
-    groupedInstancesListing.setToolTipText(groupedInstancesListingBtnName);
+    groupedInstancesListing.setToolTipText(null);
     if (enhancedVariableView.getSelection()) {
     	groupedInstancesListing.setEnabled( true );
     } else {
