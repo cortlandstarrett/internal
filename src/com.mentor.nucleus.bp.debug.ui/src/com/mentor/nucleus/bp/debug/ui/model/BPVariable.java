@@ -1,5 +1,8 @@
 package com.mentor.nucleus.bp.debug.ui.model;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+
 import org.eclipse.debug.core.DebugException;
 import org.eclipse.debug.core.ILaunch;
 import org.eclipse.debug.core.model.IDebugTarget;
@@ -204,22 +207,77 @@ public class BPVariable extends BPDebugElement implements IVariable {
     		  }
     	  }
     	  else{
-    		  if (value instanceof Association_c){ // Link_c){
-    			  Association_c assoc = ((Association_c)value);// Association_c.getOneR_RELOnR2904((Link_c)value);
-    			  if (this.name.equalsIgnoreCase("Destination Of")){
+    		  if (value instanceof Association_c){ 
 
-    				  ClassAsAssociatedOneSide_c oneSide = ClassAsAssociatedOneSide_c.getOneR_AONEOnR209(LinkedAssociation_c.getOneR_ASSOCOnR206(assoc));
-    				  if (oneSide != null)
-    					  return "R" + assoc.getNumb() + (oneSide.getTxt_phrs().length() != 0 ? ".'" + oneSide.getTxt_phrs() +"'" : ""  ) ;
+					if (name == "Origin Of") {
+						Link_c[] instanceLinks = removeExtraElements();
 
-    			  }
-    			  else if (this.name.equalsIgnoreCase("Origin Of")){
-    				  ClassAsAssociatedOtherSide_c otherSide = ClassAsAssociatedOtherSide_c.getOneR_AOTHOnR210(LinkedAssociation_c.getOneR_ASSOCOnR206(assoc));
-    				  if (otherSide != null)
-    					  return "R" + assoc.getNumb() + (otherSide.getTxt_phrs().length() != 0 ? ".'" + otherSide.getTxt_phrs() +"'" : ""  ) ;
+						 LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2902( instanceLinks);
+						
+						 
+						 
+						 //										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+						if (lp == null)
+							return LinkParticipation_c.getOneI_LIPOnR2903( instanceLinks).getLabel();
+						
+						
+						
+						//						Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+						else 
+							return lp.getLabel();
 
-    			  }
-    			  return "R" + assoc.getNumb();
+					} else if (name == "Destination Of") {
+						Link_c[] instanceLinks = removeExtraElements();
+
+						
+						LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2901( instanceLinks);
+						//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+						if (lp == null)
+							return LinkParticipation_c .getOneI_LIPOnR2903( instanceLinks).getLabel();
+						//											Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+						else 
+							return lp.getLabel();
+					} 
+					else if (name == "Associator For") {
+		    			  return "R" + ((Association_c)value).getNumb();
+
+					}
+					//					if (secondInstance == null) {
+					//						return getInstanceChildern(firstInstance);
+					//						return getChildern(firstInstance, null, null);
+					//					} else {
+					//						Object[] objects = { firstInstance, secondInstance };
+					//						return getChildern(objects, "Association");
+				
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+    			  
+//    			  Association_c assoc = ((Association_c)value);// Association_c.getOneR_RELOnR2904((Link_c)value);
+//    			  if (this.name.equalsIgnoreCase("Destination Of")){
+//
+//    				  ClassAsAssociatedOneSide_c oneSide = ClassAsAssociatedOneSide_c.getOneR_AONEOnR209(LinkedAssociation_c.getOneR_ASSOCOnR206(assoc));
+//    				  if (oneSide != null)
+//    					  return "R" + assoc.getNumb() + (oneSide.getTxt_phrs().length() != 0 ? ".'" + oneSide.getTxt_phrs() +"'" : ""  ) ;
+//
+//    			  }
+//    			  else if (this.name.equalsIgnoreCase("Origin Of")){
+//    				  ClassAsAssociatedOtherSide_c otherSide = ClassAsAssociatedOtherSide_c.getOneR_AOTHOnR210(LinkedAssociation_c.getOneR_ASSOCOnR206(assoc));
+//    				  if (otherSide != null)
+//    					  return "R" + assoc.getNumb() + (otherSide.getTxt_phrs().length() != 0 ? ".'" + otherSide.getTxt_phrs() +"'" : ""  ) ;
+//
+//    			  }
+					return "R" + ((Association_c)value).getNumb();
     		  }else if ( value instanceof PendingEvent_c[]){
     			  return "Pending Event";
     		  }else if ( value instanceof PendingEvent_c){
@@ -231,6 +289,25 @@ public class BPVariable extends BPDebugElement implements IVariable {
       
       return "Error: Variable for local value not found.";
     }
+    
+    private Link_c[] removeExtraElements() {
+		Link_c[] allOriginlinks = (Link_c[]) linkedValues;
+		Link_c[] allAssocLinks = Link_c.getManyI_LNKsOnR2904((Association_c) value);
+		ArrayList<Link_c> validLinks = new ArrayList<Link_c>();
+		
+		HashMap<Link_c, String>  DuplicateInspection = new HashMap<Link_c, String>();
+		for (Link_c link : allOriginlinks) {
+			DuplicateInspection.put(link, "");
+		}
+		for (Link_c link : allAssocLinks) {
+			String exist = DuplicateInspection.get(link);
+			if (exist != null){
+				validLinks.add(link);
+			}
+		}
+		Link_c[] instanceLinks = validLinks.toArray(new Link_c[validLinks.size()]);
+		return instanceLinks;
+	}
     
     public Class getType() {
     	return value.getClass();
