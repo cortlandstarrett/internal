@@ -6,6 +6,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.UUID;
 
+import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.debug.core.DebugException;
 import org.eclipse.debug.core.ILaunch;
 import org.eclipse.debug.core.model.IDebugTarget;
@@ -55,8 +56,6 @@ import com.sun.xml.internal.bind.v2.runtime.unmarshaller.XsiNilLoader.Array;
 public class BPValue extends BPDebugElement implements IValue {
     Object value = null;
     BPVariable  var = null;
-    int BPPReference_UseAdvancedVariableView = 1;
-    int BPPreference_UseGroupedInstanceStyle = 2;
 
 	public BPValue(IDebugTarget debugTarget, ILaunch launch, Object val, String Name, BPVariable BPVar) {
 		super((BPDebugTarget)debugTarget, launch);
@@ -140,9 +139,12 @@ public class BPValue extends BPDebugElement implements IValue {
 	}
 
 	/**
-	 * @param result
-	 * @param insts
-	 * @return
+	 * Create a string of instance references array
+	 * in form of  
+	 *      [<array length>] #:<instance class>, #:<<instance class>, etc
+	 * 
+	 * @param insts  Instance references array
+	 * @return  the form string
 	 */
 	private String printInstanceSet(Instance_c[] insts) {
 		String result = "";
@@ -195,6 +197,7 @@ public class BPValue extends BPDebugElement implements IValue {
 			AttributeValue_c attrVal = (AttributeValue_c)value;
 			RuntimeValue_c rtVal = RuntimeValue_c.getOneRV_RVLOnR3304(attrVal);
 			if ( rtVal == null){
+				// Referential attribute
 				rtVal = (RuntimeValue_c) ((AttributeValue_c)value).getModelRoot().getInstanceList(
 						RuntimeValue_c.class).getGlobal(null, ((AttributeValue_c)value).Getruntimevalue());
 				
@@ -248,60 +251,7 @@ public class BPValue extends BPDebugElement implements IValue {
 				boolean groupedInstanceListing = store
 						.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
 				if (!groupedInstanceListing){
-					if (value instanceof Link_c) {
-						Instance_c firstInstance = null;
-						Instance_c secondInstance = null;
-
-						if (name == "Origin Of") {
-							firstInstance = Instance_c
-									.getOneI_INSOnR2958(LinkParticipation_c
-											.getOneI_LIPOnR2902((Link_c) value));
-							secondInstance = Instance_c
-									.getOneI_INSOnR2958(LinkParticipation_c
-											.getOneI_LIPOnR2903((Link_c) value));
-						} else if (name == "Destination Of") {
-							firstInstance = Instance_c
-									.getOneI_INSOnR2958(LinkParticipation_c
-											.getOneI_LIPOnR2901((Link_c) value));
-							secondInstance = Instance_c
-									.getOneI_INSOnR2958(LinkParticipation_c
-											.getOneI_LIPOnR2903((Link_c) value));
-						} else if (name == "Associator For") {
-							firstInstance = Instance_c
-									.getOneI_INSOnR2958(LinkParticipation_c
-											.getOneI_LIPOnR2901((Link_c) value));
-							secondInstance = Instance_c
-									.getOneI_INSOnR2958(LinkParticipation_c
-											.getOneI_LIPOnR2902((Link_c) value));
-						}
-						if (secondInstance == null) {
-							return firstInstance.getLabel();
-						} else {
-							return firstInstance.getLabel() + ","
-									+ secondInstance.getLabel();
-						}
-
-						// LinkParticipation_c[] linkeds = LinkParticipation_c
-						// .getManyI_LIPsOnR2959(Association_c
-						// .getOneR_RELOnR2959((LinkParticipation_c) value));
-						// LinkParticipation_c other = null;
-						// for (int i = 0; i < linkeds.length; i++) {
-						// if (linkeds[i] != value) {
-						// other = linkeds[i];
-						// break;
-						// }
-						// }
-						// if (other == null){
-						// return "";
-						// }
-						// Instance_c linkedInstance = Instance_c.getOneI_INSOnR2958(other);
-						// Link_c originLink = Link_c.getOneI_LNKOnR2901(other);
-						// Link_c destLink = Link_c.getOneI_LNKOnR2902(other);
-						// if ( originLink == null && destLink == null)
-						// return "";
-						// else
-						// return linkedInstance.getLabel();
-					}else if (value instanceof LinkParticipation_c) {
+					if (value instanceof LinkParticipation_c) {
 						Object[] instanceChildren = AssociationsAdapter.getInstance().getChildren(value);
 						Instance_c[] children = new Instance_c[instanceChildren.length];
 						for (int i = 0; i < instanceChildren.length; i++) {
@@ -310,62 +260,46 @@ public class BPValue extends BPDebugElement implements IValue {
 						return printInstanceSet(children);
 					} 
 				}else{
-					/******************/
 					if (value instanceof Association_c) {
 						Instance_c[] firstInstance = null;
-						//					Instance_c[] secondInstance = null;
 
 						if (name == "Origin Of") {
-							Link_c[] instanceLinks = getAssociationLinks();
+							Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
 
 							firstInstance = Instance_c .getManyI_INSsOnR2958(
 									LinkParticipation_c.getManyI_LIPsOnR2903(
 											instanceLinks));
-							//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 							if (firstInstance.length == 0)
 								firstInstance = Instance_c .getManyI_INSsOnR2958(
 										LinkParticipation_c .getManyI_LIPsOnR2902(
 												instanceLinks));
-							//						Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 
-						} else if (name == "Destination Of") {
-							Link_c[] instanceLinks = getAssociationLinks();
+							} else if (name == "Destination Of") {
+							Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
 
 							firstInstance = Instance_c .getManyI_INSsOnR2958(
 									LinkParticipation_c .getManyI_LIPsOnR2903(
 											instanceLinks));
-							//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 							if (firstInstance.length == 0)
 								firstInstance = Instance_c .getManyI_INSsOnR2958(
 										LinkParticipation_c .getManyI_LIPsOnR2901(
 												instanceLinks));
-							//											Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-
 						} 
 						else if (name == "Associator For") {
-							Link_c[] instanceLinks = getAssociationLinks();
-
+							Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
 
 							Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
 									LinkParticipation_c .getManyI_LIPsOnR2901(
 											instanceLinks));
-							//						Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 
 							Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
 									LinkParticipation_c .getManyI_LIPsOnR2902(
 											instanceLinks));
-							//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 
 							firstInstance = new Instance_c[first.length + second.length];
 							System.arraycopy(first, 0, firstInstance, 0, first.length);
 							System.arraycopy(second, 0,firstInstance , first.length, second.length);
 						}
-						//					if (secondInstance == null) {
-						//						return getInstanceChildern(firstInstance);
-						//						return getChildern(firstInstance, null, null);
-						//					} else {
-						//						Object[] objects = { firstInstance, secondInstance };
-						//						return getChildern(objects, "Association");
 						return printInstanceSet(firstInstance);
 
 					}else if ( value instanceof PendingEvent_c){
@@ -383,7 +317,6 @@ public class BPValue extends BPDebugElement implements IValue {
 							sep = ", ";
 						  }
 						}
-						
 						return result;
 					}
 				}
@@ -461,12 +394,16 @@ public class BPValue extends BPDebugElement implements IValue {
 		return getChildern(rvs, null, null, null);
 		}
 		
+	/**
+	 * Collect all instance children.
+	 * Support two modes based on BP Verifier preference.
+	 * 
+	 * 
+	 * @param instance  the instance to collect children for
+	 * @return An array with instance children
+	 */
 	private IVariable[] getInstanceChildern(Instance_c inst) {
-		
-		IVariable[] extra_childern = new IVariable[0];
 		AttributeValue_c[] vals = AttributeValue_c.getManyI_AVLsOnR2909(inst);
-
-		
 		StateMachineEvent_c event = null;
 		
 		IPreferenceStore store = CorePlugin.getDefault()
@@ -475,112 +412,97 @@ public class BPValue extends BPDebugElement implements IValue {
 				.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
 		
 		if (enhancedVariableView){
+			try{
+				// Last can happen event.
+				event = StateMachineEvent_c.getOneSM_EVTOnR525(
+						SemEvent_c.getOneSM_SEVTOnR503(
+								StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
+										NewStateTransition_c.getManySM_NSTXNsOnR507(
+												Transition_c.getOneSM_TXNOnR2953(inst)))));
+
+				boolean groupedInstanceListing = store
+						.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+
+				if (groupedInstanceListing){
+					StateMachineState_c currentState = StateMachineState_c.getOneSM_STATEOnR2915(inst);
+
+					// collect associations based on instance relation direction
+					Link_c[] originLinks = Link_c.getManyI_LNKsOnR2901(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+					Association_c[] originAssocs = Association_c.getManyR_RELsOnR2904(originLinks);
+					// Link_c instance used later in order to determine which links related to each association belongs to this instance
+					IVariable[] originLinksChildern = getChildern(originAssocs, "Origin Of", originLinks, inst);
 
 
-			event = StateMachineEvent_c.getOneSM_EVTOnR525(
-					SemEvent_c.getOneSM_SEVTOnR503(
-							StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
-									NewStateTransition_c.getManySM_NSTXNsOnR507(
-											Transition_c.getOneSM_TXNOnR2953(inst)))));
+					Link_c[] destLinks = Link_c.getManyI_LNKsOnR2902(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+					Association_c[] destAssocs = Association_c.getManyR_RELsOnR2904(destLinks);
+					// Link_c instance used later in order to determine which links related to each association belongs to this instance
+					IVariable[] destLinksChildern = getChildern(destAssocs, "Destination Of", destLinks, inst);
 
-			boolean groupedInstanceListing = store
-					.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
-			if (groupedInstanceListing){
-				
-				StateMachineState_c currentState = StateMachineState_c.getOneSM_STATEOnR2915(inst);
-				
-				Link_c[] originLinks = Link_c.getManyI_LNKsOnR2901(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
-				Association_c[] originAssocs = Association_c.getManyR_RELsOnR2904(originLinks);
-				IVariable[] originLinksChildern = getChildern(originAssocs, "Origin Of", originLinks, inst);
+					Link_c[] assocLinks = Link_c.getManyI_LNKsOnR2903(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
+					Association_c[] linkedAsscos = Association_c.getManyR_RELsOnR2904(assocLinks);
+					// Link_c instance used later in order to determine which links related to each association belongs to this instance
+					IVariable[] assocLinksChildern = getChildern(linkedAsscos, "Associator For", assocLinks, inst);
 
+					IVariable[] attibutesChildern = getChildern(vals, null, null, null);
 
-				Link_c[] destLinks = Link_c.getManyI_LNKsOnR2902(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
-				Association_c[] destAssocs = Association_c.getManyR_RELsOnR2904(destLinks);
-				IVariable[] destLinksChildern = getChildern(destAssocs, "Destination Of", destLinks, inst);
+					// Collect Pending events instance
+					PendingEvent_c[] pendingEvents = PendingEvent_c.getManyI_EVIsOnR2935(inst);
 
-				Link_c[] assocLinks = Link_c.getManyI_LNKsOnR2903(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
-				Association_c[] linkedAsscos = Association_c.getManyR_RELsOnR2904(assocLinks);
-				IVariable[] assocLinksChildern = getChildern(linkedAsscos, "Associator For", assocLinks, inst);
-				
-				IVariable[] attibutesChildern = getChildern(vals, null, null, null);
-				
-				PendingEvent_c[] pendingEvents = PendingEvent_c.getManyI_EVIsOnR2935(inst);
-				
-				
-				
-				
-				int validState = 0;
-				int validEvent = 0;
-				int validPendingEvents = 0;
-				if (pendingEvents.length != 0)
-					validPendingEvents = 1;
-				if (currentState != null )
-					validState = 1;
-				if (event!= null)
-					validEvent = 1;
-				
-				// IVariable[] childern1 = getChildern(links, null);
-				
-				
-				IVariable[] childern = new IVariable[originLinksChildern.length
-						+ destLinksChildern.length + assocLinksChildern.length + attibutesChildern.length + validEvent + validState + validPendingEvents];
-				
-				if (childern.length == 0)
+					int validState = 0;
+					int validEvent = 0;
+					int validPendingEvents = 0;
+					if (pendingEvents.length != 0)
+						validPendingEvents = 1;
+					if (currentState != null )
+						validState = 1;
+					if (event!= null)
+						validEvent = 1;
+
+					// Create the whole children arrays
+					IVariable[] childern = new IVariable[originLinksChildern.length
+					                                     + destLinksChildern.length + assocLinksChildern.length + attibutesChildern.length + validEvent + validState + validPendingEvents];
+
+					if (childern.length == 0)
+						return childern;
+
+					childern[0] = new BPVariable(getDebugTarget(), getLaunch(), currentState, null);
+					childern[validState] = new BPVariable(getDebugTarget(), getLaunch(), event, null);
+					childern[validState + validEvent] = new BPVariable(getDebugTarget(), getLaunch(), pendingEvents, null); 
+
+					int childernIndex = validState + validEvent + validPendingEvents;
+
+					if (attibutesChildern.length !=0)
+						System.arraycopy(attibutesChildern, 0, childern, childernIndex, attibutesChildern.length);
+
+					childernIndex = childernIndex + attibutesChildern.length;
+					if (originLinksChildern.length !=0)
+						System.arraycopy(originLinksChildern, 0, childern, childernIndex, originLinksChildern.length);
+
+					childernIndex = childernIndex + originLinksChildern.length;
+					if (destLinksChildern.length !=0)
+						System.arraycopy(destLinksChildern, 0, childern, childernIndex, destLinksChildern.length);
+
+					childernIndex = childernIndex + destLinksChildern.length;
+					if (assocLinksChildern.length !=0)
+						System.arraycopy(assocLinksChildern, 0, childern, childernIndex, assocLinksChildern.length);
 					return childern;
-				
-				childern[0] = new BPVariable(getDebugTarget(), getLaunch(), currentState, null);
-				childern[validState] = new BPVariable(getDebugTarget(), getLaunch(), event, null);
-				childern[validState + validEvent] = new BPVariable(getDebugTarget(), getLaunch(), pendingEvents, null); 
-				
-				int childernIndex = validState + validEvent + validPendingEvents;
-
-				
-				if (attibutesChildern.length !=0)
-					System.arraycopy(attibutesChildern, 0, childern, childernIndex, attibutesChildern.length);
-				
-				childernIndex = childernIndex + attibutesChildern.length;
-				if (originLinksChildern.length !=0)
-					System.arraycopy(originLinksChildern, 0, childern, childernIndex, originLinksChildern.length);
-				
-				childernIndex = childernIndex + originLinksChildern.length;
-				if (destLinksChildern.length !=0)
-					System.arraycopy(destLinksChildern, 0, childern, childernIndex, destLinksChildern.length);
-				
-				childernIndex = childernIndex + destLinksChildern.length;
-				if (assocLinksChildern.length !=0)
-					System.arraycopy(assocLinksChildern, 0, childern, childernIndex, assocLinksChildern.length);
-				return childern;
-			}
-			else {
-				Object[] instanceChildern = InstancesAdapter.getInstance().getChildren(inst);
-				IVariable[] childern = getChildern(instanceChildern, null , null, null);
-				return childern;
-				
-//				Link_c[] originLinks = Link_c.getManyI_LNKsOnR2901(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
-//				originLinksChildern = getChildern(originLinks, "Origin Of", null, null);
-//
-//				Link_c[] destLinks = Link_c.getManyI_LNKsOnR2902(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
-//				destLinksChildern = getChildern(destLinks, "Destination Of", null, null);
-//
-//				Link_c[] assocLinks = Link_c.getManyI_LNKsOnR2903(LinkParticipation_c .getManyI_LIPsOnR2958(inst));
-//				assocLinksChildern = getChildern(assocLinks, "Associator For", null, null);
+				}
+				else {
+					Object[] instanceChildern = InstancesAdapter.getInstance().getChildren(inst);
+					IVariable[] childern = getChildern(instanceChildern, null , null, null);
+					return childern;
+				}
+			}catch (Exception e) {
+				IVariable[] attibutesChildern = getChildern(vals, null, null, null);
+				return attibutesChildern;
 			}
 		}else {
 			IVariable[] attibutesChildern = getChildern(vals, null, null, null);
 			return attibutesChildern;
 		}
 		
-	
-		//return new IVariable[0] ;
+		// No default return statement needed since all passes are covered.
 	}
-
-	// private void getChildren(Instance_c[] insts) {
-	// for ( int i=0; i < insts.length; i++){
-	// LinkParticipation_c[] lins =
-	// LinkParticipation_c.getManyI_LIPsOnR2958(insts);
-	//			
-	// }
-	// }
 
 	/**
 	 * @param objects : represents the child values for the select variable in Variable View
@@ -626,192 +548,77 @@ public class BPValue extends BPDebugElement implements IValue {
 			return getVariables((RuntimeValue_c)value);
 		}
 		else if (value instanceof Instance_c) {
-//			AttributeValue_c[] vals = AttributeValue_c
-//					.getManyI_AVLsOnR2909((Instance_c) value);
-			
 			return getInstanceChildern((Instance_c)value);
 		}
 		
-		IPreferenceStore store = CorePlugin.getDefault()
-				.getPreferenceStore();
-		boolean enhancedVariableView = store
-				.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
-		if (enhancedVariableView){
-			boolean groupedInstanceListing = store
-					.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
-			if (groupedInstanceListing){
-				if (value instanceof Association_c) {
-					Instance_c[] firstInstance = null;
-					//			Instance_c[] secondInstance = null;
+		// Show More children for instance
+		try{
+			IPreferenceStore store = CorePlugin.getDefault()
+					.getPreferenceStore();
+			boolean enhancedVariableView = store
+					.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+			if (enhancedVariableView){
+				boolean groupedInstanceListing = store
+						.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+				if (groupedInstanceListing){
+					if (value instanceof Association_c) {
+						Instance_c[] firstInstance = null;
 
-					if (name == "Origin Of") {
-						Link_c[] instanceLinks = getAssociationLinks();
+						if (name == "Origin Of") {
+							Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
 
-						firstInstance = Instance_c .getManyI_INSsOnR2958(
-								LinkParticipation_c.getManyI_LIPsOnR2903(
-										instanceLinks));
-						//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-						if (firstInstance.length == 0)
 							firstInstance = Instance_c .getManyI_INSsOnR2958(
-									LinkParticipation_c .getManyI_LIPsOnR2902(
+									LinkParticipation_c.getManyI_LIPsOnR2903(
 											instanceLinks));
-						//				Link_c.getManyI_LNKsOnR2904((Association_c) value)));
+							if (firstInstance.length == 0)
+								firstInstance = Instance_c .getManyI_INSsOnR2958(
+										LinkParticipation_c .getManyI_LIPsOnR2902(
+												instanceLinks));
 
-					} else if (name == "Destination Of") {
-						Link_c[] instanceLinks = getAssociationLinks();
+						} else if (name == "Destination Of") {
+							Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
 
-						firstInstance = Instance_c .getManyI_INSsOnR2958(
-								LinkParticipation_c .getManyI_LIPsOnR2903(
-										instanceLinks));
-						//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-						if (firstInstance.length == 0)
 							firstInstance = Instance_c .getManyI_INSsOnR2958(
+									LinkParticipation_c .getManyI_LIPsOnR2903(
+											instanceLinks));
+							if (firstInstance.length == 0)
+								firstInstance = Instance_c .getManyI_INSsOnR2958(
+										LinkParticipation_c .getManyI_LIPsOnR2901(
+												instanceLinks));
+						} 
+
+						else if (name == "Associator For") {
+							Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
+
+
+							Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
 									LinkParticipation_c .getManyI_LIPsOnR2901(
 											instanceLinks));
-						//									Link_c.getManyI_LNKsOnR2904((Association_c) value)));
 
-					} 
+							Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
+									LinkParticipation_c .getManyI_LIPsOnR2902(
+											instanceLinks));
 
-					else if (name == "Associator For") {
-						Link_c[] instanceLinks = getAssociationLinks();
-
-
-						Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
-								LinkParticipation_c .getManyI_LIPsOnR2901(
-										instanceLinks));
-						//				Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-
-						Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
-								LinkParticipation_c .getManyI_LIPsOnR2902(
-										instanceLinks));
-						//								Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-
-						firstInstance = new Instance_c[first.length + second.length];
-						System.arraycopy(first, 0, firstInstance, 0, first.length);
-						System.arraycopy(second, 0,firstInstance , first.length, second.length);
+							firstInstance = new Instance_c[first.length + second.length];
+							System.arraycopy(first, 0, firstInstance, 0, first.length);
+							System.arraycopy(second, 0,firstInstance , first.length, second.length);
+						}
+						return getChildern(firstInstance, null, null, null);
+					} else if ( value instanceof PendingEvent_c[]){
+						return getChildern((Object[]) value, null , null, null);
 					}
-					//			if (secondInstance == null) {
-					//				return getInstanceChildern(firstInstance);
-					return getChildern(firstInstance, null, null, null);
-					//			} else {
-					//				Object[] objects = { firstInstance, secondInstance };
-					//				return getChildern(objects, "Association");
-
-				} else if ( value instanceof PendingEvent_c[]){
-					return getChildern((Object[]) value, null , null, null);
-				}
-
-
-				/************************************************/
-			}else{
-				if (value instanceof Link_c) {
-					Instance_c firstInstance = null;
-					Instance_c secondInstance = null;
-
-					if (name == "Origin Of") {
-						firstInstance = Instance_c
-								.getOneI_INSOnR2958(LinkParticipation_c
-										.getOneI_LIPOnR2902((Link_c) value));
-						secondInstance = Instance_c
-								.getOneI_INSOnR2958(LinkParticipation_c
-										.getOneI_LIPOnR2903((Link_c) value));
-					} else if (name == "Destination Of") {
-						firstInstance = Instance_c
-								.getOneI_INSOnR2958(LinkParticipation_c
-										.getOneI_LIPOnR2901((Link_c) value));
-						secondInstance = Instance_c
-								.getOneI_INSOnR2958(LinkParticipation_c
-										.getOneI_LIPOnR2903((Link_c) value));
-					} else if (name == "Associator For") {
-						firstInstance = Instance_c
-								.getOneI_INSOnR2958(LinkParticipation_c
-										.getOneI_LIPOnR2901((Link_c) value));
-						secondInstance = Instance_c
-								.getOneI_INSOnR2958(LinkParticipation_c
-										.getOneI_LIPOnR2902((Link_c) value));
+				}else{
+					if (value instanceof LinkParticipation_c) {
+						Object[] instanceChildern = AssociationsAdapter.getInstance().getChildren(value);
+						IVariable[] childern = getChildern(instanceChildern, null , null, null);
+						return childern;
 					}
-					if (secondInstance == null) {
-						return getInstanceChildern(firstInstance);
-					} else {
-						Object[] objects = { firstInstance, secondInstance };
-						return getChildern(objects, "Association", null, null);
-
-					}
-				}else if (value instanceof LinkParticipation_c) {
-					 Object[] instanceChildern = AssociationsAdapter.getInstance().getChildren(value);
-					 IVariable[] childern = getChildern(instanceChildern, null , null, null);
-					 return childern;
 				}
 			}
-		}
-//			
-			
-			
-			/************************************************/
-			//				
-			// LinkParticipation_c[] linkeds =
-			// LinkParticipation_c.getManyI_LIPsOnR2959(Association_c.getOneR_RELOnR2959((LinkParticipation_c)
-			// value));
-			// LinkParticipation_c other = null;
-			// for (int i = 0 ; i < linkeds.length ; i++){
-			// if ( linkeds[i] != value){
-			// other = linkeds[i];
-			// break;
-			// }
-			// }
-			// Link_c originLink = Link_c.getOneI_LNKOnR2901(other);
-			// Link_c destLink = Link_c.getOneI_LNKOnR2902(other);
-			// if ( other == null ){
-			// return new IVariable[0];
-			// }
-			// if (originLink == null && destLink == null ){
-			// return new IVariable[0];
-			// }
-			//				
-			// Instance_c linkedInstance = Instance_c.getOneI_INSOnR2958(other);
-			// AttributeValue_c[] vals = AttributeValue_c
-			// .getManyI_AVLsOnR2909((Instance_c)linkedInstance);
-			//			
-			// LinkParticipation_c[] links =
-			// LinkParticipation_c.getManyI_LIPsOnR2958(linkedInstance);
-			//
-			// IVariable[] childern1 = getChildern(links, null);
-			// IVariable[] childern2 = getChildern(vals, null);
-			// IVariable[] childern = new IVariable[childern1.length +
-			// childern2.length];
-			// System.arraycopy(childern1, 0, childern, 0, childern1.length);
-			// System.arraycopy(childern2, 0, childern, childern1.length,
-			// childern2.length);
-			// return childern;
-
-		
-		else 
-		{
-			// report error
+		}catch (Exception e) {
+			return new IVariable[0];
 		}
 		return new IVariable[0];
-	}
-
-	/**
-	 * @return
-	 */
-	private Link_c[] getAssociationLinks() {
-		Link_c[] allOriginlinks = (Link_c[]) var.linkedValues;
-		Link_c[] allAssocLinks = Link_c.getManyI_LNKsOnR2904((Association_c) value);
-		ArrayList<Link_c> validLinks = new ArrayList<Link_c>();
-		
-		HashMap<Link_c, String>  DuplicateInspection = new HashMap<Link_c, String>();
-		for (Link_c link : allOriginlinks) {
-			DuplicateInspection.put(link, "");
-		}
-		for (Link_c link : allAssocLinks) {
-			String exist = DuplicateInspection.get(link);
-			if (exist != null){
-				validLinks.add(link);
-			}
-		}
-		Link_c[] instanceLinks = validLinks.toArray(new Link_c[validLinks.size()]);
-		return instanceLinks;
 	}
 
 	public boolean hasVariables() throws DebugException {

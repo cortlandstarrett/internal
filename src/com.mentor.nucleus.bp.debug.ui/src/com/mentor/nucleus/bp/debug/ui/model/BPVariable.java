@@ -47,8 +47,6 @@ public class BPVariable extends BPDebugElement implements IVariable {
 	Object value = null;
 	Object[] linkedValues  = null;
 	Object instance = null;
-	int BPPReference_UseAdvancedVariableView = 1;
-    int BPPreference_UseGroupedInstanceStyle = 2;
 
 	public BPVariable(IDebugTarget debugTarget, ILaunch launch, Object variable, String Name) {
 		super((BPDebugTarget)debugTarget, launch);
@@ -174,127 +172,93 @@ public class BPVariable extends BPDebugElement implements IVariable {
       else if (value instanceof Instance_c){
     	  return "instance";
       }
-      IPreferenceStore store = CorePlugin.getDefault()
-				.getPreferenceStore();
-		boolean enhancedVariableView = store
-				.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
-		if (enhancedVariableView){
-    	  
-    	  if (value instanceof StateMachineState_c){
-    		  return "Current State";
-    	  }
-    	  if (value instanceof StateMachineEvent_c){
-    		  return "Last Transition";
-    	  }
-    	  
-    	  boolean groupedInstanceListing = store
-					.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
-    	  if (!groupedInstanceListing){
-    		  if (value instanceof  Link_c){
-    			  Association_c assoc = Association_c.getOneR_RELOnR2904((Link_c)value);
-    			  return "R" + assoc.getNumb();
+      
+      try{
+    	  IPreferenceStore store = CorePlugin.getDefault()
+    			  .getPreferenceStore();
+    	  boolean enhancedVariableView = store
+    			  .getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+    	  if (enhancedVariableView){
+
+    		  if (value instanceof StateMachineState_c){
+    			  return "Current State";
     		  }
-    		  else if (value instanceof LinkParticipation_c) {
-    				String text = ((LinkParticipation_c) value).getLabel();
-    				if (text == null) {
-    					return "";
-    				} else {
-    					return text;
-    				}
-    			}
-    		  else if (value instanceof PendingEvent_c) {
-    			  return "Pedning Event";
+    		  if (value instanceof StateMachineEvent_c){
+    			  return "Last Transition";
+    		  }
+
+    		  boolean groupedInstanceListing = store
+    				  .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+    		  if (!groupedInstanceListing){
+    			  if (value instanceof LinkParticipation_c) {
+    				  String text = ((LinkParticipation_c) value).getLabel();
+    				  if (text == null) {
+    					  return "";
+    				  } else {
+    					  return text;
+    				  }
+    			  }
+    			  else if (value instanceof PendingEvent_c) {
+    				  return "Pedning Event";
+    			  }
+    		  }
+    		  else{
+    			  if (value instanceof Association_c){ 
+    				  if (name == "Origin Of") {
+    					  Link_c[] instanceLinks = getInstanceLinksForAnAssociation();
+    					  LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2902( instanceLinks);
+    					  if (lp == null)
+    						  return LinkParticipation_c.getOneI_LIPOnR2903( instanceLinks).getLabel();
+    					  else 
+    						  return lp.getLabel();
+
+    				  } else if (name == "Destination Of") {
+    					  Link_c[] instanceLinks = getInstanceLinksForAnAssociation();
+    					  LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2901( instanceLinks);
+    					  if (lp == null)
+    						  return LinkParticipation_c .getOneI_LIPOnR2903( instanceLinks).getLabel();
+    					  else 
+    						  return lp.getLabel();
+    				  } 
+    				  else if (name == "Associator For") {
+    					  return "R" + ((Association_c)value).getNumb();
+
+    				  }
+    				  return "R" + ((Association_c)value).getNumb();
+    			  }
+    			  else if ( value instanceof PendingEvent_c[]){
+    				  return "Pending Event";
+    			  }
+    			  else if ( value instanceof PendingEvent_c){
+    				  return "Event";
+    			  }
     		  }
     	  }
-    	  else{
-    		  if (value instanceof Association_c){ 
-
-					if (name == "Origin Of") {
-						Link_c[] instanceLinks = removeExtraElements();
-
-						 LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2902( instanceLinks);
-						
-						 
-						 
-						 //										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-						if (lp == null)
-							return LinkParticipation_c.getOneI_LIPOnR2903( instanceLinks).getLabel();
-						
-						
-						
-						//						Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-						else 
-							return lp.getLabel();
-
-					} else if (name == "Destination Of") {
-						Link_c[] instanceLinks = removeExtraElements();
-
-						
-						LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2901( instanceLinks);
-						//										Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-						if (lp == null)
-							return LinkParticipation_c .getOneI_LIPOnR2903( instanceLinks).getLabel();
-						//											Link_c.getManyI_LNKsOnR2904((Association_c) value)));
-						else 
-							return lp.getLabel();
-					} 
-					else if (name == "Associator For") {
-		    			  return "R" + ((Association_c)value).getNumb();
-
-					}
-					//					if (secondInstance == null) {
-					//						return getInstanceChildern(firstInstance);
-					//						return getChildern(firstInstance, null, null);
-					//					} else {
-					//						Object[] objects = { firstInstance, secondInstance };
-					//						return getChildern(objects, "Association");
-				
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-    			  
-//    			  Association_c assoc = ((Association_c)value);// Association_c.getOneR_RELOnR2904((Link_c)value);
-//    			  if (this.name.equalsIgnoreCase("Destination Of")){
-//
-//    				  ClassAsAssociatedOneSide_c oneSide = ClassAsAssociatedOneSide_c.getOneR_AONEOnR209(LinkedAssociation_c.getOneR_ASSOCOnR206(assoc));
-//    				  if (oneSide != null)
-//    					  return "R" + assoc.getNumb() + (oneSide.getTxt_phrs().length() != 0 ? ".'" + oneSide.getTxt_phrs() +"'" : ""  ) ;
-//
-//    			  }
-//    			  else if (this.name.equalsIgnoreCase("Origin Of")){
-//    				  ClassAsAssociatedOtherSide_c otherSide = ClassAsAssociatedOtherSide_c.getOneR_AOTHOnR210(LinkedAssociation_c.getOneR_ASSOCOnR206(assoc));
-//    				  if (otherSide != null)
-//    					  return "R" + assoc.getNumb() + (otherSide.getTxt_phrs().length() != 0 ? ".'" + otherSide.getTxt_phrs() +"'" : ""  ) ;
-//
-//    			  }
-					return "R" + ((Association_c)value).getNumb();
-    		  }else if ( value instanceof PendingEvent_c[]){
-    			  return "Pending Event";
-    		  }else if ( value instanceof PendingEvent_c){
-    			  return "Event";
-    		  }
-    		  
-    	  }
+      }catch (Exception e) {
+    	  return "Error: Variable for local value not found.";
       }
       
       return "Error: Variable for local value not found.";
     }
     
-    private Link_c[] removeExtraElements() {
+    /**
+	 *  Get association links only selected association and instance.
+	 *  
+	 *  the linkedValues contains a list of all selected instance in particular
+	 *  linking direction.
+	 *  While querying for Association links will return an array for selected
+	 *  instance links and other instances links
+	 *  This method return the common links in linkedValues and Association
+	 *  links array.
+	 * 
+	 * @return an Link_c array for selected instance in selected association.
+	 */
+    public Link_c[] getInstanceLinksForAnAssociation() {
 		Link_c[] allOriginlinks = (Link_c[]) linkedValues;
 		Link_c[] allAssocLinks = Link_c.getManyI_LNKsOnR2904((Association_c) value);
 		ArrayList<Link_c> validLinks = new ArrayList<Link_c>();
 		
+		// Create a hashmap for fast search.
 		HashMap<Link_c, String>  DuplicateInspection = new HashMap<Link_c, String>();
 		for (Link_c link : allOriginlinks) {
 			DuplicateInspection.put(link, "");
@@ -302,6 +266,9 @@ public class BPVariable extends BPDebugElement implements IVariable {
 		for (Link_c link : allAssocLinks) {
 			String exist = DuplicateInspection.get(link);
 			if (exist != null){
+				/* A common Link_c instance between instance Link_c array
+				 * and association Link_c array 
+				*/  
 				validLinks.add(link);
 			}
 		}
