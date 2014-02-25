@@ -30,11 +30,16 @@ import org.eclipse.debug.core.model.IDebugTarget;
 import org.eclipse.debug.core.model.IProcess;
 import org.eclipse.debug.core.model.IStackFrame;
 import org.eclipse.debug.core.model.IThread;
+import org.eclipse.debug.internal.ui.viewers.model.provisional.TreeModelViewer;
+import org.eclipse.debug.internal.ui.views.variables.VariablesView;
 import org.eclipse.debug.ui.AbstractDebugView;
 import org.eclipse.debug.ui.DebugUITools;
 import org.eclipse.debug.ui.IDebugUIConstants;
 import org.eclipse.debug.ui.IDebugView;
+import org.eclipse.jface.viewers.DoubleClickEvent;
+import org.eclipse.jface.viewers.ISelection;
 import org.eclipse.jface.viewers.StructuredSelection;
+import org.eclipse.jface.viewers.TreeSelection;
 import org.eclipse.jface.viewers.TreeViewer;
 import org.eclipse.jface.viewers.Viewer;
 import org.eclipse.swt.SWT;
@@ -48,6 +53,7 @@ import org.eclipse.swt.widgets.MenuItem;
 import org.eclipse.swt.widgets.Tree;
 import org.eclipse.swt.widgets.TreeItem;
 import org.eclipse.ui.IEditorPart;
+import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IViewReference;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.PlatformUI;
@@ -637,7 +643,21 @@ public class DebugUITestUtilities {
 		}
 	}
 
-	public static String getValueForVariable(String string) {
+	public static String getValueForVariable(String ParentVariableName) {
+		return getValueForVariable(ParentVariableName, null);
+	}
+	
+	/**
+	 * Find a variable value in Variable view by knowing its name, and its
+	 * Parent variable name ( make sure that parent variable tree is expanded
+	 * before querying for child variable value )
+	 * 
+	 * @param ParentVariableName the parent variable name 
+	 * @param ChildValueName the child variable name
+	 * @return the variable string value, empty string if not found
+	 */
+	
+	public static String getValueForVariable(String ParentVariableName, String ChildValueName) {
 		openVariablesView();
 		IViewReference[] viewReferences = PlatformUI.getWorkbench()
 				.getActiveWorkbenchWindow().getActivePage().getViewReferences();
@@ -645,21 +665,77 @@ public class DebugUITestUtilities {
 			if (viewReferences[i].getId().equals(
 					IDebugUIConstants.ID_VARIABLE_VIEW)) {
 				Tree tree = getTreeInView(viewReferences[i]);
+				for (int j = 0; j < viewReferences.length; j++) {
+					while ( org.eclipse.ui.PlatformUI.getWorkbench().getDisplay().readAndDispatch());
+				}
 				TreeItem[] items = tree.getItems();
 				for (int j = 0; j < items.length; j++) {
-					if (items[j].getText().indexOf(string) != -1) {
-						String result = items[j].getText().replaceAll(string,
-								"").replaceAll("=", "").trim();
-						if (result.equals("\"\"")) {
-							return "";
-						} else {
-							return result;
+					if (items[j].getText().indexOf(ParentVariableName) != -1) {
+						TreeItem[] itemChildren = items[j].getItems();
+						if (ChildValueName == null)
+							return items[j].getText(1).equalsIgnoreCase("\"\"") ? items[j].getText(1) : "" ;
+						else{
+							for (int k = 0; k < itemChildren.length; k++) {
+								if (items[j].getText().indexOf(ChildValueName) != -1) {
+									return itemChildren[k].getText(1).equalsIgnoreCase("\"\"") ? itemChildren[k].getText(1) : "" ;
+								}
+							}
 						}
 					}
 				}
 			}
 		}
 		return "";
+	}
+	
+	public static String getValueForVariable(TreeItem[] Items, String VariableName){
+		for (int i = 0; i < Items.length; i++) {
+			if (Items[i].getText().indexOf(VariableName) != -1) {
+				return Items[i].getText(1).equalsIgnoreCase("\"\"")? Items[i].getText(1) : "" ;
+			}
+		}
+		return "";
+	}
+	
+	/**
+	 * Use this method to expand a variable tree in Variables View
+	 * 
+	 * @param VariableName is the variable name
+	 * @return Variable children tree items ( if found )
+	 */
+	
+	@SuppressWarnings("restriction")
+	public static TreeItem[] expandValueinVariablesView(String VariableName) {
+		while ( org.eclipse.ui.PlatformUI.getWorkbench().getDisplay().readAndDispatch());
+		openVariablesView();
+		IViewReference[] viewReferences = PlatformUI.getWorkbench()
+				.getActiveWorkbenchWindow().getActivePage().getViewReferences();
+		for (int i = 0; i < viewReferences.length; i++) {
+			if (viewReferences[i].getId().equals( 
+					IDebugUIConstants.ID_VARIABLE_VIEW)) {
+				VariablesView variablesView = (VariablesView) viewReferences[i].getView(true);
+				TreeModelViewer viewer = (TreeModelViewer) variablesView.getViewer();
+				Tree tree = getTreeInView(viewReferences[i]);
+				for (int k = 0; k < 10; k++) {
+					while ( org.eclipse.ui.PlatformUI.getWorkbench().getDisplay().readAndDispatch());
+				}
+				TreeItem[] items = tree.getItems();
+				for (int j = 0; j < items.length; j++) {
+					if (items[j].getText().indexOf(VariableName) != -1) {
+						tree.setSelection(items[j]);
+						for (int k = 0; k < 10; k++) {
+							while ( org.eclipse.ui.PlatformUI.getWorkbench().getDisplay().readAndDispatch());
+						}
+						variablesView.doubleClick(new DoubleClickEvent(viewer, new TreeSelection()));
+						for (int k = 0; k < 10; k++) {
+							while ( org.eclipse.ui.PlatformUI.getWorkbench().getDisplay().readAndDispatch());
+						}
+						return items[j].getItems();
+					}
+				}
+			}
+		}
+		return new TreeItem[0];
 	}
 
 	private static Tree getTreeInView(IViewReference reference) {
