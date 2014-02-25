@@ -68,7 +68,7 @@ public class VerifierPreferences
     		"- Pending events\n" +
     		"- Last executed transition\n" +
     		"- All related instances";
-    public static final String groupedInstancesListingBtnName = "Group related instances using same assocaition under single element in Variable view"; 
+    public static final String groupedInstancesListingBtnName = "Group related instances using same association under single element in Variable view"; 
     
   public VerifierPreferences() {
     super();
