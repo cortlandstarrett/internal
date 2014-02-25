@@ -1,13 +1,21 @@
+//========================================================================
+//
+// File: SwitchProjectModelCompilerAction.java
+//
+// Copyright 2005-2014 Mentor Graphics Corporation. All rights reserved.
+//
+//========================================================================
+// This document contains information proprietary and confidential to
+// Mentor Graphics Corp. and is not for external distribution.
+//======================================================================== 
+//
+//
+
 package $packageName$;
 
 import org.eclipse.core.resources.IProject;
-import org.eclipse.jface.viewers.IStructuredSelection;
-import org.eclipse.ui.IWorkbench;
 import org.eclipse.ui.IWorkbenchWizard;
 
-import com.mentor.nucleus.bp.core.ui.DelegatingWizard;
-import com.mentor.nucleus.bp.core.ui.WizardDelegate;
-import com.mentor.nucleus.bp.core.ui.WizardDelegateChooserPage;
 import com.mentor.nucleus.bp.mc.AbstractNewProjectWizard;
 import com.mentor.nucleus.bp.mc.MCBuilderArgumentHandler;
 
@@ -47,11 +55,15 @@ public class MCNewProjectWizard extends AbstractNewProjectWizard {
 	 * 
 	 */
 	@Override
-	public boolean performFinish(IProject newProject) {
+	public boolean performFinish(IProject project) {
 		MCNature nature = MCNature.getDefault();
-		if (!nature.addNature(newProject)) {
+		// The call to remove natures was added to support the Model Compiler
+		// "Switcher" utility.  In the New Project Wizard this does nothing 
+		// (because there are no natures to remove)
+		nature.removeAllMCNatures(project);
+		if (!nature.addNature(project)) {
 			return false;
 		}
-		return super.performFinish(newProject);
+		return super.performFinish(project);
 	}
 }

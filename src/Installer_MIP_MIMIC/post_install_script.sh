@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2008-2013 Mentor Graphics Corporation. All rights reserved.
+# Copyright 2008-2014 Mentor Graphics Corporation. All rights reserved.
 #
 #
 # DESCRIPTION:                                                          
@@ -27,7 +27,7 @@
 #
 
 echo Starting post-install script
-BPVER=4.1.1
+BPVER=4.1.6
 
 #===============================================================================
 # UTILITY FUNCTIONS
@@ -140,9 +140,6 @@ ${MSI_CMD} -c "$TARGET/extras/wine_addons/msvcirt.dll" "$TARGET/eclipse_extensio
 ${MSI_CMD} -c "$TARGET/extras/wine_addons/msvcp60.dll" "$TARGET/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.dap.pkg_$BPVER/bridgepoint/win32/client/bin"
 ${MSI_CMD} -c "$TARGET/extras/wine_addons/msvcrt.dll" "$TARGET/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.dap.pkg_$BPVER/bridgepoint/win32/client/bin"
 echo "Done"
-
-MC_NAME="com.mentor.nucleus.bp.mc.mc3020"
-configure_mc_files
 
 MC_NAME="com.mentor.nucleus.bp.mc.c.binary"
 configure_mc_files
