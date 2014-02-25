@@ -348,11 +348,11 @@ public class VerifierExecuteActionTests extends BaseTest {
 				stackTrace.equals("class::opWithParams line: 2"));
 
 		// Commenting out known failure tests.  See dts0100656068
-/*		String xValue = DebugUITestUtilities.getValueForVariable("x");
+		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
 		assertEquals("Default parameter value was not as expected for variable y.", "0", yValue);
-*/	}
+	}
 	
 	public void testExecuteSignalAssignedToTransition() {
 		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
@@ -560,11 +560,11 @@ public class VerifierExecuteActionTests extends BaseTest {
 				+ "Port1::clientserversigparams" + " (x:integer, y:integer)"));
 		
 		// Commenting out known failure tests.  See dts0100656068
-/*		String xValue = DebugUITestUtilities.getValueForVariable("x");
+		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", yValue);
-*/	}
+	}
 	
 	public void testExecuteSignalNotAssignedToTransition() {
 		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
@@ -782,11 +782,11 @@ public class VerifierExecuteActionTests extends BaseTest {
 				stackTrace.equals("Port2::Interface::clientserversigparams line: 2"));
 		
 		// Commenting out known failure tests.  See dts0100656068
-/*		String xValue = DebugUITestUtilities.getValueForVariable("x");
+		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", yValue);
-*/	}
+	}
 	
     public void testExecuteInterfaceOperation() {
 		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
@@ -1004,11 +1004,11 @@ public class VerifierExecuteActionTests extends BaseTest {
 				stackTrace.equals("Port2::Interface::clientserveropparams line: 2"));
 		
 		// Commenting out known failure tests.  See dts0100656068
-/*		String xValue = DebugUITestUtilities.getValueForVariable("x");
+		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", yValue);
-*/
+
     }
     
     public void testTerminateAndRelaunch() {
