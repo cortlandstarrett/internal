@@ -184,7 +184,7 @@ public class BPVariable extends BPDebugElement implements IVariable {
     			  return "Current State";
     		  }
     		  if (value instanceof StateMachineEvent_c){
-    			  return "Last Transition";
+    			  return "Last Executed Transition";
     		  }
 
     		  boolean groupedInstanceListing = store
