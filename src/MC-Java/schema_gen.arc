@@ -45,28 +45,13 @@
 .select many obj_set from instances of O_OBJ
 .select any dt_inst from instances of S_DT
 .for each ih_obj in obj_set
+  .assign trans_obj = true
 	.select one subsystem related by ih_obj->S_SS[R2]
-	.assign translate = "${subsystem.descrip:TRANSLATE}"
-	.assign objTranslate = "${ih_obj.descrip:TRANSLATE}"
-	.assign trans_obj = true
-    .if(((ih_obj.Key_Lett == "KEY") or (translate == "FALSE")) or (objTranslate == "FALSE") )
+  .assign translate = "${subsystem.descrip:IN_SCHEMA}"
+  .if (translate == "FALSE")
       .assign trans_obj = false
     .end if
-	.assign translate_for_ext = "${subsystem.descrip:TRANSLATE_FOR_EXTERNAL_USE}"
-    .if ((external_use == "TRUE") and (translate_for_ext == "FALSE"))
-      .assign trans_obj = false
-    .end if
-	.assign translate_for_ext = "${ih_obj.descrip:TRANSLATE_FOR_EXTERNAL_USE}"
-    .if ((external_use == "TRUE") and (translate_for_ext == "FALSE"))
-      .assign trans_obj = false
-    .end if
-    .// do not translate non persistent objects
-    .assign is_persistent_mark = "${ih_obj.descrip:Persistent}"
-    .assign is_persistent = true
-    .if(((is_persistent_mark == "FALSE") or (is_persistent_mark == "False")) or (is_persistent_mark == "false"))
-      .assign is_persistent = false
-    .end if
-   .if( trans_obj and is_persistent)
+  .if(trans_obj and ((subsystem.Name != "Runtime Value") and (ih_obj.Key_Lett != "O_RAVR")))
 CREATE TABLE $_{ih_obj.Key_Lett} (
 	.// find the first attribute of the object
 	.select many ih_attrs related by ih_obj->O_ATTR[R102]
@@ -79,6 +64,9 @@ CREATE TABLE $_{ih_obj.Key_Lett} (
 	.//
    .assign comma_needed = false
    .while (not_empty ih_attr)
+     .if (ih_attr.Name == "Action_Semantics_internal")
+       .assign ih_attr.Name = "Action_Semantics"
+     .end if
      .assign trans_attr = true
      .assign translate_for_ext = "${ih_attr.descrip:TRANSLATE_FOR_EXTERNAL_USE}"
 	 .assign persistent = "${ih_attr.descrip:Persistent}"     
@@ -95,9 +83,9 @@ CREATE TABLE $_{ih_obj.Key_Lett} (
          .end if  
          .select one udt related by dt_inst->S_UDT[R17]
          .if (not_empty udt)
-           .select one dt_inst related by udt->S_CDT[R18]->S_DT[R17]
+           .select one dt_inst related by udt->S_DT[R18]
          .end if
-         .if (comma_needed and ((dt_inst.Name != "state<State_Model>") or (external_use != "TRUE")))
+         .if ((comma_needed) and ((dt_inst.Name != "state<State_Model>") or (external_use != "TRUE")))
 ,
          .end if
          .if(dt_inst.Name == "integer")
@@ -136,6 +124,42 @@ CREATE TABLE $_{ih_obj.Key_Lett} (
 		.// proceed to the next attribute of the object
 		.select one ih_attr related by ih_attr->O_ATTR[R103.'succeeds']
    .end while
+   .if (ih_obj.Key_Lett == "S_BPARM")
+,
+    Order   INTEGER\
+   .elif (ih_obj.Key_Lett == "O_TPARM")
+,
+    Order   INTEGER\
+   .elif (ih_obj.Key_Lett == "SM_EVTDI")
+,
+    Order   INTEGER\
+   .elif (ih_obj.Key_Lett == "S_SPARM")
+,
+    Order   INTEGER\
+   .elif (ih_obj.Key_Lett == "S_EEEDI")
+,
+    Order   INTEGER\
+   .elif (ih_obj.Key_Lett == "V_PAR")
+,
+    Order   INTEGER\
+   .elif (ih_obj.Key_Lett == "O_OBJ")
+,
+    AdapterName STRING,
+    Order INTEGER\
+   .elif (ih_obj.Key_Lett == "R_REL")
+,
+    ContainmentClassKL STRING\
+   .end if
+   .if((ih_obj.Key_Lett == "ACT_SMT") or (ih_obj.Key_Lett == "V_VAL"))
+,
+    buffer STRING\
+   .end if
+   .if(ih_obj.Key_Lett == "ACT_SMT")
+,
+    buffer2 STRING,
+    Controlled_Block  UNIQUE_ID,
+    control STRING\
+   .end if
  );
    .end if
 .end for
@@ -144,36 +168,17 @@ CREATE TABLE $_{ih_obj.Key_Lett} (
 .for each rel_inst in rels
 	.assign found_rel = false
 	.assign trans_rel = true
-	.select one subsystem related by rel_inst->S_SS[R4]
-	.assign translate = "${subsystem.descrip:TRANSLATE}"
-    .if (translate == "FALSE")
-      .assign trans_rel = false
-    .end if
-	.assign translate_for_ext = "${subsystem.descrip:TRANSLATE_FOR_EXTERNAL_USE}"
-    .if ((external_use == "TRUE") and (translate_for_ext == "FALSE"))
-      .assign trans_rel = false
-    .end if
-    .assign is_persistent = true
-    .assign is_persistent_mark = "${rel_inst.descrip:Persistent}"
-    .if(((is_persistent_mark == "FALSE") or (is_persistent_mark == "False")) or (is_persistent_mark == "false"))
-      .assign is_persistent = false
-    .end if
 	.select many part_objects related by rel_inst->R_OIR[R201]->O_OBJ[R201]
 	.for each part_object in part_objects
-	  .assign objTranslate = "${part_object.descrip:TRANSLATE}"
-	  .if (objTranslate == "FALSE")
+      .if (part_object.Key_Lett == "O_RAVR")
 	    .assign trans_rel = false
 	  .end if
-	  .assign translate_for_ext = "${part_object.descrip:TRANSLATE_FOR_EXTERNAL_USE}"
-      .if ((external_use == "TRUE") and (translate_for_ext == "FALSE"))
+      .select one subsystem related by part_object->S_SS[R2]
+      .if (subsystem.Name == "Runtime Value")
         .assign trans_rel = false
       .end if
-      .assign is_persistent_mark = "${part_object.descrip:Persistent}"
-      .if(((is_persistent_mark == "FALSE") or (is_persistent_mark == "False")) or (is_persistent_mark == "false"))
-        .assign is_persistent = false
-      .end if
 	.end for
-	.if ((trans_rel == true) and (is_persistent))
+    .if (trans_rel == true)
 .// ********************************************************
 .// Simple relationship processing
 .// *********************************************************
@@ -273,7 +278,6 @@ $_{att.Name}\
 			.end for
  );
 		.end for
-	.end if
 	.end if
 .// ********************************************************
 .// Associative relationship processing
@@ -384,7 +388,6 @@ $_{att.Name}\
  );
 		.end if
 	.end if	
-	.end if						
 .// ********************************************************
 .// Composition relationship processing
 .// *********************************************************
@@ -393,6 +396,8 @@ $_{att.Name}\
 		.if ( not_empty rel_comp )
 		.end if
 	.end if
+  .end if
+  .end if
   .end if
 .end for
 

@@ -124,8 +124,8 @@ ${fnc.Action_Semantics}
     Ooaofooa.log.println(ILogger.FUNCTION, "${fnc.Name}", " Function entered: $cr{fnc.Name}") ; 
 
       .// Generate Action Language Code using Processing Subsystem Instances
-      .select any actionblock from instances of ACT_ACT where ((selected.Action_Id == "${fnc.Sync_ID}") and (selected.Type == "FN"))
-      .select any block related by actionblock->ACT_BLK[R666]
+      .select one actionblock related by fnc->ACT_FNB[R695]->ACT_ACT[R698]
+      .select one block related by actionblock->ACT_BLK[R666]
       .invoke blck = blck_xlate(block)
 ${blck.body}
     .end if

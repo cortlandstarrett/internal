@@ -16,7 +16,7 @@
   .else
     .select one udt related by type->S_UDT[R17]
     .if (not_empty udt)
-      .select one type related by udt->S_CDT[R18]->S_DT[R17]
+      .select one type related by udt->S_DT[R18]
     .end if
     .if (type.Name == "unique_id")
       .assign typedecl = "java.util.UUID        "
@@ -35,12 +35,18 @@
     .end if
     .if (type.Name == "inst_ref<Mapping>")
       .if (not_empty udt)
-        .select one type related by udt->S_DT[R17]
-        .if ( type.Name == "inst_ref<Timer>" )
+        .select one utype related by udt->S_DT[R17]
+        .if (empty utype)
+          .print "ERROR: No DT found for UDT: ->${typedecl}<-"
+        .else
+          .if ( utype.Name == "inst_ref<Timer>" )
           .assign typedecl = "Tim_c";
         .else
-          .assign typedecl = "${type.Name}";
+            .assign typedecl = "${utype.Name}";
+          .end if
         .end if
+      .else
+        .print "ERROR: No UDT found for: ->${typedecl}<-"
       .end if
       .// Added to decouple modeled type names from Java names
       .if (typedecl == "instance")

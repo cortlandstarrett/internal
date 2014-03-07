@@ -38,7 +38,7 @@
     .else
       .invoke wkfl = create_wfl("${fn.body}", "${function.Sync_Id}", cme);
 ${wkfl.body}
-      .select any action from instances of ACT_ACT where (selected.Action_Id == "${function.Sync_ID}")
+      .select one action related by function->ACT_FNB[R695]->ACT_ACT[R698]
       .if (not_empty action)
         .select any outer_blk related by action->ACT_BLK[R601] where (selected.Block_Id == action.Block_Id)
         .if (not_empty outer_blk)
