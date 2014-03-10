@@ -86,6 +86,7 @@ import com.mentor.nucleus.bp.core.MessageInCommunication_c;
 import com.mentor.nucleus.bp.core.MessageInSequence_c;
 import com.mentor.nucleus.bp.core.Message_c;
 import com.mentor.nucleus.bp.core.ModelClass_c;
+import com.mentor.nucleus.bp.core.Modeleventnotification_c;
 import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.OperationParameter_c;
 import com.mentor.nucleus.bp.core.Operation_c;
@@ -120,6 +121,7 @@ import com.mentor.nucleus.bp.core.UseCaseAssociation_c;
 import com.mentor.nucleus.bp.core.UseCaseDiagram_c;
 import com.mentor.nucleus.bp.core.UserDataType_c;
 import com.mentor.nucleus.bp.core.Visibility_c;
+import com.mentor.nucleus.bp.core.common.BaseModelDelta;
 import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.ComponentResourceListener;
 import com.mentor.nucleus.bp.core.common.IdAssigner;
@@ -127,7 +129,9 @@ import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.PersistableModelComponent;
+import com.mentor.nucleus.bp.core.common.PersistenceChangeTracker;
 import com.mentor.nucleus.bp.core.common.PersistenceManager;
+import com.mentor.nucleus.bp.core.util.TransactionUtil;
 import com.mentor.nucleus.bp.ui.canvas.AnchorOnSegment_c;
 import com.mentor.nucleus.bp.ui.canvas.CanvasTransactionListener;
 import com.mentor.nucleus.bp.ui.canvas.Cl_c;
@@ -2991,4 +2995,58 @@ public class ImportHelper
 			}
 		}
 	}
+	public void addPortReferenceInstances(
+			List<NonRootModelElement> loadedInstances) {
+
+		for (NonRootModelElement impRef : loadedInstances) {
+			if ((impRef instanceof ImportedReference_c) && (!impRef.isProxy())) {
+				ImportedReference_c importedRef = (ImportedReference_c) impRef;
+				PortReference_c prtRef = PortReference_c
+						.getOneCL_POROnR4708(importedRef);
+				if (prtRef == null) {
+
+					ComponentReference_c cmpRef = (ComponentReference_c) impRef
+							.getModelRoot()
+							.getInstanceList(ComponentReference_c.class)
+							.getGlobal(null,
+									importedRef.getCl_por_idCachedValue());
+					if (cmpRef == null) {
+						InstanceList cmpReflist = impRef.getModelRoot()
+								.getInstanceList(ComponentReference_c.class);
+						for (NonRootModelElement elm : cmpReflist) {
+							ComponentReference_c crf = (ComponentReference_c) elm;
+							if (crf.getId() == importedRef
+									.getCl_por_idCachedValue()) {
+								cmpRef = crf;
+								break;
+							}
+						}
+
+					}
+		 
+					 
+						prtRef = new PortReference_c(
+								Ooaofooa.getDefaultInstance());
+						Ooaofooa.getDefaultInstance().fireModelElementCreated(
+								new BaseModelDelta(
+										Modeleventnotification_c.DELTA_NEW,
+										prtRef));
+						prtRef.relateAcrossR4707To(cmpRef);
+
+						InterfaceReference_c ifcRef = InterfaceReference_c
+								.getOneC_IROnR4701(importedRef);
+						Port_c port = Port_c.getOneC_POOnR4016(ifcRef);
+						prtRef.relateAcrossR4709To(port);
+
+						prtRef.relateAcrossR4708To(importedRef);
+ 
+				}
+
+			}
+
+		}
+
+	}
+
+ 
 }
