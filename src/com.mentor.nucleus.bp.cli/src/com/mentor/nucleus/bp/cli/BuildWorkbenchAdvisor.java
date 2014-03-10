@@ -256,7 +256,7 @@ public class BuildWorkbenchAdvisor extends BPCLIWorkbenchAdvisor {
 			// See if this is one of the MC export builder.  There will only
 			// be one of these associated with the given project.
 			if (orginalCommands[i].getBuilderName().contains(
-					"com.mentor.nucleus.bp.mc")
+					"com.mentor.nucleus.bp")
 					&& orginalCommands[i].getBuilderName().contains(
 							"export_builder")) {
 				exportbuilderCmd = orginalCommands[i];
