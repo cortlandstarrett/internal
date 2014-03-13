@@ -27,7 +27,8 @@ eclipse_home="c:/MentorGraphics/BridgePoint4.1.6/eclipse"
 ant_cmd="${eclipse_home}/ant/apache-ant-1.6.1/bin/ant"
 ant_opts="-Declipse-home=${eclipse_home}"
 cli_cmd="${eclipse_home}/CLI.bat"
-cli_opts"-os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/com.mentor.nucleus.bp.pkg/plugin_customization.ini -prebuildOnly"
+cli_import_opts"Import -os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/com.mentor.nucleus.bp.pkg/plugin_customization.ini -deleteExisting"
+cli_build_opts"Build -os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/com.mentor.nucleus.bp.pkg/plugin_customization.ini -prebuildOnly"
 antlr_tool="pt_antlr"
 git_internal="${git_repo_root}/internal"
 internal_modules="com.mentor.nucleus.bp.als
@@ -136,7 +137,8 @@ function build_modules {
     for module in ${modules}; do
         if [ -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
-            ${cli_cmd} ${cli_opts} -project ${module}
+            ${cli_cmd} ${cli_import_opts} -project ${build_dir}/${module}
+            ${cli_cmd} ${cli_build_opts} -project ${module}
             ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
         elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
