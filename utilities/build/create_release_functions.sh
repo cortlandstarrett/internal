@@ -137,9 +137,15 @@ function build_modules {
     for module in ${modules}; do
         if [ -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
-            build_path=`cygpath -m ${build_dir}/${module}`
-            ${cli_cmd} ${cli_import_opts} -project "${build_path}"
-            ${cli_cmd} ${cli_build_opts} -project ${module}
+            if [-e ${module}/gen]; then
+                # The project needs pre-builder load it into BridgePoint
+                build_path=`cygpath -m ${build_dir}/${module}`
+                ${cli_cmd} ${cli_import_opts} -project "${build_path}"
+                # Run pre-builder
+                ${cli_cmd} ${cli_build_opts} -project ${module}
+                #copy the results back into the build folder
+                cp -fr ${build_dir}/workspace/${module}/gen/* ${build_dir}/${module}/gen
+            fi
             ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
         elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
