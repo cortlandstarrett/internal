@@ -137,8 +137,8 @@ function build_modules {
     for module in ${modules}; do
         if [ -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
-            echo -e "${cli_cmd} ${cli_import_opts} -project '${build_dir}/${module}'"
-            ${cli_cmd} ${cli_import_opts} -project "${build_dir}/${module}"
+            build_path=`cygpath -m ${build_dir}/${module}`
+            ${cli_cmd} ${cli_import_opts} -project "${build_path}"
             ${cli_cmd} ${cli_build_opts} -project ${module}
             ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
         elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
