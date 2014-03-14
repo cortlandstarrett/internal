@@ -1,4 +1,4 @@
--- BP 7.1 content: ModelClass syschar: 3 persistence-version: 7.1.6
+-- BP 7.1.6 content: ModelClass syschar: 3 persistence-version: 7.1.6
 
 INSERT INTO O_OBJ
 	VALUES ("d493c966-7083-429d-9e8e-552a145b89d5",
@@ -53,174 +53,7 @@ INSERT INTO O_TFR
 	'',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'// (ACT_FIW) Select from Instances Where.execute()
-// select any <handle> from instances of <key letters> where
-//                                         selected.<attribute> == <expression>;
-// We need to take advantage of the is_implicit attribute
-//
-// Grab the stack frame
-select one body related by self->ACT_SMT[R603]->ACT_BLK[R602]->ACT_ACT[R601];
-select any stack_frame from instances of I_STF where
-                                selected.Stack_Frame_ID == param.stack_frame_id;
-if (empty stack_frame)
-  //Invalid stack frame ID!
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Error in Selection From Instances Where.execute: Invalid stack frame handle used. Using random top stack frame.",path:pathMsg);
-  select any stack from instances of I_STACK;
-  select one stack_frame related by stack->I_STF[R2929];
-end if;
-
-// get the current execution engine
-select one engine related by stack_frame->I_STACK[R2943]->I_EXE[R2930];
-
-select any sel_ref related by stack_frame->I_BSF[R2923]->
-                                                     L_LCL[R3000]->L_LSR[R3001];
-if (empty sel_ref)
-  // If there isn''t one, create it and link it to the outer block
-  select one outer_block related by self->ACT_SMT[R603]->ACT_BLK[R602]->
-                                                   ACT_ACT[R601]->ACT_BLK[R666];
-  ref_ID = outer_block.newLocalSelectedReference(stack_frame_id:
-                                                    stack_frame.Stack_Frame_ID);
-  select any sel_ref related by stack_frame->I_BSF[R2923]->
-                 L_LCL[R3000]->L_LSR[R3001] where (selected.Local_ID == ref_ID);
-end if;
-// Get the right local reference for the instance reference target
-// in this block in stack frame
-// Set value to this block with the right type so we can use it later.
-// The value here is useless.
-select any local_ref from instances of L_LCR;
-select one inst_ref related by sel_ref->L_IWC[R3006];
-if (self.is_implicit and empty inst_ref)
-  // This is the first use of this lefthand variable
-  // _and_ we''ve not yet started iterating.
-  // Create the selection result instance reference
-  // in the scope of the enclosing block.
-  select one block related by self->ACT_SMT[R603]->ACT_BLK[R602];
-  ref_ID = block.newLocalReference(stack_frame_id: param.stack_frame_id);
-  select any local_ref related by block->I_BSF[R2923]->L_LCL[R3000]->
-                               L_LCR[R3001] where (selected.Local_ID == ref_ID);
-  if (self.cardinality == "many")
-    select one inst_set related by self->V_VAR[R665]->V_INS[R814];
-    relate inst_set to local_ref across R3003;
-  else
-    select one inst_handle related by self->V_VAR[R665]->V_INT[R814];
-    relate inst_handle to local_ref across R3004;
-  end if;
-else
-  // Set up the target refererence variable
-  target_var_ID = GD::NULL_UNIQUE_ID();
-  if (self.cardinality == "many")
-    select one inst_set related by self->V_VAR[R665]->V_INS[R814];
-    target_var_ID = inst_set.Var_ID;
-  else
-    select one inst_handle related by self->V_VAR[R665]->V_INT[R814];
-    target_var_ID = inst_handle.Var_ID;
-  end if;
-  // Get all of the block in stack frames that exist for the stack frame
-  select many block_in_stack_frames related by stack_frame->I_BSF[R2923];
-  for each block_in_stack_frame in block_in_stack_frames
-    // Find the one local reference that matches the block in stack frame
-    // where we are executing for the transient variable we want to assign
-    select any local_ref related by block_in_stack_frame->L_LCL[R3000]->
-                          L_LCR[R3001] where selected.Var_ID == target_var_ID;
-    if (not_empty local_ref)
-      // We found the 1 local reference in this stack frame for this instance
-      // handle id.  So stop looking.
-      // All of this was necessary in order to support nested blocks that
-      // reference variables that were created in outer blocks in this stack
-      // frame
-      // WARNING: This implementation is based on the Object Action Language
-      // definition that existed in November of 2005.
-      // If the language is changed to become a strongly typed language where
-      // a user can define a variable in an inner block with the same
-      // name as something that exists in the outer block, then this
-      // implementation will not work because it does not walk out of the
-      // current block.
-      break;
-    end if;
-  end for;
-end if;
-if (empty inst_ref)
-  // We haven''t begun to iterate yet, clear stale
-  // selections . . .
-  select one inst_set related by self->V_VAR[R665]->V_INS[R814];
-  select many staleInsts related by inst_set->L_LCR[R3003]->L_LCL[R3001]->
-        RV_RVL[R3306]->RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311]->I_INS[R3013];
-  if (empty inst_set)
-    select one inst_handle related by self->V_VAR[R665]->V_INT[R814];
-    select many staleInsts related by inst_handle->
-                  L_LCR[R3004]->L_LCL[R3001]->RV_RVL[R3306]->
-                       RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311]->I_INS[R3013];
-  end if;
-  for each inst in staleInsts
-    local_ref.purge(inst_id:inst.Inst_ID);
-  end for;
-  // . . . and set up the instance extent for iteration
-  sel_ref_initialized = false;
-  select many cies related by self->O_OBJ[R676]->CSME_CIE[R2961]
-             where (selected.Execution_Engine_ID == engine.Execution_Engine_ID);
-  select many insts related by cies->I_INS[R2962];
-  select any prev_inst_in_where from instances of L_IWC;
-  for each inst in insts
-    create object instance inst_in_where of L_IWC;
-    relate inst to inst_in_where across R3014;
-    if (sel_ref_initialized == false)
-      // Point the selection reference to the first instance
-      relate inst_in_where to sel_ref across R3006;
-      inst_ref = inst_in_where;
-      sel_ref_initialized = true;
-    else
-      // Chain the instances together
-      relate inst_in_where to prev_inst_in_where across R3016.''is after'';
-    end if;
-    prev_inst_in_where = inst_in_where;
-  end for;
-end if;
-if not_empty inst_ref
-  select one where_clause related by self->V_VAL[R610];
-  // The where_clause value contains the Boolean result of the expression 
-  // written in the OAL statement
-  // For each instance in the set, if the user supplied
-  // where clause evaluates to TRUE, then add it to the set.
-  where_clause.computeValue(stack_frame_id: stack_frame.Stack_Frame_ID);
-  select any result related by stack_frame->I_VSF[R2951] where
-                                     selected.Value_ID == where_clause.Value_ID;
-  select one rtVal related by result->RV_RVL[R3305];
-  if (empty rtVal)
-    // result requires computation. Return and let the new stack frame execute
-    return;      
-  end if;
-  stack_frame.popValue(value_id:where_clause.Value_ID);
-  select one inst_in_where related by sel_ref->L_IWC[R3006];
-  if (not_empty inst_in_where)
-    select one inst related by inst_in_where->I_INS[R3014];
-    selectionPassed = GD::instance_to_boolean(value:rtVal.getValue());
-    if ( selectionPassed == TRUE )
-      local_ref.addInstance(inst_id:inst.Inst_ID);
-    end if;
-    select one next_inst_in_where related by inst_in_where->
-                                                       L_IWC[R3016.''is before''];
-    unrelate inst_in_where from sel_ref across R3006;
-    // We''ve visited this instance, dispose the reference
-    inst_in_where.dispose();
-    if (self.cardinality == "many" or not selectionPassed)
-      if (not_empty next_inst_in_where)
-        relate next_inst_in_where to sel_ref across R3006;
-      end if;
-    else
-      // We got our result and we''re done, dispose all remaining references
-      while (not_empty next_inst_in_where)
-        select one next_next_inst_in_where related by inst_in_where->
-                                                       L_IWC[R3016.''is before''];
-        next_inst_in_where.dispose();
-        next_inst_in_where = next_next_inst_in_where;
-      end while;
-    end if;
-  end if;
-end if;',
+	'// Mentor Graphics Verifier-specific Implementation',
 	1,
 	'',
 	"c9a234d7-d97f-4e00-8fa3-aacb5653cef8");
@@ -315,7 +148,7 @@ INSERT INTO O_REF
 	'',
 	'Variable',
 	'Var_ID',
-	'R665');
+	'R665.''result''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("d493c966-7083-429d-9e8e-552a145b89d5",
 	"8954348b-a8f5-4c70-8f49-9261d5be97f4",
@@ -420,7 +253,7 @@ INSERT INTO O_REF
 	'',
 	'Value',
 	'Value_ID',
-	'R610');
+	'R610.''where clause''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("d493c966-7083-429d-9e8e-552a145b89d5",
 	"7bf2cbb7-4de5-4adb-b74a-0b135848f69c",
@@ -516,7 +349,7 @@ INSERT INTO O_REF
 	'',
 	'Model Class',
 	'Obj_ID',
-	'R676');
+	'R676.''from extent of''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("d493c966-7083-429d-9e8e-552a145b89d5",
 	"2626ecb4-b0df-4c7f-880e-4554a37a1382",

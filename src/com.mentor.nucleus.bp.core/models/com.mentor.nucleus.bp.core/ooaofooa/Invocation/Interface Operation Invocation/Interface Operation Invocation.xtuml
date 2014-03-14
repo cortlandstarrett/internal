@@ -1,4 +1,4 @@
--- BP 7.1 content: ModelClass syschar: 3 persistence-version: 7.1.6
+-- BP 7.1.6 content: ModelClass syschar: 3 persistence-version: 7.1.6
 
 INSERT INTO O_OBJ
 	VALUES ("22c5c5d4-325c-4cdb-8566-d82bb85e797b",
@@ -51,146 +51,7 @@ INSERT INTO O_TFR
 	'',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'//Invocation:Interface Operation Invocation.execute()
-/* The following conditions apply when executing an interface operation body:
-*
-*  If there is no component at the other end of this interface, then execute the
-*  body of this component''s operation.
-*
-*  If there is a component yet it is not being executed, then execute the body
-*  of this component''s operation.
-*
-*  If there is a component and it is being verified then execute the body of the
-*  operation belonging to the component at the other end.
-*
-*/
-
-select any localComponentInstance from instances of I_EXE where
-                           selected.Execution_Engine_ID == GD::NULL_UNIQUE_ID();
-select any localStackFrame from instances of I_STF where
-                                selected.Stack_Frame_ID == param.stack_frame_id;
-if not_empty localStackFrame
-  select one localStack related by localStackFrame->I_STACK[R2929];
-  if not_empty localStack
-    select one localComponentInstance related by localStack->I_EXE[R2930];
-  end if;
-end if;
-
-isRequired = false;
-
-select one requiredOp related by self->SPR_RO[R657];
-select one providedOp related by self->SPR_PO[R680];
-select one interfaceReference related by providedOp->
-                                        SPR_PEP[R4503]->C_P[R4501]->C_IR[R4009];
-if not_empty requiredOp
-  isRequired = true;
-  select one interfaceReference related by requiredOp->
-                                        SPR_REP[R4502]->C_R[R4500]->C_IR[R4009];
-end if;
-
-
-componentID = GD::NULL_UNIQUE_ID();
-select one targetValue related by self->V_VAL[R629];
-if not_empty targetValue
-  targetRuntimeValueId = targetValue.getRuntimeValue(stack_frame_id:
-                                                          param.stack_frame_id);
-  select any rv from instances of RV_RVL where
-                               selected.RuntimeValue_ID == targetRuntimeValueId;
-  select one componentRef related by rv->RV_SMV[R3300]->RV_CRV[R3308];
-  if not_empty componentRef
-    select one specifiedEngine related by componentRef->I_EXE[R3309];
-    component_ID = specifiedEngine.Execution_Engine_ID;
-  else
-    // TODO Log error the parser shouldn''t let this happen
-  end if;
-end if;
-channelID = I_EXE::resolveTargetChannel(
-              specifiedComponentInstance: componentID,
-              isRequired: isRequired,
-              localComponentInstance:localComponentInstance.Execution_Engine_ID,
-              interfaceReference: interfaceReference.Id);
-if channelID != GD::NULL_UNIQUE_ID()
-  select any channel from instances of I_RCH where
-                                               selected.Channel_Id == channelID;
-  select one targetEngine related by channel->
-                                        I_EXE[R2968.''is interface requirer of''];
-  operationName = "";
-  if isRequired
-    operationName = requiredOp.Name;
-    select one targetEngine related by channel->
-                                        I_EXE[R2968.''is interface provider to''];
-  else
-    operationName = providedOp.Name;
-  end if;
-
-  invokingFrame = localStackFrame;
-  // Grab the stack as well
-  select one stack related by localStackFrame->I_STACK[R2929];
-  if not_empty targetEngine
-    // select the interrupt stack if available
-    select one stack related by targetEngine->I_STACK[R2930];
-  end if;
-
-  select one invokingBody related by self ->ACT_SMT[R603]->
-                                                   ACT_BLK[R602]->ACT_ACT[R601];
-  pathForErrorMessage = "Unknown";
-  if not_empty invokingBody
-    pathForErrorMessage = invokingBody.getPath();
-  end if;
-  targetActivityID = I_EXE::resolveTargetBody(
-                                              isRequired: isRequired,
-                                              channel: channelID,
-                                              invokingPath: pathForErrorMessage,
-                                              messageName: operationName);
-
-  select any body from instances of ACT_ACT where
-                                         selected.Action_ID == targetActivityID;
-  if(not_empty body)
-    // Setup the parameter values within the newly created stack frame
-    // on the local stack
-    complete = self.setupParameterValues(stack_frame_id:param.stack_frame_id);
-    if(complete)
-      // All parameters now computed, now set up stack frame for remote call
-      // Create new stack frame on target component''s stack
-      sf = body.createStackFrame(stack_id:stack.Stack_ID,
-                          enqueue: not_empty targetEngine,
-             invoking_stack_frame_or_component_id:invokingFrame.Stack_Frame_ID);
-      select one ep related by self->SPR_RO[R657]->SPR_REP[R4502]->C_EP[R4500];
-      if(empty ep)
-        select one ep related by self->SPR_PO[R680]->SPR_PEP[R4503]->
-                                                                    C_EP[R4501];
-      end if;
-      select many args related by self->V_PAR[R679];
-      // If we get here, all computation of arguments was completed,
-      // prepare for execution of the operation
-      for each arg in args
-        I_EXE::transferValueToTarget(
-                          message: ep.Id,
-                          body: body.Action_ID,
-                          arg: arg.Value_ID,
-                          stack_frame_id: sf,
-                          local_stack_frame_id: localStackFrame.Stack_Frame_ID);
-      end for;
-      if(not_empty targetEngine)
-        // associate new stack frame with the invocation stack, to allow
-        // wake up of this thread upon execution completion
-        select any newStackFrame related by stack->I_ICQE[R2966]->I_STF[R2966]
-                                          where (selected.Stack_Frame_ID == sf);
-        relate invokingFrame to newStackFrame across R2965.''blocked by'';
-        body.startStackFrameForMessage(stackframe_id:
-                                                  newStackFrame.Stack_Frame_ID);
-      end if;
-    end if;
-  end if;
-else  // specified engine was not resolved
-  select one body related by self ->ACT_SMT[R603]->ACT_BLK[R602]->ACT_ACT[R601];
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Error sending message, specified component reference " +
-              " wiring not found. Message not delivered.",path:pathMsg);
-end if;',
+	'// Mentor Graphics Verifier-specific Implementation',
 	1,
 	'',
 	"a15dd167-94ea-416f-b761-ff446226ac51");
@@ -217,59 +78,7 @@ INSERT INTO O_TFR
 	'',
 	"8e519c45-7dcf-400b-9d4e-954869dbb7e8",
 	1,
-	'// Invocation:Interface Operation Invocation.setupParameterValues
-select one body related by self ->ACT_SMT[R603]->ACT_BLK[R602]->ACT_ACT[R601];
-select one ep related by self->SPR_RO[R657]->SPR_REP[R4502]->C_EP[R4500];
-if(empty ep)
-  select one ep related by self->SPR_PO[R680]->SPR_PEP[R4503]->C_EP[R4501];
-end if;
-select many args related by self->V_PAR[R679];
-// Grab the stack frame(should be the new top stack frame)
-select any stack_frame from instances of I_STF where
-                                selected.Stack_Frame_ID == param.stack_frame_id;
-if empty stack_frame
-  //Invalid stack frame ID!
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Interface Operation Invocation.setupParameterValues: " +
-                                       "Invalid stack frame id used. Halting.",path:pathMsg);
-  select any engine from instances of I_EXE;
-  engine.stop();
-  return false;
-end if;
-pathForErrorMessage = body.getPath();
-for each arg in args
-  // Search for a property parameter with the same name as the actual parameter
-  select any prop_param related by ep->C_PP[R4006] where
-                                                      selected.Name == arg.Name;
-  if (empty prop_param)
-    USER::logError(msg:"Interface Operation Invocation.setupParameterValues: " +
-                  "Did not find a corresponding interface parameter. halting.",
-                                                      path:pathForErrorMessage);
-    select any engine from instances of I_EXE;
-    engine.stop();
-    return false;
-  else    
-    // We have found the matching property parameter and actual parameter
-    // Now set the value of the parameter value related to the property
-    // parameter to the actual parameter''s value
-    if (prop_param.By_Ref == 0)  // by value
-      select one act_val related by arg->V_VAL[R800];
-      act_val.computeValue(stack_frame_id: param.stack_frame_id);
-      select any stack_frame from instances of I_STF where
-                                selected.Stack_Frame_ID == param.stack_frame_id;
-      select any result related by stack_frame->I_VSF[R2951] where
-                                          selected.Value_ID == act_val.Value_ID;
-      select one rtVal related by result->RV_RVL[R3305];
-      if (empty rtVal)
-        // result requires computation.
-        return false;
-      end if;
-    end if;
-  end if;
-end for;
+	'// Mentor Graphics Verifier-specific Implementation
 return true;',
 	1,
 	'',
@@ -442,7 +251,7 @@ INSERT INTO O_REF
 	'',
 	'Provided Operation',
 	'Id',
-	'R680');
+	'R680.''is invocation of''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("22c5c5d4-325c-4cdb-8566-d82bb85e797b",
 	"63958118-e00e-4c58-888e-6f100c2fda53",
@@ -493,7 +302,7 @@ INSERT INTO O_REF
 	'',
 	'Required Operation',
 	'Id',
-	'R657');
+	'R657.''is invocation of''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("22c5c5d4-325c-4cdb-8566-d82bb85e797b",
 	"2e985ea0-2a92-4e1e-8338-6dcb24d951ed",
@@ -544,7 +353,7 @@ INSERT INTO O_REF
 	'',
 	'Value',
 	'Value_ID',
-	'R629');
+	'R629.''has target''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("22c5c5d4-325c-4cdb-8566-d82bb85e797b",
 	"a6cc7524-8b66-4a36-9fe5-a945ed517206",

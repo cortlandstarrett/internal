@@ -1,4 +1,4 @@
--- BP 7.1 content: ModelClass syschar: 3 persistence-version: 7.1.6
+-- BP 7.1.6 content: ModelClass syschar: 3 persistence-version: 7.1.6
 
 INSERT INTO O_OBJ
 	VALUES ("7e90f7bc-14dd-4b30-83a0-cfbdca100bd0",
@@ -44,41 +44,7 @@ INSERT INTO O_TFR
 	'Executes a function and returns a result.',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'// (V_FNV) Value:Function Value.getValue()
-
-// Execute the function
-select one body related by self->S_SYNC[R827]->ACT_FNB[R695]->ACT_ACT[R698];
-select any statement related by body->ACT_BLK[R666]->ACT_SMT[R602];
-if (not_empty statement)
-  // Setup the parameter values within the newly created stack frame
-  discard = self.setupParameterValues(stack_frame_id: param.stack_frame_id);
-
-else
-  select one fn related by self->S_SYNC[R827];
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Error executing Function: " +
-			     fn.Name + ". No function OAL found, returning default value.",path:pathMsg);
-  select one dt related by fn->S_DT[R25];
-  select any stack_frame from instances of I_STF where
-                                selected.Stack_Frame_ID == param.stack_frame_id; 
-  if empty stack_frame
-    pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Internal error in Function Invocation.execute: Could not get stack frame.",path:pathMsg);
-  else 
-    select one stack related by stack_frame->I_STACK[R2943]; 
-    select any result related by stack_frame->I_VSF[R2951] where
-                                             selected.Value_ID == self.Value_ID;
-    // Return the default result
-    select one rtVal related by result->RV_RVL[R3305];
-    rtVal.setValue(value:dt.getDefaultValue());
-  end if;
-end if;',
+	'// Mentor Graphics Verifier-specific Implementation',
 	1,
 	'',
 	"a554dbfd-eedf-48e5-9a01-98782897bf10");
@@ -105,110 +71,7 @@ INSERT INTO O_TFR
 	'Initializes the parameters passing to a function.',
 	"8e519c45-7dcf-400b-9d4e-954869dbb7e8",
 	1,
-	'// Value:Function Value.setupParameterValues()
-select one body related by self->V_VAL[R801]->ACT_BLK[R826]->ACT_ACT[R601];
-select one function related by self->S_SYNC[R827];
-select many function_parameters related by function->S_SPARM[R24];
-select many args related by self->V_PAR[R817];
-// Grab the stack frame(should be the new top stack frame)
-select any stack_frame from instances of I_STF where
-                                selected.Stack_Frame_ID == param.stack_frame_id;
-if empty stack_frame
-  //Invalid stack frame ID!
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Function Value.setupParameterValues: " +
-                  "Invalid stack frame id used. Using random top stack frame.",path:pathMsg);
-  select any stack from instances of I_STACK;
-  select one stack_frame related by stack->I_STF[R2929];
-end if;
-// Grab the stack as well
-select one stack related by stack_frame->I_STACK[R2929];
-if empty stack
-  //Invalid stack frame ID!
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Function Value.setupParameterValues: " +
-                               "Failure to retieve stack. Using random stack.",path:pathMsg);
-  select any stack from instances of I_STACK;
-  select one new_stack_frame related by stack->I_STF[R2929];
-end if;
-select one outer_block related by function->ACT_FNB[R695]->
-                                                   ACT_ACT[R698]->ACT_BLK[R666];
-if not_empty outer_block
-  for each actual_parameter in args
-    // Seach for a function parameter with the same name as the actual parameter
-    select any func_param related by function->S_SPARM[R24] where
-                                         selected.Name == actual_parameter.Name;
-    if (empty func_param)
-      pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Function Value.setupParameterValues: " +
-                             "did not find a corresponding function parameter",path:pathMsg);
-    else    
-      // We have found the matching function parameter and actual parameter
-      // Now set the value of the parameter value related to the function
-      // parameter to the actual parameter''s value
-      if (func_param.By_Ref == 0)  // by value
-        select one act_val related by actual_parameter->V_VAL[R800];
-        act_val.computeValue(stack_frame_id: stack_frame.Stack_Frame_ID);
-        select any result related by stack_frame->I_VSF[R2951] where
-                                          selected.Value_ID == act_val.Value_ID;
-        select one rtVal related by result->RV_RVL[R3305];
-        if (empty rtVal)
-          // result requires computation. Return and let the new stack frame execute
-          return false;
-        end if;
-      end if;
-    end if;
-  end for;
-  // If we get here, all computation of arguments was completed,
-  //  prepare for execution of the function
-  select one body related by function->ACT_FNB[R695]->ACT_ACT[R698];
-  sf = body.createStackFrame(stack_id:stack.Stack_ID, enqueue: false,
-                     invoking_stack_frame_or_component_id:GD::NULL_UNIQUE_ID());
-  for each arg in args
-    select any func_param related by function->S_SPARM[R24] where
-                                                      selected.Name == arg.Name;
-    // Create a new local value in the new stack frame for each argument
-    loc_id = outer_block.newLocalValue(stack_frame_id: sf);
-    
-    // Find the new local value in the new stack frame
-    select any local related by outer_block->I_BSF[R2923]->
-                                 L_LCL[R3000] where selected.Local_ID == loc_id;
-    select one local_val related by local->L_LVL[R3001];
-    select one act_val related by arg->V_VAL[R800];
-    if not_empty func_param and func_param.By_Ref == 0
-      select any result related by stack_frame->I_VSF[R2951] where
-                                          selected.Value_ID == act_val.Value_ID;
-      select one rtVal related by result->RV_RVL[R3305];
-      create object instance lrtVal of RV_RVL;
-      relate lrtVal to local across R3306;
-      select one dt related by func_param->S_DT[R26];
-      relate lrtVal to dt across R3307;
-      lrtVal.copyValue(from:rtVal.RuntimeValue_ID);
-    else  // assuming by ref
-      relate local_val to act_val across R3010;
-    end if;
-    // Relate the new local value to the function parameter so that
-    // it can be found when the parameter value is referenced.
-    relate func_param to local across R3007;
-    stack_frame.popValue(value_id:arg.Value_ID);
-  end for;
-else
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Function Value.setupParameterValues: " +
-                                        "did not find an outer function block",path:pathMsg);
-end if;
+	'// Mentor Graphics Verifier-specific Implementation
 return true;',
 	1,
 	'',

@@ -1,4 +1,4 @@
--- BP 7.1 content: ModelClass syschar: 3 persistence-version: 7.1.6
+-- BP 7.1.6 content: ModelClass syschar: 3 persistence-version: 7.1.6
 
 INSERT INTO O_OBJ
 	VALUES ("d1c9af7b-9df6-432a-a25e-96cab24fc6af",
@@ -280,88 +280,8 @@ INSERT INTO O_TFR
 	'',
 	"a5f314e0-43b6-40bd-8aee-520de6952a24",
 	1,
-	'// Body:Body.createStackFrame 
- 
-select any stack from instances of I_STACK where
-                                            selected.Stack_ID == param.stack_id;
-if (empty stack)
-  //Invalid stack ID!
-  USER::logError(msg:"Error in Body.createStackFrame: Invalid stack id used. Using random stack.",path:self.getPath());
-  select any stack from instances of I_STACK;  
-end if;
-
-select any invoking_stack_frame from instances of I_STF where 
-          selected.Stack_Frame_ID == param.invoking_stack_frame_or_component_id;
-
-create object instance stack_frame of I_STF;
-
-if param.enqueue
-  // This flag prevents premature processing of intercomponent messages
-  stack_frame.readyForInterrupt = false;
-  stack.enqueue(stack_frame_id:stack_frame.Stack_Frame_ID,
-          remote_stack_frame_id:param.invoking_stack_frame_or_component_id,
-                                                               isActivity:true);
-else
-  // Add this stack frame to the stack
-  stack.push(stack_frame_id:stack_frame.Stack_Frame_ID);
-end if;
-// Relate the outer_block to the top stack frame
-select one outer_block related by self->ACT_BLK[R666];
-if (not_empty outer_block)
-  create object instance block_in_stack_frame of I_BSF;
-  relate stack_frame to outer_block across R2923 using block_in_stack_frame;
-  block_in_stack_frame.isExecuting = true;
-  select any statement related by outer_block->ACT_SMT[R602];
-  if (not_empty statement)
-    relate statement to block_in_stack_frame across R2941;
-  end if;
-  outer_block.blockInStackFrameCreated = true;
-  outer_block.initialize();
-  // Create sender rvalues if needed
-  select many sender_ih_vars related by outer_block->V_VAR[R823] where
-                                   GD::toLower(value:selected.Name) == "sender";
-  if (not_empty sender_ih_vars)
-    // The sender keyword is used in the executing block,
-    // so find it and relate it to the newly created local
-    // Create a local reference for the sender 
-    select one invoking_stack related by invoking_stack_frame->I_STACK[R2943];
-    select one sender_eng related by invoking_stack->I_EXE[R2930];
-    if empty sender_eng
-      select any sender_eng from instances of I_EXE where 
-                                     selected.Execution_Engine_ID == 
-                                     param.invoking_stack_frame_or_component_id;
-    end if;
-    for each sender_ih_var in sender_ih_vars
-      // Create a new local reference 
-      loc_id = outer_block.newLocalValue(stack_frame_id:
-                                                    stack_frame.Stack_Frame_ID);
-      // Find the new local value and set it with the actual transient value
-      select any local related by outer_block->I_BSF[R2923]->
-                                 L_LCL[R3000] where selected.Local_ID == loc_id;
-      select one lvl related by local->L_LVL[R3001];
-      select one tv related by sender_ih_var->V_TRN[R814];
-      relate lvl to tv across R3005;
-      // create a runtime value and set its value to the execution engine
-      create object instance lrtVal of RV_RVL;
-      relate lrtVal to local across R3306;
-      select one dt related by sender_ih_var->V_TRN[R814]->S_DT[R821];
-      relate lrtVal to dt across R3307;
-      create object instance simpleVal of RV_SMV;
-      relate lrtVal to simpleVal across R3300;
-      create object instance compRef of RV_CRV;
-      relate simpleVal to compRef across R3308;
-      if not_empty sender_eng
-        // sender_eng should be null only when an activity with
-        // a ''sender'' keyword is invoked directly by the user.
-        relate compRef to sender_eng across R3309;
-      end if;
-      // Attach the sender keyword to the new stack frame
-      // so that it will get disposed correctly.
-      relate lrtVal to stack_frame across R3310;
-    end for;   
-  end if;
-end if;      
-return stack_frame.Stack_Frame_ID;',
+	'// Mentor Graphics Verifier-specific Implementation
+return GD::NULL_UNIQUE_ID();',
 	1,
 	'',
 	"22a1844d-5679-41a1-99b2-f940b6cb27ba");
@@ -406,17 +326,7 @@ INSERT INTO O_TFR
 	'',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'//Body:Body.deleteStackFrame()
-
-select any stack from instances of I_STACK where (selected.Stack_ID == param.stack_id);
-if (not_empty stack)
-   stack.pop(disposeFrame:true);
-else
-  //Invalid stack ID!
-  USER::logError(msg:"Error in Body.deleteStackFrame: Invalid stack id used, not able to delete stack frame.",path:self.getPath());
-end if;
-    
-    ',
+	'// Mentor Graphics Verifier-specific Implementation',
 	1,
 	'',
 	"b3eb49b0-86d9-48f0-b50c-4504dcc55721");
@@ -436,61 +346,8 @@ INSERT INTO O_TFR
 	'Called to create an initial stack frame for execution of a funtion wired to a bridge in another model.',
 	"a5f314e0-43b6-40bd-8aee-520de6952a24",
 	1,
-	'// PE_PE navigation is present (isInGenericPackage).  Do not remove this comment.
-// Body:Body.createStackFrameForBridge 
-
-select any invocation_frame from instances of I_STF
-                 where (selected.Stack_Frame_ID == param.stack_frame_id_caller);
-
-select one source_ee related by invocation_frame->I_STACK[R2943]->I_EXE[R2930];
-
-select one function related by self->ACT_FNB[R698]->S_SYNC[R695];
-select one dest_ee related by function->S_DOM[R23]->I_EXE[R2948];
-if (empty dest_ee)
-  select one packageableElem related by function->PE_PE[R8001];
-  select one package related by packageableElem->EP_PKG[R8000];
-  select one component related by packageableElem->C_C[R8003];
-  isInGenericPackage = not_empty package or not_empty component;
-  if (isInGenericPackage)
-    if (not_empty package)
-      select one dest_ee related by package->I_EXE[R2970];
-    else
-      select any dest_ee related by component->I_EXE[R2955] where (component.Id == selected.Component_Id);
-    end if;
-  end if;
-end if;
-
-if(empty dest_ee)
-  // not supported, the destination function
-  // is most likely defined under a component
-  // inter-component communication is supported
-  // only through interfaces
-  return GD::NULL_UNIQUE_ID();
-end if;
-
-select one dest_stack related by dest_ee->I_STACK[R2930];
-
-create object instance stack_frame of I_STF;
-stack_frame.Created_For_Wired_Bridge = true;
-stack_frame.Bridge_Caller_Stack_Frame_ID = param.stack_frame_id_caller;
-  
-// Add this stack frame to the stack
-relate stack_frame to dest_stack across R2943;
-
-select any bottom_frame related by dest_stack->I_STF[R2943]
-                  where (selected.Child_Stack_Frame_ID == GD::NULL_UNIQUE_ID());
-
-relate stack_frame to bottom_frame across R2928.''previous context'';
-
-// Relate the outer_block to the top stack frame
-select one outer_block related by self->ACT_BLK[R666];
-if (not_empty outer_block)
-  create object instance block_in_stack_frame of I_BSF;
-  relate stack_frame to outer_block across R2923 using block_in_stack_frame;
-  outer_block.blockInStackFrameCreated = true;
-end if;  
-
-return stack_frame.Stack_Frame_ID;',
+	'// Mentor Graphics Verifier-specific Implementation
+return GD::NULL_UNIQUE_ID(); ',
 	1,
 	'',
 	"a223de5b-c8b3-4c9d-ab99-ed560179395d");
@@ -510,15 +367,7 @@ INSERT INTO O_TFR
 	'Called to delete an initial stack frame used for execution of a funtion wired to a bridge in another model.',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'//Body:Body.deleteStackFrameForBridge()
-
-select any stack from instances of I_STACK where (selected.Stack_ID == param.stack_id);
-if (not_empty stack)
-  stack.pop(disposeFrame:true);
-else
-  //Invalid stack ID!
-  USER::logError(msg:"Error in Body.deleteStackFrameForBridge: Invalid stack id used, not able to delete stack frame.",path:self.getPath());
-end if;',
+	'// Mentor Graphics Verifier-specific Implementation',
 	1,
 	'',
 	"02bb7c0b-4888-47dd-958c-fde9bd49b0c0");
@@ -783,17 +632,7 @@ INSERT INTO O_TFR
 	'',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'// Body.startStackFrameForMessage()
-select any stack_frame from instances of I_STF
-                         where (selected.Stack_Frame_ID == param.stackframe_id);
-select one stack related by stack_frame->I_ICQE[R2966]->I_STACK[R2966];
-
-// Since this is only called to deliver a message, we always
-// look for the engine across R2966 from the interrupt stack.
-select one engine related by stack->I_EXE[R2930];
-stack.runState = RunStateType::Running;
-stack_frame.readyForInterrupt = true;
-engine.notify();',
+	'// Mentor Graphics Verifier-specific Implementation',
 	1,
 	'',
 	"63e6a395-cc2a-4419-a519-51cc0d0f410f");
@@ -1040,7 +879,7 @@ INSERT INTO O_REF
 	'',
 	'Block',
 	'Block_ID',
-	'R666');
+	'R666.''has committed outer''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("d1c9af7b-9df6-432a-a25e-96cab24fc6af",
 	"cf1f38a4-06c9-464e-97aa-d1b73bc1b98a",
@@ -1098,7 +937,7 @@ INSERT INTO O_REF
 	'',
 	'Block',
 	'Block_ID',
-	'R699');
+	'R699.''has current scope''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("d1c9af7b-9df6-432a-a25e-96cab24fc6af",
 	"9496c8eb-874b-4a71-a3e0-c3c70f4de69a",
@@ -1245,7 +1084,7 @@ INSERT INTO O_REF
 	'',
 	'Block',
 	'Block_ID',
-	'R650');
+	'R650.''has parsed outer''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("d1c9af7b-9df6-432a-a25e-96cab24fc6af",
 	"0ab00804-9e18-4a6f-befb-4e58c7c1384e",
