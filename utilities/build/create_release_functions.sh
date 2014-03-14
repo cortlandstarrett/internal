@@ -137,7 +137,7 @@ function build_modules {
     for module in ${modules}; do
         if [ -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
-            if [-e ${module}/gen]; then
+            if [ -d ${module}/gen ]; then
                 # The project needs pre-builder load it into BridgePoint
                 build_path=`cygpath -m ${build_dir}/${module}`
                 ${cli_cmd} ${cli_import_opts} -project "${build_path}"
