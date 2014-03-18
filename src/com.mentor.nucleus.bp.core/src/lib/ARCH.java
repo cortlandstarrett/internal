@@ -25,7 +25,6 @@ package lib;
 import com.mentor.nucleus.bp.core.ComponentInstance_c;
 import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.Runstatetype_c;
-import com.mentor.nucleus.bp.core.Stack_c;
 import com.mentor.nucleus.bp.core.SystemModel_c;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.SystemModel_c;
@@ -47,10 +46,6 @@ public class ARCH {
 					.ComponentInstanceInstance(roots[i]);
 			if (ee != null) {
 				synchronized (ee) {
-					Stack_c[] stacks = Stack_c.getManyI_STACKsOnR2930(ee);
-					for (int j = 0; j < stacks.length; j++) {
-						stacks[j].setRunstate(Runstatetype_c.Terminated);
-					}
 					ee.notify();
 					modelRoot = ee.getModelRoot();
 					if (prev_modelRoot != modelRoot){
