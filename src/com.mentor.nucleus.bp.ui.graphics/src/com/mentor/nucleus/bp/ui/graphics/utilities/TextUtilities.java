@@ -104,35 +104,38 @@ public class TextUtilities {
 		Shape_c shape = Shape_c.getOneGD_SHPOnR27(text);
 		if (shape != null) {
 			GraphicalElement_c elem = GraphicalElement_c.getOneGD_GEOnR2(shape);
-			return Cl_c.Getcompartmenttext(Justification_c.Floating, 0, 0, elem
+			if (elem != null) {
+				return Cl_c.Getcompartmenttext(Justification_c.Floating, 0, 0, elem
 					.getRepresents());
-		}
-		Connector_c connector = Connector_c.getOneGD_CONOnR8(text);
-		GraphicalElement_c elem = GraphicalElement_c.getOneGD_GEOnR2(connector);
-		if (connector != null
-				&& elem != null
-				&& elem.getRepresents() != null
-				&& (elem.getRepresents() instanceof NonRootModelElement && !((NonRootModelElement) elem
-						.getRepresents()).isOrphaned())) {
-			boolean endHidden = isEndHidden((ConnectorEditPart) part);
-			GraphicalElement_c conElem = GraphicalElement_c
-					.getOneGD_GEOnR2(connector);
-			if (text.getEnd() == End_c.Middle) {
-				return Cl_c.Getconnectortext(text.getEnd(), Os_c
-						.Null_unique_id(), false, conElem.getRepresents(), Cl_c
-						.Getooaid(Model_c.getOneGD_MDOnR1(conElem)
-								.getRepresents()), endHidden);
 			}
-			if (text.getEnd() == End_c.Start)
-				return Cl_c.Getconnectortext(text.getEnd(),
-						getElementIdAt(true, part), isElementAtImported(true, part),
-						conElem.getRepresents(), Cl_c.Getooaid(Model_c
-								.getOneGD_MDOnR1(conElem).getRepresents()), endHidden);
-			if (text.getEnd() == End_c.End)
-				return Cl_c.Getconnectortext(text.getEnd(),
-						getElementIdAt(false, part), isElementAtImported(false, part),
-						conElem.getRepresents(), Cl_c.Getooaid(Model_c
-								.getOneGD_MDOnR1(conElem).getRepresents()), endHidden);
+		} else {
+			Connector_c connector = Connector_c.getOneGD_CONOnR8(text);
+			GraphicalElement_c elem = GraphicalElement_c.getOneGD_GEOnR2(connector);
+			if (connector != null
+					&& elem != null
+					&& elem.getRepresents() != null
+					&& (elem.getRepresents() instanceof NonRootModelElement && !((NonRootModelElement) elem
+							.getRepresents()).isOrphaned())) {
+				boolean endHidden = isEndHidden((ConnectorEditPart) part);
+				GraphicalElement_c conElem = GraphicalElement_c
+						.getOneGD_GEOnR2(connector);
+				if (text.getEnd() == End_c.Middle) {
+					return Cl_c.Getconnectortext(text.getEnd(), Os_c
+							.Null_unique_id(), false, conElem.getRepresents(), Cl_c
+							.Getooaid(Model_c.getOneGD_MDOnR1(conElem)
+									.getRepresents()), endHidden);
+				}
+				if (text.getEnd() == End_c.Start)
+					return Cl_c.Getconnectortext(text.getEnd(),
+							getElementIdAt(true, part), isElementAtImported(true, part),
+							conElem.getRepresents(), Cl_c.Getooaid(Model_c
+									.getOneGD_MDOnR1(conElem).getRepresents()), endHidden);
+				if (text.getEnd() == End_c.End)
+					return Cl_c.Getconnectortext(text.getEnd(),
+							getElementIdAt(false, part), isElementAtImported(false, part),
+							conElem.getRepresents(), Cl_c.Getooaid(Model_c
+									.getOneGD_MDOnR1(conElem).getRepresents()), endHidden);
+			}
 		}
 		return "";
 	}
@@ -163,7 +166,10 @@ public class TextUtilities {
 		if (source instanceof Shape_c) {
 			// only shapes require this check
 			Shape_c shape = (Shape_c) source;
-			return GraphicalElement_c.getOneGD_GEOnR2(shape).getOoa_type() == Ooatype_c.ImportedClass;
+			GraphicalElement_c elem = GraphicalElement_c.getOneGD_GEOnR2(shape);
+			if (elem != null) {
+				return elem.getOoa_type() == Ooatype_c.ImportedClass;
+			}
 		}
 		return false;
 	}
@@ -184,6 +190,11 @@ public class TextUtilities {
 			source = connectorPart.getTarget().getModel();
 		if (source instanceof Shape_c) {
 			Shape_c shape = (Shape_c) source;
+			if(GraphicalElement_c.getOneGD_GEOnR2(shape) == null) {
+				// this can occur during auto reconciling, just ignore
+				// here
+				return Os_c.Null_unique_id();
+			}
 			return Cl_c.Getooaid(GraphicalElement_c.getOneGD_GEOnR2(shape)
 					.getRepresents());
 		}
