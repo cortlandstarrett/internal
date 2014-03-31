@@ -29,6 +29,143 @@ MSD Weekly Meeting Minutes
 ### Customer Support Status
 **Item 1 -** text
 
+
+
+
+---
+
+    Date:     03/19/2014
+    Start:    6:00 GMT+2
+    End:      6:15 GMT+2
+    Elapsed:  15 minutes
+    Present:  Bob, Keith, Travis, Campbell, Heba, Nehad, Robert 
+
+
+### Engineering Status
+**Bob  -** 
+- Helping in field issues coming from Cort.
+- Wokring on promoting Keith work, there are junit tests failures to fix
+- Resolved issue coming from Ericson (dts0101039702), and working on failed automated tests. 
+
+**Keith  -**
+- Pushed all the generated Java files to Editor repo. so BridgePoint Editor is open source now
+- There still changes to be done (seperate metamodel properly so customers can built it)
+- There are JUnit test failures, but we will not try to clean them up at this time.
+ 
+**Travis  -**
+- Preparing for Ericsson trip, leaving Sunday.  Will spend the entire week there.
+- Completed all of the top priority compare issues, except two that will take too long.  Will discuss these with the ericsson team.
+
+**Campbell  -**
+- Working on MC-Java to remove dependency on the generator parser
+- Implementing the new MC-Java changes on the build server
+- Supporting Corts discussions with Ericsson about integrating with EMF based tools
+
+**Heba  -**
+- Finishing work on Port Reference issue 
+
+All Junit tests pass, except one test because the port reference is not presisted in the file system after model upgrade ( Travis will help )
+
+**Nehad  -**
+- Fixed verifier automated tests failed in server.
+- Presented a demo for tooltip enhamcenet, working to resolve some issues regarding window position for large text, window appearence and others.
+- Creating a new issue/branch to import the work done in #135 for session explorer view mirroring part only
+ 
+### Customer Support Status
+**Rovert  -** text
+- Using Java Model Access API to provide an example to Ericsson 
+- Working on issues regarding documents we provide for creating realized component
+
+---
+
+    Date:     03/12/2014
+    Start:    9:00 MST
+    End:      9:35 MST
+    Elapsed:  35 minutes
+    Present:  Bob, Keith, Travis, Campbell, Cort, others...
+            Dean, Robert, Jayne, others...
+
+### Engineering Status
+**Bob -** Looking at two issues on the current release list.  A fix was provided
+that is causing unexpected test failures.  The release has been disclosed to
+both Saab and Ericsson.  It has been delivered to both.  Saab raised an issue
+regarding support for constants and IPRs.  Ericsson feedback has been good for
+the release, they are happy.  The verifier performance enhancement was well
+received.
+
+**Keith -** Moved the development branch to 4.1.7.  Master is open and ready, we
+should consider merging existing branches to the latest.  Working on moving
+code to open source.  Need to split verifier data out of the Instance package.
+All private model data will be placed into a new package named Engine.  Once
+split is done and a build can be completed we can move to dumping the code into
+a public git repository.  Hope to have some code in the editor repository by
+next Thursday to show customers.
+
+**Campbell -** Getting back into the MC-Java changes that prevent the need for
+the generator parser.  Trying to get a successful build.  Had to add a full
+BridgePoint installation on the build server.  Working through some issues with
+CLI building.  We need to import projects into a real eclipse workspace.
+Modifying the build scripts to call the necessary CLI operations.  Researching
+EMF to help Cort prepare for next weeks meetings.
+
+**Nehad -** Working on enhanced tooltips.  The note has been reviewed.  Had to
+work around the eclipse infrastructures.  We will attempt to see if we can have
+the eclipse team make some adjustments to prevent the work arounds.  Will start
+working on the design next.
+
+**Heba -** Working on getting the SVX issue into a promotable state.  Found a
+couple of bugs that must be addressed first.  Provided Dean a branch to test and
+assure everything is done.  Working on some unit test failures.
+
+Keith: Are we planning to move the SVX work into the mainline code base and
+process?   
+Cort: We believe so but we need to have some discussions about it first.  Please
+make sure that we have a meeting or code review so that we can have these
+discussions.   
+Heba: If anyone is interested a link to show what has been done can be provided.   
+
+**Travis -** Working on existing compare/merge issues in preparation for the
+upcoming Budapest trip.
+
+**Cort -** For expense reports provide required information but keep it simple.
+Minimize the time spent on the expense reports.  Concur supports a select all
+when assigning a customer to expense.  If working against the tier 1 package,
+keep time in no smaller than an hour.
+
+Completed the final issue for the last release.  Main focus is continuing to be
+the field contact with Ericsson.  Will be visiting Saab Monday and Tuesday of
+next week.  A recent Toyota recall has sub-contracted Takao Futagami to look
+into a possible modeling approach.  They will be looking into BridgePoint and
+Simulink via an interview with Saab.  
+Will be visiting Ericsson on Thursday, discussing open-source based BridgePoint.
+
+Bob: Who are you meeting at SAAB?   
+Cort: Will meet with everyone that we know at Saab.   
+Bob: Who is Ronan Barrett?   
+Cort: Ronan is the modeling czar for corporate Ericsson.  Ericsson has been
+modeling for around 20 years, with most of these models still existing in
+heritage formats.  IBM quit support on the rational rose tool.  Ronan is looking
+at what set of tools will make Ericsson successful with modeling, while trying
+to avoid vendor lock-in.  Looking for ways to open BridgePoint more while still
+protecting the business model.  Will be looking at EMF.   
+Bob: We have been working from the engineer level up to gain sales.  In the past 
+the top down approach was not very successful.   
+Cort: Ronan is not top-level management, but a top-level technical tool
+researcher.  He suggests what is contained in a modeling tool-box.  Ericsson
+management does see the value in model generation.  Ronan is a way to open the
+door to more teams then we are currently supporting.    
+
+### Marketing Status
+**Dean 1 -** text
+
+ 
+### Customer Support Status
+**Robert -** Sony was confused about the dreaded "assembly connector". Maybe we
+could do with a video AppNote about its use? Or maybe Sony was just hoping it
+was implemented exactly as they wanted.  Dean or Cort can deliver a video
+showing the functionality.
+FXAT is likely in need of training as to the proper way to use revision control.
+
 ---
 
     Date:     Feb 5, 2014
