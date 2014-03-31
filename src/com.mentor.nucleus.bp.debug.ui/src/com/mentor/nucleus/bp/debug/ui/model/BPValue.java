@@ -151,12 +151,15 @@ public class BPValue extends BPDebugElement implements IValue {
 		String sep = "";
 		if (insts.length == 0)
 			return "empty";
+		else if (insts.length == 1)
+			return insts[0].getLabel();
 		else {
-		  result = insts.length > 1 ?  "["+insts.length+"]  " : "";
-		  for (int i=0; i<insts.length;i++) {
-			result = result + sep + insts[i].getLabel();
-			sep = ", ";
-		  }
+		  result = "Cardinality of "+ insts.length; 
+//		  result = insts.length > 1 ?  "["+insts.length+"]  " : "";
+//		  for (int i=0; i<insts.length;i++) {
+//			result = result + sep + insts[i].getLabel();
+//			sep = ", ";
+//		  }
 		}
 		return result;
 	}
@@ -335,6 +338,70 @@ public class BPValue extends BPDebugElement implements IValue {
 	public boolean isAllocated() throws DebugException {
 		// TODO Auto-generated method stub
 		return false;
+	}
+	
+	public String getValueStringForButtonTextPane() throws DebugException{
+		
+		if (value instanceof Association_c) {
+			Instance_c[] firstInstance = null;
+
+			if (name == "Origin Of") {
+				Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
+
+				firstInstance = Instance_c .getManyI_INSsOnR2958(
+						LinkParticipation_c.getManyI_LIPsOnR2903(
+								instanceLinks));
+				if (firstInstance.length == 0)
+					firstInstance = Instance_c .getManyI_INSsOnR2958(
+							LinkParticipation_c .getManyI_LIPsOnR2902(
+									instanceLinks));
+
+				} else if (name == "Destination Of") {
+				Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
+
+				firstInstance = Instance_c .getManyI_INSsOnR2958(
+						LinkParticipation_c .getManyI_LIPsOnR2903(
+								instanceLinks));
+				if (firstInstance.length == 0)
+					firstInstance = Instance_c .getManyI_INSsOnR2958(
+							LinkParticipation_c .getManyI_LIPsOnR2901(
+									instanceLinks));
+			} 
+			else if (name == "Associator For") {
+				Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
+
+				Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
+						LinkParticipation_c .getManyI_LIPsOnR2901(
+								instanceLinks));
+
+				Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
+						LinkParticipation_c .getManyI_LIPsOnR2902(
+								instanceLinks));
+
+				firstInstance = new Instance_c[first.length + second.length];
+				System.arraycopy(first, 0, firstInstance, 0, first.length);
+				System.arraycopy(second, 0,firstInstance , first.length, second.length);
+			}
+			
+			String result = "";
+			String sep = "";
+			if (firstInstance.length == 0)
+				return "empty";
+			else if (firstInstance.length == 1)
+				return firstInstance[0].getLabel();
+			else {
+//			  result = insts.length > 1 ?  "["+insts.length+"]  " : "";
+			  for (int i=0; i<firstInstance.length;i++) {
+				result = result + sep + firstInstance[i].getLabel();
+				sep = ", ";
+			  }
+			}
+			return result;
+
+		}
+		else {
+			return getValueString();
+		}
 	}
 
 

@@ -50,6 +50,7 @@ import com.mentor.nucleus.bp.debug.ui.model.BPBreakpoint;
 import com.mentor.nucleus.bp.debug.ui.model.BPProcess;
 import com.mentor.nucleus.bp.debug.ui.model.BPStackFrame;
 import com.mentor.nucleus.bp.debug.ui.model.BPThread;
+import com.mentor.nucleus.bp.debug.ui.model.BPValue;
 import com.mentor.nucleus.bp.debug.ui.model.BPVariable;
 import com.mentor.nucleus.bp.debug.ui.model.VerifierExceptionBreakpoint;
 import com.mentor.nucleus.bp.ui.text.IModelElementEditorInputFactory;
@@ -198,7 +199,7 @@ public class BPDebugModelPresentation implements IDebugModelPresentation {
         String detail = ""; //$NON-NLS-1$
 
         try {
-            detail = value.getValueString();
+            detail = ((BPValue) value).getValueStringForButtonTextPane();
         } catch (DebugException e) {
         }
 
