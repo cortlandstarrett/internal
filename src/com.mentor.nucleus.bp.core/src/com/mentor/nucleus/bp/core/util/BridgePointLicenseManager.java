@@ -499,7 +499,5 @@ public class BridgePointLicenseManager  extends BridgePointDemoEncryptor {
         } else {
             return BP_NOT_DEMO_LICENSED;
         }
-
-        return BP_NOT_DEMOING;
     }
 }
