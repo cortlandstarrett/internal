@@ -1,14 +1,13 @@
 package com.mentor.nucleus.bp.io.core;
 
-import org.eclipse.ui.plugin.*;
+import org.eclipse.core.runtime.Plugin;
 import org.eclipse.core.resources.*;
-
 import java.util.*;
 
 /**
  * The main plugin class to be used in the desktop.
  */
-public class CorePlugin extends AbstractUIPlugin {
+public class CorePlugin extends Plugin {
 	//The shared instance.
 	private static CorePlugin plugin;
 	//Resource bundle.
