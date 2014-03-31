@@ -491,14 +491,14 @@ public class BridgePointLicenseManager  extends BridgePointDemoEncryptor {
 //       We have decided to remove this demo license now that that issue has
 //       been resolved.  To enable the demo license the follow 4 lines should
 //       be enabled.
-//        boolean licensed = false;
-//        BridgePointLicenseManager lm = new BridgePointLicenseManager();
-//        licensed = lm.demoIsInProgress();
-//        if (licensed) {
-//            return BP_DEMO_LICENSED;
-//        } else {
-//            return BP_NOT_DEMO_LICENSED;
-//        }
+        boolean licensed = false;
+        BridgePointLicenseManager lm = new BridgePointLicenseManager();
+        licensed = lm.demoIsInProgress();
+        if (licensed) {
+            return BP_DEMO_LICENSED;
+        } else {
+            return BP_NOT_DEMO_LICENSED;
+        }
 
         return BP_NOT_DEMOING;
     }
