@@ -638,13 +638,12 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import com.mentor.nucleus.bp.core.ui.marker.UmlProblem;
           .select one filterOp related by object->O_TFR[R115] where (selected.Name == "actionFilter")
           .if ( not_empty filterOp )
-import org.eclipse.ui.IActionFilter;
+import com.mentor.nucleus.bp.core.abstractui.AbstractActionFilter;
           .end if
           .if ( object.AdapterName == "IProject" )
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.resources.IProject;
-import org.eclipse.ui.IContributorResourceAdapter;
           .end if
         .end if
         .if ("${subsystem.Descrip:Import}" != "")
@@ -2014,7 +2013,7 @@ ${gsm.body}\
     	return superAdapter;
     }
           .if ( not_empty filterOp )
-    if (adapter == IActionFilter.class)
+    if (adapter == AbstractActionFilter.class)
     {
             .invoke gafcn = get_action_filter_class_name(object)
         return ${gafcn.body}.getSingleton();
@@ -2123,37 +2122,6 @@ ${gsm.body}\
 } // end ${object.Name}
         .emit to file "${package.location}/${class_name}.java"
         .//
-        .if ( package.is_eclipse_plugin and (not_empty filterOp) )
-package ${package.name} ;
-          .invoke gafcn = get_action_filter_class_name(object)
-          .invoke gfh = get_file_header("${package.name}.${gafcn.body}.java")
-${gfh.body}\
-import org.eclipse.ui.IActionFilter;
-import ${package.name}.${class_name};
-
-public class ${gafcn.body} implements IActionFilter
-{
-	private static ${gafcn.body} singleton;
-
-	public static ${gafcn.body} getSingleton()
-	{
-		if (singleton == null)
-			singleton = new ${gafcn.body}();
-		return singleton;
-	}
-
-	/* (non-Javadoc)
-	 * @see org.eclipse.ui.IActionFilter#testAttribute(java.lang.Object, java.lang.String, java.lang.String)
-	 */
-	public boolean testAttribute(Object target, String name, String value)
-	{
-		${class_name} x = (${class_name}) target;
-        return x.Actionfilter( name, value); 
-	}
-
-}
-          .emit to file "${package.location}/${gafcn.body}.java"
-        .end if
         .//
         .select one asm related by object->SM_ASM[R519]
         .if (not_empty asm)
