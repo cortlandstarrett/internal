@@ -66,21 +66,79 @@ import org.eclipse.ui.*
 
 6. Design
 ---------
-6.1 Remove all references to the Eclipse UI pluigns [5.1]
+6.1 Remove all references to the Eclipse UI pluigns [5.1]  
+6.1.1 Use the following regular expression to find these locations:
+import\s+(org\.eclipse\.jface.*|org\.eclipse\.swt.*|org\.eclipse\.ui.*)
+
+6.1.2 For each file found, remove the import(s) and replace it with the 
+following import:  
+import bp.core.ui.AbstractInterface.*;
+
 6.2 Modify bp.core.CorePlugin.java to extend Plugin instead of extending 
 AbstractUIPlugin
-6.3 Introduce a new plugin, bp.core.ui.AbstractInterface to allow abstraction 
-of the allow abstraction of the Interface functionality.
-6.4 Create bp.core.ui.EclipseInterface that implements 
-bp.core.ui.AbstractInterface to provide the same workbench integration that 
-exists today.
-6.5 Create bp.core.ui.CLIInterface that essentially stubs-out all graphical
-functionality.
-6.6 Modify plugins to be dependent on the new bp.core.ui.AbstractInterface 
-plugin instead of the eclipse-specific GUI plugins that are called out in 
-[5.1]
+
+6.3 Create bp.ui.eclipseui.EclipseUI.java that implements 
+org.eclipse.ui.plugin.AbstractUIPlugin to provide the same workbench 
+integration that exists today in the current bp.core.CorePlugin.java.  This 
+new plugin shall be the activator for the GUI version of the tool.
+
+6.4 Introduce a new plugin, bp.ui.eclipseui.  This is where the Eclipse-specific  
+GUI functionality shall exist.  
+
+This plugin will serve as the new main activator for BridgePoint when run in 
+GUI mode.  It shall effectively replace the GUI functionality in the current
+com.mentor.nucleus.bp.core plugin.  The GUI functionality from 
+com.mentor.nucleus.bp.core is being moved into this new plugin.  
+The com.mentor.nucleus.bp.core plugin will no longer have any Eclipse GUI
+dependencies.
+
+6.4.1  bp.core.CorePlugin.java shall remain an activator, it will be used when
+the GUI is not needed. 
+
+6.5 Introduce a new package in the existing bp.core plugin named
+com.mentor.nucleus.bp.core.abstractui.  The purpose for this is to make it
+clear what functionality is being refactored out of the current plugin 
+and into the new ui plugin.
+
+6.4 Modify MC-Java so it no longer generates code that has Eclipse GUI 
+dependencies
+
+6.4.1 Search MC-Java for any Eclipse GUI dependencies.  Use the list call out 
+[6.1.1] to perform the search in the MC-Java project.
+
+6.4.1.1 Three matches were found:
+
+  * The following 2 matches are used in a UI selection action filter:  
+641: import org.eclipse.ui.IActionFilter;  
+2,131: import org.eclipse.ui.IActionFilter;  
+	
+    * Solution: Introduce an abstraction for IActionFilter and replace the usage 
+with it.
+	
+  * 647: import org.eclipse.ui.IContributorResourceAdapter;  
 
 
+Note: At this point build the tool and make sure it still works.
+
+
+6.5 Modify bp.core so it no longer has any Eclipse GUI dependencies
+6.5.1 In the plugin manfest editor remove the dependencies on all eclipse GUI
+packages.  This will call out all the places that must be refactor.
+6.5.1.1 PErform the refactoring
+6.5.2 Search under the bp.core project using the regular expression called out 
+in [6.1.1] to find any remaining eclispe GUI dependencies.  
+6.5.2.1 If there are any remaining dependencies refactor them out.
+
+6.6 Search under the bp.mc projects using the regular expression called out in
+[6.1.1] to assure there are no dependencies on the Eclipse GUI.  If any are 
+found, refactor them.
+
+6.7 Search under the bp.cli.* projects using the regular expression called out 
+in [6.1.1] to assure there are no dependencies on the Eclipse GUI.  If any are 
+found, refactor them.
+
+6.8 A separate issue shall be raised to search for and refactor GUI dependencies 
+from the bp.debug.ui plugin.   
 
 
 7. Design Comments
