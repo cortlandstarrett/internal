@@ -638,7 +638,7 @@ import org.eclipse.core.runtime.NullProgressMonitor;
 import com.mentor.nucleus.bp.core.ui.marker.UmlProblem;
           .select one filterOp related by object->O_TFR[R115] where (selected.Name == "actionFilter")
           .if ( not_empty filterOp )
-import com.mentor.nucleus.bp.core.abstractui.AbstractActionFilter;
+import org.eclipse.ui.AbstractActionFilter;
           .end if
           .if ( object.AdapterName == "IProject" )
 import org.eclipse.core.runtime.CoreException;
@@ -2122,6 +2122,33 @@ ${gsm.body}\
 } // end ${object.Name}
         .emit to file "${package.location}/${class_name}.java"
         .//
+        .if ( package.is_eclipse_plugin and (not_empty filterOp) )
+package ${package.name} ;
+          .invoke gafcn = get_action_filter_class_name(object)
+          .invoke gfh = get_file_header("${package.name}.${gafcn.body}.java")
+${gfh.body}\
+import com.mentor.nucleus.bp.core.abstractui.AbstractActionFilter;
+import ${package.name}.${class_name};
+
+public class ${gafcn.body} extends AbstractActionFilter
+{
+	public AssociationActionFilter getSingleton() {
+		if (singleton == null) {
+			singleton = new AssociationActionFilter();
+		}
+		return (AssociationActionFilter)singleton;
+	}
+
+	/* (non-Javadoc)
+	 * @see org.eclipse.ui.IActionFilter#testAttribute(java.lang.Object, java.lang.String, java.lang.String)
+	 */
+	public boolean testAttribute(Object target, String name, String value) {
+		Association_c x = (Association_c) target;
+		return x.Actionfilter(name, value);
+	}
+}
+          .emit to file "${package.location}/${gafcn.body}.java"
+        .end if
         .//
         .select one asm related by object->SM_ASM[R519]
         .if (not_empty asm)
