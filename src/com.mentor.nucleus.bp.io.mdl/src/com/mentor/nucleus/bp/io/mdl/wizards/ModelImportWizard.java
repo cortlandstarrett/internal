@@ -188,16 +188,6 @@ public class ModelImportWizard extends Wizard implements IImportWizard {
 
 	}
 
-	/*
-	 * (non-Javadoc)
-	 *
-	 * @see org.eclipse.jface.wizard.IWizard#getDialogSettings()
-	 */
-	public IDialogSettings getDialogSettings() {
-		return com.mentor.nucleus.bp.io.core.CorePlugin.getDefault()
-				.getDialogSettings();
-	}
-
 	public boolean importModel(SystemModel_c system) {
 		fSystem = system;
 		ProgressMonitorDialog dialog = new ProgressMonitorDialog(getShell());

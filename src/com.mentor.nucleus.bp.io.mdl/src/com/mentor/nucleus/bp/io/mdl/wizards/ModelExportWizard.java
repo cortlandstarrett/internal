@@ -263,9 +263,4 @@ public class ModelExportWizard extends Wizard implements IImportWizard {
 	public void addPages() {
 		super.addPage(createExportPage());
 	}
-
-	public IDialogSettings getDialogSettings() {
-		return CorePlugin.getDefault().getDialogSettings();
-	}
-	
 }
