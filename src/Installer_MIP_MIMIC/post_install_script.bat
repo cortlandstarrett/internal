@@ -97,7 +97,6 @@ echo Done
 
 :: FOR DEMO INSTALLS ONLY!
 :: Delete unwanted MCs
-RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.c.binary_%BPVER%"
 RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.c.source_%BPVER%"
 RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.cpp.source_%BPVER%"
 RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.vhdl.source_%BPVER%"

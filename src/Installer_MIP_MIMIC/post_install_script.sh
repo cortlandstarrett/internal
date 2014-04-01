@@ -159,7 +159,6 @@ configure_mc_files
 
 # FOR DEMO INSTALLS ONLY!
 # Delete unwanted MCs
-rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.c.binary_${BPVER}"
 rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.c.source_${BPVER}"
 rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.cpp.source_${BPVER}"
 rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.vhdl.source_${BPVER}"
