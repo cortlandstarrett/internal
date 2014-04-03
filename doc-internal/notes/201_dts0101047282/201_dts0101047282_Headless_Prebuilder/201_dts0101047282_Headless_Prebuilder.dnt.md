@@ -48,7 +48,7 @@ the command line.
 
 5. Analysis
 -----------
-BridgePoint currently does no do a good job of separating model, view and 
+BridgePoint currently does not do a good job of separating model, view and 
 control.  The ooaofooa is the model, the bp.canvas and and bp.graphics plugins
 define the view, and the control is mostly generated.  The root issue is that 
 the code under bp.core (generated and hand-craft) contains a lot of 
@@ -61,28 +61,28 @@ import org.eclipse.jface.*
 import org.eclipse.swt.*  
 import org.eclipse.ui.*  
 
+5.2 The bp.core.CorePlugin.java class currently extends AbstractUIPlugin. 
+Remove all eclipse dependencies from bp.core and other bp plugins that should
+not have eclipse gui dependencies.
 
-5.2 The bp.core.CorePlugin.java class currently extends AbstractUIPlugin
 
-6. Design
----------
-6.1 Remove all references to the Eclipse UI pluigns [5.1]  
-6.1.1 Use the following regular expression to find these locations:
+5.2.1 Remove all references to the Eclipse UI pluigns [5.1]  
+5.2.1.1 Use the following regular expression to find these locations:
 import\s+(org\.eclipse\.jface.*|org\.eclipse\.swt.*|org\.eclipse\.ui.*)
 
-6.1.2 For each file found, remove the import(s) and replace it with the 
+5.2.1.2 For each file found, remove the import(s) and replace it with the 
 following import:  
 import bp.core.ui.AbstractInterface.*;
 
-6.2 Modify bp.core.CorePlugin.java to extend Plugin instead of extending 
+5.2.2 Modify bp.core.CorePlugin.java to extend Plugin instead of extending 
 AbstractUIPlugin
 
-6.3 Create bp.ui.eclipseui.EclipseUI.java that implements 
+5.2.3 Create bp.ui.eclipseui.EclipseUI.java that implements 
 org.eclipse.ui.plugin.AbstractUIPlugin to provide the same workbench 
 integration that exists today in the current bp.core.CorePlugin.java.  This 
 new plugin shall be the activator for the GUI version of the tool.
 
-6.4 Introduce a new plugin, bp.ui.eclipseui.  This is where the Eclipse-specific  
+5.2.4 Introduce a new plugin, bp.ui.eclipseui.  This is where the Eclipse-specific  
 GUI functionality shall exist.  
 
 This plugin will serve as the new main activator for BridgePoint when run in 
@@ -92,21 +92,21 @@ com.mentor.nucleus.bp.core is being moved into this new plugin.
 The com.mentor.nucleus.bp.core plugin will no longer have any Eclipse GUI
 dependencies.
 
-6.4.1  bp.core.CorePlugin.java shall remain an activator, it will be used when
+5.2.4.1  bp.core.CorePlugin.java shall remain an activator, it will be used when
 the GUI is not needed. 
 
-6.5 Introduce a new package in the existing bp.core plugin named
+5.2.5 Introduce a new package in the existing bp.core plugin named
 com.mentor.nucleus.bp.core.abstractui.  The purpose for this is to make it
 clear what functionality is being refactored out of the current plugin 
 and into the new ui plugin.
 
-6.4 Modify MC-Java so it no longer generates code that has Eclipse GUI 
+5.2.4 Modify MC-Java so it no longer generates code that has Eclipse GUI 
 dependencies
 
-6.4.1 Search MC-Java for any Eclipse GUI dependencies.  Use the list call out 
-[6.1.1] to perform the search in the MC-Java project.
+5.2.4.1 Search MC-Java for any Eclipse GUI dependencies.  Use the list call out 
+[5.2.1.1] to perform the search in the MC-Java project.
 
-6.4.1.1 Three matches were found:
+5.2.4.1.1 Three matches were found:
 
   * The following 2 matches are used in a UI selection action filter:  
 641: import org.eclipse.ui.IActionFilter;  
@@ -121,24 +121,72 @@ with it.
 Note: At this point build the tool and make sure it still works.
 
 
-6.5 Modify bp.core so it no longer has any Eclipse GUI dependencies
-6.5.1 In the plugin manfest editor remove the dependencies on all eclipse GUI
+5.2.5 Modify bp.core so it no longer has any Eclipse GUI dependencies
+5.2.5.1 In the plugin manfest editor remove the dependencies on all eclipse GUI
 packages.  This will call out all the places that must be refactor.
-6.5.1.1 PErform the refactoring
-6.5.2 Search under the bp.core project using the regular expression called out 
-in [6.1.1] to find any remaining eclispe GUI dependencies.  
-6.5.2.1 If there are any remaining dependencies refactor them out.
+5.2.5.1.1 PErform the refactoring
+5.2.5.2 Search under the bp.core project using the regular expression called out 
+in [5.2.1.1] to find any remaining eclispe GUI dependencies.  
+5.2.5.2.1 If there are any remaining dependencies refactor them out.
 
-6.6 Search under the bp.mc projects using the regular expression called out in
-[6.1.1] to assure there are no dependencies on the Eclipse GUI.  If any are 
+5.2.5.2.Search under the bp.mc projects using the regular expression called out in
+[5.2.1.1] to assure there are no dependencies on the Eclipse GUI.  If any are 
 found, refactor them.
 
-6.7 Search under the bp.cli.* projects using the regular expression called out 
-in [6.1.1] to assure there are no dependencies on the Eclipse GUI.  If any are 
+5.2.7 Search under the bp.cli.* projects using the regular expression called out 
+in [5.2.1.1] to assure there are no dependencies on the Eclipse GUI.  If any are 
 found, refactor them.
 
-6.8 A separate issue shall be raised to search for and refactor GUI dependencies 
+5.2.8 A separate issue shall be raised to search for and refactor GUI dependencies 
 from the bp.debug.ui plugin.   
+
+
+5.3 Create a bp.cli.prebuilder plugin that does not use a workbench.
+
+Our front-end for the is bp.ui.text.AllActivityModifier.   This front-end is 
+called in 2 main places:  
+bp/debug/ui/model/BPDebugTarget.java::launchElement()
+This is used by model execution
+
+com/mentor/nucleus/bp/io/core/CoreExport.java::parseAllForExport()
+This is used by model export (this includes prebuilder export)
+
+My task at hand is this:
+-run the prebuilder without any GUI dependencies
+
+The approach I am currently looking at to handle this is to start with a new 
+cli prebuilder that does not spawn a workbench.
+It still does essentially the same thing the current prebuilder does, but it 
+does it without a "WorkbenchAdvisor" class.  This simply means there is no
+workbench (no GUI).  The cli.prebuilder shall be dependant on only a few things:
+bp.core
+bp.als.*
+bp.io.core
+
+Today, because of the fact that CoreExport is dependant on ui.text, ui.text is
+also required.  I propose that for this project, ui.text be divorced from the
+parser. This project, and also the upcoming xText and mcpaas projects
+will benefit from this too.   
+
+To do this, I am consider copying AllActivityModifier.java and TextParser.java
+out of ui.text and putting this under bp.als.oal.   I will think refactor them
+to remove all eclipse GUI dependencies from them.   If I can do this, it will 
+be a huge step in the task at hand (run prebuilder with no GUI dependencies).
+After this step of divorcing ui.text from export I will still need to 
+remove existing GUI dependencies from bp.core and bp.io.core and my approach 
+to doing that will be to refactor them as encountered as driven by the new 
+cli prebuidler that does not use a workbench.  This firsts step of divorcing 
+ui.text from the parser prevents me from seeing exactly how large this next task
+is, but I stil lthink this is the best approach.  I currently see no better 
+options, and I think the approach I am suggesting will benifit us on muyltiple
+fronts, so it is what my plan is right now.
+
+
+
+
+
+6. Design
+---------
 
 
 7. Design Comments
