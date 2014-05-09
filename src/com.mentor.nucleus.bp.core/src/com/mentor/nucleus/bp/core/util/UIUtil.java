@@ -584,7 +584,7 @@ public class UIUtil
 			boolean p_showTechSupportContact) {
     	
     	booleanDialogResult = false;
-    	p_title = (p_title == null) ? "BridgePoint UML Suite" : p_title;
+    	p_title = (p_title == null) ? "xtUML Editor" : p_title;
         if (p_showTechSupportContact) {
         	p_msg = p_msg + "\n\n" + UIUtil.getTechSupportMessage();
         }
@@ -604,18 +604,7 @@ public class UIUtil
     
     public static String getTechSupportMessage() {
     	String msg =
-          "Please contact BridgePoint Technical Support:\n\n"
-        + "Mentor Graphics Corporation\n"
-        + "8005 SW Boeckman Drive\n"
-        + "Wilsonville, OR 97070\n\n"
-        + "\t800-592-2210\n"
-        + "\t503-685-7000\n"
-        + "\t251-208-3603 (fax)\n"
-        + "\tsupport@mentor.com\n"
-        + "\thttp://www.mentor.com\n\n"
-        + "Or take advantage of SupportNet for a searchable knowledgebase of technical issues,"
-        + "the ability to open a service request online, and many other useful tools for customers:\n\n"
-        + "\thttp://www.mentor.com/supportnet\n";
+    	        "Please visit http://www.xtuml.org for technical support.\n\n";
     	return msg;
 	}
     
@@ -633,21 +622,20 @@ public class UIUtil
 				UIUtil.BPMessageTypes.QUESTION,
 				new String[] { "Yes", "No" }, 0);  // yes is he default
     	} else {
-	        PlatformUI.getWorkbench().getDisplay().syncExec(new Runnable() {
-	
-	            public void run() {
-	                org.eclipse.swt.widgets.Shell sh = PlatformUI.getWorkbench()
-	                        .getDisplay().getActiveShell();
-	                MessageDialog dialog = new MessageDialog(
-	                        sh, "BridgePoint UML Suite", null,
-	                        msg,
-	                        MessageDialog.QUESTION,
-	                        new String[] {"Yes", "No"},
-	                        0); // yes is the default
-	                
-	                displayYesNoQuestion_isYes = (dialog.open() == 0);
-	            }
-	        });
+            PlatformUI.getWorkbench().getDisplay().syncExec(new Runnable() {
+
+                public void run() {
+                    org.eclipse.swt.widgets.Shell sh = PlatformUI.getWorkbench()
+                            .getDisplay().getActiveShell();
+                    MessageDialog dialog = new MessageDialog(
+                            sh, "xtUML Editor", null,
+                            msg,
+                            MessageDialog.QUESTION,
+                            new String[] {"Yes", "No"},
+                            0); // yes is the default
+                    displayYesNoQuestion_isYes = (dialog.open() == 0);
+                }
+            });
     	}
         return displayYesNoQuestion_isYes;
     }

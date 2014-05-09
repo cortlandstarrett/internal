@@ -100,8 +100,8 @@ sed -e 's;'"C:/MentorGraphics/BridgePoint"';'"$TARGET"';g' -i "$TARGET/eclipse_e
 # be the eclipse installation under the BP install, or the users pre-existing eclipse installation.
 function eclipseUpdateError()
 {
-	echo "Error during discovery of eclipse location.  ${ECLIPSECFGFILE} does not exist."
-	exit 1;
+    echo "Error during discovery of eclipse location.  ${ECLIPSECFGFILE} does not exist."
+    exit 1;
 }
 
 echo "Updating Eclipse configuration"
@@ -109,11 +109,11 @@ echo "Updating Eclipse configuration"
 ECLIPSECFGFILE="$TARGET/extras/eclipsedir.txt"
 if [ -f "$ECLIPSECFGFILE" ]
 then
-	echo "Found the Eclipse config file $ECLIPSECFGFILE"
+    echo "Found the Eclipse config file $ECLIPSECFGFILE"
 fi
 if [ ! -f "$ECLIPSECFGFILE" ]
 then
-	eclipseUpdateError
+    eclipseUpdateError
 fi
 ECLIPSEDIR=`grep e "$ECLIPSECFGFILE" | sed -e "s/;//"`
 if [ ! -d "$ECLIPSEDIR/links" ]
@@ -157,14 +157,23 @@ MC_NAME="com.mentor.nucleus.bp.mc.systemc.source"
 configure_mc_files
 # Done moving files for wine-based generation
 
+# FOR DEMO AND XTUML EDITOR INSTALLS ONLY!
+# Delete unwanted MCs
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.c.binary_${BPVER}"
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.c.source_${BPVER}"
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.cpp.source_${BPVER}"
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.vhdl.source_${BPVER}"
+rm -rf "${TARGET}/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.systemc.source_${BPVER}"
+# END - FOR DEMO AND XTUML EDITOR INSTALLS ONLY!
+
 # Show release notes or not depending on their selection in the installer.
 echo "Release notes display (or not)"
 RNFLAGFILE="$TARGET/extras/rnflag.txt"
 if [ -f "$RNFLAGFILE" ]
 then
-	echo "Found the Release notes flag file $RNFLAGFILE"
-	firefox "$TARGET/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.doc_$BPVER/ReleaseNotes/HTML/ReleaseNotes.htm" &
-	rm -f "$RNFLAGFILE"
+    echo "Found the Release notes flag file $RNFLAGFILE"
+    firefox "$TARGET/eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.doc_$BPVER/ReleaseNotes/HTML/ReleaseNotes.htm" &
+    rm -f "$RNFLAGFILE"
 fi
 echo Done
 

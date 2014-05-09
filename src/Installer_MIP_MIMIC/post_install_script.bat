@@ -69,16 +69,16 @@ echo Error during discovery of eclipse location.  %ECLIPSECFGFILE% does not exis
 :EclipseUpdateDone
 echo Done
 
-:: Create the Start Menu entries. This creates the shortcut menu start->Mentor Graphics->BridgePoint which is the short cut to
+:: Create the Start Menu entries. This creates the shortcut menu start->Mentor Graphics->xtUML Editor which is the short cut to
 :: Launcher.bat located within the <BP Dir>/eclipse folder.  Also creates desktop shortcut.  If the same named shortcut
 :: exists in USERPROFILE as well as ALLUSERSPROFILE, the USERPROFILE one will be used.  Since we are storing these shortcuts
 :: in ALLUSERSPROFILE, get rid of any that exist in USERPROFILE.  We also create documentation shortcuts.  Tweak the shortuct
 :: we copy to the desktop to run minimized
 echo Creating shortcuts
-IF EXIST "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\BridgePoint.lnk" DEL "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\BridgePoint.lnk"
-IF EXIST "%USERPROFILE%\Desktop\BridgePoint.lnk" DEL "%USERPROFILE%\Desktop\BridgePoint.lnk"
-IF EXIST "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\BridgePoint Documentation" RMDIR /S /Q "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\BridgePoint Documentation"
-%MSI_CMD% -a "Mentor Graphics" BridgePoint  "%ECLIPSEDIR%\Launcher.bat" "" "%ECLIPSEDIR%" "%TARGET%\bp.ico" 0 "" TRUE
+IF EXIST "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\xtUML Editor.lnk" DEL "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\xtUML Editor.lnk"
+IF EXIST "%USERPROFILE%\Desktop\xtUML Editor.lnk" DEL "%USERPROFILE%\Desktop\xtUML Editor.lnk"
+IF EXIST "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\xtUML Editor Documentation" RMDIR /S /Q "%USERPROFILE%\Start Menu\Programs\Mentor Graphics\xtUML Editor Documentation"
+%MSI_CMD% -a "Mentor Graphics" "xtUML Editor"  "%ECLIPSEDIR%\Launcher.bat" "" "%ECLIPSEDIR%" "%TARGET%\bp.ico" 0 "" TRUE
 echo Done
 
 :: Create desktop shortcut or not depending on their selection in the installer.
@@ -87,13 +87,22 @@ SET CSFLAGFILE=%TARGET%\extras\csflag.txt
 IF EXIST "%CSFLAGFILE%" ECHO Found the create shortcut flag file %CSFLAGFILE%
 IF NOT EXIST "%CSFLAGFILE%" GOTO CreateShortcutDone
 ::"msi_cmd -k <AllUsersDesktop> <name> <command> <params> <workingDir> <iconPath> <nIcon> <shortcut> <replace> <runMinimized>"
-%MSI_CMD% -k TRUE "BridgePoint" "%ECLIPSEDIR%\Launcher.bat" "" "%ECLIPSEDIR%" "%TARGET%\bp.ico" 0 "" TRUE TRUE
+%MSI_CMD% -k TRUE "xtUML Editor" "%ECLIPSEDIR%\Launcher.bat" "" "%ECLIPSEDIR%" "%TARGET%\bp.ico" 0 "" TRUE TRUE
 ::"%TARGET%\tools\bp_run_min.vbs"
-::cscript "%TARGET%\tools\create_shortcut.vbs" TRUE "BridgePoint" "%ECLIPSEDIR%\Launcher.bat" "" "%ECLIPSEDIR%" "%TARGET%\bp.ico" 0 "" TRUE
+::cscript "%TARGET%\tools\create_shortcut.vbs" TRUE "xtUML Editor" "%ECLIPSEDIR%\Launcher.bat" "" "%ECLIPSEDIR%" "%TARGET%\bp.ico" 0 "" TRUE
 DEL "%CSFLAGFILE%"
 GOTO CreateShortcutDone
 :CreateShortcutDone
 echo Done
+
+:: FOR DEMO AND XTUML EDITOR INSTALLS ONLY!
+:: Delete unwanted MCs
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.c.binary_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.c.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.cpp.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.vhdl.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.systemc.source_%BPVER%"
+:: END - FOR DEMO AND XTUML EDITOR INSTALLS ONLY!
 
 :: Show release notes or not depending on their selection in the installer.
 echo Release notes display (or not)
