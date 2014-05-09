@@ -127,7 +127,6 @@ INSERT INTO T_TNS VALUES (286, 'Attribute.gif',                  'I_AVL',   '', 
 INSERT INTO T_TNS VALUES (287, 'Event.gif',                      'I_EVI',   '', '', '',                 'Pending Events',                -1, '');
 INSERT INTO T_TNS VALUES (288, 'StructuredDataType.gif',         'S_SDT',   '', 'Name', '->S_DT[R17]',  'Structured Data Type',                -1, '');
 INSERT INTO T_TNS VALUES (289, 'StructuredDataTypeMember.gif',   'S_MBR',   '', 'Name', '',                 'Structure Member',                46, 'succeeds');
-INSERT INTO T_TNS VALUES (290, 'Attribute.gif',                  'RV_RVL',  '', 'Label', '',                 'RuntimeValues',                        -1, '');
 INSERT INTO T_TNS VALUES (291, 'Port.gif',                  'C_PO',  '', 'Name', '',                 'Port',                        -1, '');
 INSERT INTO T_TNS VALUES (292, 'Provision.gif',                  'CL_IP',  '', 'Name', '',                 'Imported Provided Interfaces',                        -1, '');
 INSERT INTO T_TNS VALUES (293, 'Requirement.gif',                  'CL_IR',  '', 'Name', '',                 'Imported Required Interfaces',                        -1, '');
@@ -136,7 +135,6 @@ INSERT INTO T_TNS VALUES (295, 'InstanceOfComponent.gif',                  'I_EX
 INSERT INTO T_TNS VALUES (296, 'Component.gif', 'SQ_COP',  '', 'Label', '', 'Component Participants', -1, '');
 INSERT INTO T_TNS VALUES (297, 'Package.gif', 'EP_PKG',  '', 'Name', '', 'Packages', -1, '');
 INSERT INTO T_TNS VALUES (298, 'Association.gif',                'I_LIP',   '', 'Label', '',                     'Association', 					-1, '');
-INSERT INTO T_TNS VALUES (299, 'Class.gif',                  'CSME_CIE',   '', 'Label', '',                 'Classes Under Execution',                     -1, '');
 INSERT INTO T_TNS VALUES (300, 'ConstantSpecification.gif',  'CNST_CSP',  '', 'InformalGroupName', '',      'Constant Specification',  -1, '');
 INSERT INTO T_TNS VALUES (301, 'Enumerator.gif',             'CNST_LSC',  '', 'Name', '->CNST_LFSC[R1503]->CNST_SYC[R1502]', 'Literal Symbolic Constant', -1, '');
 INSERT INTO T_TNS VALUES (302, 'Enumerator.gif',             'CNST_SYC',  '', '', '',                 'Symbolic Constant', 				-1, '');
@@ -449,7 +447,6 @@ INSERT INTO T_TPS VALUES (287, 301, 302, '->CNST_LFSC[R1503]->CNST_SYC[R1502]', 
 INSERT INTO T_TPS VALUES (288, 301,  17, '->CNST_LFSC[R1503]->CNST_SYC[R1502]->S_DT[R1500]', 'Type', true);
 
 INSERT INTO T_TPS VALUES (289, 297,  74, '->PE_PE[R8000]->S_DT[R8001]->S_UDT[R17]', '', false);
-INSERT INTO T_TPS VALUES (290, 297,  75, '->PE_PE[R8000]->S_DT[R8001]->S_CDT[R17]', '', false);
 INSERT INTO T_TPS VALUES (291, 297,  77, '->PE_PE[R8000]->S_DT[R8001]->S_EDT[R17]', '', false);
 INSERT INTO T_TPS VALUES (292, 297, 288, '->PE_PE[R8000]->S_DT[R8001]->S_SDT[R17]', '', false);
 INSERT INTO T_TPS VALUES (293, 297, 300, '->PE_PE[R8000]->CNST_CSP[R8001]', '', false);

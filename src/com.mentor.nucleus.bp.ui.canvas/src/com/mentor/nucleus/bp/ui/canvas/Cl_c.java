@@ -46,10 +46,7 @@ import com.mentor.nucleus.bp.core.AsynchronousMessage_c;
 import com.mentor.nucleus.bp.core.BinaryAssociation_c;
 import com.mentor.nucleus.bp.core.ClassAsLink_c;
 import com.mentor.nucleus.bp.core.ClassAsSubtype_c;
-import com.mentor.nucleus.bp.core.ClassInEngine_c;
-import com.mentor.nucleus.bp.core.ClassInState_c;
 import com.mentor.nucleus.bp.core.ClassInstanceParticipant_c;
-import com.mentor.nucleus.bp.core.ClassMonitor_c;
 import com.mentor.nucleus.bp.core.ClassParticipant_c;
 import com.mentor.nucleus.bp.core.ClassStateMachine_c;
 import com.mentor.nucleus.bp.core.CommunicationLink_c;
@@ -83,13 +80,11 @@ import com.mentor.nucleus.bp.core.Include_c;
 import com.mentor.nucleus.bp.core.InitialNode_c;
 import com.mentor.nucleus.bp.core.InstanceReferenceDataType_c;
 import com.mentor.nucleus.bp.core.InstanceStateMachine_c;
-import com.mentor.nucleus.bp.core.Instance_c;
 import com.mentor.nucleus.bp.core.InterfacePackage_c;
 import com.mentor.nucleus.bp.core.Interface_c;
 import com.mentor.nucleus.bp.core.Lifespan_c;
 import com.mentor.nucleus.bp.core.LinkedAssociation_c;
 import com.mentor.nucleus.bp.core.ModelClass_c;
-import com.mentor.nucleus.bp.core.Monitor_c;
 import com.mentor.nucleus.bp.core.NewStateTransition_c;
 import com.mentor.nucleus.bp.core.NoEventTransition_c;
 import com.mentor.nucleus.bp.core.ObjectNode_c;
@@ -2205,32 +2200,7 @@ public static void Settoolbarstate(boolean readonly) {
 
     }
     public static boolean Ishighlighted(final Object Element) {
-        // We need something more generic than this that will delegate to the client
-        if (Element instanceof StateMachineState_c) {
-      	StateMachineState_c  state = (StateMachineState_c)Element;
-          Instance_c [] insts = Instance_c.getManyI_INSsOnR2915(state);
-          Monitor_c mon = Monitor_c.getOneI_MONOnR2949(insts);
-          if (mon != null) {
-            return true;
-          }
-          ClassInEngine_c clazz = ClassInEngine_c.getOneCSME_CIEOnR2932(state);
-          if (clazz != null) {
-            ClassMonitor_c classMon = ClassMonitor_c.getOneCSME_CLMOnR2950(clazz);
-          	return classMon != null;
-          }
-        }
-        else if (Element instanceof Transition_c) {
-        	Transition_c trans = (Transition_c)Element;
-        	Instance_c [] insts = Instance_c.getManyI_INSsOnR2953(trans);
-            Monitor_c mon = Monitor_c.getOneI_MONOnR2949(insts);
-            if (mon != null) {
-              return true;
-            }
-            ClassInState_c [] ciss = ClassInState_c.getManyCSME_CISsOnR2952(trans);
-        	if (ciss.length > 0) {
-        		return true;
-        	}
-        }
+    	// Mentor Graphics Verifier-specific Implementation
         return false;
   } // End ishighlighted
     
