@@ -1,4 +1,4 @@
--- BP 7.1 content: ModelClass syschar: 3 persistence-version: 7.1.6
+-- BP 7.1.6 content: ModelClass syschar: 3 persistence-version: 7.1.6
 
 INSERT INTO O_OBJ
 	VALUES ("b2a9b4e2-d405-4882-b8cb-fba3e9906e53",
@@ -55,142 +55,8 @@ INSERT INTO O_TFR
 	'',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'// Body:For Stmt.execute()
-
-// First check for a valid stack frame id
-// Grab the stack frame
-select any stack_frame from instances of I_STF where
-                              (selected.Stack_Frame_ID == param.stack_frame_id);
-select one body related by self->ACT_SMT[R603]->ACT_BLK[R602]->ACT_ACT[R601];                               
-if (empty stack_frame)
-  //Invalid stack frame ID!
-  pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Error in For Stmt.execute: Invalid stack frame id. Terminating execution.",path:pathMsg);
-  select any stack from instances of I_STACK;
-  stack.runState = RunStateType::Terminated;
-else
-  select one stack related by stack_frame->I_STACK[R2943];
-  if (empty stack)
-    //Could not get stack!
-    pathMsg = "<No Path Available - Empty instance>";
-    if (not_empty body)
-      pathMsg = body.getPath();
-    end if;
-	USER::logError(msg:"Error in For Stmt.execute: Could not get stack. Using random stack.",path:pathMsg);
-    select any stack from instances of I_STACK;
-    stack.runState = RunStateType::Terminated;
-  else
-    select one inst_set related by self->V_VAR[R652]->V_INS[R814];
-    select one loop_variable_inst_handle related by self->
-                                                       V_VAR[R614]->V_INT[R814];
-    select one block_to_execute related by self->ACT_BLK[R605];
-    // Get the local reference to the loop variable
-    select any loop_variable_local_ref related by stack_frame->
-             I_BSF[R2923]->L_LCL[R3000]->L_LCR[R3001] where selected.Local_ID == 
-                    self.getLocalLoopVarID(stack_frame_id:param.stack_frame_id);
-    select any local_instance related by loop_variable_local_ref->
-                                        L_LCL[R3001]->RV_RVL[R3306]->
-                       RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311]->I_INS[R3013];
-    select one set_instance_in_ref related by 
-                                          loop_variable_local_ref->L_IIR[R3012];
-    if (empty set_instance_in_ref)
-      // this is the first iteration, initialize set and get the first member
-      if (self.is_implicit)
-        // Create the local loop variable instance reference
-        // in the scope of the enclosing block
-        select one containing_block related by self->
-                                                   ACT_SMT[R603]->ACT_BLK[R602];
-        ref_ID = containing_block.newLocalReference(stack_frame_id:
-                                                    stack_frame.Stack_Frame_ID);
-        select any loop_variable_local_ref related by containing_block->
-                                  I_BSF[R2923]->L_LCL[R3000]->L_LCR[R3001] where
-                                                    selected.Local_ID == ref_ID;
-        relate loop_variable_inst_handle to loop_variable_local_ref
-                                                                   across R3004;
-      else
-        loop_variable_local_ref.clear();
-      end if;
-      // Ensure previous_instance in ref is empty to start with
-      select any prev_local_instance_in_ref related by inst_set->
-                           L_LCR[R3003]->L_LCL[R3001]->RV_RVL[R3306]->
-                           RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311] where
-                               selected.RuntimeValue_ID == GD::NULL_UNIQUE_ID();
-      select many locals related by inst_set->
-                            L_LCR[R3003]->L_LCL[R3001] where
-                                selected.Stack_Frame_ID == stack_frame.Stack_Frame_ID;
-      select many local_instance_in_refs related by locals->RV_RVL[R3306]->
-                                    RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311];
-      for each local_instance_in_ref in local_instance_in_refs
-        if (not_empty prev_local_instance_in_ref)
-          relate prev_local_instance_in_ref to local_instance_in_ref across
-                                                               R3011.''is after'';
-        end if;
-        prev_local_instance_in_ref = local_instance_in_ref;
-      end for;
-      // Set up the current loop variable to point to first iterated instance
-      select any first_local_instance_in_ref related by locals->RV_RVL[R3306]->
-                                    RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311];
-      select one local_instance related by 
-                                      first_local_instance_in_ref->I_INS[R3013];
-      if (not_empty local_instance)
-        loop_variable_local_ref.addInstance(inst_id:local_instance.Inst_ID);
-      end if;
-      relate loop_variable_local_ref to
-                                       first_local_instance_in_ref across R3012;
-    else
-      // This is not the first iteration, dispose the set iterator link
-      unrelate loop_variable_local_ref from set_instance_in_ref across R3012;
-      // and dispose the reference to the previous set member
-      select any loop_instance_in_ref related by
-                  loop_variable_local_ref->L_LCL[R3001]->RV_RVL[R3306]->
-                                     RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311];
-      loop_instance_in_ref.dispose();
-      // Find the next set member (if any)
-      select one next_local_ref related by set_instance_in_ref->
-                                                        L_IIR[R3011.''is after''];
-      // Ensure local_instance is set to it, even if there wasn''t one
-      select one local_instance related by next_local_ref->I_INS[R3013];
-      // Hook up the next instance across R3002 (if any, otherwise
-      // leave unrelated, an empty next instance
-      // signals no more instances in the set and loop exit . . . .
-      if (not_empty next_local_ref)
-        select one loop_variable_runtime_value related by
-                loop_variable_local_ref->L_LCL[R3001]->RV_RVL[R3306]->
-                                                   RV_SMV[R3300]->RV_IRV[R3308];
-        relate loop_variable_runtime_value to loop_instance_in_ref across R3311;
-        if (not_empty local_instance)
-          relate local_instance to loop_instance_in_ref across R3013;
-        end if;
-        relate loop_variable_local_ref to next_local_ref across R3012;
-      end if;
-    end if;
-    if (not_empty local_instance)
-      select any statement related by block_to_execute->ACT_SMT[R602];
-      if not_empty statement
-        // we''re going into a deeper block, so disable execution on current one
-        select any bisf related by stack_frame->I_BSF[R2923] where
-                                                           selected.isExecuting;
-        bisf.isExecuting = false;
-        // Set up block for execution
-        create object instance bisf of I_BSF;
-        relate stack_frame to block_to_execute across R2923 using bisf;
-        relate statement to bisf across R2941;
-        bisf.isExecuting = true;
-        block_to_execute.initialize();
-      end if;
-    else
-      // Looping is over, remove the link that tracks the current set member
-      select one set_instance_in_ref related by
-                                          loop_variable_local_ref->L_IIR[R3012];
-      if (not_empty set_instance_in_ref)
-        unrelate loop_variable_local_ref from set_instance_in_ref across R3012;
-      end if;
-    end if;
-  end if;
-end if;',
+	'// Mentor Graphics Verifier-specific Implementation
+',
 	1,
 	'',
 	"3b4661d6-8c29-4aa6-bb1d-a09d0833ead4");
@@ -217,46 +83,8 @@ INSERT INTO O_TFR
 	'',
 	"a5f314e0-43b6-40bd-8aee-520de6952a24",
 	1,
-	'// Body:For Stmt.getLocalLoopID()
-                                    
-select any stack_frame related by self->
-             ACT_SMT[R603]->ACT_BLK[R602]->I_BSF[R2923]->I_STF[R2923] where
-                              (selected.Stack_Frame_ID == param.stack_frame_id);
-select one loop_variable_inst_handle related by self->V_VAR[R614]->V_INT[R814];
-
-// Empty local reference
-select any loop_variable_local_ref from instances of L_LCR where
-                                    (selected.Local_ID == GD::NULL_UNIQUE_ID());
-
-// Get all of the block in stack frames that exist for the stack frame
-select many block_in_stack_frames related by stack_frame->I_BSF[R2923];
-for each block_in_stack_frame in block_in_stack_frames
-
-  // Find the one local value that matches the block in stack frame where we are
-  // executing for the transient variable we want to assign
-  select any loop_variable_local_ref related by block_in_stack_frame->
-                            L_LCL[R3000]->L_LCR[R3001] where selected.Var_ID ==
-                                               loop_variable_inst_handle.Var_ID;
-  if (not_empty loop_variable_local_ref)
-    // We found the 1 local reference in this stack frame for this instance
-    // handle id.  So stop looking.
-    // All of this is necessary in order to support nested blocks that reference
-    // variables that were created in outer blocks in this stack frame
-    
-    // WARNING: This implementation is based on the Object Action Language
-    // definition that existed in November of 2005.
-    // If the language is changed to become a strongly typed language where a
-    // user can define a variable in an inner block with the same name as
-    // something that exists in the outer block, then this implementation will
-    // not work because it does not walk out of the current block.
-    break;
-  end if;
-end for;
-if (not_empty loop_variable_local_ref)
-  return loop_variable_local_ref.Local_ID;
-else
-  return GD::NULL_UNIQUE_ID();
-end if;',
+	'// Mentor Graphics Verifier-specific Implementation
+return GD::NULL_UNIQUE_ID();',
 	1,
 	'',
 	"61e70dce-5ddb-43fe-ae0c-1db3e50a63b5");
@@ -344,7 +172,7 @@ INSERT INTO O_REF
 	'',
 	'Block',
 	'Block_ID',
-	'R605');
+	'R605.''controls''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("b2a9b4e2-d405-4882-b8cb-fba3e9906e53",
 	"03ee3b85-947b-4c84-89ef-3de8c59a5484",
@@ -421,7 +249,7 @@ INSERT INTO O_REF
 	'',
 	'Variable',
 	'Var_ID',
-	'R614');
+	'R614.''loop''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("b2a9b4e2-d405-4882-b8cb-fba3e9906e53",
 	"faaa961e-483e-4222-9b3d-774bd1f3d4e6",
@@ -474,7 +302,7 @@ INSERT INTO O_REF
 	'',
 	'Variable',
 	'Var_ID',
-	'R652');
+	'R652.''set''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("b2a9b4e2-d405-4882-b8cb-fba3e9906e53",
 	"3918de15-4686-4c85-a524-fa4440b92744",
@@ -523,7 +351,7 @@ INSERT INTO O_REF
 	'',
 	'Model Class',
 	'Obj_ID',
-	'R670');
+	'R670.''iterates a set of''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("b2a9b4e2-d405-4882-b8cb-fba3e9906e53",
 	"1a0a8f65-f2b1-4a24-814e-4d9e838de48e",
