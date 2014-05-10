@@ -36,6 +36,11 @@ import org.eclipse.core.resources.ResourcesPlugin;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.jface.util.ListenerList;
 
+import com.mentor.nucleus.bp.core.CorePlugin;
+import com.mentor.nucleus.bp.core.Modeleventnotification_c;
+import com.mentor.nucleus.bp.core.Ooaofooa;
+import com.mentor.nucleus.bp.core.SystemModel_c;
+
 
 /**
  * The root element of the tree of elements that belongs to a domain.  
