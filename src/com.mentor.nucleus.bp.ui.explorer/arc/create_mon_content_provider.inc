@@ -151,22 +151,6 @@ public class ${provider_name} implements ITreeContentProvider {
     return null;
   }
 	private void addTo(ArrayList result, ComponentInstance_c engine) {
-		ClassInEngine_c[] classes = ClassInEngine_c
-				                        ..getManyCSME_CIEsOnR2950(engine);
-		for (int l = 0; l < classes.length; l++) {
-			ClassMonitor_c mon = ClassMonitor_c
-					                   ..getOneCSME_CLMOnR2950(classes[l]);
-			if (mon != null) {
-				result.add(classes[l]);
-			}
-		}
-		Instance_c[] insts = Instance_c.getManyI_INSsOnR2949(engine);
-		for (int l = 0; l < insts.length; l++) {
-			Monitor_c mon = Monitor_c.getOneI_MONOnR2949(insts[l]);
-			if (mon != null) {
-				result.add(insts[l]);
-			}
-		}
 	}
 	private ComponentInstance_c[] getEnginesForComponent(Component_c componentC) {
 		ComponentInstance_c[] compEngines = ComponentInstance_c

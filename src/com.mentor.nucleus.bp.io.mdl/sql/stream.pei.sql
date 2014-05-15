@@ -237,16 +237,7 @@ INSERT INTO EO VALUES ( '2.1.2.3',  '',         '',         'Dimensions', 120, '
 INSERT INTO EO VALUES ( '2.1.3',	'2.1.3.1',	'2.1.4',	'Class Identifier', 104, 'many', 'first' );
 INSERT INTO EO VALUES ( '2.1.3.1',	'',			'',			'Class Identifier Attribute', 105, 'many', 'first' );
 INSERT INTO EO VALUES ( '2.1.4',	'3',		'2.1.5',	'Instance State Machine', 518, 'one', 'first',false );
-INSERT INTO EO VALUES ( '2.1.5',	'3',		'2.1.6',    'Class State Machine', 519, 'one', 'first',false );
-
-INSERT INTO EO VALUES ( '2.1.6',	 '2.1.6.1',   '',	      'Class In Engine', 2961, 'many', 'first' );
-INSERT INTO EO VALUES ( '2.1.6.1',	 '2.1.6.1.1',   '',	      'Instance', 2962, 'many', 'first' );
-INSERT INTO EO VALUES ( '2.1.6.1.1',	 '',	      '2.1.6.1.2',  'Attribute Value', 2909, 'many', 'first' );
-INSERT INTO EO VALUES ( '2.1.6.1.2',	 '2.1.6.1.2.1', '',	      'Link Participation', 2958, 'many', 'first' );
-INSERT INTO EO VALUES ( '2.1.6.1.2.1', '',	      '2.1.6.1.2.2','Link', 2901, 'many', 'first' );
-INSERT INTO EO VALUES ( '2.1.6.1.2.2', '',	      '2.1.6.1.2.3','Link', 2902, 'many', 'none' );
-INSERT INTO EO VALUES ( '2.1.6.1.2.3', '',	      '',	      'Link', 2903, 'many', 'none' );
-
+INSERT INTO EO VALUES ( '2.1.5',	'3',		'',    'Class State Machine', 519, 'one', 'first',false );
 
 INSERT INTO EO VALUES ( '2.4.1',	'',			'2.4.2',	'Simple Association', 206, 'one', 'first' );
 INSERT INTO EO VALUES ( '2.4.2',	'',			'2.4.3',	'Linked Association', 206, 'one', 'first' );
