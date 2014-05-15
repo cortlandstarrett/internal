@@ -43,7 +43,6 @@ import com.mentor.nucleus.bp.core.SystemModel_c;
 import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
-import com.mentor.nucleus.bp.core.util.BridgePointLicenseManager;
 import com.mentor.nucleus.bp.core.util.CoreUtil;
 import com.mentor.nucleus.bp.core.util.UIUtil;
 import com.mentor.nucleus.bp.ui.canvas.Ooaofgraphics;
@@ -87,41 +86,8 @@ public abstract class CoreExport implements IRunnableWithProgress {
     public CoreExport(Ooaofooa modelRoot, String exportOAL) {
         m_modelRoot = modelRoot;
        	m_exportGraphics = true;
-        setExportOAL(exportOAL);
     }
 
-    public static final String ExportLicenseError = "Failed to get a xtumlmcexport license. Proceeding with the export, but executable instances will not be included in the export";
-    /**
-     * Set the flag that indicates if we should export OAL or not.
-     * 
-     * @param exportOAL This is one of the "public static" stings defined in 
-     *                  this class (YES, NO, USER_PERFERENCE).
-     *                  
-     * @return true is the option to setExportOAL is set to true and false if it is set to false
-     */
-    public boolean setExportOAL(String exportOAL) {
-    	if (YES.equals(exportOAL)) {
-        	m_exportOAL = true;
-    	} else if (USER_PREFERENCE.equals(exportOAL)) {
-			IPreferenceStore store = CorePlugin.getDefault().getPreferenceStore();
-	        String option = store.getString(BridgePointPreferencesStore.EXPORT_OAL);
-	        if (option.equals(MessageDialogWithToggle.ALWAYS)) {
-	        	boolean isLicensed = BridgePointLicenseManager.licenseExists(BridgePointLicenseManager.LicenseAtomic.XTUMLMCEXPORT);
-	        	
-				if (!isLicensed) {
-					CorePlugin.logError(ExportLicenseError, null);
-					m_exportOAL = false;
-				} else {
-					m_exportOAL = true;
-				}
-	        } else {
-	        	m_exportOAL = false;
-	        }
-    	} else {
-        	m_exportOAL = false;
-    	}
-    	return m_exportOAL;
-    }
     
     /**
      * Set the flag that indicates if we should export graphics or not.

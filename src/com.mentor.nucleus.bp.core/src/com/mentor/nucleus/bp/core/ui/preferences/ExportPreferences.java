@@ -37,7 +37,6 @@ import org.eclipse.ui.PlatformUI;
 import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.common.BridgePointPreferencesModel;
 import com.mentor.nucleus.bp.core.ui.ICoreHelpContextIds;
-import com.mentor.nucleus.bp.core.util.BridgePointLicenseManager;
 import com.mentor.nucleus.bp.ui.preference.IPreferenceModel;
 
 public class ExportPreferences extends PreferencePage implements
@@ -130,14 +129,6 @@ public class ExportPreferences extends PreferencePage implements
         model.getStore().loadModel(getPreferenceStore(), null, model);
         
         BridgePointPreferencesModel bpPrefs = (BridgePointPreferencesModel) model;
-        if (exportOALYesRadio.getSelection()) {
-            bpPrefs.exportOAL = MessageDialogWithToggle.ALWAYS;
-        } else if (exportOALNoRadio.getSelection()) {
-            bpPrefs.exportOAL = MessageDialogWithToggle.NEVER;
-        } else {
-            bpPrefs.exportOAL = MessageDialogWithToggle.NEVER;
-        }
-
         if (exportGraphicsYesRadio.getSelection()) {
             bpPrefs.exportGraphics = MessageDialogWithToggle.ALWAYS;
         } else if (exportGraphicsNoRadio.getSelection()) {
@@ -158,28 +149,6 @@ public class ExportPreferences extends PreferencePage implements
 
     private void syncUIWithPreferences() {
         BridgePointPreferencesModel bpPrefs = (BridgePointPreferencesModel) model;
-        
-        // NOTE: We do NOT want to call model.loadModel(...) here.  The model will
-        // have already been set up with the correct data (either from the store
-        // or defaults) before this function is called.  Calling model.loadModel(...)
-        // here would overwrite the population of the default model data in
-        // performDefaults().
-
-        boolean oalExportIsLicensed = BridgePointLicenseManager.licenseExists(BridgePointLicenseManager.LicenseAtomic.XTUMLMCEXPORT);
-        
-        if (bpPrefs.exportOAL.equals(MessageDialogWithToggle.ALWAYS) && oalExportIsLicensed) {
-            exportOALYesRadio.setSelection(true);
-            exportOALNoRadio.setSelection(false);
-        } else if (bpPrefs.exportOAL.equals(MessageDialogWithToggle.NEVER)) {
-            exportOALYesRadio.setSelection(false);
-            exportOALNoRadio.setSelection(true);
-        } else {
-            exportOALYesRadio.setSelection(false);
-            exportOALNoRadio.setSelection(true);
-        }
-        if (!oalExportIsLicensed) {
-            exportOALYesRadio.setEnabled(false);
-        }
 
         if (bpPrefs.exportGraphics.equals(MessageDialogWithToggle.ALWAYS)) {
             exportGraphicsYesRadio.setSelection(true);

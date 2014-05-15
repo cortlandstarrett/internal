@@ -35,7 +35,6 @@ import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.PersistableModelComponent;
 import com.mentor.nucleus.bp.core.ui.Selection;
-import com.mentor.nucleus.bp.core.util.BridgePointLicenseManager;
 import com.mentor.nucleus.bp.core.util.UIUtil;
 import com.mentor.nucleus.bp.io.core.CoreExport;
 import com.mentor.nucleus.bp.io.core.CorePlugin;
@@ -115,15 +114,7 @@ public class ModelExportWizard extends Wizard implements IImportWizard {
 						outStream,
 						elements.toArray(new NonRootModelElement[elements.size()]), 
 						true, true);
-		boolean exportOALInstances = false;
-		if (exporter instanceof CoreExport) {
-			
-			((CoreExport)exporter).setExportGraphics(CoreExport.USER_PREFERENCE);
-			// Check the license.  This tests the license without checking it out.  If there is
-			// no availble license this will return false.
-			exportOALInstances = ((CoreExport)exporter).setExportOAL(CoreExport.USER_PREFERENCE);
-		}
-		return exportOALInstances;
+		return false;
 	}
 	
 	private void addGraphicalElementsFor(
@@ -178,31 +169,6 @@ public class ModelExportWizard extends Wizard implements IImportWizard {
 				}
 			}
 
-			// Note that we test for license availability during this call. If 
-			// The user request OAL Export and they don't have a license we 
-			// log the error.
-			userSelectedToExportOALInstances = createExportProcessor();
-			oalExportIsLicensed = false;
-			if (userSelectedToExportOALInstances) {
-				// If the user is exporting executable OAL instances then check
-				// out the license
-				oalExportIsLicensed = BridgePointLicenseManager
-						.getLicense(
-								BridgePointLicenseManager.LicenseAtomic.XTUMLMCEXPORT,
-								true);
-			}
-
-			boolean exportOALIsSelected = false;
-			NonRootModelElement[] selectedElements = null;
-			if (exporter instanceof CoreExport) {
-				exportOALIsSelected = ((CoreExport) exporter).exportOAL();
-				if (exportOALIsSelected) {
-					selectedElements = Selection.getInstance()
-							.getSelectedNonRootModelElements();
-					((CoreExport) exporter).parseAllForExport(selectedElements, getContainer().getShell());
-				}
-				
-			}
 			// Perform the export
 			if (getContainer() == null) {
 				exporter.run(new NullProgressMonitor());
@@ -215,12 +181,6 @@ public class ModelExportWizard extends Wizard implements IImportWizard {
 			fos.close();
 			successfulExport = true;
 			
-			// Destroy the OAL instances
-			if (selectedElements != null) {
-				for (int i = 0; i < selectedElements.length; i++) {
-					AllActivityModifier.disposeAllBodies(selectedElements[i].getModelRoot());
-				}
-			}
 		} catch (FileNotFoundException e) {
 			CorePlugin.logError(errorMsg, e);
 		} catch (IOException e) {
@@ -229,13 +189,6 @@ public class ModelExportWizard extends Wizard implements IImportWizard {
 			CorePlugin.logError(errorMsg, e);
 		} catch (InterruptedException e) {
 			CorePlugin.logError(errorMsg, e);
-		} finally {
-			// Must check in this license because as specified in
-			// checkout above it is set to "linger", and the linger starts at check-in.
-			if (userSelectedToExportOALInstances && oalExportIsLicensed) {
-				BridgePointLicenseManager
-						.releaseLicense(BridgePointLicenseManager.LicenseAtomic.XTUMLMCEXPORT);
-			}			
 		}
 		
 		if (!successfulExport) {
