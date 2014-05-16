@@ -137,7 +137,7 @@ public class JavaExportBuilder extends AbstractExportBuilder {
 				if (m_exporter instanceof CoreExport) {
 					CoreExport exporter = (CoreExport) m_exporter;
 
-					exporter.setExportOAL(CoreExport.YES);
+			    	// Mentor Graphics BridgePoint-specific Implementation
 					exporter.setExportGraphics(CoreExport.NO);
 					// Perform a parse-all to assure the model is up to date
 					List<NonRootModelElement> etps = exporter
@@ -218,7 +218,7 @@ public class JavaExportBuilder extends AbstractExportBuilder {
 						if (m_exporter instanceof CoreExport) {
 							exporter = (CoreExport) m_exporter;
 
-							exporter.setExportOAL(CoreExport.YES);
+					    	// Mentor Graphics BridgePoint-specific Implementation
 							exporter.setExportGraphics(CoreExport.NO);
 						}
 						m_outputFile = new File(destDir + domName + "-2.sql");

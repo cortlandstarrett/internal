@@ -24,7 +24,6 @@ import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.Path;
 
 import com.mentor.nucleus.bp.core.CorePlugin;
-import com.mentor.nucleus.bp.core.util.BridgePointLicenseManager;
 import com.mentor.nucleus.bp.core.util.UIUtil;
 import com.mentor.nucleus.bp.mc.xmiexport.XMIExportBuilder;
 import com.mentor.nucleus.bp.utilities.build.BuilderManagement;
@@ -49,61 +48,7 @@ public class MCBuilderArgumentHandler {
 	}
 
 	public void setArguments(String builderIDSelected) {
-	    
-		// Read the properties file for default argument values.
-		Properties properties = m_activator
-				.readProperties(AbstractNature.BUILD_SETTINGS_FILE); //$NON-NLS-1$
-		
-		String eclipseSpecificArg = AbstractProperties.getPropertyOrDefault(properties,
-				AbstractProperties.ADDITIONAL_ARGS_FOR_BUILDER);
-
-		String codeGenFolder = AbstractProperties.getPropertyOrDefault(properties,
-				AbstractProperties.GENERATED_CODE_DEST);
-
-		String srcDestFolder = AbstractProperties.getPropertyOrDefault(properties,
-				AbstractProperties.GENERATED_SOURCE_CODE_DEST);
-
-
-		String mc_plugin_dir = " -home \"" + m_activator.getPluginPathAbsolute() + "\" "; //$NON-NLS-1$ //$NON-NLS-2$
-
-		String cmdLine = 
-					mc_plugin_dir                                   // Location of the model compiler plugin
-			        + getBuilderDependantArguments() 			    // -i (XMI build) and/or -c (no builder specified)
-					+  getLicenseString(builderIDSelected)          // -l license string
-					+ " " + eclipseSpecificArg						// -e  to tell the xtumlmc_build this is eclipse
-					+ " -d " + codeGenFolder 						// -d code generation folder
-					+ " -O ../../" + srcDestFolder + "/"   			// -O destination for generated source
-					;
-
-		// Fully qualified path to launch file
-		String launchFile = m_project.getLocation().toString()
-				+ "/" + AbstractNature.EXTERNALTOOLBUILDER_FOLDER //$NON-NLS-1$
-				+ "/" + AbstractNature.MC_LAUNCH_ID; //$NON-NLS-1$
-		
-		BuilderManagement.replaceBuilderInfo(launchFile,
-				AbstractNature.LAUNCH_ATTR_TOOL_ARGS, cmdLine);
-
-		// make sure the path for xtulmc_build is correct
-		String xbuild_path = AbstractProperties.getPropertyOrDefault(properties,
-				AbstractProperties.XBUILD_LOCAL_LOCATION);
-		BuilderManagement.replaceBuilderInfo(launchFile,
-				AbstractNature.LAUNCH_ATTR_TOOL_LOCATION,
-				m_activator.getPluginPathAbsolute() + xbuild_path);
-
-		String projPath = m_project.getLocation().toOSString();
-        IPath outputPath = new Path(projPath + File.separator
-                + AbstractActivator.GEN_FOLDER_NAME + File.separator
-                + codeGenFolder + File.separator);
-		BridgePointLicenseManager.writeXTUMLDisplayFile(outputPath);		
-		
-	    //refresh directory to pick up new files
-        try {
-            if (m_project != null) {
-                m_project.refreshLocal(IResource.DEPTH_INFINITE, null);
-            }
-        } catch (CoreException e) {
-            m_activator.logError("During project refresh while updating MC-3020 launch file.", e);
-        }
+    	// Mentor Graphics BridgePoint-specific Implementation
 	}
 
 	/**
@@ -192,36 +137,7 @@ public class MCBuilderArgumentHandler {
 	public static boolean isLicensed(String builderIDString) {
 		boolean isLicensed = false;
 
-		if (builderIDString.startsWith(AbstractNature.C_SOURCE_MC_ID)) {
-			isLicensed = BridgePointLicenseManager
-					.licenseExists(BridgePointLicenseManager.LicenseAtomic.MC3020SOURCE_MC_LICENSE_CODE);
-		} else if (builderIDString.startsWith(AbstractNature.C_BINARY_MC_ID)) {
-			isLicensed = true;
-		} else if (builderIDString
-				.startsWith(AbstractNature.SYSTEMC_SOURCE_MC_ID)) {
-			isLicensed = BridgePointLicenseManager
-			.licenseExists(BridgePointLicenseManager.LicenseAtomic.SYSTEMC_SOURCE_MC_LICENSE_CODE);			
-		} else if (builderIDString.startsWith(AbstractNature.CPP_SOURCE_MC_ID)) {
-			isLicensed = BridgePointLicenseManager
-					.licenseExists(BridgePointLicenseManager.LicenseAtomic.MC2020SOURCE_MC_LICENSE_CODE);
-		} else if (builderIDString.startsWith(AbstractNature.VHDL_SOURCE_MC_ID)) {
-			isLicensed = BridgePointLicenseManager
-			.licenseExists(BridgePointLicenseManager.LicenseAtomic.VHDL_SOURCE_MC_LICENSE_CODE);
-		} else {
-			// In this case we are looking at a custom MC.  We require either 
-			// a DAP or mc3020 source license in this situation.
-			isLicensed = BridgePointLicenseManager
-					.licenseExists(BridgePointLicenseManager.LicenseAtomic.DAP_MC_LICENSE_CODE);
-			if (!isLicensed) {
-				isLicensed = BridgePointLicenseManager
-				.licenseExists(BridgePointLicenseManager.LicenseAtomic.MC3020SOURCE_MC_LICENSE_CODE);
-			}
-		}
-
-		if (!isLicensed) {
-			CorePlugin.logError("The Model Compiler named \"" +
-					builderIDString + "\" does NOT have an available license. ", null);
-		}
+    	// Mentor Graphics BridgePoint-specific Implementation
 		
 		return isLicensed;
 	}    

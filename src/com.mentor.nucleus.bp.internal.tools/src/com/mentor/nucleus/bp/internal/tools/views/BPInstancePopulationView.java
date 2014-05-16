@@ -44,8 +44,6 @@ import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.util.CoreUtil;
 import com.mentor.nucleus.bp.core.util.UIUtil;
-import com.mentor.nucleus.bp.debug.ui.model.BPDebugTarget;
-import com.mentor.nucleus.bp.debug.ui.model.BPThread;
 
 /**
  * This sample class demonstrates how to plug-in a new workbench view. The view
@@ -256,27 +254,7 @@ public class BPInstancePopulationView extends ViewPart {
 						result.add(new BPModelRootTree(ooa, projectTree));
 					}
 				} else if (projectTree.getTreeType() == projectTree.RuntimeInstances) {					
-					IDebugTarget[] targets = DebugPlugin.getDefault()
-							.getLaunchManager().getDebugTargets();
-					for (int i = 0; i < targets.length; i++) {
-						if (targets[i] instanceof BPDebugTarget) {
-							BPDebugTarget target = (BPDebugTarget) targets[i];
-							try {
-								IThread[] threads = target.getThreads();
-								for (int j = 0; j < threads.length; j++) {
-									if (threads[j] instanceof BPThread) {
-										ModelRoot ooa = ((BPThread) threads[j])
-										.getEngine().getModelRoot();
-										result.add(new BPModelRootTree(ooa, projectTree));
-										break;
-									}
-								}
-							} catch (Exception e) {
-								// Should not happen
-								System.out.println("Error! Exception in getChildren().  " + e.getMessage());
-							}
-						}
-					}
+			    	// Mentor Graphics BridgePoint-specific Implementation
 				}
 				
 				// Add an enrty for the summary to this level
