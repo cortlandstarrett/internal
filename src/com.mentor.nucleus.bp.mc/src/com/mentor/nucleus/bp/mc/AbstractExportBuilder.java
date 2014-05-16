@@ -48,7 +48,6 @@ import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.PersistenceManager;
 import com.mentor.nucleus.bp.core.ui.preferences.BridgePointProjectReferencesPreferences;
-import com.mentor.nucleus.bp.core.util.BridgePointLicenseManager;
 import com.mentor.nucleus.bp.core.util.CoreUtil;
 import com.mentor.nucleus.bp.core.util.UIUtil;
 import com.mentor.nucleus.bp.io.core.CoreExport;
@@ -167,24 +166,12 @@ public abstract class AbstractExportBuilder extends IncrementalProjectBuilder {
 	}
 
     private boolean checkoutLicense() {
-        boolean oalExportIsLicensed = false;
-        oalExportIsLicensed = BridgePointLicenseManager.getLicense(
-                BridgePointLicenseManager.LicenseAtomic.XTUMLMCEXPORT, true);
-        if (!oalExportIsLicensed) {
-            String msgTitle = "License Request Failed";
-            String msg = "Failed to get a Model Compiler prebuilder license.\n";
-            if (CoreUtil.IsRunningHeadless) {
-                CorePlugin.logError(msgTitle + ", " + msg, null);
-            } else {
-                UIUtil.showErrorDialog(msgTitle, msg);
-            }
-        }
-        return oalExportIsLicensed;
+    	// Mentor Graphics BridgePoint-specific Implementation
+        return false;
     }
 
     private void checkinLicense() {
-        BridgePointLicenseManager
-                .releaseLicense(BridgePointLicenseManager.LicenseAtomic.XTUMLMCEXPORT);
+    	// Mentor Graphics BridgePoint-specific Implementation
     }
 
 	public IPath getCodeGenFolderPath(IProject proj) {		
@@ -372,7 +359,7 @@ public abstract class AbstractExportBuilder extends IncrementalProjectBuilder {
 			if (m_exporter instanceof CoreExport) {
 				CoreExport exporter = (CoreExport) m_exporter;
 
-				exporter.setExportOAL(CoreExport.YES);
+		    	// Mentor Graphics BridgePoint-specific Implementation
 				exporter.setExportGraphics(CoreExport.NO);
 				// Perform a parse-all to assure the model is up to date
 				exporter.parseAllForExport(m_elements
