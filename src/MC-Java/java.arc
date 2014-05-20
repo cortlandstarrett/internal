@@ -784,19 +784,33 @@ ${cfca.body}\
     synchronized(instances) {
         Object [] key = {
             .for each id_attr in id_attrs
-              .invoke an = get_attribute_name ( id_attr )
-              .invoke result = get_base_attribute_type( id_attr )
-              .assign type = result.type
-              .// since we are searching a proxy we need to compare with original member variable
-              .// not thru accessor which may return 0
-              .invoke check_primitive_java = is_java_primitive_type(type)
-              .if (not check_primitive_java.isPrimitive)
-        p_${an.body}
-              .else
-        new UUID(0, new Long(p_${an.body}))
+              .// special case for SM_ID in Polymorphic Event
+              .// we do not want to use it as part of the
+              .// identifier as two state machines are considered
+              .// the same if under the same class.  In this
+              .// case the SM_ID will prevent instance lookup
+              .// for proxy resolution
+              .assign skip = false
+              .if(class_name == "PolymorphicEvent_c")
+                .if(id_attr.Name == "SM_ID")
+                  .assign skip = true
+                .end if
               .end if
-              .if ( not_last id_attrs )
+              .if(not skip)
+                .invoke an = get_attribute_name ( id_attr )
+                .invoke result = get_base_attribute_type( id_attr )
+                .assign type = result.type
+                .// since we are searching a proxy we need to compare with original member variable
+                .// not thru accessor which may return 0
+                .invoke check_primitive_java = is_java_primitive_type(type)
+                .if (not check_primitive_java.isPrimitive)
+        p_${an.body}
+                .else
+        new UUID(0, new Long(p_${an.body}))
+                .end if
+                .if ((not_last id_attrs) and (not skip))
         ,
+                .end if
               .end if
             .end for
             };

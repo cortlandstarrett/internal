@@ -204,50 +204,76 @@ get$cr{attribute.Name}\
 .function get_unique_instance_key
   .param inst_ref_set attrs
   .param string attr_prefix
-  .//
-  .assign keyString = ""
-  .assign attr_found_key = false;
-	.for each attr in attrs
-    .invoke aip = attr_is_persistent(attr)
-    .if(aip.result)
-	    .if(first attrs)
-	      .assign keyString = "{"
-	    .end if
-		  .select one datatype related by attr->S_DT[R114]
-		  .assign type = datatype.Name
-  	  .invoke gan = get_attribute_name ( attr )
-		  .assign attrName = attr_prefix + gan.body
-		  .select one refAttr related by attr->O_RATTR[R106]
-		  .if(not_empty refAttr)
-		    .select one rtAttr related by refAttr->O_BATTR[R113]->O_ATTR[R106]
-		    .select one datatype related by rtAttr->S_DT[R114]
+	  .//
+	  .assign keyString = ""
+	  .assign attr_found_key = false
+	  .assign prevSkipped = false
+	  .for each attr in attrs
+	    .invoke aip = attr_is_persistent(attr)
+	    .if(aip.result)
+		    .if(first attrs)
+		      .assign keyString = "{"
+		    .end if
+		    .select one datatype related by attr->S_DT[R114]
 		    .assign type = datatype.Name
+	  	  .invoke gan = get_attribute_name ( attr )
+		    .assign attrName = attr_prefix + gan.body
+		    .select one refAttr related by attr->O_RATTR[R106]
+		    .if(not_empty refAttr)
+			    .select one rtAttr related by refAttr->O_BATTR[R113]->O_ATTR[R106]
+			    .select one datatype related by rtAttr->S_DT[R114]
+			    .assign type = datatype.Name
+		    .end if
+	      .assign current_string = ""
+		    .if(type == "unique_id")
+		      .assign skip = false
+		      .select one class related by attr->O_OBJ[R102]
+          .// special case for SM_ID in Polymorphic Event
+          .// we do not want to use it as part of the
+          .// identifier as two state machines are considered
+          .// the same if under the same class.  In this
+          .// case the SM_ID will prevent instance lookup
+          .// for proxy resolution
+		      .if(class.Name == "Polymorphic Event")
+		        .select one refClass related by refAttr->O_BATTR[R113]->O_ATTR[R106]->O_OBJ[R102]
+		        .if(not_empty refClass)
+		          .if(refClass.Name == "State Machine")
+		            .assign skip = true
+		            .assign prevSkipped = true
+		          .end if
+		        .end if
+		      .end if
+		      .if(not skip)
+	          .assign attr_found_key = true
+			      .assign current_string = "${attrName}"
+			    .end if	
+		    .elif(type == "integer")
+	  	    .assign attr_found_key = true
+			    .assign current_string = "new UUID(0, new Long(${attrName}))"	
+	      .elif(type == "string")
+	        .assign attr_found_key = true
+			    .assign current_string = "${attrName}"
+	      .end if
+	      .if(not skip)
+	        .if((not_first attrs) and ((cardinality attrs) > 1))
+	          .if(current_string != "")
+	            .if(not prevSkipped)
+	              .assign keyString = keyString + ","
+	            .else
+	              .assign prevSkipped = false
+	            .end if
+	          .end if
+	        .end if
+	      .end if
+	      .if(current_string != "")
+	        .assign keyString = keyString + current_string
+	      .end if
+	      .if(last attrs)
+	        .assign keyString = keyString + "}"
+	      .end if
 		  .end if
-      .assign current_string = ""
-		  .if(type == "unique_id")
-		    .assign attr_found_key = true
-			  .assign current_string = "${attrName}"	
-		  .elif(type == "integer")
-  	    .assign attr_found_key = true
-			  .assign current_string = "new UUID(0, new Long(${attrName}))"	
-		  .elif(type == "string")
-		    .assign attr_found_key = true
-			  .assign current_string = "${attrName}"
-		  .end if
-		  .if((not_first attrs) and ((cardinality attrs) > 1))
-		    .if(current_string != "")
-  		    .assign keyString = keyString + ","
-  		  .end if
-	    .end if
-		  .if(current_string != "")
-		    .assign keyString = keyString + current_string
-		  .end if
-	    .if(last attrs)
-	      .assign keyString = keyString + "}"
-		.end if
-	  .end if
-	.end for
-	.assign attr_key = keyString
+	  .end for
+	  .assign attr_key = keyString
 .end function
 .//
 .//====================================================================
