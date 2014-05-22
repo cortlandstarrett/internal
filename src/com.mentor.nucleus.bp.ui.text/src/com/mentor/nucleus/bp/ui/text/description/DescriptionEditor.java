@@ -25,6 +25,7 @@ import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.FocusListener;
+import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.PartInitException;
@@ -33,6 +34,7 @@ import org.eclipse.ui.part.FileEditorInput;
 import org.eclipse.ui.texteditor.DefaultRangeIndicator;
 import org.eclipse.ui.texteditor.IDocumentProvider;
 
+import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.common.NullEditorInput;
 import com.mentor.nucleus.bp.core.ui.Selection;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementEditorInput;
@@ -175,6 +177,12 @@ public class DescriptionEditor extends AbstractModelElementTextEditor
   public boolean isSaveAsAllowed()
   {
     return false;
+  }
+  
+  @Override
+  public Image getTitleImage() {
+	  Object element = ((DescriptionEditorInput)this.getEditorInput()).getModelElement();;
+	  return CorePlugin.getImageFor(element);
   }
   
   /* only for use by unit test code */

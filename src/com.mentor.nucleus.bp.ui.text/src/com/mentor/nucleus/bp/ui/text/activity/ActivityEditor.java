@@ -28,6 +28,7 @@ import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.FocusListener;
+import org.eclipse.swt.graphics.Image;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Display;
 import org.eclipse.ui.IEditorInput;
@@ -43,6 +44,7 @@ import antlr.TokenStreamRecognitionException;
 
 import com.mentor.nucleus.bp.als.oal.OalLexer;
 import com.mentor.nucleus.bp.core.Block_c;
+import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.Parsestatus_c;
 import com.mentor.nucleus.bp.core.common.IModelDelta;
@@ -490,6 +492,13 @@ public class ActivityEditor extends OALEditor
   {
     return new ActivityAnnotationAccess();
   }
+  
+  @Override
+  public Image getTitleImage() {
+	  Object element = ((ActivityEditorInput)this.getEditorInput()).getModelElement();
+	  return CorePlugin.getImageFor(element);
+  }
+  
 /**
  * only for use by unit test code
  */
