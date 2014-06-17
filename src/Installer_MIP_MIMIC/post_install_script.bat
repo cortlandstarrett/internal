@@ -95,6 +95,14 @@ GOTO CreateShortcutDone
 :CreateShortcutDone
 echo Done
 
+:: FOR DEMO INSTALLS ONLY!
+:: Delete unwanted MCs
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.c.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.cpp.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.vhdl.source_%BPVER%"
+RMDIR /S /Q "%TARGET%\eclipse_extensions\BridgePoint\eclipse\plugins\com.mentor.nucleus.bp.mc.systemc.source_%BPVER%"
+:: END - FOR DEMO INSTALLS ONLY!
+
 :: Show release notes or not depending on their selection in the installer.
 echo Release notes display (or not)
 SET RNFLAGFILE=%TARGET%\extras\rnflag.txt
