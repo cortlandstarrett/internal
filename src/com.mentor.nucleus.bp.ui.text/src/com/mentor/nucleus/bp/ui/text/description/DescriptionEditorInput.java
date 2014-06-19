@@ -9,6 +9,9 @@ package com.mentor.nucleus.bp.ui.text.description;
 //
 //====================================================================
 //
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.ui.PartInitException;
@@ -67,5 +70,27 @@ public class DescriptionEditorInput extends AbstractModelElementPropertyEditorIn
 	 */
 	protected ModelElementPropertyStorage createStorage() {
 		return new ModelElementPropertyStorage(this, "Descrip"); //$NON-NLS-1$
+	}
+	
+	@Override
+	public String getToolTipText() {
+		Object element = getModelElement();
+		Method method = null;
+		try {
+			method = element.getClass().getMethod("Getpath");
+		} catch (SecurityException e) {
+		} catch (NoSuchMethodException e) {
+		}
+		if (method != null) {
+			String result = getName();
+			try {
+				result = (String) method.invoke(element);
+			} catch (IllegalArgumentException e) {
+			} catch (IllegalAccessException e) {
+			} catch (InvocationTargetException e) {
+			}
+			return result;
+		}
+		return getName();
 	}
 }
