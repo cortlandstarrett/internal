@@ -9,6 +9,9 @@ package com.mentor.nucleus.bp.ui.text.activity;
 //
 //====================================================================
 //
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
@@ -108,5 +111,27 @@ public class ActivityEditorInput extends AbstractModelElementPropertyEditorInput
    			ModelRoot.enableChangeNotification();
    		  }
 		}
+	}
+
+	@Override
+	public String getToolTipText() {
+		Object element = getModelElement();
+		Method method = null;
+		try {
+			method = element.getClass().getMethod("Getpath");
+		} catch (SecurityException e) {
+		} catch (NoSuchMethodException e) {
+		}
+		if (method != null) {
+			String result = getName();
+			try {
+				result = (String) method.invoke(element);
+			} catch (IllegalArgumentException e) {
+			} catch (IllegalAccessException e) {
+			} catch (InvocationTargetException e) {
+			}
+			return result;
+		}
+		return getName();
 	}
 }
