@@ -181,6 +181,12 @@ public class ModelEditor extends MultiPageEditorPart implements ILinkWithEditorL
 		return CorePlugin.getImageFor(element);
 	}
 	
+	
+	@Override
+	public String getTitle() {
+		return getPartName();
+	}
+	
 	@Override
 	public String getPartName() {
 		if(fGraphicalEditor == null)
