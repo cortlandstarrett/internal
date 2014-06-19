@@ -185,7 +185,7 @@ public class DescriptionEditor extends AbstractModelElementTextEditor
   @Override
   public Image getTitleImage() {
 	  Object element = ((DescriptionEditorInput)this.getEditorInput()).getModelElement();;
-	  return CorePlugin.getImageFor(element);
+	  return decorateElementIconWithDescription(element);
   }
   
   public Image decorateElementIconWithDescription(Object element){
