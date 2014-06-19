@@ -50,7 +50,6 @@ import com.mentor.nucleus.bp.core.ComponentPackage_c;
 import com.mentor.nucleus.bp.core.ComponentReference_c;
 import com.mentor.nucleus.bp.core.Component_c;
 import com.mentor.nucleus.bp.core.CoreDataType_c;
-import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.DataTypeInPackage_c;
 import com.mentor.nucleus.bp.core.DataTypePackageInPackage_c;
 import com.mentor.nucleus.bp.core.DataTypePackage_c;
@@ -3013,4 +3012,5 @@ public class ImportHelper
 			ee.setIsrealized(isRealized);
 		}
 	}
+
 }
