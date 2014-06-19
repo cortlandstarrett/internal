@@ -865,7 +865,7 @@ public class VerifierInvocationHandler implements InvocationHandler {
 					.getOneCL_ICOnR2963(fee));
 		}
 		if (comp != null) {
-			String className = pathToClassName(comp.Getpath(true, ""));
+			String className = pathToClassName(comp.Getpath(""));
 			Vm_c.Resetvalues();
 			SystemModel_c system = (SystemModel_c) Ooaofooa
 					.getDefaultInstance().getInstanceList(SystemModel_c.class)

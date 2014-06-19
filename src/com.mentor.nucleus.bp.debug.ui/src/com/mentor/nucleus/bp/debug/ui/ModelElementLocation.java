@@ -257,7 +257,7 @@ public class ModelElementLocation {
 		else if (nrme instanceof SystemModel_c) {
 			text = ((SystemModel_c) nrme).getName();
 		} else if(nrme instanceof Component_c) {
-			text = ((Component_c) nrme).Getpath(true, "");
+			text = ((Component_c) nrme).Getpath( "");
 		} else if(nrme instanceof RequiredOperation_c) {
 			text = ((RequiredOperation_c) nrme).getName();
 			Component_c component = Component_c

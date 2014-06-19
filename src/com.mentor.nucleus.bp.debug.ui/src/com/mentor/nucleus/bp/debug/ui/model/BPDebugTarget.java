@@ -539,7 +539,7 @@ public class BPDebugTarget extends BPDebugElement implements IDebugTarget {
 	}
 
 	public static String getClassNameForComponent(Component_c comp) {
-		String name = comp.Getpath(true, "");
+		String name = comp.Getpath("");
 		String [] segments = name.split("::");
 		String className = "";
 		if (segments.length > 1) {
