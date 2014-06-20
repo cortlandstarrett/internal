@@ -106,6 +106,33 @@ get$cr{attribute.Name}\
 .//
 .//====================================================================
 .//
+.function get_super_class
+	.param inst_ref class
+	.param boolean most_super
+	.assign attr_result = class
+	.assign attr_comment = "No Error"
+	
+				.select many this_class_as_subtypes related by class->R_OIR[R201]->R_RGO[R203]->R_SUB[R205]
+				.// Check if this class is subtype in more than one assocation
+				.if ( (cardinality this_class_as_subtypes) > 1 )
+						.assign attr_comment = "More than one supertype is found for  ${class.Name}" 			
+				.elif ( (cardinality this_class_as_subtypes) == 1 )					
+					.for each  subtype_class in this_class_as_subtypes
+						.select one supertype_class related by subtype_class->R_SUBSUP[R213]->R_SUPER[R212]->R_RTO[R204]->R_OIR[R203]->O_OBJ[R201]
+						.assign attr_comment = "Found supertube ${supertype_class.Name} !" 		
+						.if ( most_super)
+							.invoke attr_result = get_super_class(supertype_class, true)
+						.else 
+							.assign attr_result = super_class 
+						.end if 
+					.end for
+				.elif ( (cardinality this_class_as_subtypes) == 0 )	
+						.assign attr_comment = "No supertype is found for ${class.Name}" 			
+				.end if
+.end function
+.//
+.//====================================================================
+.//
 .function is_uniqueid_id_attr
    .param inst_ref attribute   .// O_ATTR
    .//

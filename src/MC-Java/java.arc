@@ -1941,6 +1941,38 @@ ${blck.body}
         .invoke gccc = gen_class_consistency_checks( object, gdn_result.body, package )
 ${gccc.body}
 
+.// Generate getPath() method for model element
+		.select any getPath_opr related by object->O_TFR[R115] where ( selected.Name == "getPath" )
+		.if (empty getPath_opr )
+			.select any description_attr related by object->O_ATTR[R102] where ( selected.Name == "Descrip" )
+			.if (not_empty description_attr)
+			public String Getpath(){
+				String path = "Element Path Could not Found";
+				.// get super class if found
+				.assign superb_class = object
+				.invoke getSuperClass = get_super_class(object, true)
+				.assign superb_class = getSuperClass.result
+				// ${superb_class.Name} !!
+				// ${getSuperClass.comment} !!
+				
+.//				.if ( not_empty parentPkg)
+					// Pkg
+.//				.elif ( not_empty parentCmp)
+					// Component
+.//				.else
+					// TODO : Error : EP_EP with no parent pkg or Cmp
+				
+				return path;
+			}	
+.//				.end if
+			.else	
+				.// search for description attribute in the super classes 
+				
+			.end if
+		.else
+			// Could not generate get path method for this class !!
+		.end if
+
 .//  
         .select many transforms related by object->O_TFR[R115]
         .if (not_empty transforms)
