@@ -109,6 +109,7 @@ get$cr{attribute.Name}\
 .function get_super_class
 	.param inst_ref class
 	.param boolean most_super
+	.param attr_traverse;
 	.assign attr_result = class
 	.assign attr_comment = "No Error"
 	
@@ -121,7 +122,8 @@ get$cr{attribute.Name}\
 						.select one supertype_class related by subtype_class->R_SUBSUP[R213]->R_SUPER[R212]->R_RTO[R204]->R_OIR[R203]->O_OBJ[R201]
 						.assign attr_comment = "Found supertube ${supertype_class.Name} !" 		
 						.if ( most_super)
-							.invoke attr_result = get_super_class(supertype_class, true)
+							.invoke super_of_super = get_super_class(supertype_class, true)
+							.assign attr_result = super_of_super.result
 						.else 
 							.assign attr_result = super_class 
 						.end if 
