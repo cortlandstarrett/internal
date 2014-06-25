@@ -233,7 +233,7 @@ public class ${modelAdapterClass}
 	  }
 	  ${classname} obj = (${classname})modelElement;
 	.if (found)
-	  return obj.get$cr{attr.name}() + ": ${obj.Name}"; //$$NON-NLS-1$$
+	  return obj.get$cr{attr.name}(); //$$NON-NLS-1$$
 	.else
 	  if ( m_getNameValid != null && m_getNameValid.equals("no") ) //$$NON-NLS-1$$
 	  {

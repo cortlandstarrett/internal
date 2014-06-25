@@ -56,6 +56,7 @@ import com.mentor.nucleus.bp.core.relocatables.RelocatableTagConversionUtil;
 import com.mentor.nucleus.bp.core.relocatables.RelocatableTagCreationUtil;
 import com.mentor.nucleus.bp.core.relocatables.Relocatables;
 import com.mentor.nucleus.bp.core.ui.Selection;
+import com.mentor.nucleus.bp.core.util.HierarchyUtil;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementEditorInput;
 import com.mentor.nucleus.bp.ui.text.DocumentProvider;
 import com.mentor.nucleus.bp.ui.text.EditorConfiguration;
@@ -497,6 +498,12 @@ public class ActivityEditor extends OALEditor
   public Image getTitleImage() {
 	  Object element = ((ActivityEditorInput)this.getEditorInput()).getModelElement();
 	  return CorePlugin.getImageFor(element);
+  }
+  
+  @Override
+  public String getTitleToolTip() {
+	  Object element = ((ActivityEditorInput)this.getEditorInput()).getModelElement();
+	  return HierarchyUtil.Getpath(element);
   }
   
 /**

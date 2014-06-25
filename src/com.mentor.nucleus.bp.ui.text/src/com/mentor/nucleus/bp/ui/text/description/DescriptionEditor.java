@@ -40,6 +40,7 @@ import org.eclipse.ui.texteditor.IDocumentProvider;
 import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.common.NullEditorInput;
 import com.mentor.nucleus.bp.core.ui.Selection;
+import com.mentor.nucleus.bp.core.util.HierarchyUtil;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementEditorInput;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementPropertyEditorInput;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementTextEditor;
@@ -188,6 +189,12 @@ public class DescriptionEditor extends AbstractModelElementTextEditor
 	  return decorateElementIconWithDescription(element);
   }
   
+  @Override
+	public String getTitleToolTip() {
+		Object element = ((DescriptionEditorInput)this.getEditorInput()).getModelElement();
+		return HierarchyUtil.Getpath(element);
+	}
+  
   public Image decorateElementIconWithDescription(Object element){
 
 
@@ -197,10 +204,13 @@ public class DescriptionEditor extends AbstractModelElementTextEditor
 
 	  if (type.lastIndexOf('.') != -1)
 		  type = type.substring(type.lastIndexOf('.') + 1);
+	  
+	  
 	  ImageDescriptor descriptor = CorePlugin.getImageDescriptorFor(type, false ,element, true);
 
 	  ImageDescriptor descriptionIconDescrip = CorePlugin.getImageDescriptor("Description_decorator.gif");
 
+	  // decorate the icon of the model element with description decoration
 	  OverlayIcon resultIcon = new OverlayIcon(descriptor, descriptionIconDescrip, new Point(16, 16));
 
 	  return resultIcon.createImage();
