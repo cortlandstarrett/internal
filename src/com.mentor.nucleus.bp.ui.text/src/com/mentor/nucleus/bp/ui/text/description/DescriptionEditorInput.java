@@ -9,6 +9,7 @@ package com.mentor.nucleus.bp.ui.text.description;
 //
 //====================================================================
 //
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.ui.PartInitException;
@@ -59,7 +60,7 @@ public class DescriptionEditorInput extends AbstractModelElementPropertyEditorIn
 	 * @see org.eclipse.ui.IEditorInput#getName()
 	 */
 	public String getName() {
-		return super.getName() + " Description"; //$NON-NLS-1$
+		return super.getName(); //$NON-NLS-1$
 	}
 
 	/**

@@ -12,6 +12,7 @@ package com.mentor.nucleus.bp.ui.text.description;
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IProgressMonitor;
+import org.eclipse.jface.resource.ImageDescriptor;
 import org.eclipse.jface.text.DocumentEvent;
 import org.eclipse.jface.text.IDocument;
 import org.eclipse.jface.text.IDocumentListener;
@@ -25,16 +26,21 @@ import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.custom.StyledText;
 import org.eclipse.swt.events.FocusEvent;
 import org.eclipse.swt.events.FocusListener;
+import org.eclipse.swt.graphics.Image;
+import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.internal.OverlayIcon;
 import org.eclipse.ui.part.FileEditorInput;
 import org.eclipse.ui.texteditor.DefaultRangeIndicator;
 import org.eclipse.ui.texteditor.IDocumentProvider;
 
+import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.common.NullEditorInput;
 import com.mentor.nucleus.bp.core.ui.Selection;
+import com.mentor.nucleus.bp.core.util.HierarchyUtil;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementEditorInput;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementPropertyEditorInput;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementTextEditor;
@@ -175,6 +181,39 @@ public class DescriptionEditor extends AbstractModelElementTextEditor
   public boolean isSaveAsAllowed()
   {
     return false;
+  }
+  
+  @Override
+  public Image getTitleImage() {
+	  Object element = ((DescriptionEditorInput)this.getEditorInput()).getModelElement();;
+	  return decorateElementIconWithDescription(element);
+  }
+  
+  @Override
+	public String getTitleToolTip() {
+		Object element = ((DescriptionEditorInput)this.getEditorInput()).getModelElement();
+		return HierarchyUtil.Getpath(element);
+	}
+  
+  public Image decorateElementIconWithDescription(Object element){
+
+
+	  String type = element.getClass().getName();
+	  //Removing the packge name from the type string
+	  //We need to remove the full package path
+
+	  if (type.lastIndexOf('.') != -1)
+		  type = type.substring(type.lastIndexOf('.') + 1);
+	  
+	  
+	  ImageDescriptor descriptor = CorePlugin.getImageDescriptorFor(type, false ,element, true);
+
+	  ImageDescriptor descriptionIconDescrip = CorePlugin.getImageDescriptor("Description_decorator.gif");
+
+	  // decorate the icon of the model element with description decoration
+	  OverlayIcon resultIcon = new OverlayIcon(descriptor, descriptionIconDescrip, new Point(16, 16));
+
+	  return resultIcon.createImage();
   }
   
   /* only for use by unit test code */

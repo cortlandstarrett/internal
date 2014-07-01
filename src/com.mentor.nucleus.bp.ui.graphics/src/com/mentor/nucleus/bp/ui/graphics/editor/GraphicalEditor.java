@@ -143,6 +143,7 @@ import com.mentor.nucleus.bp.core.common.TransactionManager;
 import com.mentor.nucleus.bp.core.ui.RenameAction;
 import com.mentor.nucleus.bp.core.ui.Selection;
 import com.mentor.nucleus.bp.core.util.EditorUtil;
+import com.mentor.nucleus.bp.core.util.HierarchyUtil;
 import com.mentor.nucleus.bp.ui.canvas.CanvasModelListener;
 import com.mentor.nucleus.bp.ui.canvas.CanvasPlugin;
 import com.mentor.nucleus.bp.ui.canvas.Cl_c;
@@ -522,24 +523,7 @@ public class GraphicalEditor extends GraphicalEditorWithFlyoutPalette implements
 	@Override
 	public String getTitleToolTip() {
 		Object element = getModel().getRepresents();
-		Method method = null;
-		try {
-			method = element.getClass().getMethod("Getpath",
-					new Class[] { String.class });
-		} catch (SecurityException e) {
-		} catch (NoSuchMethodException e) {
-		}
-		if (method != null) {
-			String result = getPartName();
-			try {
-				result = (String) method.invoke(element, new Object[] { "" });
-			} catch (IllegalArgumentException e) {
-			} catch (IllegalAccessException e) {
-			} catch (InvocationTargetException e) {
-			}
-			return result;
-		}
-		return getPartName();
+		return HierarchyUtil.Getpath(element);
 	}
 
 	public void setEditorInput(IEditorInput input) {

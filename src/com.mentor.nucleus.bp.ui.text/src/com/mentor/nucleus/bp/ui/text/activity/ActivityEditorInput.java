@@ -9,6 +9,7 @@ package com.mentor.nucleus.bp.ui.text.activity;
 //
 //====================================================================
 //
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IResource;
 import org.eclipse.core.runtime.CoreException;
@@ -68,7 +69,7 @@ public class ActivityEditorInput extends AbstractModelElementPropertyEditorInput
 	 * @see org.eclipse.ui.IEditorInput#getName()
 	 */
 	public String getName() {
-		return super.getName() + " Activity"; //$NON-NLS-1$
+		return super.getName(); //$NON-NLS-1$
 	}
 
 	/**
