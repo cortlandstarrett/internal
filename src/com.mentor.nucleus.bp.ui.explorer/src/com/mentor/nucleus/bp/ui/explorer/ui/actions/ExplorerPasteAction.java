@@ -87,6 +87,9 @@ public class ExplorerPasteAction extends PasteAction {
 		boolean result = true;
 		Object contents = cb
 				.getContents(TextTransfer.getInstance());
+		if(getDestinations().isEmpty()) {
+			return false;
+		}
 		for(NonRootModelElement destination : getDestinations()) {
 			if (contents instanceof String) {
 				String types[] = getClipboardTypes((String) contents, destination);

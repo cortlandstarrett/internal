@@ -53,7 +53,7 @@ import java.util.List;
 import org.eclipse.jface.viewers.ITreeContentProvider;
 import org.eclipse.jface.viewers.TreeViewer;
 import org.eclipse.jface.viewers.Viewer;
-import com.mentor.nucleus.bp.core.common.NonRootModelElement;
+import com.mentor.nucleus.bp.core.common.*;
 import com.mentor.nucleus.bp.core.*;
 import com.mentor.nucleus.bp.core.sorter.*;
 import com.mentor.nucleus.bp.ui.explorer.adapters.*;
@@ -94,8 +94,8 @@ public class ${provider_name} implements ITreeContentProvider {
    * @see ITreeContentProvider#getChildren(Object)
    */
   public Object[] getChildren(Object parentElement) {
-  	if(parentElement instanceof MultipleOccurrenceElement) {
-		parentElement = ((MultipleOccurrenceElement) parentElement).getElement();
+  	if(parentElement instanceof ReferenceElement) {
+		parentElement = ((ReferenceElement) parentElement).getReferencedElement();
 	}
     if (parentElement instanceof Ooaofooa) {
       return RootAdapter.getInstance().getChildren(parentElement);
@@ -113,8 +113,8 @@ public class ${provider_name} implements ITreeContentProvider {
    * @see ITreeContentProvider#getParent(Object)
    */
   public Object getParent(Object element) {
-  	if(element instanceof MultipleOccurrenceElement) {
-		element = ((MultipleOccurrenceElement) element).getElement();
+  	if(element instanceof ReferenceElement) {
+		element = ((ReferenceElement) element).getReferencedElement();
 	}
     if (element instanceof Ooaofooa) {
       return RootAdapter.getInstance().getParent(element);
@@ -133,8 +133,8 @@ public class ${provider_name} implements ITreeContentProvider {
    * @see ITreeContentProvider#hasChildren(Object)
    */
   public boolean hasChildren(Object element) {
-	if(element instanceof MultipleOccurrenceElement) {
-		element = ((MultipleOccurrenceElement) element).getElement();
+	if(element instanceof ReferenceElement) {
+		element = ((ReferenceElement) element).getReferencedElement();
 	}
     if (element instanceof Ooaofooa) {
       return RootAdapter.getInstance().hasChildren(element);

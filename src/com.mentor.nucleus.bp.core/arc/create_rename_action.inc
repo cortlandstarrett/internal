@@ -198,6 +198,15 @@ public class ${action_name} extends Action {
   public Tree getTree() {
     return this.treeViewer.getTree();
   }
+  
+  /* (non-Javadoc)
+   * @see org.eclipse.jface.action.Action#isEnabled()
+   */
+  @Override
+  public boolean isEnabled() {
+      return canRenameAction();
+  }
+    
   /**
    * Get the TextEditor being edited. Only used by unit test
    * @return Text

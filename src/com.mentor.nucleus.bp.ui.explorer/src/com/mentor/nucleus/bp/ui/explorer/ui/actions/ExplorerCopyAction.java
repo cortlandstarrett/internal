@@ -70,8 +70,9 @@ public class ExplorerCopyAction extends CopyAction {
 			if(!result) {
 				return false;
 			}
+			return true;
 		}
-		return true;
+		return false;
 	}
 
 	@Override

@@ -216,6 +216,14 @@ ${function.Action_Semantics}
     .end if
   .end for
   
+    /* (non-Javadoc)
+     * @see org.eclipse.jface.action.Action#isEnabled()
+     */
+    @Override
+    public boolean isEnabled() {
+        return can${action_name}();
+    }
+  
     static public boolean can${action_name}()
     {
 		PersistenceManager pm = PersistenceManager.getDefaultInstance();
@@ -227,6 +235,9 @@ ${function.Action_Semantics}
             )
         {
             Object context = iterator.next();
+            if(!(context instanceof NonRootModelElement)) {
+              return false;
+            }
 	          component = pm.findElementComponent((NonRootModelElement) context, false);
   .assign else_str = ""
   .for each menu_entry in menu_entries

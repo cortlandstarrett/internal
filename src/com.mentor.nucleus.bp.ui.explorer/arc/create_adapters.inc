@@ -66,6 +66,7 @@ import com.mentor.nucleus.bp.ui.explorer.ExplorerPlugin;
 import org.eclipse.jface.viewers.ITreeContentProvider;
 import org.eclipse.jface.viewers.Viewer;
 import com.mentor.nucleus.bp.core.*;
+import com.mentor.nucleus.bp.core.common.*;
 
 import com.mentor.nucleus.bp.ui.explorer.*;
   .select many child_specs related by tree_node->T_TPS[R1000]
@@ -209,8 +210,8 @@ ${rel_nav.body}\
     sorter${child.Key_Lett}.sort(${varName});
     .end if
     for (int i = 0 ; i < ${varName}.length ; i++) {
-    .if(child.occursInMultipleLocations)
-      result[count] = new MultipleOccurrenceElement(${varName}[i]);
+    .if(spec.isReferenceElement)
+      result[count] = new ReferenceElement(${varName}[i]);
     .else
       result[count] = ${varName}[i];
     .end if

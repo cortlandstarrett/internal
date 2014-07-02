@@ -55,7 +55,7 @@ import org.eclipse.swt.graphics.Image;
 
 import com.mentor.nucleus.bp.core.*;
 import com.mentor.nucleus.bp.core.util.CoreUtil;
-import com.mentor.nucleus.bp.core.common.NonRootModelElement;
+import com.mentor.nucleus.bp.core.common.*;
 /**
  * This file adapts the meta-model entities so that they work with the
  * Eclipse JFace user interface components.
@@ -72,8 +72,8 @@ public class ${provider_name} extends LabelProvider {
   public Image getImage(Object element) {
     .select any domain_class from instances of O_OBJ where (selected.Key_Lett == "S_DOM")
     .invoke ncn = get_class_name(domain_class)
-	if(element instanceof MultipleOccurrenceElement) {
-		element = ((MultipleOccurrenceElement) element).getElement();
+	if(element instanceof ReferenceElement) {
+		element = ((ReferenceElement) element).getReferencedElement();
 	}
     return CorePlugin.getImageFor(element);
     }
@@ -81,8 +81,8 @@ public class ${provider_name} extends LabelProvider {
    * @see ILabelProvider#getText(Object)
    */
   public String getText(Object element) {
- 	if(element instanceof MultipleOccurrenceElement) {
-    	element = ((MultipleOccurrenceElement) element).getElement();
+ 	if(element instanceof ReferenceElement) {
+    	element = ((ReferenceElement) element).getReferencedElement();
 	}
   .select many tree_nodes from instances of T_TNS
   .for each node in tree_nodes
