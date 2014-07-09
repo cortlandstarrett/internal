@@ -39,6 +39,7 @@ import com.mentor.nucleus.bp.core.inspector.IModelClassInspector;
 import com.mentor.nucleus.bp.core.inspector.ModelInspector;
 
 public class HierarchyUtil {
+
 	public static String Getpath(Object element) {
 			NonRootModelElement nrme = getElement(element);
 			ModelInspector inspector = new ModelInspector();

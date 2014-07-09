@@ -97,6 +97,8 @@ import org.eclipse.jface.viewers.StructuredSelection;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.events.ControlEvent;
 import org.eclipse.swt.events.ControlListener;
+import org.eclipse.swt.events.FocusEvent;
+import org.eclipse.swt.events.FocusListener;
 import org.eclipse.swt.events.SelectionAdapter;
 import org.eclipse.swt.events.SelectionEvent;
 import org.eclipse.swt.graphics.Font;
@@ -142,6 +144,7 @@ import com.mentor.nucleus.bp.core.common.TransactionException;
 import com.mentor.nucleus.bp.core.common.TransactionManager;
 import com.mentor.nucleus.bp.core.ui.RenameAction;
 import com.mentor.nucleus.bp.core.ui.Selection;
+import com.mentor.nucleus.bp.core.util.EditorUtil;
 import com.mentor.nucleus.bp.core.util.EditorUtil;
 import com.mentor.nucleus.bp.core.util.HierarchyUtil;
 import com.mentor.nucleus.bp.ui.canvas.CanvasModelListener;
@@ -714,6 +717,12 @@ public class GraphicalEditor extends GraphicalEditorWithFlyoutPalette implements
 			}
 		});
 		((FigureCanvas) getCanvas()).setFont(getFont());
+		getCanvas().addFocusListener(new FocusListener() {
+			public void focusGained(FocusEvent ev) {
+				EditorUtil.refreshEditorTab();
+			}
+			public void focusLost(FocusEvent ev) { /* do nothing */ }
+		});
 	}
 
 	protected boolean shouldZoomFit() {

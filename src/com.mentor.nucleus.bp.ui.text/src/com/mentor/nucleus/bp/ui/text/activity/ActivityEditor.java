@@ -56,6 +56,7 @@ import com.mentor.nucleus.bp.core.relocatables.RelocatableTagConversionUtil;
 import com.mentor.nucleus.bp.core.relocatables.RelocatableTagCreationUtil;
 import com.mentor.nucleus.bp.core.relocatables.Relocatables;
 import com.mentor.nucleus.bp.core.ui.Selection;
+import com.mentor.nucleus.bp.core.util.EditorUtil;
 import com.mentor.nucleus.bp.core.util.HierarchyUtil;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementEditorInput;
 import com.mentor.nucleus.bp.ui.text.DocumentProvider;
@@ -445,6 +446,7 @@ public class ActivityEditor extends OALEditor
 	                StructuredSelection sel = new StructuredSelection(selObj);
 					Selection.getInstance().setSelection(sel);
                 }
+                EditorUtil.refreshEditorTab();
             }
             public void focusLost(FocusEvent ev) { /* do nothing */ }
         };

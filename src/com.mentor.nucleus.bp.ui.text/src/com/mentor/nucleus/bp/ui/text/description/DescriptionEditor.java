@@ -40,6 +40,7 @@ import org.eclipse.ui.texteditor.IDocumentProvider;
 import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.common.NullEditorInput;
 import com.mentor.nucleus.bp.core.ui.Selection;
+import com.mentor.nucleus.bp.core.util.EditorUtil;
 import com.mentor.nucleus.bp.core.util.HierarchyUtil;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementEditorInput;
 import com.mentor.nucleus.bp.ui.text.AbstractModelElementPropertyEditorInput;
@@ -153,6 +154,7 @@ public class DescriptionEditor extends AbstractModelElementTextEditor
 					StructuredSelection sel = new StructuredSelection(selObj);
 					Selection.getInstance().setSelection(sel);
 				}
+				EditorUtil.refreshEditorTab();
 			}
 			public void focusLost(FocusEvent ev) { /* do nothing */ }
 		};
