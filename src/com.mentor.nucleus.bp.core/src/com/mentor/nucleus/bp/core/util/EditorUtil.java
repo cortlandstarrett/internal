@@ -67,7 +67,7 @@ import com.mentor.nucleus.bp.core.common.TransactionManager;
  */
 public class EditorUtil
 {
-    private static boolean startupEclipse;
+    private static boolean startupEclipse = true;
 
 	/**
      * Returns the editor that is currently active in the workbench.
