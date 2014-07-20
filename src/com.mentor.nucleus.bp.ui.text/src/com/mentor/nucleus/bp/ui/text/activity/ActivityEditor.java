@@ -505,6 +505,8 @@ public class ActivityEditor extends OALEditor
   @Override
   public String getTitleToolTip() {
 	  Object element = ((ActivityEditorInput)this.getEditorInput()).getModelElement();
+	  if (element == null)
+		  return "";
 	  return HierarchyUtil.Getpath(element);
   }
   

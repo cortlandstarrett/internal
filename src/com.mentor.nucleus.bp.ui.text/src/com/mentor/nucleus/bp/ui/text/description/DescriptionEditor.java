@@ -194,6 +194,8 @@ public class DescriptionEditor extends AbstractModelElementTextEditor
   @Override
 	public String getTitleToolTip() {
 		Object element = ((DescriptionEditorInput)this.getEditorInput()).getModelElement();
+		if ( element == null)
+			return "";
 		return HierarchyUtil.Getpath(element);
 	}
   

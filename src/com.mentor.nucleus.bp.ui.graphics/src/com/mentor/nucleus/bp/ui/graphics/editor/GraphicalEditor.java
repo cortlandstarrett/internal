@@ -526,6 +526,10 @@ public class GraphicalEditor extends GraphicalEditorWithFlyoutPalette implements
 	@Override
 	public String getTitleToolTip() {
 		Object element = getModel().getRepresents();
+		if ( element == null)
+			return "";
+		if (!(element instanceof NonRootModelElement))
+			return getPartName();
 		return HierarchyUtil.Getpath(element);
 	}
 
