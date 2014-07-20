@@ -243,14 +243,18 @@ public class ${modelAdapterClass}
 	  ${classname} obj = (${classname})modelElement;
 	.if (found)
 	  .if (is_oal)
+		try{
 	  	ModelInspector inspector = new ModelInspector();
 		IModelClassInspector elementInspector = inspector.getInspector(obj .getClass());
-		NonRootModelElement parent = (NonRootModelElement) elementInspector .getParent(obj);
+			NonRootModelElement parent = (NonRootModelElement) elementInspector .getParent(obj);
 	    .if (((obj.Key_Lett == "SPR_RO") or (obj.Key_Lett == "SPR_RS")) or ((obj.Key_Lett == "SPR_PO") or (obj.Key_Lett == "SPR_PS")) ) 
 	    	elementInspector = inspector.getInspector(parent.getClass());
 			parent = (NonRootModelElement) elementInspector .getParent(parent);
 		.end if	    
 	    return parent.getName() + "::" + obj.get$cr{attr.name}(); //$$NON-NLS-1$$
+		}catch(Exception e){
+			return obj.get$cr{attr.name}(); //$$NON-NLS-1$$
+		}
 	  .else
 	  return obj.get$cr{attr.name}(); //$$NON-NLS-1$$
 	  .end if
@@ -274,7 +278,7 @@ public class ${modelAdapterClass}
 	    return parent.getName() + "::" + ModelAdapter.getName( obj ); //$$NON-NLS-1$$
 	    }
 	  .else
-	    return ModelAdapter.getName( obj ) + ": ${obj.Name}"; 
+	    return ModelAdapter.getName( obj ); 
 	  .end if
 	  else
 	    return "UNKNOWN"; 
