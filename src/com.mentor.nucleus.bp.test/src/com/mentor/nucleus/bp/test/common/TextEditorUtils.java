@@ -225,7 +225,7 @@ public class TextEditorUtils
     public static DescriptionEditor getPackageDescriptionEditor(
         Package_c pkg)
     {
-        String title = pkg.getName() + ": Package Description";
+        String title = pkg.getName();
         return getDescriptionEditor(title);
     }
     
