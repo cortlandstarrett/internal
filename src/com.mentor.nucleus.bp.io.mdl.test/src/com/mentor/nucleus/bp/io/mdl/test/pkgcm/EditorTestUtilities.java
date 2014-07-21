@@ -383,56 +383,56 @@ public class EditorTestUtilities {
 			NonRootModelElement componentRoot,String newName, int editorType) {
 		String title = newName;
 		
-		if (componentRoot instanceof Domain_c) {
-			if (editorType == EDITOR_TYPE_DESC)
-				title += ": Domain Description"; //$NON-NLS-1$
-			else if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": Domain Package Diagram"; //$NON-NLS-1$
-		}
-		if (componentRoot instanceof DataTypePackage_c) {
-			if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": Data Type Package Diagram"; //$NON-NLS-1$
-		}
-		if (componentRoot instanceof ExternalEntityPackage_c) {
-			if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": External Entity Package Diagram"; //$NON-NLS-1$
-		}
-		if (componentRoot instanceof FunctionPackage_c) {
-			if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": Function Package Diagram"; //$NON-NLS-1$
-		}
-		if (componentRoot instanceof Subsystem_c) {
-			if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": Class Diagram"; //$NON-NLS-1$
-			else if (editorType == EDITOR_TYPE_DESC)
-				title += ": Subsystem Description"; //$NON-NLS-1$
-		}
-		if (componentRoot instanceof ModelClass_c) {
-		    if (editorType == EDITOR_TYPE_CANVAS)
-                title += ": Class Diagram"; //$NON-NLS-1$
-		    else if (editorType == EDITOR_TYPE_DESC)
-				title += ": Model Class Description"; //$NON-NLS-1$
-		}
-        // when componentRoot is ISM or CSM, newName will be name of its class
-		if (componentRoot instanceof InstanceStateMachine_c) {
-			if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": Instance State Machine"; //$NON-NLS-1$
-			else if (editorType == EDITOR_TYPE_DESC)
-				title += ": Instance State Machine Description"; //$NON-NLS-1$
-		}
-		if (componentRoot instanceof ClassStateMachine_c) {
-			if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": Class State Machine"; //$NON-NLS-1$
-			else if (editorType == EDITOR_TYPE_DESC)
-				title += ": Class State Machine Description"; //$NON-NLS-1$
-			
-		}
-		if (componentRoot instanceof Package_c) {
-			if (editorType == EDITOR_TYPE_CANVAS)
-				title += ": Package Diagram"; //$NON-NLS-1$
-			else if (editorType == EDITOR_TYPE_DESC)
-				title += ": Package Description"; //$NON-NLS-1$
-		}
+//		if (componentRoot instanceof Domain_c) {
+//			if (editorType == EDITOR_TYPE_DESC)
+//				title += ": Domain Description"; //$NON-NLS-1$
+//			else if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": Domain Package Diagram"; //$NON-NLS-1$
+//		}
+//		if (componentRoot instanceof DataTypePackage_c) {
+//			if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": Data Type Package Diagram"; //$NON-NLS-1$
+//		}
+//		if (componentRoot instanceof ExternalEntityPackage_c) {
+//			if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": External Entity Package Diagram"; //$NON-NLS-1$
+//		}
+//		if (componentRoot instanceof FunctionPackage_c) {
+//			if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": Function Package Diagram"; //$NON-NLS-1$
+//		}
+//		if (componentRoot instanceof Subsystem_c) {
+//			if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": Class Diagram"; //$NON-NLS-1$
+//			else if (editorType == EDITOR_TYPE_DESC)
+//				title += ": Subsystem Description"; //$NON-NLS-1$
+//		}
+//		if (componentRoot instanceof ModelClass_c) {
+//		    if (editorType == EDITOR_TYPE_CANVAS)
+//                title += ": Class Diagram"; //$NON-NLS-1$
+//		    else if (editorType == EDITOR_TYPE_DESC)
+//				title += ": Model Class Description"; //$NON-NLS-1$
+//		}
+//        // when componentRoot is ISM or CSM, newName will be name of its class
+//		if (componentRoot instanceof InstanceStateMachine_c) {
+//			if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": Instance State Machine"; //$NON-NLS-1$
+//			else if (editorType == EDITOR_TYPE_DESC)
+//				title += ": Instance State Machine Description"; //$NON-NLS-1$
+//		}
+//		if (componentRoot instanceof ClassStateMachine_c) {
+//			if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": Class State Machine"; //$NON-NLS-1$
+//			else if (editorType == EDITOR_TYPE_DESC)
+//				title += ": Class State Machine Description"; //$NON-NLS-1$
+//			
+//		}
+//		if (componentRoot instanceof Package_c) {
+//			if (editorType == EDITOR_TYPE_CANVAS)
+//				title += ": Package Diagram"; //$NON-NLS-1$
+//			else if (editorType == EDITOR_TYPE_DESC)
+//				title += ": Package Description"; //$NON-NLS-1$
+//		}
 		return title;
 	}
 	

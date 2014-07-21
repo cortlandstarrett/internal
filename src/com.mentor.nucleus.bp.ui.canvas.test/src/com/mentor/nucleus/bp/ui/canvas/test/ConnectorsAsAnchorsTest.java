@@ -149,7 +149,7 @@ public class ConnectorsAsAnchorsTest extends CanvasTest {
 		Sequence_c sequence = getSequence(diagramName);
 		CanvasTestUtils.openCanvasEditor(sequence);
 		GraphicalEditor ce = CanvasTestUtils.getCanvasEditor(diagramName
-				+ ": Package Diagram");
+				);
 
 		final ClassInstanceParticipant_c cip = ClassInstanceParticipant_c
 				.ClassInstanceParticipantInstance(modelRoot,
@@ -202,7 +202,7 @@ public class ConnectorsAsAnchorsTest extends CanvasTest {
 		Sequence_c sequence = getSequence(diagramName);
 		CanvasTestUtils.openCanvasEditor(sequence);
 		GraphicalEditor ce = CanvasTestUtils.getCanvasEditor(diagramName
-				+ ": Package Diagram");
+				);
 
 		final ClassInstanceParticipant_c cip = ClassInstanceParticipant_c
 				.ClassInstanceParticipantInstance(modelRoot,

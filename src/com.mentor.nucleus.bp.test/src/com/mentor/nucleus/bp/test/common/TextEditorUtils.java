@@ -177,7 +177,7 @@ public class TextEditorUtils
     public static DescriptionEditor getDomainDescriptionEditor(
         Domain_c domain)
     {
-        String title = domain.getName() + ": Domain Description";
+        String title = domain.getName();
         return getDescriptionEditor(title);
     }
 
