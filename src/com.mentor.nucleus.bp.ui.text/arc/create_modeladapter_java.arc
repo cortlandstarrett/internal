@@ -268,6 +268,7 @@ public class ${modelAdapterClass}
 	  if ( m_getNameValid != null && m_getNameValid.equals("yes") ) //$$NON-NLS-1$$
 	  .if (is_oal)
 	  	{
+	  	try{
 	  	ModelInspector inspector = new ModelInspector();
 		IModelClassInspector elementInspector = inspector.getInspector(obj .getClass());
 		NonRootModelElement parent = (NonRootModelElement) elementInspector .getParent(obj);
@@ -276,7 +277,10 @@ public class ${modelAdapterClass}
 			parent = (NonRootModelElement) elementInspector .getParent(parent);
 	    .end if
 	    return parent.getName() + "::" + ModelAdapter.getName( obj ); //$$NON-NLS-1$$
-	    }
+	    }catch(Exception e){
+			return ModelAdapter.getName( obj ); //$$NON-NLS-1$$ Nehad
+		}
+		}
 	  .else
 	    return ModelAdapter.getName( obj ); 
 	  .end if
