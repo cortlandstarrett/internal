@@ -8,6 +8,88 @@ MSD Weekly Meeting Minutes
     [Clearquest issue dts0100563933](http://dtsweb.wv.mentorg.com/cqweb/#/dtr01/dts01/RECORD/dts0100563933&noframes=true&format=HTML&recordType=Defect).
 * In January 2013 the document began being maintained here on github.  Issue #30 is the github tracking issue now.
 
+
+---
+---
+
+    Date:     23 July 2014
+    Start:    12:00 EDT
+    End:      12:29
+    Present:  Keith, Bob, Campbell, Cort, Travis, others ...
+    Dean, others ...
+
+### Engineering status
+Bob presented a quick sketch of the content for the next release.  We have a list set up in CQ.  What is interesting about the higher priority items now is that they are significant features rather than bugs.  Big items include OAL editor changes and logical model support in the compare and merge capability.
+
+Bob is supplying access to the online training material to the Montreal team before he goes onsite.  There is material that directly addresses configuration management.  He will then go to Montreal in person to help with anything that will make them more efficient.
+
+Cort and Dean explained that Stephen Mellor and John Wolfe will be "beta-testing" two courses that they have been working on.  One is oriented toward analysis of requirements; the other is basic xtUML modeling.  The training classes will be held in Europe in August and September.  This includes improvements to the GPS Watch case study.  Dean commented that we are getting positive feedback from John as he uses the tool in earnest.
+
+Keith supplied a demo of our courseware.  He gave a brief tour of the front end that students will see.  He then showed us how the back end is managed within WP Courseware.  This was very informative.  We have a treasure trove of materials nicely organized.
+
+
+---
+---
+
+    Date:     9th July 2014
+
+    Start:    1200 EDT
+    End:      12:29
+    Present:  Keith, Bob, Campbell, Cort, Travis, Heba, Nehad, others ...
+    Dean, others ...
+
+### Engineering status
+**Keith -**
+- Working on Class diagram data modeling video
+- Will work with Teri Sipes & The Other Firm to get the WP Courseware stuff migrated to the live xtuml.org
+- Everyone needs to create container pages and quizzes to go along with their finished video segments
+- We are close to being able to make the course public on xtuml.org, but we need to reach critical mass
+
+**Travis -**
+- Looking at merge issue that causes corruption when merging classes.  About done but found an issue related to undo/redo of the work.
+- Will go back to creating container pages and videos once the development is complete
+
+**Bob -**
+- Finally got done with process changes so xtUML Editor can stay in synch with master development. Released new xtUML Editor.
+- Now working on CLI video.  Recording done, editing in process.  Next will do some basic git videos targeted at training the 
+the Ericsson Montreal team.
+
+**Campbell -**
+- Have some videos that are nearing completion, all on the subject of VIEC and realized code integration
+- Took a quick look at issue reported by SAAB
+
+**Nehad -**
+- Redo-ing the video that was rejected
+- Also finishing UI enhancements issue.  There are lots of test failures because the UI changes, have to update test results.
+
+**Heba -**
+- Wrapping up two issues related to breakpoints.
+- Updating the branch for port references.
+- Re-recording the port video, making good progress.
+
+**Cort -**
+- Reviewing training videos
+- Working a lot on FXAT
+- Helped with Yazaki deal, they want some AUTOSAR functionality that we are investigating and planning the flow for
+- Planning with Subba and Serge
+- Ericsson deal came through at same level as last year.  We were hoping for more so we are looking for some additional 
+business with them this year.
+
+### Marketing
+**Dean -**
+- Helping gather information and provide support for 
+- Yazaki is a very interesting opportunity.  The account team was very expressive that BridgePoint needed to be part of the deal.
+- We have seen several new BridgePoint accounts
+- Ericsson did come in flat, mostly because we ran out of time to see impact from the services deal for new teams.  Serge will be 
+visiting Ericsson later this month to talk about a new services deal for later this year.
+- Helping drive forward the Embriair evaluation
+
+### Customer Support Status
+**Robert -**  
+- SAAB - Filed a bug for Verifier breakpoint issue, working through another apparent bug in the C MC
+- SONY - Yagi-san is very unhappy that prebuilder can pull a license from any license that contains the appropriate atomic. He basically demands that we change it immediately.
+
+
 ---
 ---
 
