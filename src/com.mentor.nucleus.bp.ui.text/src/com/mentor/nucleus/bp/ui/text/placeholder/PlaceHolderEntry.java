@@ -204,7 +204,7 @@ public class PlaceHolderEntry {
 	}
 	
 	private void updateModelElementID(ModelElementID newID){
-		if (modelElementID != newID ){
+		if(!modelElementID.equals(newID)){
 			modelElementID = newID;
 			lastModelElementName = newID.getLastValidName();
 		}
