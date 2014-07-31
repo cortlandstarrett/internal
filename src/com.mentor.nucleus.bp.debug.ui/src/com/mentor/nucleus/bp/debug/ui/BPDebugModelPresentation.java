@@ -40,12 +40,16 @@ import org.eclipse.ui.IEditorInput;
 import org.eclipse.ui.PlatformUI;
 import org.eclipse.ui.part.FileEditorInput;
 
+import com.mentor.nucleus.bp.core.Association_c;
 import com.mentor.nucleus.bp.core.Component_c;
 import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.DataItemValue_c;
 import com.mentor.nucleus.bp.core.ComponentReference_c;
+import com.mentor.nucleus.bp.core.LinkParticipation_c;
 import com.mentor.nucleus.bp.core.LocalReference_c;
 import com.mentor.nucleus.bp.core.LocalValue_c;
+import com.mentor.nucleus.bp.core.PendingEvent_c;
+import com.mentor.nucleus.bp.core.StateMachineState_c;
 import com.mentor.nucleus.bp.debug.ui.model.BPBreakpoint;
 import com.mentor.nucleus.bp.debug.ui.model.BPProcess;
 import com.mentor.nucleus.bp.debug.ui.model.BPStackFrame;
@@ -159,6 +163,34 @@ public class BPDebugModelPresentation implements IDebugModelPresentation {
             	if (image == null) {
                     image = CorePlugin.getImageDescriptor("metadata/operation.gif").createImage();
                     images.put("metadata/operation.gif", image);
+            	}
+            }
+            else if (debugVariable.getType() == LinkParticipation_c.class ) {
+            	image = images.get("metadata/Association.gif");
+            	if (image == null) {
+            		image = CorePlugin.getImageDescriptor("metadata/Association.gif").createImage();
+            		images.put("metadata/Association.gif", image);
+            	}
+            }
+            else if (debugVariable.getType() == Association_c.class ) {
+            	image = images.get("metadata/Association.gif");
+            	if (image == null) {
+            		image = CorePlugin.getImageDescriptor("metadata/Association.gif").createImage();
+            		images.put("metadata/Association.gif", image);
+            	}
+            }
+            else if (debugVariable.getType() == StateMachineState_c.class ) {
+            	image = images.get("metadata/State.gif");
+            	if (image == null) {
+            		image = CorePlugin.getImageDescriptor("metadata/State.gif").createImage();
+            		images.put("metadata/State.gif", image);
+            	}
+            }
+            else if (debugVariable.getType() == PendingEvent_c.class ) {
+            	image = images.get("metadata/Event.gif");
+            	if (image == null) {
+            		image = CorePlugin.getImageDescriptor("metadata/Event.gif").createImage();
+            		images.put("metadata/Event.gif", image);
             	}
             }
             else {
