@@ -48,6 +48,7 @@ import com.mentor.nucleus.bp.core.ValueInStructure_c;
 import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.Transaction;
+import com.mentor.nucleus.bp.debug.ui.GroupVariablesByTypeAction;
 import com.mentor.nucleus.bp.ui.session.adapters.AssociationsAdapter;
 import com.mentor.nucleus.bp.ui.session.adapters.InstancesAdapter;
 import com.sun.corba.se.spi.orbutil.fsm.State;
@@ -234,8 +235,8 @@ public class BPValue extends BPDebugElement implements IValue {
 		try{
 			IPreferenceStore store = CorePlugin.getDefault()
 					.getPreferenceStore();
-			boolean enhancedVariableView = store
-					.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+			boolean enhancedVariableView = true;
+//					store .getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
 			if (enhancedVariableView){
 				if (value instanceof StateMachineState_c){
 					return ((StateMachineState_c)value).getName();
@@ -252,8 +253,8 @@ public class BPValue extends BPDebugElement implements IValue {
 					}
 				}
 				
-				boolean groupedInstanceListing = store
-						.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+				boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
+//						store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
 				if (!groupedInstanceListing){
 					if (value instanceof LinkParticipation_c) {
 						Object[] instanceChildren = AssociationsAdapter.getInstance().getChildren(value);
@@ -476,8 +477,8 @@ public class BPValue extends BPDebugElement implements IValue {
 		
 		IPreferenceStore store = CorePlugin.getDefault()
 				.getPreferenceStore();
-		boolean enhancedVariableView = store
-				.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+		boolean enhancedVariableView = true;
+//				store .getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
 		
 		if (enhancedVariableView){
 			try{
@@ -488,8 +489,8 @@ public class BPValue extends BPDebugElement implements IValue {
 										NewStateTransition_c.getManySM_NSTXNsOnR507(
 												Transition_c.getOneSM_TXNOnR2953(inst)))));
 
-				boolean groupedInstanceListing = store
-						.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+				boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
+//						store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
 
 				if (groupedInstanceListing){
 					StateMachineState_c currentState = StateMachineState_c.getOneSM_STATEOnR2915(inst);
@@ -623,11 +624,13 @@ public class BPValue extends BPDebugElement implements IValue {
 		try{
 			IPreferenceStore store = CorePlugin.getDefault()
 					.getPreferenceStore();
-			boolean enhancedVariableView = store
-					.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+//			boolean enhancedVariableView = store
+//					.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+			boolean enhancedVariableView = true;
 			if (enhancedVariableView){
-				boolean groupedInstanceListing = store
-						.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+				boolean groupedInstanceListing =  
+						GroupVariablesByTypeAction.isEnabled();
+//						store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
 				if (groupedInstanceListing){
 					if (value instanceof Association_c) {
 						Instance_c[] firstInstance = null;

@@ -41,6 +41,7 @@ import com.mentor.nucleus.bp.core.ValueInArray_c;
 import com.mentor.nucleus.bp.core.ValueInStructure_c;
 import com.mentor.nucleus.bp.core.Variable_c;
 import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
+import com.mentor.nucleus.bp.debug.ui.GroupVariablesByTypeAction;
 
 public class BPVariable extends BPDebugElement implements IVariable {
 	
@@ -176,8 +177,8 @@ public class BPVariable extends BPDebugElement implements IVariable {
       try{
     	  IPreferenceStore store = CorePlugin.getDefault()
     			  .getPreferenceStore();
-    	  boolean enhancedVariableView = store
-    			  .getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
+    	  boolean enhancedVariableView = true;
+//    			  store .getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
     	  if (enhancedVariableView){
 
     		  if (value instanceof StateMachineState_c){
@@ -187,8 +188,8 @@ public class BPVariable extends BPDebugElement implements IVariable {
     			  return "Last Executed Transition";
     		  }
 
-    		  boolean groupedInstanceListing = store
-    				  .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
+    		  boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
+//    				  store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
     		  if (!groupedInstanceListing){
     			  if (value instanceof LinkParticipation_c) {
     				  String text = ((LinkParticipation_c) value).getLabel();
