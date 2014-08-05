@@ -41,7 +41,6 @@ import com.mentor.nucleus.bp.core.ValueInArray_c;
 import com.mentor.nucleus.bp.core.ValueInStructure_c;
 import com.mentor.nucleus.bp.core.Variable_c;
 import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
-import com.mentor.nucleus.bp.debug.ui.GroupVariablesByTypeAction;
 
 public class BPVariable extends BPDebugElement implements IVariable {
 	
@@ -188,22 +187,22 @@ public class BPVariable extends BPDebugElement implements IVariable {
     			  return "Last Executed Transition";
     		  }
 
-    		  boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
+//    		  boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
 //    				  store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
-    		  if (!groupedInstanceListing){
-    			  if (value instanceof LinkParticipation_c) {
-    				  String text = ((LinkParticipation_c) value).getLabel();
-    				  if (text == null) {
-    					  return "";
-    				  } else {
-    					  return text;
-    				  }
-    			  }
-    			  else if (value instanceof PendingEvent_c) {
-    				  return "Pending Event";
-    			  }
-    		  }
-    		  else{
+//    		  if (!groupedInstanceListing){
+//    			  if (value instanceof LinkParticipation_c) {
+//    				  String text = ((LinkParticipation_c) value).getLabel();
+//    				  if (text == null) {
+//    					  return "";
+//    				  } else {
+//    					  return text;
+//    				  }
+//    			  }
+//    			  else if (value instanceof PendingEvent_c) {
+//    				  return "Pending Event";
+//    			  }
+//    		  }
+//    		  else{
     			  if (value instanceof Association_c){ 
     				  if (name == "Origin Of") {
     					  Link_c[] instanceLinks = getInstanceLinksForAnAssociation();
@@ -234,7 +233,7 @@ public class BPVariable extends BPDebugElement implements IVariable {
     				  return "Event";
     			  }
     		  }
-    	  }
+//    	  }
       }catch (Exception e) {
     	  return "Error: Variable for local value not found.";
       }

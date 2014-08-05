@@ -48,7 +48,6 @@ import com.mentor.nucleus.bp.core.ValueInStructure_c;
 import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
 import com.mentor.nucleus.bp.core.common.Transaction;
-import com.mentor.nucleus.bp.debug.ui.GroupVariablesByTypeAction;
 import com.mentor.nucleus.bp.ui.session.adapters.AssociationsAdapter;
 import com.mentor.nucleus.bp.ui.session.adapters.InstancesAdapter;
 import com.sun.corba.se.spi.orbutil.fsm.State;
@@ -252,18 +251,18 @@ public class BPValue extends BPDebugElement implements IValue {
 					}
 				}
 				
-				boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
+//				boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
 //						store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
-				if (!groupedInstanceListing){
-					if (value instanceof LinkParticipation_c) {
-						Object[] instanceChildren = AssociationsAdapter.getInstance().getChildren(value);
-						Instance_c[] children = new Instance_c[instanceChildren.length];
-						for (int i = 0; i < instanceChildren.length; i++) {
-							children[i] = (Instance_c)instanceChildren[i];
-						}
-						return printInstanceSet(children);
-					} 
-				}else{
+////				if (!groupedInstanceListing){
+//					if (value instanceof LinkParticipation_c) {
+//						Object[] instanceChildren = AssociationsAdapter.getInstance().getChildren(value);
+//						Instance_c[] children = new Instance_c[instanceChildren.length];
+//						for (int i = 0; i < instanceChildren.length; i++) {
+//							children[i] = (Instance_c)instanceChildren[i];
+//						}
+//						return printInstanceSet(children);
+//					} 
+//				}else{
 					if (value instanceof Association_c) {
 						Instance_c[] firstInstance = null;
 
@@ -324,7 +323,7 @@ public class BPValue extends BPDebugElement implements IValue {
 						return result;
 					}
 				}
-			}
+//			}
 		}catch (Exception e) {
 			return "Undefined";
 		}
@@ -488,10 +487,10 @@ public class BPValue extends BPDebugElement implements IValue {
 										NewStateTransition_c.getManySM_NSTXNsOnR507(
 												Transition_c.getOneSM_TXNOnR2953(inst)))));
 
-				boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
+//				boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
 //						store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
 
-				if (groupedInstanceListing){
+//				if (groupedInstanceListing){
 					StateMachineState_c currentState = StateMachineState_c.getOneSM_STATEOnR2915(inst);
 
 					// collect associations based on instance relation direction
@@ -554,28 +553,28 @@ public class BPValue extends BPDebugElement implements IValue {
 					if (assocLinksChildern.length !=0)
 						System.arraycopy(assocLinksChildern, 0, childern, childernIndex, assocLinksChildern.length);
 					return childern;
-				}
-				else {
-					Object[] instanceChildern = InstancesAdapter.getInstance().getChildren(inst);
-					IVariable[] childern = getChildern(instanceChildern, null , null, null);
-					
-					// Last can happen event.
-					event = StateMachineEvent_c.getOneSM_EVTOnR525(
-							SemEvent_c.getOneSM_SEVTOnR503(
-									StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
-											NewStateTransition_c.getManySM_NSTXNsOnR507(
-													Transition_c.getOneSM_TXNOnR2953(inst)))));
-					
-					if( event != null){
-						BPVariable eventVar = new BPVariable(getDebugTarget(), getLaunch(), event, null);
-						IVariable[] variables = new IVariable[childern.length + 1];
-						variables[0] = eventVar;
-						System.arraycopy(childern, 0, variables, 1, childern.length);
-						return variables;
-					}
-					
-					return childern;
-				}
+//				}
+//				else {
+//					Object[] instanceChildern = InstancesAdapter.getInstance().getChildren(inst);
+//					IVariable[] childern = getChildern(instanceChildern, null , null, null);
+//					
+//					// Last can happen event.
+//					event = StateMachineEvent_c.getOneSM_EVTOnR525(
+//							SemEvent_c.getOneSM_SEVTOnR503(
+//									StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
+//											NewStateTransition_c.getManySM_NSTXNsOnR507(
+//													Transition_c.getOneSM_TXNOnR2953(inst)))));
+//					
+//					if( event != null){
+//						BPVariable eventVar = new BPVariable(getDebugTarget(), getLaunch(), event, null);
+//						IVariable[] variables = new IVariable[childern.length + 1];
+//						variables[0] = eventVar;
+//						System.arraycopy(childern, 0, variables, 1, childern.length);
+//						return variables;
+//					}
+//					
+//					return childern;
+//				}
 			}catch (Exception e) {
 				IVariable[] attibutesChildern = getChildern(vals, null, null, null);
 				return attibutesChildern;
@@ -643,10 +642,10 @@ public class BPValue extends BPDebugElement implements IValue {
 //					.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
 			boolean enhancedVariableView = true;
 			if (enhancedVariableView){
-				boolean groupedInstanceListing =  
-						GroupVariablesByTypeAction.isEnabled();
+//				boolean groupedInstanceListing =  
+//						GroupVariablesByTypeAction.isEnabled();
 //						store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
-				if (groupedInstanceListing){
+//				if (groupedInstanceListing){
 					if (value instanceof Association_c) {
 						Instance_c[] firstInstance = null;
 
@@ -700,7 +699,7 @@ public class BPValue extends BPDebugElement implements IValue {
 						return childern;
 					}
 				}
-			}
+//			}
 		}catch (Exception e) {
 			return new IVariable[0];
 		}
