@@ -154,13 +154,12 @@ public class BPValue extends BPDebugElement implements IValue {
 			return "empty";
 		else if (insts.length == 1)
 			return insts[0].getLabel();
-		else {
-		  result = "Cardinality of "+ insts.length; 
-//		  result = insts.length > 1 ?  "["+insts.length+"]  " : "";
-//		  for (int i=0; i<insts.length;i++) {
-//			result = result + sep + insts[i].getLabel();
-//			sep = ", ";
-//		  }
+		else { 
+		  result = insts.length > 1 ?  "["+insts.length+"]  " : "";
+		  for (int i=0; i<insts.length;i++) {
+			result = result + sep + insts[i].getLabel();
+			sep = ", ";
+		  }
 		}
 		return result;
 	}
@@ -534,8 +533,8 @@ public class BPValue extends BPDebugElement implements IValue {
 					if (childern.length == 0)
 						return childern;
 
-					childern[0] = new BPVariable(getDebugTarget(), getLaunch(), currentState, null);
-					childern[validState] = new BPVariable(getDebugTarget(), getLaunch(), event, null);
+					childern[0] = new BPVariable(getDebugTarget(), getLaunch(), event, null);
+					childern[validEvent] = new BPVariable(getDebugTarget(), getLaunch(), currentState, null);
 					childern[validState + validEvent] = new BPVariable(getDebugTarget(), getLaunch(), pendingEvents, null); 
 
 					int childernIndex = validState + validEvent + validPendingEvents;
@@ -559,6 +558,22 @@ public class BPValue extends BPDebugElement implements IValue {
 				else {
 					Object[] instanceChildern = InstancesAdapter.getInstance().getChildren(inst);
 					IVariable[] childern = getChildern(instanceChildern, null , null, null);
+					
+					// Last can happen event.
+					event = StateMachineEvent_c.getOneSM_EVTOnR525(
+							SemEvent_c.getOneSM_SEVTOnR503(
+									StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
+											NewStateTransition_c.getManySM_NSTXNsOnR507(
+													Transition_c.getOneSM_TXNOnR2953(inst)))));
+					
+					if( event != null){
+						BPVariable eventVar = new BPVariable(getDebugTarget(), getLaunch(), event, null);
+						IVariable[] variables = new IVariable[childern.length + 1];
+						variables[0] = eventVar;
+						System.arraycopy(childern, 0, variables, 1, childern.length);
+						return variables;
+					}
+					
 					return childern;
 				}
 			}catch (Exception e) {
