@@ -200,7 +200,7 @@ public class BPVariable extends BPDebugElement implements IVariable {
     				  }
     			  }
     			  else if (value instanceof PendingEvent_c) {
-    				  return "Pedning Event";
+    				  return "Pending Event";
     			  }
     		  }
     		  else{
@@ -228,7 +228,7 @@ public class BPVariable extends BPDebugElement implements IVariable {
     				  return "R" + ((Association_c)value).getNumb();
     			  }
     			  else if ( value instanceof PendingEvent_c[]){
-    				  return "Pending Event";
+    				  return "Pending Events";
     			  }
     			  else if ( value instanceof PendingEvent_c){
     				  return "Event";
