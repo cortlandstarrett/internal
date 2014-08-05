@@ -320,4 +320,343 @@ public class VariableViewTests extends BaseTest {
 		
 	}
 	
+	
+	
+	public void testDisplayPendingEvent() {
+		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
+			
+			public boolean evaluate(Object candidate) {
+				return ((Component_c) candidate).getName().equals("framework");
+			}
+			
+		});
+		
+		assertNotNull(component);
+		
+		// launch the component
+		
+		Selection.getInstance().setSelection(new StructuredSelection(component));
+		
+		Menu menu = m_bp_tree.getControl().getMenu();
+		assertTrue(
+				"The Launch Verifier action was not present for a component.",
+				UITestingUtilities.checkItemStatusInContextMenu(menu,
+						"Launch Verifier", "", false));
+		MenuItem launchVerifierItem = DebugUITestUtilities.getLaunchVerifierItem(menu);
+		assertNotNull(launchVerifierItem);
+		
+		ComponentInstance_c[] engines = ComponentInstance_c.ComponentInstanceInstances(component.getModelRoot());
+		assertTrue("Unexpected test state, there should be no Component Instances.", engines.length == 0);
+		TestUtil.debugToDialog(200);
+		launchVerifierItem.notifyListeners(SWT.Selection, null);
+		TestingUtilities.processDisplayEvents();
+		
+		menu = m_bp_tree.getControl().getMenu();
+		assertFalse(
+				"The Launch Verifier action was present for an unassigned imported component.",
+				UITestingUtilities.menuItemExists(menu, "", "Launch Verifier"));
+		
+		
+		
+		
+		Function_c testFunc = Function_c.getOneS_SYNCOnR8001(
+				PackageableElement_c.getManyPE_PEsOnR8000(
+						Package_c.getManyEP_PKGsOnR8001(
+								PackageableElement_c.getManyPE_PEsOnR8003(component)))
+								, new ClassQueryInterface_c() {
+					public boolean evaluate( Object candidate) {
+						return ((Function_c) candidate) .getName().equals( "runTes"); 
+					}
+				}
+				);
+		assertNotNull(testFunc);
+		
+		openPerspectiveAndView("com.mentor.nucleus.bp.debug.ui.DebugPerspective",BridgePointPerspective.ID_MGC_BP_EXPLORER);
+		
+		Selection.getInstance().clear();
+		Selection.getInstance().addToSelection(testFunc);
+		
+		ActivityEditor editor = DebugUITestUtilities.openActivityEditorForSelectedElement();
+		DebugUITestUtilities.setBreakpointAtLine(editor, 237);
+		
+		BPDebugUtils.executeElement(testFunc);
+		
+		DebugUITestUtilities.waitForExecution();
+		
+		ComponentInstance_c engine = ComponentInstance_c
+				.getOneI_EXEOnR2955(component);
+		assertNotNull(engine);
+		
+		// wait for the execution to complete
+		DebugUITestUtilities.waitForBPThreads(m_sys);
+		
+		// check that execution was suspended
+		IProcess process = DebugUITestUtilities.getProcessForEngine(engine);
+		assertNotNull(process);
+		
+		IDebugTarget target = process.getLaunch().getDebugTarget();
+		assertTrue("Process was not suspended by breakpoint in provided operation.", target
+				.isSuspended());
+		
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
+		
+		String value = DebugUITestUtilities.getValueForVariable(children, "Pedning Event");
+		assertEquals(value, "Student1: success");
+		
+	}
+	
+	public void testDisplayCurrentState() {
+		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
+			
+			public boolean evaluate(Object candidate) {
+				return ((Component_c) candidate).getName().equals("framework");
+			}
+			
+		});
+		
+		assertNotNull(component);
+		
+		// launch the component
+		
+		Selection.getInstance().setSelection(new StructuredSelection(component));
+		
+		Menu menu = m_bp_tree.getControl().getMenu();
+		assertTrue(
+				"The Launch Verifier action was not present for a component.",
+				UITestingUtilities.checkItemStatusInContextMenu(menu,
+						"Launch Verifier", "", false));
+		MenuItem launchVerifierItem = DebugUITestUtilities.getLaunchVerifierItem(menu);
+		assertNotNull(launchVerifierItem);
+		
+		ComponentInstance_c[] engines = ComponentInstance_c.ComponentInstanceInstances(component.getModelRoot());
+		assertTrue("Unexpected test state, there should be no Component Instances.", engines.length == 0);
+		TestUtil.debugToDialog(200);
+		launchVerifierItem.notifyListeners(SWT.Selection, null);
+		TestingUtilities.processDisplayEvents();
+		
+		menu = m_bp_tree.getControl().getMenu();
+		assertFalse(
+				"The Launch Verifier action was present for an unassigned imported component.",
+				UITestingUtilities.menuItemExists(menu, "", "Launch Verifier"));
+		
+		
+		
+		
+		Function_c testFunc = Function_c.getOneS_SYNCOnR8001(
+				PackageableElement_c.getManyPE_PEsOnR8000(
+						Package_c.getManyEP_PKGsOnR8001(
+								PackageableElement_c.getManyPE_PEsOnR8003(component)))
+								, new ClassQueryInterface_c() {
+					public boolean evaluate( Object candidate) {
+						return ((Function_c) candidate) .getName().equals( "runTes"); 
+					}
+				}
+				);
+		assertNotNull(testFunc);
+		
+		openPerspectiveAndView("com.mentor.nucleus.bp.debug.ui.DebugPerspective",BridgePointPerspective.ID_MGC_BP_EXPLORER);
+		
+		Selection.getInstance().clear();
+		Selection.getInstance().addToSelection(testFunc);
+		
+		ActivityEditor editor = DebugUITestUtilities.openActivityEditorForSelectedElement();
+		DebugUITestUtilities.setBreakpointAtLine(editor, 237);
+		
+		BPDebugUtils.executeElement(testFunc);
+		
+		DebugUITestUtilities.waitForExecution();
+		
+		ComponentInstance_c engine = ComponentInstance_c
+				.getOneI_EXEOnR2955(component);
+		assertNotNull(engine);
+		
+		// wait for the execution to complete
+		DebugUITestUtilities.waitForBPThreads(m_sys);
+		
+		// check that execution was suspended
+		IProcess process = DebugUITestUtilities.getProcessForEngine(engine);
+		assertNotNull(process);
+		
+		IDebugTarget target = process.getLaunch().getDebugTarget();
+		assertTrue("Process was not suspended by breakpoint in provided operation.", target
+				.isSuspended());
+		
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
+		
+		String value = DebugUITestUtilities.getValueForVariable(children, "Current State");
+		assertEquals(value, "First Year");
+		
+	}
+	
+	public void testDisplayBinaryRelatedIsntances() {
+		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
+			
+			public boolean evaluate(Object candidate) {
+				return ((Component_c) candidate).getName().equals("framework");
+			}
+			
+		});
+		
+		assertNotNull(component);
+		
+		// launch the component
+		
+		Selection.getInstance().setSelection(new StructuredSelection(component));
+		
+		Menu menu = m_bp_tree.getControl().getMenu();
+		assertTrue(
+				"The Launch Verifier action was not present for a component.",
+				UITestingUtilities.checkItemStatusInContextMenu(menu,
+						"Launch Verifier", "", false));
+		MenuItem launchVerifierItem = DebugUITestUtilities.getLaunchVerifierItem(menu);
+		assertNotNull(launchVerifierItem);
+		
+		ComponentInstance_c[] engines = ComponentInstance_c.ComponentInstanceInstances(component.getModelRoot());
+		assertTrue("Unexpected test state, there should be no Component Instances.", engines.length == 0);
+		TestUtil.debugToDialog(200);
+		launchVerifierItem.notifyListeners(SWT.Selection, null);
+		TestingUtilities.processDisplayEvents();
+		
+		menu = m_bp_tree.getControl().getMenu();
+		assertFalse(
+				"The Launch Verifier action was present for an unassigned imported component.",
+				UITestingUtilities.menuItemExists(menu, "", "Launch Verifier"));
+		
+		
+		
+		
+		Function_c testFunc = Function_c.getOneS_SYNCOnR8001(
+				PackageableElement_c.getManyPE_PEsOnR8000(
+						Package_c.getManyEP_PKGsOnR8001(
+								PackageableElement_c.getManyPE_PEsOnR8003(component)))
+								, new ClassQueryInterface_c() {
+					public boolean evaluate( Object candidate) {
+						return ((Function_c) candidate) .getName().equals( "runTes"); 
+					}
+				}
+				);
+		assertNotNull(testFunc);
+		
+		openPerspectiveAndView("com.mentor.nucleus.bp.debug.ui.DebugPerspective",BridgePointPerspective.ID_MGC_BP_EXPLORER);
+		
+		Selection.getInstance().clear();
+		Selection.getInstance().addToSelection(testFunc);
+		
+		ActivityEditor editor = DebugUITestUtilities.openActivityEditorForSelectedElement();
+		DebugUITestUtilities.setBreakpointAtLine(editor, 237);
+		
+		BPDebugUtils.executeElement(testFunc);
+		
+		DebugUITestUtilities.waitForExecution();
+		
+		ComponentInstance_c engine = ComponentInstance_c
+				.getOneI_EXEOnR2955(component);
+		assertNotNull(engine);
+		
+		// wait for the execution to complete
+		DebugUITestUtilities.waitForBPThreads(m_sys);
+		
+		// check that execution was suspended
+		IProcess process = DebugUITestUtilities.getProcessForEngine(engine);
+		assertNotNull(process);
+		
+		IDebugTarget target = process.getLaunch().getDebugTarget();
+		assertTrue("Process was not suspended by breakpoint in provided operation.", target
+				.isSuspended());
+		
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
+		
+		String value = DebugUITestUtilities.getValueForVariable(children, "R5.'Contains'");
+		assertEquals(value, "1:Classes");
+		
+	}
+	
+	
+	public void testDisplayAssociativeRelatedIsntances() {
+		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
+			
+			public boolean evaluate(Object candidate) {
+				return ((Component_c) candidate).getName().equals("framework");
+			}
+			
+		});
+		
+		assertNotNull(component);
+		
+		// launch the component
+		
+		Selection.getInstance().setSelection(new StructuredSelection(component));
+		
+		Menu menu = m_bp_tree.getControl().getMenu();
+		assertTrue(
+				"The Launch Verifier action was not present for a component.",
+				UITestingUtilities.checkItemStatusInContextMenu(menu,
+						"Launch Verifier", "", false));
+		MenuItem launchVerifierItem = DebugUITestUtilities.getLaunchVerifierItem(menu);
+		assertNotNull(launchVerifierItem);
+		
+		ComponentInstance_c[] engines = ComponentInstance_c.ComponentInstanceInstances(component.getModelRoot());
+		assertTrue("Unexpected test state, there should be no Component Instances.", engines.length == 0);
+		TestUtil.debugToDialog(200);
+		launchVerifierItem.notifyListeners(SWT.Selection, null);
+		TestingUtilities.processDisplayEvents();
+		
+		menu = m_bp_tree.getControl().getMenu();
+		assertFalse(
+				"The Launch Verifier action was present for an unassigned imported component.",
+				UITestingUtilities.menuItemExists(menu, "", "Launch Verifier"));
+		
+		
+		
+		
+		Function_c testFunc = Function_c.getOneS_SYNCOnR8001(
+				PackageableElement_c.getManyPE_PEsOnR8000(
+						Package_c.getManyEP_PKGsOnR8001(
+								PackageableElement_c.getManyPE_PEsOnR8003(component)))
+								, new ClassQueryInterface_c() {
+					public boolean evaluate( Object candidate) {
+						return ((Function_c) candidate) .getName().equals( "runTes"); 
+					}
+				}
+				);
+		assertNotNull(testFunc);
+		
+		openPerspectiveAndView("com.mentor.nucleus.bp.debug.ui.DebugPerspective",BridgePointPerspective.ID_MGC_BP_EXPLORER);
+		
+		Selection.getInstance().clear();
+		Selection.getInstance().addToSelection(testFunc);
+		
+		ActivityEditor editor = DebugUITestUtilities.openActivityEditorForSelectedElement();
+		DebugUITestUtilities.setBreakpointAtLine(editor, 237);
+		
+		BPDebugUtils.executeElement(testFunc);
+		
+		DebugUITestUtilities.waitForExecution();
+		
+		ComponentInstance_c engine = ComponentInstance_c
+				.getOneI_EXEOnR2955(component);
+		assertNotNull(engine);
+		
+		// wait for the execution to complete
+		DebugUITestUtilities.waitForBPThreads(m_sys);
+		
+		// check that execution was suspended
+		IProcess process = DebugUITestUtilities.getProcessForEngine(engine);
+		assertNotNull(process);
+		
+		IDebugTarget target = process.getLaunch().getDebugTarget();
+		assertTrue("Process was not suspended by breakpoint in provided operation.", target
+				.isSuspended());
+		
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
+		
+		int count= DebugUITestUtilities.getVariableCount(children, "R1.'Teaches'");
+		assertEquals(count,3 );
+		
+	}
+	
+	
+	
+	
+	
 }
