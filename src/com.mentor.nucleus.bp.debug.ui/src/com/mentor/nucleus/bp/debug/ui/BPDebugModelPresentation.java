@@ -49,6 +49,7 @@ import com.mentor.nucleus.bp.core.LinkParticipation_c;
 import com.mentor.nucleus.bp.core.LocalReference_c;
 import com.mentor.nucleus.bp.core.LocalValue_c;
 import com.mentor.nucleus.bp.core.PendingEvent_c;
+import com.mentor.nucleus.bp.core.StateMachineEvent_c;
 import com.mentor.nucleus.bp.core.StateMachineState_c;
 import com.mentor.nucleus.bp.debug.ui.model.BPBreakpoint;
 import com.mentor.nucleus.bp.debug.ui.model.BPProcess;
@@ -187,6 +188,13 @@ public class BPDebugModelPresentation implements IDebugModelPresentation {
             	}
             }
             else if (debugVariable.getType() == PendingEvent_c.class ) {
+            	image = images.get("metadata/Event.gif");
+            	if (image == null) {
+            		image = CorePlugin.getImageDescriptor("metadata/Event.gif").createImage();
+            		images.put("metadata/Event.gif", image);
+            	}
+            }
+            else if (debugVariable.getType() == StateMachineEvent_c.class ) {
             	image = images.get("metadata/Event.gif");
             	if (image == null) {
             		image = CorePlugin.getImageDescriptor("metadata/Event.gif").createImage();
