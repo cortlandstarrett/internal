@@ -8,7 +8,6 @@ import org.eclipse.debug.core.ILaunch;
 import org.eclipse.debug.core.model.IDebugTarget;
 import org.eclipse.debug.core.model.IValue;
 import org.eclipse.debug.core.model.IVariable;
-import org.eclipse.jface.preference.IPreferenceStore;
 
 import com.mentor.nucleus.bp.core.Association_c;
 import com.mentor.nucleus.bp.core.AttributeValue_c;
@@ -40,7 +39,6 @@ import com.mentor.nucleus.bp.core.Transition_c;
 import com.mentor.nucleus.bp.core.ValueInArray_c;
 import com.mentor.nucleus.bp.core.ValueInStructure_c;
 import com.mentor.nucleus.bp.core.Variable_c;
-import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
 
 public class BPVariable extends BPDebugElement implements IVariable {
 	
@@ -174,66 +172,41 @@ public class BPVariable extends BPDebugElement implements IVariable {
       }
       
       try{
-    	  IPreferenceStore store = CorePlugin.getDefault()
-    			  .getPreferenceStore();
-    	  boolean enhancedVariableView = true;
-//    			  store .getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
-    	  if (enhancedVariableView){
+    	  if (value instanceof StateMachineState_c){
+    		  return "Current State";
+    	  }
+    	  if (value instanceof StateMachineEvent_c){
+    		  return "Last Executed Transition";
+    	  }
+    	  if (value instanceof Association_c){ 
+    		  if (name == "Origin Of") {
+    			  Link_c[] instanceLinks = getInstanceLinksForAnAssociation();
+    			  LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2902( instanceLinks);
+    			  if (lp == null)
+    				  return LinkParticipation_c.getOneI_LIPOnR2903( instanceLinks).getLabel();
+    			  else 
+    				  return lp.getLabel();
 
-    		  if (value instanceof StateMachineState_c){
-    			  return "Current State";
+    		  } else if (name == "Destination Of") {
+    			  Link_c[] instanceLinks = getInstanceLinksForAnAssociation();
+    			  LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2901( instanceLinks);
+    			  if (lp == null)
+    				  return LinkParticipation_c .getOneI_LIPOnR2903( instanceLinks).getLabel();
+    			  else 
+    				  return lp.getLabel();
+    		  } 
+    		  else if (name == "Associator For") {
+    			  return "R" + ((Association_c)value).getNumb();
+
     		  }
-    		  if (value instanceof StateMachineEvent_c){
-    			  return "Last Executed Transition";
-    		  }
-
-//    		  boolean groupedInstanceListing = GroupVariablesByTypeAction.isEnabled();
-//    				  store .getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
-//    		  if (!groupedInstanceListing){
-//    			  if (value instanceof LinkParticipation_c) {
-//    				  String text = ((LinkParticipation_c) value).getLabel();
-//    				  if (text == null) {
-//    					  return "";
-//    				  } else {
-//    					  return text;
-//    				  }
-//    			  }
-//    			  else if (value instanceof PendingEvent_c) {
-//    				  return "Pending Event";
-//    			  }
-//    		  }
-//    		  else{
-    			  if (value instanceof Association_c){ 
-    				  if (name == "Origin Of") {
-    					  Link_c[] instanceLinks = getInstanceLinksForAnAssociation();
-    					  LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2902( instanceLinks);
-    					  if (lp == null)
-    						  return LinkParticipation_c.getOneI_LIPOnR2903( instanceLinks).getLabel();
-    					  else 
-    						  return lp.getLabel();
-
-    				  } else if (name == "Destination Of") {
-    					  Link_c[] instanceLinks = getInstanceLinksForAnAssociation();
-    					  LinkParticipation_c lp = LinkParticipation_c .getOneI_LIPOnR2901( instanceLinks);
-    					  if (lp == null)
-    						  return LinkParticipation_c .getOneI_LIPOnR2903( instanceLinks).getLabel();
-    					  else 
-    						  return lp.getLabel();
-    				  } 
-    				  else if (name == "Associator For") {
-    					  return "R" + ((Association_c)value).getNumb();
-
-    				  }
-    				  return "R" + ((Association_c)value).getNumb();
-    			  }
-    			  else if ( value instanceof PendingEvent_c[]){
-    				  return "Pending Events";
-    			  }
-    			  else if ( value instanceof PendingEvent_c){
-    				  return "Event";
-    			  }
-    		  }
-//    	  }
+    		  return "R" + ((Association_c)value).getNumb();
+    	  }
+    	  else if ( value instanceof PendingEvent_c[]){
+    		  return "Pending Events";
+    	  }
+    	  else if ( value instanceof PendingEvent_c){
+    		  return "Event";
+    	  }
       }catch (Exception e) {
     	  return "Error: Variable for local value not found.";
       }
