@@ -41,6 +41,7 @@ import com.mentor.nucleus.bp.debug.engine.VerifierCreationTransitionDebugTest;
 import com.mentor.nucleus.bp.debug.engine.VerifierMessageTest;
 import com.mentor.nucleus.bp.debug.engine.VerifierMessageTestGlobals;
 import com.mentor.nucleus.bp.debug.engine.VerifierTransitionActionTests;
+import com.mentor.nucleus.bp.debug.test.DateLoggingTests;
 import com.mentor.nucleus.bp.debug.test.RealizedClassTest;
 import com.mentor.nucleus.bp.debug.test.VIECParameterTest;
 import com.mentor.nucleus.bp.debug.test.VIECTest;
@@ -108,6 +109,7 @@ public class VerifierTestSuite extends TestSuite {
 		addTest(new TestSuite(VerifierBindingAuditTest.class));
 		addTest(new TestSuite(VerifierRealizedUDTTest.class));
 		addTest(new TestSuite(VerifierUDTAsUDTInitializationTests.class));
+		addTest(new TestSuite(DateLoggingTests.class));
 	}
 
 }
