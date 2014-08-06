@@ -70,23 +70,23 @@ import com.mentor.nucleus.bp.ui.session.SessionExplorerTreeViewer;
 import com.mentor.nucleus.bp.ui.session.views.SessionExplorerView;
 import com.mentor.nucleus.bp.ui.text.activity.ActivityEditor;
 
-public class VariableViewTests extends BaseTest {
+public class InstanceVariableViewTests extends BaseTest {
 
 	private static String projectName = "135_dts0100895768";
 
-	private boolean initialized = false;
+	private static boolean initialized = false;
 
-	public VariableViewTests(String testName) throws Exception {
+	private static boolean testComplete = false;
+
+	public InstanceVariableViewTests(String testName) throws Exception {
 		super(projectName, testName);
 	}
 
 	@Override
 	protected void setUp() throws Exception {
-		if (!initialized)
-			  delayGlobalUpgrade = true;
-		super.setUp();
-
 		if (!initialized) {
+			delayGlobalUpgrade = true;
+			super.setUp();
 			CorePlugin.disableParseAllOnResourceChange();
 
 			// set perspective switch dialog on launch
@@ -140,6 +140,8 @@ public class VariableViewTests extends BaseTest {
 	}
 
 	public void tearDown() throws Exception {
+		if (!testComplete )
+			return;
 		// terminate all launches
 		DebugUITestUtilities.terminateAllProcesses(m_sys);
 		// clear the any console output
@@ -153,91 +155,44 @@ public class VariableViewTests extends BaseTest {
 		TestingUtilities.waitForThread("Verifier (" + projectName + ")");	
 	}
 
-
-	public void testReferentialAttributeValueAfterSetup() {
-		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
-
-			public boolean evaluate(Object candidate) {
-				return ((Component_c) candidate).getName().equals("framework");
-			}
-
-		});
-
-		assertNotNull(component);
+	public void testPrepareTest(){
+		initTest();
+	}
+	
+	public void testDisplayPendingEvent() {
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
 		
-		// launch the component
+		String value = DebugUITestUtilities.getValueForVariable(children, "Pending Events");
+		assertEquals(value, "Student1: success");
 		
-		Selection.getInstance().setSelection(new StructuredSelection(component));
-
-    	Menu menu = m_bp_tree.getControl().getMenu();
-    	assertTrue(
-    			"The Launch Verifier action was not present for a component.",
-    			UITestingUtilities.checkItemStatusInContextMenu(menu,
-    					"Launch Verifier", "", false));
-    	MenuItem launchVerifierItem = DebugUITestUtilities.getLaunchVerifierItem(menu);
-    	assertNotNull(launchVerifierItem);
-    	
-    	ComponentInstance_c[] engines = ComponentInstance_c.ComponentInstanceInstances(component.getModelRoot());
-    	assertTrue("Unexpected test state, there should be no Component Instances.", engines.length == 0);
-    	TestUtil.debugToDialog(200);
-    	launchVerifierItem.notifyListeners(SWT.Selection, null);
-    	TestingUtilities.processDisplayEvents();
-
-    	menu = m_bp_tree.getControl().getMenu();
-    	assertFalse(
-    			"The Launch Verifier action was present for an unassigned imported component.",
-    			UITestingUtilities.menuItemExists(menu, "", "Launch Verifier"));
-
-    	
-    	
-
-		Function_c testFunc = Function_c.getOneS_SYNCOnR8001(
-				PackageableElement_c.getManyPE_PEsOnR8000(
-						Package_c.getManyEP_PKGsOnR8001(
-								PackageableElement_c.getManyPE_PEsOnR8003(component)))
-								, new ClassQueryInterface_c() {
-											public boolean evaluate( Object candidate) {
-												return ((Function_c) candidate) .getName().equals( "runTes"); 
-												}
-											}
-				);
-		assertNotNull(testFunc);
-
-		openPerspectiveAndView("com.mentor.nucleus.bp.debug.ui.DebugPerspective",BridgePointPerspective.ID_MGC_BP_EXPLORER);
+	}
+	
+	public void testDisplayCurrentState() {
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
 		
-		Selection.getInstance().clear();
-		Selection.getInstance().addToSelection(testFunc);
-
-		ActivityEditor editor = DebugUITestUtilities.openActivityEditorForSelectedElement();
-		DebugUITestUtilities.setBreakpointAtLine(editor, 204);
+		String value = DebugUITestUtilities.getValueForVariable(children, "Current State");
+		assertEquals(value, "First Year");
 		
-		BPDebugUtils.executeElement(testFunc);
+	}
+	
+	public void testDisplayBinaryRelatedIsntances() {
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
 		
-		DebugUITestUtilities.waitForExecution();
-
-		ComponentInstance_c engine = ComponentInstance_c
-				.getOneI_EXEOnR2955(component);
-		assertNotNull(engine);
-
-		// wait for the execution to complete
-		DebugUITestUtilities.waitForBPThreads(m_sys);
-
-		// check that execution was suspended
-		IProcess process = DebugUITestUtilities.getProcessForEngine(engine);
-		assertNotNull(process);
-
-		IDebugTarget target = process.getLaunch().getDebugTarget();
-		assertTrue("Process was not suspended by breakpoint in provided operation.", target
-				.isSuspended());
+		String value = DebugUITestUtilities.getValueForVariable(children, "R5.'Contains'");
+		assertEquals(value, "1:Classes");
 		
-		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("class1");
-
-		String value = DebugUITestUtilities.getValueForVariable(children, "Student_ID");
-		assertEquals(value, "1");
+	}
+	
+	
+	public void testDisplayAssociativeRelatedIsntances() {
+		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("student1");
+		
+		String value= DebugUITestUtilities.getValueForVariable(children, "R1.'Teaches'");
+		assertEquals(value, "[3]  3:Subject, 4:Subject, 5:Subject" );
 		
 	}
 
-	public void testReferentialAttributeValueBeforeSetup() {
+	private void initTest() {
 		Component_c component = Component_c.getOneC_COnR8001(PackageableElement_c.getManyPE_PEsOnR8000(Package_c.getManyEP_PKGsOnR1405(m_sys)), new ClassQueryInterface_c() {
 			
 			public boolean evaluate(Object candidate) {
@@ -292,7 +247,7 @@ public class VariableViewTests extends BaseTest {
 		Selection.getInstance().addToSelection(testFunc);
 		
 		ActivityEditor editor = DebugUITestUtilities.openActivityEditorForSelectedElement();
-		DebugUITestUtilities.setBreakpointAtLine(editor, 100);
+		DebugUITestUtilities.setBreakpointAtLine(editor, 237);
 		
 		BPDebugUtils.executeElement(testFunc);
 		
@@ -312,12 +267,10 @@ public class VariableViewTests extends BaseTest {
 		IDebugTarget target = process.getLaunch().getDebugTarget();
 		assertTrue("Process was not suspended by breakpoint in provided operation.", target
 				.isSuspended());
-		
-		TreeItem[] children = DebugUITestUtilities.expandValueinVariablesView("class1");
-		
-		String value = DebugUITestUtilities.getValueForVariable(children, "Student_ID");
-		assertEquals(value, "not participating");
-		
 	}
+	
+	
+	
+	
 	
 }
