@@ -724,7 +724,6 @@ public class DebugUITestUtilities {
 	public static String getValueForVariable(TreeItem[] Items, String VariableName){
 		for (int i = 0; i < Items.length; i++) {
 			if (Items[i].getText().indexOf(VariableName) != -1) {
-
 				return !Items[i].getText(1).equalsIgnoreCase("\"\"")? Items[i].getText(1) : "" ;
 			}
 		}

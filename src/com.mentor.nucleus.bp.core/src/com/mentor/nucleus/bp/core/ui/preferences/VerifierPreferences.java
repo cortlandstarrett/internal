@@ -53,8 +53,6 @@ public class VerifierPreferences
     private Label startUpTimeLabel;
     private Spinner startUpTime;
     private Button deterministicExecution;
-    private Button enhancedVariableView;
-    private Button groupedInstancesListing;
     
     public static final String deterministicExecutionBtnName = "Run deterministically";
     public static final String deterministicExecutionBtnTip = "Enabling this option runs the entire " + 
@@ -62,13 +60,6 @@ public class VerifierPreferences
     "repeatable. Disabling this option runs each component in\nits own thread, and " + 
     "allows the user to decide on the implementation of time used. Thus,\nexecution may " +
     "differ from run to run. This mode tests model concurrency and can help\nexpose race conditions.";
-    public static final String enhancedVariableViewBtnName = "Show more children for instances in Variables View"; 
-    public static final String enhancedVariableViewBtnTip = "When expanding class instance in Variables View, extra children will be listed (if exists)\n" +
-    		"- Current state\n" +
-    		"- Pending events\n" +
-    		"- Last executed transition\n" +
-    		"- All related instances";
-    public static final String groupedInstancesListingBtnName = "Group related instances using same association under single element in Variable view"; 
     
   public VerifierPreferences() {
     super();
@@ -165,38 +156,6 @@ public class VerifierPreferences
     deterministicExecution.setLayoutData(new GridData());
     deterministicExecution.setToolTipText(deterministicExecutionBtnTip);
     
-    // Create Preference for enhanced variable view 
-    enhancedVariableView = new Button(composite, SWT.CHECK | SWT.LEFT);
-    enhancedVariableView.setText(enhancedVariableViewBtnName);
-    enhancedVariableView.setLayoutData(new GridData());
-    enhancedVariableView.setToolTipText(enhancedVariableViewBtnTip);
-    
-    enhancedVariableView.addSelectionListener(new SelectionAdapter() {
-        public void widgetSelected(SelectionEvent e) {
-            if (enhancedVariableView.getSelection()) {
-            	groupedInstancesListing.setEnabled(true);
-            } else {
-            	groupedInstancesListing.setEnabled(false);
-            	groupedInstancesListing.setSelection(false);
-            }
-        }
-    });
-    
-    
-    
-   
-    // Create Preference for enhanced variable view 
-    groupedInstancesListing = new Button(composite, SWT.CHECK | SWT.LEFT);
-    groupedInstancesListing.setText(groupedInstancesListingBtnName);
-    groupedInstancesListing.setLayoutData(new GridData());
-    groupedInstancesListing.setToolTipText(null);
-    if (enhancedVariableView.getSelection()) {
-    	groupedInstancesListing.setEnabled( true );
-    } else {
-    	groupedInstancesListing.setEnabled( false);
-    }
-    
-
     model = new BridgePointPreferencesModel();
     model.getStore().loadModel(getPreferenceStore(), null, model);
     
@@ -240,18 +199,6 @@ public class VerifierPreferences
 		} else {
 			bpPrefs.enableDeterministicVerifier = false;
 		}
-		if (enhancedVariableView.getSelection()) {
-			bpPrefs.enableEnhancedVariableView = true;
-		} else {
-			bpPrefs.enableEnhancedVariableView = false;
-		}
-		if (groupedInstancesListing.getSelection()) {
-			bpPrefs.enablegroupedInstancesListing = true;
-		} else {
-			bpPrefs.enablegroupedInstancesListing = false;
-		}
-		
-		
         
         model.getStore().saveModel(getPreferenceStore(), model);        
         return true;
@@ -280,13 +227,6 @@ public class VerifierPreferences
       delete.select(bpPrefs.enableDeleteAudit);
       startUpTime.setSelection(bpPrefs.startUpTime);
       deterministicExecution.setSelection(bpPrefs.enableDeterministicVerifier);
-      enhancedVariableView.setSelection(bpPrefs.enableEnhancedVariableView);
-      if (enhancedVariableView.getSelection()) {
-      	groupedInstancesListing.setEnabled( true );
-      } else {
-      	groupedInstancesListing.setEnabled( false);
-      }
-      groupedInstancesListing.setSelection(bpPrefs.enablegroupedInstancesListing);
       changeAuditGroupState(bpPrefs.enableVerifierAudit);
     }
     

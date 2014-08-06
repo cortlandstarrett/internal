@@ -50,8 +50,6 @@ public class BridgePointPreferencesStore implements IPreferenceModelStore {
     public static final String ENABLE_FIXED_LENGTH_ARRAYS = PREFIX + "enable_fixed_length_arrays"; //$NON-NLS-1$
     public static final String ENABLE_DYNAMICALLY_SIZED_ARRAYS = PREFIX + "enable_dynamically_sized_arrays"; //$NON-NLS-1$
     public static final String ENABLE_DETERMINISTIC_VERIFIER = PREFIX + "enable_deterministic_verifier"; //$NON-NLS-1$
-    public static final String ENABLE_ENHANCED_VARIABLE_VIEW = PREFIX + "enable_enhanced_variable_view"; //$NON-NLS-1$
-    public static final String ENABLE_GROUPED_INSTANCES_LISTING = PREFIX + "enable_grouped_instances_listing"; //$NON-NLS-1$
     public static final String ENABLE_INSTANCE_REFERENCES = PREFIX + "enable_instance_references"; //$NON-NLS-1$
     public static final String ENABLE_VERIFIER_AUDIT = PREFIX + "enable_verifier_audit"; //$NON-NLS-1$
     public static final String ENABLE_SELECT_AUDIT = PREFIX + "enable_select_audit"; //$NON-NLS-1$
@@ -104,8 +102,6 @@ public class BridgePointPreferencesStore implements IPreferenceModelStore {
         store.setValue(ENABLE_FIXED_LENGTH_ARRAYS, prefs.enableFLAs);
         store.setValue(ENABLE_DYNAMICALLY_SIZED_ARRAYS, prefs.enableDSAs);
         store.setValue(ENABLE_DETERMINISTIC_VERIFIER, prefs.enableDeterministicVerifier);
-        store.setValue(ENABLE_ENHANCED_VARIABLE_VIEW, prefs.enableEnhancedVariableView);
-        store.setValue(ENABLE_GROUPED_INSTANCES_LISTING, prefs.enablegroupedInstancesListing);
         store.setValue(ENABLE_INSTANCE_REFERENCES, prefs.enableInstanceReferences);
 
         store.setValue(ENABLE_VERIFIER_AUDIT, prefs.enableVerifierAudit);
@@ -178,10 +174,6 @@ public class BridgePointPreferencesStore implements IPreferenceModelStore {
 
         prefs.enableDeterministicVerifier =
             store.getBoolean(BridgePointPreferencesStore.ENABLE_DETERMINISTIC_VERIFIER);
-        prefs.enableEnhancedVariableView =
-        		store.getBoolean(BridgePointPreferencesStore.ENABLE_ENHANCED_VARIABLE_VIEW);
-        prefs.enablegroupedInstancesListing =
-        		store.getBoolean(BridgePointPreferencesStore.ENABLE_GROUPED_INSTANCES_LISTING);
 
         prefs.enableInstanceReferences =
             store.getBoolean(BridgePointPreferencesStore.ENABLE_INSTANCE_REFERENCES);
@@ -256,8 +248,6 @@ public class BridgePointPreferencesStore implements IPreferenceModelStore {
         prefs.gridSpacing = 12;
         prefs.defaultRoutingStyle = OBLIQUE_ROUTING;
         prefs.enableDeterministicVerifier = true;
-        prefs.enableEnhancedVariableView = true;
-        prefs.enablegroupedInstancesListing = false;
         prefs.showReferenceRemovalDialog = true;
         prefs.showReferenceSyncReport = true;
         prefs.useDefaultNamesForNewModelElements = false;
