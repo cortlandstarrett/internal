@@ -58,6 +58,7 @@ import org.eclipse.swt.widgets.Shell;
 import org.eclipse.ui.IWorkbenchWindow;
 import org.eclipse.ui.PlatformUI;
 
+import com.mentor.nucleus.bp.core.Breakpoint_c;
 import com.mentor.nucleus.bp.core.ComponentInstanceContainer_c;
 import com.mentor.nucleus.bp.core.ComponentInstance_c;
 import com.mentor.nucleus.bp.core.ComponentReference_c;
@@ -90,6 +91,7 @@ import com.mentor.nucleus.bp.core.SystemModel_c;
 import com.mentor.nucleus.bp.core.Timer_c;
 import com.mentor.nucleus.bp.core.User_c;
 import com.mentor.nucleus.bp.core.Vm_c;
+import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.ModelChangedEvent;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
 import com.mentor.nucleus.bp.core.common.NonRootModelElement;
@@ -1593,6 +1595,7 @@ public class BPDebugTarget extends BPDebugElement implements IDebugTarget {
 				if (thr.canTerminate()) {
 					thr.stop();
 				}
+				removeBreakPoints(modelRoot);
 				removeTimersTraces(modelRoot);
 			}
 			threads.clear();
@@ -1620,6 +1623,20 @@ public class BPDebugTarget extends BPDebugElement implements IDebugTarget {
 	}
 
 
+
+	private void removeBreakPoints(ModelRoot modelRoot) {
+
+		InstanceList breakPointsList = modelRoot
+				.getInstanceList(Breakpoint_c.class);
+
+		synchronized (breakPointsList) {
+			for (int i = 0; i < breakPointsList.size(); i++) {
+				Breakpoint_c breakPoint = (Breakpoint_c) breakPointsList.get(i);
+				breakPoint.Dispose();
+			}
+		}
+
+	}
 
 	public IProcess getProcess() {
 		if ((launch.getProcesses() != null)

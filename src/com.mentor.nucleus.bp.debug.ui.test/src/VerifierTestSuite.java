@@ -46,6 +46,7 @@ import com.mentor.nucleus.bp.debug.test.VIECParameterTest;
 import com.mentor.nucleus.bp.debug.test.VIECTest;
 import com.mentor.nucleus.bp.debug.test.VerifierTestSuiteI;
 import com.mentor.nucleus.bp.debug.test.VerifierUDTAsUDTInitializationTests;
+import com.mentor.nucleus.bp.debug.test.breakpoint.BreakpointRemovalTest;
 import com.mentor.nucleus.bp.debug.test.breakpoint.BreakpointTest;
 import com.mentor.nucleus.bp.debug.ui.launch.VerifierLaunchTestSuite;
 import com.mentor.nucleus.bp.debug.ui.session.tree.VerifierSessionExplorerTests;
@@ -108,6 +109,8 @@ public class VerifierTestSuite extends TestSuite {
 		addTest(new TestSuite(VerifierBindingAuditTest.class));
 		addTest(new TestSuite(VerifierRealizedUDTTest.class));
 		addTest(new TestSuite(VerifierUDTAsUDTInitializationTests.class));
+		addTest(new TestSuite(BreakpointRemovalTest.class)); 
+		
 	}
 
 }
