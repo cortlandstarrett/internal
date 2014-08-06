@@ -320,66 +320,7 @@ public class BPValue extends BPDebugElement implements IValue {
 	}
 	
 	public String getValueStringForButtonTextPane() throws DebugException{
-		
-		if (value instanceof Association_c) {
-			Instance_c[] firstInstance = null;
-
-			if (name == "Origin Of") {
-				Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
-
-				firstInstance = Instance_c .getManyI_INSsOnR2958(
-						LinkParticipation_c.getManyI_LIPsOnR2903(
-								instanceLinks));
-				if (firstInstance.length == 0)
-					firstInstance = Instance_c .getManyI_INSsOnR2958(
-							LinkParticipation_c .getManyI_LIPsOnR2902(
-									instanceLinks));
-
-				} else if (name == "Destination Of") {
-				Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
-
-				firstInstance = Instance_c .getManyI_INSsOnR2958(
-						LinkParticipation_c .getManyI_LIPsOnR2903(
-								instanceLinks));
-				if (firstInstance.length == 0)
-					firstInstance = Instance_c .getManyI_INSsOnR2958(
-							LinkParticipation_c .getManyI_LIPsOnR2901(
-									instanceLinks));
-			} 
-			else if (name == "Associator For") {
-				Link_c[] instanceLinks = this.var.getInstanceLinksForAnAssociation();
-
-				Instance_c[] first = Instance_c.getManyI_INSsOnR2958(
-						LinkParticipation_c .getManyI_LIPsOnR2901(
-								instanceLinks));
-
-				Instance_c[] second = Instance_c .getManyI_INSsOnR2958(
-						LinkParticipation_c .getManyI_LIPsOnR2902(
-								instanceLinks));
-
-				firstInstance = new Instance_c[first.length + second.length];
-				System.arraycopy(first, 0, firstInstance, 0, first.length);
-				System.arraycopy(second, 0,firstInstance , first.length, second.length);
-			}
-			
-			String result = "";
-			String sep = "";
-			if (firstInstance.length == 0)
-				return "empty";
-			else if (firstInstance.length == 1)
-				return firstInstance[0].getLabel();
-			else {
-			  for (int i=0; i<firstInstance.length;i++) {
-				result = result + sep + firstInstance[i].getLabel();
-				sep = ", ";
-			  }
-			}
-			return result;
-
-		}
-		else {
-			return getValueString();
-		}
+		return getValueString();
 	}
 
 
@@ -502,14 +443,18 @@ public class BPValue extends BPDebugElement implements IValue {
 
 			childern[0] = new BPVariable(getDebugTarget(), getLaunch(), event, null);
 			childern[validEvent] = new BPVariable(getDebugTarget(), getLaunch(), currentState, null);
-			childern[validState + validEvent] = new BPVariable(getDebugTarget(), getLaunch(), pendingEvents, null); 
-
-			int childernIndex = validState + validEvent + validPendingEvents;
-
+			
+			int childernIndex = validState + validEvent;
+			// Add Attributes to children list
 			if (attibutesChildern.length !=0)
 				System.arraycopy(attibutesChildern, 0, childern, childernIndex, attibutesChildern.length);
 
+			// update the children list index
 			childernIndex = childernIndex + attibutesChildern.length;
+			// Add Pending events
+			childern[childernIndex ] = new BPVariable(getDebugTarget(), getLaunch(), pendingEvents, null);
+			
+			childernIndex = childernIndex + validPendingEvents;
 			if (originLinksChildern.length !=0)
 				System.arraycopy(originLinksChildern, 0, childern, childernIndex, originLinksChildern.length);
 
