@@ -401,7 +401,7 @@ public class VerifierExecuteActionTestsGlobals extends BaseTest {
 		assertTrue("Unexpected suspend state, expected stack trace not found.",
 				stackTrace.equals("class::opWithParams line: 2"));
 
-		// Commenting out known failure tests.  See dts0100656068
+		// This area has been problematic in the past.  See this file's history and dts0100656068.
 		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
@@ -662,7 +662,7 @@ public class VerifierExecuteActionTestsGlobals extends BaseTest {
 				+ System.getProperty("line.separator")
 				+ "Port1::clientserversigparams" + " (x:integer, y:integer)"));
 		
-		// Commenting out known failure tests.  See dts0100656068
+		// This area has been problematic in the past.  See this file's history and dts0100656068.
 		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
@@ -898,7 +898,7 @@ public class VerifierExecuteActionTestsGlobals extends BaseTest {
 		assertTrue("Unexpected suspend state, expected stack trace not found.",
 				stackTrace.equals("Port2::Interface::clientserversigparams line: 2"));
 		
-		// Commenting out known failure tests.  See dts0100656068
+		// This area has been problematic in the past.  See this file's history and dts0100656068.
 		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
@@ -1130,7 +1130,7 @@ public class VerifierExecuteActionTestsGlobals extends BaseTest {
 		assertTrue("Unexpected suspend state, expected stack trace not found.",
 				stackTrace.equals("Port2::Interface::clientserveropparams line: 2"));
 		
-		// Commenting out known failure tests.  See dts0100656068
+		// This area has been problematic in the past.  See this file's history and dts0100656068.
 		String xValue = DebugUITestUtilities.getValueForVariable("x");
 		assertEquals("Default parameter value was not as expected for variable x.", "0", xValue);
 		String yValue = DebugUITestUtilities.getValueForVariable("y");
