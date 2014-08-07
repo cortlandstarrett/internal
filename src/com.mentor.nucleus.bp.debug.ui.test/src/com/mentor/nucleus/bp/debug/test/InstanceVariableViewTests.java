@@ -74,8 +74,6 @@ public class InstanceVariableViewTests extends BaseTest {
 
 	private static String projectName = "135_dts0100895768";
 
-	private static boolean initialized = false;
-
 	private static boolean testComplete = false;
 
 	public InstanceVariableViewTests(String testName) throws Exception {
@@ -83,10 +81,8 @@ public class InstanceVariableViewTests extends BaseTest {
 	}
 
 	@Override
-	protected void setUp() throws Exception {
-		if (!initialized) {
+	protected void initialSetup() throws Exception {
 			delayGlobalUpgrade = true;
-			super.setUp();
 			CorePlugin.disableParseAllOnResourceChange();
 
 			// set perspective switch dialog on launch
@@ -134,9 +130,6 @@ public class InstanceVariableViewTests extends BaseTest {
 
 			Ooaofooa.setPersistEnabled(true);
             delayGlobalUpgrade = false;
-
-			initialized = true;
-		}
 	}
 
 	public void tearDown() throws Exception {
