@@ -309,13 +309,8 @@ public class BPValue extends BPDebugElement implements IValue {
 		return "Undefined";
 	}
 
-	/**
-	 * @return 
-	 * 
-	 */
-
+	@Override
 	public boolean isAllocated() throws DebugException {
-		// TODO Auto-generated method stub
 		return false;
 	}
 	
@@ -393,7 +388,7 @@ public class BPValue extends BPDebugElement implements IValue {
 		StateMachineEvent_c event = null;
 		
 		try{
-			// Last can happen event.
+			// Last Executed Transition
 			event = StateMachineEvent_c.getOneSM_EVTOnR525(
 					SemEvent_c.getOneSM_SEVTOnR503(
 							StateEventMatrixEntry_c.getOneSM_SEMEOnR504(
@@ -427,44 +422,49 @@ public class BPValue extends BPDebugElement implements IValue {
 			int validState = 0;
 			int validEvent = 0;
 			int validPendingEvents = 0;
-			if (pendingEvents.length != 0)
+			if (pendingEvents.length != 0){
 				validPendingEvents = 1;
-			if (currentState != null )
+			}
+			if (currentState != null ){
 				validState = 1;
-			if (event!= null)
+			}
+			if (event!= null){
 				validEvent = 1;
+			}
 
 			// Create the whole children arrays
 			IVariable[] childern = new IVariable[originLinksChildern.length
 			                                     + destLinksChildern.length + assocLinksChildern.length + attibutesChildern.length + validEvent + validState + validPendingEvents];
 
-			if (childern.length == 0)
+			if (childern.length == 0){
 				return childern;
+			}
 
 			childern[0] = new BPVariable(getDebugTarget(), getLaunch(), event, null);
 			childern[validEvent] = new BPVariable(getDebugTarget(), getLaunch(), currentState, null);
 			
 			int childernIndex = validState + validEvent;
 			// Add Attributes to children list
-			if (attibutesChildern.length !=0)
+			if (attibutesChildern.length !=0){
 				System.arraycopy(attibutesChildern, 0, childern, childernIndex, attibutesChildern.length);
-
+			}
 			// update the children list index
 			childernIndex = childernIndex + attibutesChildern.length;
 			// Add Pending events
 			childern[childernIndex ] = new BPVariable(getDebugTarget(), getLaunch(), pendingEvents, null);
 			
 			childernIndex = childernIndex + validPendingEvents;
-			if (originLinksChildern.length !=0)
+			if (originLinksChildern.length !=0){
 				System.arraycopy(originLinksChildern, 0, childern, childernIndex, originLinksChildern.length);
-
+			}
 			childernIndex = childernIndex + originLinksChildern.length;
-			if (destLinksChildern.length !=0)
+			if (destLinksChildern.length !=0){
 				System.arraycopy(destLinksChildern, 0, childern, childernIndex, destLinksChildern.length);
-
+			}
 			childernIndex = childernIndex + destLinksChildern.length;
-			if (assocLinksChildern.length !=0)
+			if (assocLinksChildern.length !=0){
 				System.arraycopy(assocLinksChildern, 0, childern, childernIndex, assocLinksChildern.length);
+			}
 			return childern;
 		}catch (Exception e) {
 				IVariable[] attibutesChildern = getChildern(vals, null, null, null);
@@ -474,9 +474,6 @@ public class BPValue extends BPDebugElement implements IValue {
 
 	/**
 	 * @param objects : represents the child values for the select variable in Variable View
-	 * @param linkedValue TODO
-	 * @param Instance TODO
-	 * @return 
 	 */
 	private IVariable[] getChildern(Object[] objects, String Name, Object[] linkedValue, Object Instance) {
 		IVariable [] result = new IVariable[objects.length];

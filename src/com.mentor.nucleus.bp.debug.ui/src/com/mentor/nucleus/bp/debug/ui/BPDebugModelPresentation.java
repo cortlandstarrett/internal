@@ -166,13 +166,6 @@ public class BPDebugModelPresentation implements IDebugModelPresentation {
                     images.put("metadata/operation.gif", image);
             	}
             }
-            else if (debugVariable.getType() == LinkParticipation_c.class ) {
-            	image = images.get("metadata/Association.gif");
-            	if (image == null) {
-            		image = CorePlugin.getImageDescriptor("metadata/Association.gif").createImage();
-            		images.put("metadata/Association.gif", image);
-            	}
-            }
             else if (debugVariable.getType() == Association_c.class ) {
             	image = images.get("metadata/Association.gif");
             	if (image == null) {
