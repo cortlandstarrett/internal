@@ -69,7 +69,7 @@ public class ActivityEditorInput extends AbstractModelElementPropertyEditorInput
 	 * @see org.eclipse.ui.IEditorInput#getName()
 	 */
 	public String getName() {
-		return super.getName(); //$NON-NLS-1$
+		return super.getName();
 	}
 
 	/**
