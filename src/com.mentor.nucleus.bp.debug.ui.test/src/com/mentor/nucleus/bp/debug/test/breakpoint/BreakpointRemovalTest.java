@@ -145,6 +145,11 @@ public class BreakpointRemovalTest extends BaseTest {
 
 	public void tearDown() throws Exception {
 		DebugUITestUtilities.stopSession(m_sys, projectName);
+		project = ResourcesPlugin.getWorkspace().getRoot()
+				.getProject(projectName);
+		TestingUtilities.deleteProject(projectName);
+		dispatchEvents(0);
+
 	}
 
 	public void testBreakpointOnStateMachineStateIsNotHitAfterRemovalFromBreakPointView() {
@@ -581,19 +586,18 @@ public class BreakpointRemovalTest extends BaseTest {
 		DebugUITestUtilities.resume(engine);
 		DebugUITestUtilities.waitForExecution();
 	    
-        int wait = 5000;   
+		int wait = 5000;
 		while (--wait>0)
-		{ 
+		{
 			PlatformUI.getWorkbench().getDisplay().readAndDispatch();
-	    }
-		 
+		}
           
-		DebugUITestUtilities.waitForBPThreads(m_sys);
+	    
 		engine = ComponentInstance_c.getOneI_EXEOnR2963(compRef);
 		process = DebugUITestUtilities.getProcessForEngine(engine);
 		IDebugTarget target = process.getLaunch().getDebugTarget();
 
-		assertFalse("Process was not suspended by breakpoint in state.",
+		assertFalse("Process was not suspended by breakpoint in Event.",
 				target.isSuspended());
 		DebugUITestUtilities.waitForExecution();
 
