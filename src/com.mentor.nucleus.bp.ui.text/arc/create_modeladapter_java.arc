@@ -248,12 +248,13 @@ public class ${modelAdapterClass}
 		IModelClassInspector elementInspector = inspector.getInspector(obj .getClass());
 			NonRootModelElement parent = (NonRootModelElement) elementInspector .getParent(obj);
 	    .if (((obj.Key_Lett == "SPR_RO") or (obj.Key_Lett == "SPR_RS")) or ((obj.Key_Lett == "SPR_PO") or (obj.Key_Lett == "SPR_PS")) ) 
+	    .// return the Port as parent instead of interface reference for interface operations and signals instead of Interface Reference
 	    	elementInspector = inspector.getInspector(parent.getClass());
 			parent = (NonRootModelElement) elementInspector .getParent(parent);
 		.end if	    
 	    return parent.getName() + "::" + obj.get$cr{attr.name}(); //$$NON-NLS-1$$
 		}catch(Exception e){
-			return obj.get$cr{attr.name}(); //$$NON-NLS-1$$
+			return obj.get$cr{attr.name}(); //  Return the element name if the parent element is not found
 		}
 	  .else
 	  return obj.get$cr{attr.name}(); //$$NON-NLS-1$$
@@ -273,12 +274,13 @@ public class ${modelAdapterClass}
 		IModelClassInspector elementInspector = inspector.getInspector(obj .getClass());
 		NonRootModelElement parent = (NonRootModelElement) elementInspector .getParent(obj);
 	    .if (obj.Key_Lett == "SM_TXN")
+	    	.// Return the model class as parent for transition
 	    	elementInspector = inspector.getInspector(parent.getClass());
 			parent = (NonRootModelElement) elementInspector .getParent(parent);
 	    .end if
 	    return parent.getName() + "::" + ModelAdapter.getName( obj ); //$$NON-NLS-1$$
 	    }catch(Exception e){
-			return ModelAdapter.getName( obj ); //$$NON-NLS-1$$ Nehad
+			return ModelAdapter.getName( obj ); //  Return the element name if the parent element is not found
 		}
 		}
 	  .else

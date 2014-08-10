@@ -306,7 +306,9 @@ public class EditorUtil
 					  for (IEditorReference editorReference : editorReferences) {
 
 						  EditorReference editor = (EditorReference) editorReference;
-						  editor.getPart(true);
+						  if (editor.getId().contains("com.mentor.nucleus.bp")){
+							  editor.getPart(true);
+						  }
 					  }
 				  }
 			  }
