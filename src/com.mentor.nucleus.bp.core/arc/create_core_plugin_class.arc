@@ -126,6 +126,7 @@ import com.mentor.nucleus.bp.core.ui.marker.ProblemModelChangeListener;
 import com.mentor.nucleus.bp.core.ui.preferences.BridgePointProjectActionLanguagePreferenceNode;
 import com.mentor.nucleus.bp.core.ui.preferences.BridgePointProjectPreferences;
 import com.mentor.nucleus.bp.core.ui.preferences.BridgePointProjectReferencesPreferenceNode;
+import com.mentor.nucleus.bp.core.ui.preferences.SVXBridgePointProjectReferencesPreferenceNode;
 import com.mentor.nucleus.bp.core.util.CoreUtil;
 import com.mentor.nucleus.bp.core.util.ResourceActivityVisitor;
 /**
@@ -1097,6 +1098,8 @@ public class CorePlugin extends AbstractUIPlugin {
 			pm.addToRoot(pn);
 			pn = new BridgePointProjectActionLanguagePreferenceNode(projectNode);
 			pm.addToRoot(pn);
+			PreferenceNode pn2 = new SVXBridgePointProjectReferencesPreferenceNode(projectNode);
+			pm.addToRoot(pn2);
 			return pm;
         }
         

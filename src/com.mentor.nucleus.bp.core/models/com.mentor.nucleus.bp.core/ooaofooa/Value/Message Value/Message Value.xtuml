@@ -1,4 +1,4 @@
--- BP 7.1 content: ModelClass syschar: 3 persistence-version: 7.1.6
+-- BP 7.1.6 content: ModelClass syschar: 3 persistence-version: 7.1.6
 
 INSERT INTO O_OBJ
 	VALUES ("45997725-3b77-4a65-836e-de7dd8a1d845",
@@ -51,7 +51,7 @@ INSERT INTO O_TFR
 	'',
 	"6142a25c-8db7-41c4-af6f-84ef810dc1dd",
 	1,
-	'// Message Value.getValue()
+	'// Message Value.getValue()  
 select one body related by self->V_VAL[R801]->ACT_BLK[R826]->ACT_ACT[R601];
 select any localEngine from instances of I_EXE where
                            selected.Execution_Engine_ID == GD::NULL_UNIQUE_ID();
@@ -439,6 +439,7 @@ if engineIsResolvable
       end if;
     end if;
   else
+    select any port from instances of C_PO where (selected.Id == GD::NULL_UNIQUE_ID()); //this port instance will be populated for usage by svx checking
     select one rep related by self->SPR_REP[R845];
     select one pep related by self->SPR_PEP[R841];
     select any dt from instances of S_DT
@@ -452,6 +453,7 @@ if engineIsResolvable
       select one dt related by rep->C_EP[R4500]->C_IO[R4004]->S_DT[R4008];
       elementName = component.Name + "::" + interface.Name + "::"
                                                               + requiredOp.Name;
+    select one port related by interface->C_IR[R4009]->C_PO[R4016];                                                                 
     end if;
     if(not_empty pep)
       select one providedOp related by pep->SPR_PO[R4503];
@@ -461,11 +463,32 @@ if engineIsResolvable
       select one dt related by pep->C_EP[R4501]->C_IO[R4004]->S_DT[R4008];
       elementName = component.Name + "::" + interface.Name + "::"
                                                               + providedOp.Name;
+     select one port related by interface->C_IR[R4009]->C_PO[R4016];  
     end if;
+   //check before returning default value if the port going through this port is svx
+      if ((not_empty port) and (port.isSVX))
+      select any result related by localStackFrame->I_VSF[R2951] where
+                                             selected.Value_ID == self.Value_ID;
+    // form a return value
+    select one rtVal related by result->RV_RVL[R3305];
+      if(empty rtVal)
+        create object instance rtVal of RV_RVL;
+        rtVal.createSimpleValue();
+        relate rtVal to result across R3305;
+          if not_empty dt
+           relate rtVal to dt across R3307;
+          end if;
+      end if;
+    if not_empty dt
+      rtVal.setValue(value:SVX::getSVXValue(messageValueId: self.Value_ID ,portId:port.Id));      
+    end if;
+    
+    else // it''s not an svx port 
     errorMsg = "Error executing interface operation: " +
 						elementName +
                            ". No operation OAL found, returning default value.";
-  end if;
+    end if;
+  end if;  
 else  // specified engine was not resolved
   errorMsg = "Error sending message, specified component reference " +
                                    "wiring not found. Returning default value.";
@@ -990,7 +1013,7 @@ INSERT INTO O_REF
 	'',
 	'Value',
 	'Value_ID',
-	'R851');
+	'R851.''has target''');
 INSERT INTO R_RGO_PROXY
 	VALUES ("45997725-3b77-4a65-836e-de7dd8a1d845",
 	"c0dbbae3-f7d2-4e20-a653-ac37fc3f4a47",
