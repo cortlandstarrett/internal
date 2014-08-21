@@ -27,7 +27,7 @@ eclipse_home="c:/MentorGraphics/BridgePoint4.1.6/eclipse"
 ant_cmd="${eclipse_home}/ant/apache-ant-1.6.1/bin/ant"
 ant_opts="-Declipse-home=${eclipse_home}"
 cli_cmd="${eclipse_home}/CLI.bat"
-cli_opts"-os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/com.mentor.nucleus.bp.pkg/plugin_customization.ini -prebuildOnly"
+cli_opts"-os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/com.mentor.nucleus.bp.pkg/plugin_customization.ini"
 antlr_tool="pt_antlr"
 git_internal="${git_repo_root}/internal"
 internal_modules="com.mentor.nucleus.bp.als
@@ -129,77 +129,78 @@ function extract_unit_test_modules {
 
 function build_modules {
     # remove a number of plugins from the list of modules to build and compile
-    modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.bld.pkg// | sed s/com.mentor.nucleus.bp.doc// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.test// | sed s/com.mentor.nucleus.help.bp.mc//`
+    #modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.bld.pkg// | sed s/com.mentor.nucleus.bp.doc// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.test// | sed s/com.mentor.nucleus.help.bp.mc//`
 
     cd ${build_dir}
 
     for module in ${modules}; do
-        if [ -e ${module}/generate.xml ]; then
+        #if [ -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
             ${cli_cmd} ${cli_opts} -project ${module}
-            ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
-        elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
-            echo -e "Building version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/build.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
-        fi
+        #    ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
+        #elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
+        #    echo -e "Building version ${branch} of ${module}"
+        #    ${ant_cmd} ${ant_opts} -f ${module}/build.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
+        #fi
     done
 
     # Check for errors and place in a temp file for later use.
-    for module in ${modules}; do
-        # Special case to exclude als.oal package as its built from als
-        if [ ${module} != "com.mentor.nucleus.bp.als.oal" ] && [ ${module} != "com.mentor.nucleus.bp.ui.tree" ] && [ ${module} != "com.mentor.nucleus.bp.internal.tools" ]; then
-            # Check for all cases of error, failed, and failure
-            error_count=`grep -c -i -w "ERROR" ${build_log_dir}/${module}_build.log`
-            failed_count=`grep -c -i -w "FAILED" ${build_log_dir}/${module}_build.log`
-            failure_count=`grep -c -i -w "FAILURE" ${build_log_dir}/${module}_build.log`
+    #for module in ${modules}; do
+    #    # Special case to exclude als.oal package as its built from als
+    #    if [ ${module} != "com.mentor.nucleus.bp.als.oal" ] && [ ${module} != "com.mentor.nucleus.bp.ui.tree" ] && [ ${module} != "com.mentor.nucleus.bp.internal.tools" ]; then
+    #        # Check for all cases of error, failed, and failure
+    #        error_count=`grep -c -i -w "ERROR" ${build_log_dir}/${module}_build.log`
+    #        failed_count=`grep -c -i -w "FAILED" ${build_log_dir}/${module}_build.log`
+    #        failure_count=`grep -c -i -w "FAILURE" ${build_log_dir}/${module}_build.log`
+    #
+    #        if [ ${error_count} -gt 0 ] || [ ${failed_count} -gt 0 ] || [ ${failure_count} -gt 0 ]; then
+    #            build_log_path=`cygpath -m ${build_log_dir}/${module}_build.log`
+    #            echo -e "Errors or failures found during the build of $module.  Check ${build_log_path}.\n" >> ${error_file}
+    #        fi
+    #    fi
+    #done
 
-            if [ ${error_count} -gt 0 ] || [ ${failed_count} -gt 0 ] || [ ${failure_count} -gt 0 ]; then
-                build_log_path=`cygpath -m ${build_log_dir}/${module}_build.log`
-                echo -e "Errors or failures found during the build of $module.  Check ${build_log_path}.\n" >> ${error_file}
-            fi
-        fi
-    done
-
-    modules="${modules} com.mentor.nucleus.bp.welcome"
+    #modules="${modules} com.mentor.nucleus.bp.welcome"
 }
 
 function compile_modules {
     build_modules
-
+    build_modules
+    
     # Have to make sure the plugin compilation is ordered properly.
     # Move bp.utilities so it compiles to before bp.mc, and move several others to later in the build order.
-    modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.docgen// | sed s/com.mentor.nucleus.bp.cdt// | sed s/com.mentor.nucleus.bp.utilities// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.cli//`
-    modules=`echo ${modules} | sed 's/com.mentor.nucleus.bp.mc /com.mentor.nucleus.bp.utilities com.mentor.nucleus.bp.mc /'`
-    modules_to_compile_later="com.mentor.nucleus.bp.docgen com.mentor.nucleus.bp.cdt com.mentor.nucleus.bp.welcome com.mentor.nucleus.bp.cli"
+    #modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.docgen// | sed s/com.mentor.nucleus.bp.cdt// | sed s/com.mentor.nucleus.bp.utilities// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.cli//`
+    #modules=`echo ${modules} | sed 's/com.mentor.nucleus.bp.mc /com.mentor.nucleus.bp.utilities com.mentor.nucleus.bp.mc /'`
+    #modules_to_compile_later="com.mentor.nucleus.bp.docgen com.mentor.nucleus.bp.cdt com.mentor.nucleus.bp.welcome com.mentor.nucleus.bp.cli"
     
     cd ${build_dir}
 
-    for module in ${modules}; do
-        if [ -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        fi
-    done
+    #for module in ${modules}; do
+    #    if [ -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #        ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #        ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    fi
+    #done
 
-    for module in ${modules_to_compile_later}; do
-        if [ -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-             ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        fi
-    done
+    #for module in ${modules_to_compile_later}; do
+    #    if [ -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #         ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #        ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    fi
+    #done
     
-    modules="${modules} ${modules_to_compile_later}"
+    #modules="${modules} ${modules_to_compile_later}"
     
     # Check for errors and place in a temp file for later use.
     for module in ${modules}; do
         # Special case to exclude als.oal package as its compiled from als
-        if [ ${module} != "com.mentor.nucleus.bp.als.oal" ] && [ ${module} != "com.mentor.nucleus.bp.ui.tree" ] && [ ${module} != "com.mentor.nucleus.bp.internal.tools" ]; then
+        #if [ ${module} != "com.mentor.nucleus.bp.als.oal" ] && [ ${module} != "com.mentor.nucleus.bp.ui.tree" ] && [ ${module} != "com.mentor.nucleus.bp.internal.tools" ]; then
             # Check for all cases of error, failed, and failure
             error_count=`grep -c -i -w "ERROR" ${compile_log_dir}/${module}_compile.log`
             failed_count=`grep -c -i -w "FAILED" ${compile_log_dir}/${module}_compile.log`
@@ -209,7 +210,7 @@ function compile_modules {
                 compile_log_path=`cygpath -m ${compile_log_dir}/${module}_compile.log`
                 echo -e "Errors or failures found during the compilation of ${module}. Check ${compile_log_path}.\n" >> ${error_file}
             fi
-        fi
+        #fi
     done
 }
 
