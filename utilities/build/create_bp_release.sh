@@ -165,7 +165,7 @@ function create_build {
         zip_distribution
     fi
 
-    # If theis build is being run on the official build server, opy plugins to release drop location.
+    # If this build is being run on the official build server, copy plugins to release drop location.
     host=`hostname`
     if [ "${host}" = "svr-orw-sle-10" ]; then
       cd ${build_dir}
