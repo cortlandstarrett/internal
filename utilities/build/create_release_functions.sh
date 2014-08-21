@@ -164,6 +164,9 @@ function build_modules {
 }
 
 function compile_modules {
+    # We do two passes of the build in order make sure any dependencies that weren't satisfied the first time through
+    # are fulfilled.  TODO - may need to add a touch of bp.core/.../Component_c.java in between the two to get around 
+    # the issue where org.eclipse imports are not seen.
     build_modules
     build_modules
     
