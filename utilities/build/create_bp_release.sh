@@ -147,6 +147,12 @@ function jar_specific_plugins {
 function create_build {
     cd $build_dir
 
+    # Set ${build_dir} into an environment variable that CLI can pick and use.
+    export WORKSPACE=`cygpath -w ${build_dir}`
+    
+    # Create a workspace at ${build_dir}, use the CLI script to help us here.
+    ${cli_cmd} Import -help
+    
     get_required_modules
     extract_release_files
     
