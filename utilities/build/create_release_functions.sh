@@ -92,8 +92,10 @@ function verify_checkout {
 }
 
 function get_required_modules {
-    cp -rf ${git_internal}/src/${release_pkg} .
-    chown -R ${USERNAME} ${release_pkg}
+    # TODO SKB - Don't CP here, use CLI Import
+    ## cp -rf ${git_internal}/src/${release_pkg} .
+    ## chown -R ${USERNAME} ${release_pkg}
+    ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${release_pkg}` -deleteExisting
 
     if [ -e ${release_pkg}/feature.xml ]; then
         plugin_modules=`grep "<plugin id=" $build_dir/$release_pkg/feature.xml | awk -F"=" '{printf("%s\n", $2)}' | sed s/\"// | sed s/\"//`
@@ -102,8 +104,11 @@ function get_required_modules {
         echo "release version: ${release_version}"
     fi
     
-    cp -rf ${git_internal}/src/${antlr_tool} .
-    chown -R ${USERNAME} ${antlr_tool}    
+    # TODO SKB - Don't use CP here
+    ## cp -rf ${git_internal}/src/${antlr_tool} .
+    ## chown -R ${USERNAME} ${antlr_tool}
+    ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${antlr_tool}` -deleteExisting
+        
 }
 
 function extract_release_files {
@@ -114,16 +119,29 @@ function extract_release_files {
 
     for module in ${modules} ${all_feature_modules} ${model_compiler_modules} ${plugin_fragments}; do
         echo "Checking out ${module} for release: ${branch}"
-        cp -rf ${git_internal}/src/${module} .
-        chown -R ${USERNAME} ${module}
+        # TODO SKB - use CLI Import here instead of cp -rf
+        ## cp -rf ${git_internal}/src/${module} .
+        ## chown -R ${USERNAME} ${module}
+        ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${module}` -deleteExisting
     done
 }
 
 function extract_unit_test_modules {
     for module in ${unit_test_modules}; do
         echo "Checking out ${module} for release: ${branch}"
-		cp -rf ${git_internal}/src/${module} .
-        chown -R ${USERNAME} ${module}
+        # TODO SKB - don't cp -rf here, use CLI Import
+		## cp -rf ${git_internal}/src/${module} .
+        ## chown -R ${USERNAME} ${module}
+        ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${module}` -deleteExisting
+    done
+}
+
+function import_modules {
+    cd ${build_dir}
+
+    for module in ${modules}; do
+        echo -e "Building version ${branch} of ${module}"
+        ${cli_cmd} Import ${cli_opts} -project ${module} -deleteExisting
     done
 }
 
@@ -164,6 +182,9 @@ function build_modules {
 }
 
 function compile_modules {
+    # Import the modules into the build workspace
+    import_modules
+    
     # We do two passes of the build in order make sure any dependencies that weren't satisfied the first time through
     # are fulfilled.  TODO - may need to add a touch of bp.core/.../Component_c.java in between the two to get around 
     # the issue where org.eclipse imports are not seen.
