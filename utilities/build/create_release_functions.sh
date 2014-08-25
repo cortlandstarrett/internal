@@ -158,11 +158,11 @@ function compile_modules {
     # We do two passes of the build in order make sure any dependencies that weren't satisfied the first time through
     # are fulfilled.
     #  
-    # TODO SKB - may need to add a touch of bp.core/.../Component_c.java in between the two to get around 
+    # TODO SKB - may need to add a touch of bp.core/.../Component_c.java and a second build pass to get around 
     # the issue where org.eclipse imports are not seen.
     #
     build_modules
-    build_modules
+    #build_modules
     
     # Have to make sure the plugin compilation is ordered properly.
     # Move bp.utilities so it compiles to before bp.mc, and move several others to later in the build order.
@@ -170,7 +170,7 @@ function compile_modules {
     #modules=`echo ${modules} | sed 's/com.mentor.nucleus.bp.mc /com.mentor.nucleus.bp.utilities com.mentor.nucleus.bp.mc /'`
     #modules_to_compile_later="com.mentor.nucleus.bp.docgen com.mentor.nucleus.bp.cdt com.mentor.nucleus.bp.welcome com.mentor.nucleus.bp.cli"
     
-    cd ${build_dir}
+    #cd ${build_dir}
 
     #for module in ${modules}; do
     #    if [ -e ${module}/generate.xml ]; then
