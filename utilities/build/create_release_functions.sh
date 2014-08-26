@@ -19,7 +19,7 @@
 #
 eclipse_home="c:/MentorGraphics/BridgePoint4.1.6/eclipse"
 cli_cmd="${eclipse_home}/CLI.bat"
-cli_opts="-consoleLog -pluginCustomization ${build_dir}/plugin_customization.ini"
+cli_opts="-consoleLog -pluginCustomization `cygpath -w ${build_dir}/plugin_customization.ini`"
 antlr_tool="pt_antlr"
 git_internal="${git_repo_root}/internal"
 internal_modules="com.mentor.nucleus.bp.als
