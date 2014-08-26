@@ -131,7 +131,7 @@ function build_modules {
 
     for module in ${modules}; do
         echo -e "Building version ${branch} of ${module}"
-        ${cli_cmd} Build ${cli_opts} -project ${module} > ${build_log_dir}/${module}_build.log 2>&1
+        ${cli_cmd} Build ${cli_opts} -project ${module} -debugCLI > ${build_log_dir}/${module}_build.log 2>&1
     done
 
     # Check for errors and place in a temp file for later use.
