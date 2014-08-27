@@ -130,13 +130,8 @@ function build_modules {
     cd ${build_dir}
 
     for module in ${modules}; do
-        # TODO SKB - Only build core for now until we get core building properly.  Then remove this if-test and let it build all the modules
-        if [ "${module}" = "com.mentor.nucleus.bp.core" ]; then
-          echo -e "Building version ${branch} of ${module}"
-          ${cli_cmd} Build ${cli_opts} -project ${module} -debugCLI > ${build_log_dir}/${module}_build.log 2>&1
-        else
-          echo -e "Skipping building version ${branch} of ${module}"
-        fi
+        echo -e "Building version ${branch} of ${module}"
+        ${cli_cmd} Build ${cli_opts} -project ${module} > ${build_log_dir}/${module}_build.log 2>&1
     done
 
     # Check for errors and place in a temp file for later use.
