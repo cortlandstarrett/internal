@@ -3,11 +3,6 @@
 #
 # File:      configure_external_dependencies.sh
 #
-#(c) Copyright 2013 by Mentor Graphics Corp. All rights reserved.
-#
-#=====================================================================
-# This document contains information proprietary and confidential to
-# Mentor Graphics Corp. and is not for external distribution.
 #=====================================================================
 #
 #
