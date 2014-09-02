@@ -96,9 +96,4 @@ cat ${MAIL_TEMP} | ${MAIL_CMD} ${BUILD_ADMIN}
 
 rm -rf ${MAIL_TEMP}
 
-# TODO
-#if [ "${nb_tag}" != "" ]; then
-#  ./tag_bp_nb.sh ${nb_tag}
-#fi
-
 exit 0
