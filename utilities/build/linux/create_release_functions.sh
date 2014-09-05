@@ -1,0 +1,139 @@
+#!/bin/bash -u
+#=====================================================================
+#
+# File:      create_release_functions.sh
+#
+#=====================================================================
+#
+#    create_release_functions.sh - Contains all functions necessary for 
+#     building a release
+#
+#    The following variables must be defined in any calling script
+#
+#    git_repo_root - the directory that is the parent folder of the git repositories
+#    build_dir - the directory for which to build the release
+#    log_dir - the directory where logs will be kept.
+#    branch - the branch/tag representing the release version
+#    release_pkg - the tiger release package
+#
+#
+eclipse_home="/scratch1/MentorGraphics/BridgePoint/eclipse"
+cli_cmd="${eclipse_home}/CLI.bat"
+cli_opts="-consoleLog -pluginCustomization ${build_dir}/plugin_customization.ini"
+antlr_tool="pt_antlr"
+git_internal="${git_repo_root}/internal"
+internal_modules="com.mentor.nucleus.bp.als
+                  com.mentor.nucleus.bp.internal.tools
+                  com.mentor.nucleus.bp.test
+                  com.mentor.nucleus.bp.ui.tree"
+independent_modules="com.mentor.nucleus.bp.mc.xmiexport
+                     com.mentor.nucleus.bp.mc
+                     com.mentor.nucleus.bp.mc.none
+                     com.mentor.nucleus.bp.mc.c.source
+                     com.mentor.nucleus.bp.mc.c.binary
+                     com.mentor.nucleus.bp.mc.systemc.source
+                     com.mentor.nucleus.bp.mc.cpp.source
+                     com.mentor.nucleus.bp.mc.vhdl.source
+                     com.mentor.nucleus.bp.mc.template
+                     com.mentor.nucleus.help.bp.mc
+                     com.mentor.nucleus.bp.ui.session
+                     com.mentor.nucleus.bp.debug.ui"
+feature_pkg_modules="com.mentor.nucleus.bp.dap.pkg
+                      com.mentor.nucleus.bp.pkg
+                     com.mentor.nucleus.bp.verifier.pkg"
+feature_modules="com.mentor.nucleus.bp.dap.pkg-feature
+                 com.mentor.nucleus.bp.pkg-feature
+                 com.mentor.nucleus.bp.verifier.pkg-feature"
+plugin_fragments="com.mentor.nucleus.bp.core.win32.x86
+                  com.mentor.nucleus.bp.core.linux.x86"
+all_feature_modules="$feature_pkg_modules $feature_modules"
+model_compiler_modules="MC-Java"
+
+build_log_dir="${log_dir}/build_logs"
+compile_log_dir="${log_dir}/compile_logs"
+
+if [ ! -d ${build_log_dir} ]; then
+    mkdir -p $build_log_dir
+fi
+
+if [ ! -d ${compile_log_dir} ]; then
+    mkdir -p ${compile_log_dir}
+fi
+
+function verify_checkout {
+    dir_count=`ls ${module} | wc -l`
+
+    if [ ${dir_count} -le 1 ]; then
+        echo -e "Error checking out ${module} with tag: ${branch}"
+        return 1
+    fi
+}
+
+function get_required_modules {
+    # Import the top level release package into the build workspace
+    ${cli_cmd} Import ${cli_opts} -project ${git_internal}/src/${release_pkg} -deleteExisting
+
+    # Create a list of the names of all the packages contained in the top-level package
+    if [ -e ${release_pkg}/feature.xml ]; then
+        plugin_modules=`grep "<plugin id=" $build_dir/$release_pkg/feature.xml | awk -F"=" '{printf("%s\n", $2)}' | sed s/\"// | sed s/\"//`
+        release_version=`awk -F"\"" '{if (/[0-9]\.[0-9]\.[0-9]/) {print $2; exit;}}' ${build_dir}/${release_pkg}/feature.xml`
+        plugin_modules="${plugin_modules} ${independent_modules}"
+        echo "release version: ${release_version}"
+    fi
+    
+    # Import ${antlr_tool} into the build workspace
+    ${cli_cmd} Import ${cli_opts} -project ${git_internal}/src/${antlr_tool} -deleteExisting        
+}
+
+function extract_release_files {
+    modules="${internal_modules} ${plugin_modules}"
+
+    # Rearrange modules so that core is built first
+    modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.core// | sed s/^/"com.mentor.nucleus.bp.core "/`
+
+    # Import all of the projects we need into the build workspace
+    for module in ${modules} ${all_feature_modules} ${model_compiler_modules} ${plugin_fragments}; do
+        echo "Importing into build workspace: ${module} for release ${branch}"
+        ${cli_cmd} Import ${cli_opts} -project ${git_internal}/src/${module} -deleteExisting
+    done
+}
+
+
+function build_modules {
+    cd ${build_dir}
+
+    for module in ${modules}; do
+        echo -e "Building version ${branch} of ${module}"
+        ${cli_cmd} Build ${cli_opts} -project ${module} > ${build_log_dir}/${module}_build.log 2>&1
+    done
+
+    # Check for errors and place in a temp file for later use.
+    for module in ${modules}; do
+        # Special case to exclude als.oal package as its built from als
+        if [ ${module} != "com.mentor.nucleus.bp.als.oal" ] && [ ${module} != "com.mentor.nucleus.bp.ui.tree" ] && [ ${module} != "com.mentor.nucleus.bp.internal.tools" ]; then
+            # Check for all cases of error, failed, and failure
+            error_count=`grep -c -i -w "ERROR" ${build_log_dir}/${module}_build.log`
+            failed_count=`grep -c -i -w "FAILED" ${build_log_dir}/${module}_build.log`
+            failure_count=`grep -c -i -w "FAILURE" ${build_log_dir}/${module}_build.log`
+    
+            if [ ${error_count} -gt 0 ] || [ ${failed_count} -gt 0 ] || [ ${failure_count} -gt 0 ]; then
+                build_log_path=${build_log_dir}/${module}_build.log
+                echo -e "Errors or failures found during the build of $module.  Check ${build_log_path}.\n" >> ${error_file}
+            fi
+        fi
+    done
+}
+
+function compile_modules {
+    # We do two passes of the build in order make sure any dependencies that weren't satisfied the first time through
+    # are fulfilled.
+    #  
+    # TODO SKB - may need to add a touch of bp.core/.../Component_c.java and a second build pass to get around 
+    # the issue where org.eclipse imports are not seen.
+    #
+    build_modules
+    build_modules
+        
+}
+
+
