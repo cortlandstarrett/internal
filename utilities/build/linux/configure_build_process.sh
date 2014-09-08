@@ -28,7 +28,7 @@ function usage {
 }
 
 function configure_build_files {
-    cd ${git_internal}/${utilities_project}/build
+    cd ${git_internal}/${utilities_project}/build/linux
     cp -f configure_external_dependencies.sh ${build_dir}/configure_external_dependencies.sh 2>>${error_file}
     cp -f create_bp_release.sh ${build_dir}/create_bp_release.sh 2>>${error_file}
     cp -f create_release_functions.sh ${build_dir}/create_release_functions.sh 2>>${error_file}
