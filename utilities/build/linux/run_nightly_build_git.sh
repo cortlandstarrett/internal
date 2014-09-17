@@ -54,8 +54,8 @@ echo -e "Done."
 #echo -e "Done."
 
 echo -e "Configuring build process..."
-cp -f ${GIT_REPO_ROOT}/internal/utilities/build/configure_build_process.sh .
-#   TODO - homefully won't need to run d2u on the scripts now... dos2unix -q configure_build_process.sh
+cp -f ${GIT_REPO_ROOT}/internal/utilities/build/linux/configure_build_process.sh .
+#   TODO - hopefully won't need to run d2u on the scripts now... dos2unix -q configure_build_process.sh
 ./configure_build_process.sh ${BRANCH} ${GIT_REPO_ROOT} nonrelease >> cfg_output.log
 echo -e "Done."
 
