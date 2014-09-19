@@ -24,7 +24,7 @@
 #
 #
 eclipse_home="c:/MentorGraphics/BridgePoint4.1.6/eclipse"
-ant_cmd="${eclipse_home}/ant/apache-ant-1.6.1/bin/ant"
+ant_cmd="${eclipse_home}/ant/apache-ant-1.9.4/bin/ant"
 ant_opts="-Declipse-home=${eclipse_home}"
 cli_cmd="${eclipse_home}/CLI.bat"
 cli_opts"-os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/com.mentor.nucleus.bp.pkg/plugin_customization.ini -prebuildOnly"
