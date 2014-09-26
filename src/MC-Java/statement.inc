@@ -162,44 +162,44 @@ else if ( ${test.buffer} )
     .// This supports only simple attribute assignments
     .// We need to rename this function to gen_asgn_statement
     .// and generalize it to work with more exotic assignments
-	.//
-	.// resolve the value's core data type
-	.select one rvalue related by statement->V_VAL[R609]
+    .//
+    .// resolve the value's core data type
+    .select one rvalue related by statement->V_VAL[R609]
     .select one lvalue related by statement->V_VAL[R689]
-	.select any valueType related by rvalue->S_DT[R820]
-	.invoke result = getCoreDataType(valueType);
-	.assign valueType = result.coreType;
-	.//
+    .select any valueType related by rvalue->S_DT[R820]
+    .invoke result = getCoreDataType(valueType);
+    .assign valueType = result.coreType;
+    .//
     .// if the value is of the 'real' type
-	.assign intCast1 = ""
-	.assign intCast2 = ""
+    .assign intCast1 = ""
+    .assign intCast2 = ""
     .select one irf related by lvalue->V_AVL[R801]->V_VAL[R807]->V_IRF[R801]
     .select one tvr related by lvalue->V_TVL[R801]
     .select one directirf related by lvalue->V_IRF[R801]
     .if (not_empty irf)
       .select one inst_var related by irf->V_VAR[R808]
       .select one attr related by lvalue->V_AVL[R801]->O_ATTR[R806]
-	  .if (valueType.Name == "real")
-		.// resolve the assignee's core data type
-		.select any class related by inst_var->V_INT[R814]->O_OBJ[R818]
-	    .select any attrType related by attr->S_DT[R114]
-		.invoke result = getCoreDataType(attrType);
-		.assign varType = result.coreType;
-	    .//
-	    .// if the assignee is of the integer type
-		.if (varType.Name == "integer")
-			.// cast the value to an int, to avoid a "possible loss of precision"
-			.// syntax error in the generated code
-			.assign intCast1 = "(int)("
-			.assign intCast2 = ")"
-		.end if
-	  .end if
-	  .select one dbattr related by attr->O_BATTR[R106]->O_DBATTR[R107]
-	  .if (not_empty dbattr)
-	    .// Derived attribute
+      .if (valueType.Name == "real")
+        .// resolve the assignee's core data type
+        .select any class related by inst_var->V_INT[R814]->O_OBJ[R818]
+        .select any attrType related by attr->S_DT[R114]
+        .invoke result = getCoreDataType(attrType);
+        .assign varType = result.coreType;
+        .//
+        .// if the assignee is of the integer type
+        .if (varType.Name == "integer")
+            .// cast the value to an int, to avoid a "possible loss of precision"
+            .// syntax error in the generated code
+            .assign intCast1 = "(int)("
+            .assign intCast2 = ")"
+        .end if
+      .end if
+      .select one dbattr related by attr->O_BATTR[R106]->O_DBATTR[R107]
+      .if (not_empty dbattr)
+        .// Derived attribute
 return ${intCast1}${rvalue.buffer}${intCast2};
-	  .else
-	    .//
+      .else
+        .//
         .if ("$l{inst_var.Name}" != "self")
 if (v_${inst_var.Name} != null) {
   v_${inst_var.Name}.\
@@ -220,7 +220,7 @@ else {
       .if (lvalue.isImplicit == 1)
         .select any uValueType related by rvalue->S_DT[R820]
         .if (( uValueType.Name == "inst_ref<Object>" ) or ( uValueType.Name == "inst_ref_set<Object>" ))
-          .print "ERROR, didn't expect inst_ref or inst_ref set in transient value reference. (statement.inc: 216)"
+          .print "ERROR, didn't expect inst_ref or inst_ref set in transient value reference. (${info.arch_file_name}: ${info.arch_file_line})"
         .else
           .invoke result = do_type(uValueType)
 ${result.body} \
@@ -659,7 +659,7 @@ else {
   .for each sel_inst_stmt in sel_insts
     .select one statement related by sel_inst_stmt->ACT_SMT[R603]
     .invoke result = gen_select_fio_statement(sel_inst_stmt, "")
-	.assign statement.buffer = "${result.body}"
+    .assign statement.buffer = "${result.body}"
   .end for
 .end function
 .function gen_select_fio_statement
@@ -900,16 +900,16 @@ ${where_clause_arg}\
   {
   .invoke twc = traverse_where_clause ( where_clause )
   .if ( twc.param_decl != "" )
-	${new_test_class_name}( ${twc.param_decl} ) {
+    ${new_test_class_name}( ${twc.param_decl} ) {
 ${twc.init_stmt}
-	}
+    }
 ${twc.member_decl}
   .end if  
-	public boolean evaluate (Object candidate)
-	{
-		${cn.body} selected = (${cn.body})candidate;
-		return ${where_clause.buffer} ;
-	}
+    public boolean evaluate (Object candidate)
+    {
+        ${cn.body} selected = (${cn.body})candidate;
+        return ${where_clause.buffer} ;
+    }
   }
   .assign attr_query_new = ", new ${new_test_class_name}(${twc.args})"
 .end function
@@ -930,20 +930,20 @@ ${twc.member_decl}
   .select one binary_op related by where_clause->V_BIN[R801]
   .if(not_empty binary_op)
     .// support an or case but only one level for now
-	.select many binary_ops from instances of V_BIN where (false)
-	.if(binary_op.Operator == "||")
-	  .select one lhs related by binary_op->V_VAL[R802]
-	  .select one rhs related by binary_op->V_VAL[R803]
-	  .select one lBinary related by lhs->V_BIN[R801]
-	  .select one rBinary related by rhs->V_BIN[R801]
-	  .if((not_empty lBinary) and (not_empty rBinary))
-	    .assign binary_ops = binary_ops | lBinary;
-		.assign binary_ops = binary_ops | rBinary;
-	  .end if
-	.else
-	  .assign binary_ops = binary_ops | binary_op
-	.end if
-	.for each binary in binary_ops
+    .select many binary_ops from instances of V_BIN where (false)
+    .if(binary_op.Operator == "||")
+      .select one lhs related by binary_op->V_VAL[R802]
+      .select one rhs related by binary_op->V_VAL[R803]
+      .select one lBinary related by lhs->V_BIN[R801]
+      .select one rBinary related by rhs->V_BIN[R801]
+      .if((not_empty lBinary) and (not_empty rBinary))
+        .assign binary_ops = binary_ops | lBinary;
+        .assign binary_ops = binary_ops | rBinary;
+      .end if
+    .else
+      .assign binary_ops = binary_ops | binary_op
+    .end if
+    .for each binary in binary_ops
       .// also only for binary operations that have
       .// a left hand attribute value
       .select one lhs related by binary->V_VAL[R802]
@@ -958,79 +958,79 @@ ${twc.member_decl}
           .if((isui.result) and (binary.Operator == "=="))
             .assign non_single_unique_id = false
             .invoke cn = get_class_name( tgt_obj )
-			.select one bVal related by binary->V_VAL[R801];
+            .select one bVal related by binary->V_VAL[R801];
             .invoke twc = traverse_where_clause ( bVal )
             .select one r_val related by binary->V_VAL[R803]
             .assign value = r_val.buffer
             .if(twc.args != "")
-	           .assign value = twc.args
+               .assign value = twc.args
             .end if
             .if (sel_inst_where.is_implicit == 1)
-			  .if(first binary_ops)
-			    .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
+              .if(first binary_ops)
+                .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
 ${cn.body} \
                 .end if
               .end if
             .end if
             .select one var related by sel_inst_where->V_VAR[R665]
             .if(tgt_obj.Key_Lett == "S_SYS")
-			  .if(first binary_ops)
-			    .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
+              .if(first binary_ops)
+                .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
 v_${var.Name} = (${cn.body}) Ooaofooa.getDefaultInstance().getInstanceList(${cn.body}.class).get(${value});
                 .else
 ${cn.body} v_${var.Name}1 = (${cn.body}) Ooaofooa.getDefaultInstance().getInstanceList(${cn.body}.class).get(${value});
-				.end if
+                .end if
               .else
-			    .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
+                .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
 if(v_${var.Name} == null) {
-	v_${var.Name} = (${cn.body}) Ooaofooa.getDefaultInstance().getInstanceList(${cn.body}.class).get(${value});
+    v_${var.Name} = (${cn.body}) Ooaofooa.getDefaultInstance().getInstanceList(${cn.body}.class).get(${value});
 }
                 .else
 ${cn.body} v_${var.Name}2 = (${cn.body}) Ooaofooa.getDefaultInstance().getInstanceList(${cn.body}.class).get(${value});
 List<${cn.body}> v_${var.Name}List = new ArrayList<${cn.body}>();
 if(v_${var.Name}1 != null) {
-	v_${var.Name}List.add(v_${var.Name}1);
+    v_${var.Name}List.add(v_${var.Name}1);
 }
 if(v_${var.Name}2 != null) {
-	v_${var.Name}List.add(v_${var.Name}2);
+    v_${var.Name}List.add(v_${var.Name}2);
 }
 ${cn.body}[] v_${var.Name} = v_${var.Name}List.toArray(new ${cn.body}[v_${var.Name}List.size()]);
-				.end if
-			  .end if
+                .end if
+              .end if
             .else
-			  .assign sysRef = "null, "
-			  .if (not_empty src_obj)
-			     .if (src_obj.Key_Lett == "S_SYS")
-			       .assign sysRef = "this, "
-				 .end if
-			  .end if
-			  .if(first binary_ops)
-			    .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
+              .assign sysRef = "null, "
+              .if (not_empty src_obj)
+                 .if (src_obj.Key_Lett == "S_SYS")
+                   .assign sysRef = "this, "
+                 .end if
+              .end if
+              .if(first binary_ops)
+                .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
 v_${var.Name} = (${cn.body}) modelRoot.getInstanceList(${cn.body}.class).getGlobal(${sysRef}${value});
                 .else
 ${cn.body} v_${var.Name}1 = (${cn.body}) modelRoot.getInstanceList(${cn.body}.class).getGlobal(${sysRef}${value});
 List<${cn.body}> v_${var.Name}List = new ArrayList<${cn.body}>();
 if(v_${var.Name}1 != null) {
-	v_${var.Name}List.add(v_${var.Name}1);
+    v_${var.Name}List.add(v_${var.Name}1);
 }
 ${cn.body}[] v_${var.Name} = v_${var.Name}List.toArray(new ${cn.body}[v_${var.Name}List.size()]);
-				.end if
+                .end if
               .else
-			    .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
+                .if((sel_inst_where.cardinality == "any") or (sel_inst_where.cardinality == "one"))
 if(v_${var.Name} == null) {
-	v_${var.Name} = (${cn.body}) modelRoot.getInstanceList(${cn.body}.class).getGlobal(${sysRef}${value});
+    v_${var.Name} = (${cn.body}) modelRoot.getInstanceList(${cn.body}.class).getGlobal(${sysRef}${value});
 }
                 .else
 ${cn.body} v_${var.Name}2 = (${cn.body}) modelRoot.getInstanceList(${cn.body}.class).getGlobal(${sysRef}${value});
 if(v_${var.Name}2 != null) {
-	v_${var.Name}List.add(v_${var.Name}2);
+    v_${var.Name}List.add(v_${var.Name}2);
 }
 v_${var.Name} = v_${var.Name}List.toArray(new ${cn.body}[v_${var.Name}List.size()]);
-				.end if
-			  .end if
+                .end if
+              .end if
             .end if
           .end if
-		.end if
+        .end if
       .end if
     .end for
   .end if
@@ -1045,7 +1045,7 @@ ${gss.body}\
   .param inst_ref sel_inst
   .param string where_clause_arg
   .// --------------------------------------------------------
-  .// select instance statement
+  .// select from instances - where statement
   .// --------------------------------------------------------
     .select any tgt_obj related by sel_inst->O_OBJ[R676]
     .assign mr = "modelRoot"
@@ -1209,12 +1209,12 @@ $cr{tgt_obj.Name}_assgner_c.$cr{evt.Mning}(true \
   .select many transform_stmts from instances of ACT_TFM
   .for each transform_stmt in transform_stmts
     .select one statement related by transform_stmt->ACT_SMT[R603]
-	.if (not_empty statement)
-	   .// some Transforms are declared as values in which
-	   .// case we do not want to generate any code for them here
+    .if (not_empty statement)
+       .// some Transforms are declared as values in which
+       .// case we do not want to generate any code for them here
        .invoke result = gen_transform_statement(transform_stmt)
        .assign statement.buffer = "${result.body}"
-	.end if
+    .end if
   .end for
 .end function
 .//
@@ -1260,12 +1260,12 @@ else {
   .select many bridge_stmts from instances of ACT_BRG
   .for each bridge_stmt in bridge_stmts
     .select one statement related by bridge_stmt->ACT_SMT[R603]
-	.if (not_empty statement)
-	   .// some Bridges are declared as values in which
-	   .// case we do not want to generate any code for them here
+    .if (not_empty statement)
+       .// some Bridges are declared as values in which
+       .// case we do not want to generate any code for them here
        .invoke result = gen_bridge_statement(bridge_stmt)
        .assign statement.buffer = "${result.body}"
-	.end if
+    .end if
   .end for
 .end function
 .//
@@ -1290,10 +1290,10 @@ ${params.body} \
   .select many func_stmts from instances of ACT_FNC
   .for each func_stmt in func_stmts
     .select one statement related by func_stmt->ACT_SMT[R603]
-	.if (not_empty statement)
+    .if (not_empty statement)
        .invoke result = gen_func_statement(func_stmt)
        .assign statement.buffer = "${result.body}"
-	.end if
+    .end if
   .end for
 .end function
 .//
@@ -1335,35 +1335,35 @@ ${params.body} \
 return \
   .select one value related by returnStatement->V_VAL[R668]
   .if (not_empty value)
-		.//
-		.// resolve the value's core data type
-		.select any valueType related by value->S_DT[R820]
-		.invoke result = getCoreDataType(valueType);
-		.assign valueType = result.coreType;
-		.//
-	    .// if the value is of the 'real' type
-		.assign intCast1 = ""
-		.assign intCast2 = ""
-		.if (valueType.Name == "real")
-			.// if we can resolve the name of the data type of the return type of the enclosing body
-			.select one statement related by returnStatement->ACT_SMT[R603]
-			.invoke result = get_context_for_statement(statement)
-			.if (result.return_dt_name != "")
-				.// resolve the core type of the return type
-				.select any returnType from instances of S_DT where (selected.Name == result.return_dt_name)
-				.invoke result = getCoreDataType(returnType);
-				.assign returnType = result.coreType;
-			    .//
-			    .// if the return type is integer
-				.if (returnType.Name == "integer")
-					.// cast the value to an int, to avoid a "possible loss of precision"
-					.// syntax error in the generated code
-					.assign intCast1 = "(int)("
-					.assign intCast2 = ")"
+        .//
+        .// resolve the value's core data type
+        .select any valueType related by value->S_DT[R820]
+        .invoke result = getCoreDataType(valueType);
+        .assign valueType = result.coreType;
+        .//
+        .// if the value is of the 'real' type
+        .assign intCast1 = ""
+        .assign intCast2 = ""
+        .if (valueType.Name == "real")
+            .// if we can resolve the name of the data type of the return type of the enclosing body
+            .select one statement related by returnStatement->ACT_SMT[R603]
+            .invoke result = get_context_for_statement(statement)
+            .if (result.return_dt_name != "")
+                .// resolve the core type of the return type
+                .select any returnType from instances of S_DT where (selected.Name == result.return_dt_name)
+                .invoke result = getCoreDataType(returnType);
+                .assign returnType = result.coreType;
+                .//
+                .// if the return type is integer
+                .if (returnType.Name == "integer")
+                    .// cast the value to an int, to avoid a "possible loss of precision"
+                    .// syntax error in the generated code
+                    .assign intCast1 = "(int)("
+                    .assign intCast2 = ")"
                 .end if
-			.end if
-		.end if 
-		.//
+            .end if
+        .end if 
+        .//
 ${intCast1}${value.buffer}${intCast2}\
   .end if
 ;

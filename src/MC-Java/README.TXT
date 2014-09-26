@@ -25,86 +25,91 @@ export.  See section �Translating model using MC-Java� for further details. 
 original second step parse archetypes are modified to use the output of the Pre-
 Builder directly to generate the action code.
 
+Note that the BridgePoint internal parser emits association traversal cardinality
+data in lower case, whereas the previous fragment based model compiler emitted
+upper case values. This should be bourne in mind when porting other utilities to
+the pre-builder infrastructure.
+
 MC-Java Components
 ------------------
 Following are different files that constitutes the MC-Java, along with general 
 description of functionality that each of them covers:
 
 java.arc:
-			This acts as the controller archetype for MC-Java. 
+            This acts as the controller archetype for MC-Java. 
 arch_utils.inc:
-			The functions in this file define the naming convention for the code
-			that it generates for entities. For example the naming convention 
-			used for class names is currently <Classname>_c, which can be 
-			changed by editing this archetype, if required.  It also contains
-			utility functions used by more than one archetype.
-			
+            The functions in this file define the naming convention for the code
+            that it generates for entities. For example the naming convention 
+            used for class names is currently <Classname>_c, which can be 
+            changed by editing this archetype, if required.  It also contains
+            utility functions used by more than one archetype.
+            
 do_type.inc:
-			This file defines mapping of model specific data types to java 
-			specific types. Any futher mappings should be defined in this 
-			archetype.
-			
+            This file defines mapping of model specific data types to java 
+            specific types. Any futher mappings should be defined in this 
+            archetype.
+            
 enums.inc:
-			The functions in this file generate the classes for enumeration data
-			types.
-			
+            The functions in this file generate the classes for enumeration data
+            types.
+            
 values.inc:
-			The function in this file implements the different values used in 
-			assignments etc.
-			
+            The function in this file implements the different values used in 
+            assignments etc.
+            
 statement.inc:
-			The functions in this file are used to generate the code for all 
-			kind of statements.
-			
+            The functions in this file are used to generate the code for all 
+            kind of statements.
+            
 block.inc:
-			This file contains only one function which serves as controller for 
-			translating a given outer block of action language. For each of 
-			constructs that it encounters, it delegates the translation to 
-			relevant archetype functions.
-			
+            This file contains only one function which serves as controller for 
+            translating a given outer block of action language. For each of 
+            constructs that it encounters, it delegates the translation to 
+            relevant archetype functions.
+            
 translate_oal.inc:
-			The functions in this file generate action language from the 
-			populated OOA. This file is included in java.arc after the inclusion
-			of values.inc, statement.inc, and block.inc. It also uses the file 
-			reffering.inc and reffered_to.inc 
-			
+            The functions in this file generate action language from the 
+            populated OOA. This file is included in java.arc after the inclusion
+            of values.inc, statement.inc, and block.inc. It also uses the file 
+            reffering.inc and reffered_to.inc 
+            
 model_element.inc:
-			This file generates code for different classes to be used of event 
-			handling for an eclipse plugin.
-			
+            This file generates code for different classes to be used of event 
+            handling for an eclipse plugin.
+            
 pg_schema_gen.arc:
-			This archetype extracts the schema for a user model from a .gen 
-			database, which is output as an SQL file suitable for use in a 
-			subsequent gen_import for building an instance database.
-			
+            This archetype extracts the schema for a user model from a .gen 
+            database, which is output as an SQL file suitable for use in a 
+            subsequent gen_import for building an instance database.
+            
 schema_gen.arc:
-			This archetype transforms a user model into a SQL file suitable for
+            This archetype transforms a user model into a SQL file suitable for
             use in a subsequent gen_import for building an instance database.
-			
+            
 referring.inc:
-			This file generates code for association references made from a 
-			class (whose code is being generated) to the other.
-			
+            This file generates code for association references made from a 
+            class (whose code is being generated) to the other.
+            
 referred_to.inc:
-			This file generates code for association referring to the class 
-			(whose code is being generated) to the other.
+            This file generates code for association referring to the class 
+            (whose code is being generated) to the other.
 
 sql_schema.inc:
-			These functions provide the encoded names for properties of the 
-			database.
-			
+            These functions provide the encoded names for properties of the 
+            database.
+            
 Build.xml:
-			This ANT build file is used for the two pass translation of the 
-			model.
-			
+            This ANT build file is used for the two pass translation of the 
+            model.
+            
 Other Files:
-			Some other files are also part of the MC- Java project which are, 
-			some the files have a self description header available:
-			a)	BUILD.SH
-			b)	GEN.SH
-			c)	README.TXT
-			d)	clearooa2.sql
-			e)	mc_java.depends
+            Some other files are also part of the MC- Java project which are, 
+            some the files have a self description header available:
+            a)  BUILD.SH
+            b)  GEN.SH
+            c)  README.TXT
+            d)  clearooa2.sql
+            e)  mc_java.depends
 
 Coloring
 ---------
@@ -115,9 +120,9 @@ coloring information is provided in three different coloring (.clr) files. The
 following sections explain each of these files:
 
 1) ${DomaniName}_import_spec.clr:
-	.function get_imports
-	  .assign attr_import = ""
-	.end function
+    .function get_imports
+      .assign attr_import = ""
+    .end function
 
 This coloring file provides method of customizing import definition at domain 
 level. It contains single function with single attribute which is described 
@@ -126,30 +131,30 @@ below:
 - attr_import
 Define import statements for all classes (excluding external entities) that are 
 included in given domain name. The value of this attribute should be:
-a.	Complete import statements including semicolon (import java.util.*;) 
-b.	Separation of multiple imports by an end of line escape sequence (\n).
+a.  Complete import statements including semicolon (import java.util.*;) 
+b.  Separation of multiple imports by an end of line escape sequence (\n).
 
 - Sample File Contents:
 .function get_imports
   .assign attr_import = "import java.net.*;\nimport org.xml.*;"
 .end function
  
-2)	${DomaniName}_package_spec.clr
-	.function get_package
-	  .assign attr_location = ""	
-	  .assign attr_name = "com.pt.MicrowaveOven"
-	  .assign attr_application_root_class = "MicrowaveOven"
-	  .assign attr_threading_model = "one_shot"
-	  .assign attr_is_persistent = false
-	  .assign attr_is_eclipse_plugin = true
-	  .assign attr_db_driver = "org.postgresql.Driver"
-	  .assign attr_db_name = "jdbc:postgresql:ooa2"
-	  .assign attr_db_user = "Siddique"
-	  .assign attr_db_password = ""
-	  .assign attr_ui_root_class_name = ""
-	  .assign attr_ui_root_class_accessor = ""
-	  .assign attr_is_root = false
-	.end function
+2)  ${DomaniName}_package_spec.clr
+    .function get_package
+      .assign attr_location = ""    
+      .assign attr_name = "com.pt.MicrowaveOven"
+      .assign attr_application_root_class = "MicrowaveOven"
+      .assign attr_threading_model = "one_shot"
+      .assign attr_is_persistent = false
+      .assign attr_is_eclipse_plugin = true
+      .assign attr_db_driver = "org.postgresql.Driver"
+      .assign attr_db_name = "jdbc:postgresql:ooa2"
+      .assign attr_db_user = "Siddique"
+      .assign attr_db_password = ""
+      .assign attr_ui_root_class_name = ""
+      .assign attr_ui_root_class_accessor = ""
+      .assign attr_is_root = false
+    .end function
 
 This coloring file allows customization of overall code architecture. Each 
 attribute is described below:
@@ -234,31 +239,31 @@ non-domain classes (which include classes for Event Generation and timers etc.).
 
 
 - Sample File
-	.function get_package
-	  .assign attr_location = "src/com/pt/MicrowaveOven"
-	  .assign attr_name = "com.pt.MicrowaveOven"
-	  .assign attr_application_root_class = "MicrowaveOven"
-	  .assign attr_threading_model = "one_shot"
-	  .assign attr_is_persistent = false
-	  .assign attr_is_eclipse_plugin = false
-	  .assign attr_db_driver = "org.postgresql.Driver"
-	  .assign attr_db_name = "jdbc:postgresql:ooa2"
-	  .assign attr_db_user = "Siddique"
-	  .assign attr_db_password = ""
-	  .assign attr_ui_root_class_name = ""
-	  .assign attr_ui_root_class_accessor = ""
-	  .assign attr_is_root = true
-	.end function
+    .function get_package
+      .assign attr_location = "src/com/pt/MicrowaveOven"
+      .assign attr_name = "com.pt.MicrowaveOven"
+      .assign attr_application_root_class = "MicrowaveOven"
+      .assign attr_threading_model = "one_shot"
+      .assign attr_is_persistent = false
+      .assign attr_is_eclipse_plugin = false
+      .assign attr_db_driver = "org.postgresql.Driver"
+      .assign attr_db_name = "jdbc:postgresql:ooa2"
+      .assign attr_db_user = "Siddique"
+      .assign attr_db_password = ""
+      .assign attr_ui_root_class_name = ""
+      .assign attr_ui_root_class_accessor = ""
+      .assign attr_is_root = true
+    .end function
  
-3.	${DomaniName}_startspec.clr
-	.function define_startspec
-	  .assign attr_init_type  = ""
-	  .assign attr_init_var_name = ""
-	  .assign attr_init_class = ""
-	  .assign attr_init_stim  = ""
-	  .assign attr_parameter1 = ""
-	  .assign attr_parameter2 = ""
-	.end function
+3.  ${DomaniName}_startspec.clr
+    .function define_startspec
+      .assign attr_init_type  = ""
+      .assign attr_init_var_name = ""
+      .assign attr_init_class = ""
+      .assign attr_init_stim  = ""
+      .assign attr_parameter1 = ""
+      .assign attr_parameter2 = ""
+    .end function
 
 This coloring file is used only by the application_root_class in its init() 
 function to create the initial or main object of the domain and sending the 
@@ -316,15 +321,15 @@ information, and looks for these keywords in any Elements Description. Element
 here can be a Domain, Subsystem, Class, Operation, Bridge, Event and Attribute.
 
 Following are the a few Parse keywords that can be used
-1.	import
-This is a string type variable.		
+1.  import
+This is a string type variable.     
 This keyword can be included in Domain Description, External Entity Description, 
 Bridge Description and Subsystem Description. 
 The values of import should be a complete import statement. This statement is 
 used to import special classes and packages that are required by a specific 
 element. 
 
-2.	Translate
+2.  Translate
 This is a string enumeration type variable, available in Function Description, 
 Bridge Description, Subsystem Description, External Entity Description, 
 Operation Description.
@@ -342,16 +347,16 @@ as well.
 For a subsystem if this value is �false� then MC-Java skips code generation for 
 all the classes in the subsystem.
 
-3.	Data
+3.  Data
 An External Entity and its bridges may wish to add some specific variables in 
 the class. These variables can be added using this keyword. The variables are by
 default static and initialized to null.
 
-4.	PEI
+4.  PEI
 This has string values �true� to mention that this is PEI class. Hence exist 
 only in Class Description.
 
-5.	Persistent
+5.  Persistent
 
 
 Description
