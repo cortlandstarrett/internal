@@ -1,6 +1,5 @@
 @echo off
 set BP_VERSION=4.1.17
-set WORKSPACE=%~d0\mgc\BridgePoint\workspace
 
 ::Check that a valid argument is specified
 if "%1"=="Build" goto ArgsOK
@@ -28,6 +27,18 @@ echo documentation inside the Help system.
 echo. 
 goto exit
 :ArgsOK
+
+if not "%WORKSPACE%"=="" goto RunApp
+  ::
+  :: Since the workspace to use is not set, use the standard location.  Users may
+  :: choose to set the value in the environment, or modify the following line to
+  :: point to the correct location.
+  ::
+  set WORKSPACE=%~d0\mgc\BridgePoint\workspace
+goto RunApp
+
+:RunApp
+echo Using WORKSPACE=%WORKSPACE%
 
 if not "%MGLS_LICENSE_FILE%"=="" goto SetCommonVariables
 if not "%LM_LICENSE_FILE%"=="" goto LMLicenseConfigured

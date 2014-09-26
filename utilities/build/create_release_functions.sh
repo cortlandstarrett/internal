@@ -3,13 +3,7 @@
 #
 # File:      create_release_functions.sh
 #
-#(c) Copyright 2013 by Mentor Graphics Corp. All rights reserved.
-#
 #=====================================================================
-# This document contains information proprietary and confidential to
-# Mentor Graphics Corp. and is not for external distribution.
-#=====================================================================
-#
 #
 #    create_release_functions.sh - Contains all functions necessary for 
 #     building a release
@@ -24,10 +18,10 @@
 #
 #
 eclipse_home="c:/MentorGraphics/BridgePoint4.1.6/eclipse"
-ant_cmd="${eclipse_home}/ant/apache-ant-1.9.4/bin/ant"
-ant_opts="-Declipse-home=${eclipse_home}"
+# TODO - remove, no longer needed - ant_cmd="${eclipse_home}/ant/apache-ant-1.9.4/bin/ant"
+# TODO - remove, no longer needed - ant_opts="-Declipse-home=${eclipse_home}"
 cli_cmd="${eclipse_home}/CLI.bat"
-cli_opts="-os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/com.mentor.nucleus.bp.pkg/plugin_customization.ini -prebuildOnly"
+cli_opts="-consoleLog -pluginCustomization `cygpath -w ${build_dir}/plugin_customization.ini`"
 antlr_tool="pt_antlr"
 git_internal="${git_repo_root}/internal"
 internal_modules="com.mentor.nucleus.bp.als
@@ -48,6 +42,7 @@ unit_test_modules="com.mentor.nucleus.bp.als.oal.test
                    MC-Java.test
                    com.mentor.nucleus.bp.welcome.test
                    com.mentor.nucleus.bp.debug.ui.test"
+# TODO SKB - with the switch to BP-based build, not sure these have to be separate.  Check later.
 independent_modules="com.mentor.nucleus.bp.mc.xmiexport
                      com.mentor.nucleus.bp.mc
                      com.mentor.nucleus.bp.mc.none
@@ -92,9 +87,10 @@ function verify_checkout {
 }
 
 function get_required_modules {
-    cp -rf ${git_internal}/src/${release_pkg} .
-    chown -R ${USERNAME} ${release_pkg}
+    # Import the top level release package into the build workspace
+    ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${release_pkg}` -deleteExisting
 
+    # Create a list of the names of all the packages contained in the top-level package
     if [ -e ${release_pkg}/feature.xml ]; then
         plugin_modules=`grep "<plugin id=" $build_dir/$release_pkg/feature.xml | awk -F"=" '{printf("%s\n", $2)}' | sed s/\"// | sed s/\"//`
         release_version=`awk -F"\"" '{if (/[0-9]\.[0-9]\.[0-9]/) {print $2; exit;}}' ${build_dir}/${release_pkg}/feature.xml`
@@ -102,8 +98,8 @@ function get_required_modules {
         echo "release version: ${release_version}"
     fi
     
-    cp -rf ${git_internal}/src/${antlr_tool} .
-    chown -R ${USERNAME} ${antlr_tool}    
+    # Import ${antlr_tool} into the build workspace
+    ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${antlr_tool}` -deleteExisting        
 }
 
 function extract_release_files {
@@ -112,36 +108,32 @@ function extract_release_files {
     # Rearrange modules so that core is built first
     modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.core// | sed s/^/"com.mentor.nucleus.bp.core "/`
 
+    # Import all of the projects we need into the build workspace
     for module in ${modules} ${all_feature_modules} ${model_compiler_modules} ${plugin_fragments}; do
-        echo "Checking out ${module} for release: ${branch}"
-        cp -rf ${git_internal}/src/${module} .
-        chown -R ${USERNAME} ${module}
+        echo "Importing into build workspace: ${module} for release ${branch}"
+        ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${module}` -deleteExisting
     done
 }
 
 function extract_unit_test_modules {
     for module in ${unit_test_modules}; do
-        echo "Checking out ${module} for release: ${branch}"
-		cp -rf ${git_internal}/src/${module} .
-        chown -R ${USERNAME} ${module}
+        echo "Importing into build workspace: ${module} for release ${branch}"
+        ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${module}` -deleteExisting
     done
 }
 
 function build_modules {
+#
+# TODO SKB - there is lots of commented code in this file that needs to be removed when I'm happy with the functionality of the new build
+#
     # remove a number of plugins from the list of modules to build and compile
-    modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.bld.pkg// | sed s/com.mentor.nucleus.bp.doc// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.test// | sed s/com.mentor.nucleus.help.bp.mc//`
+    #modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.bld.pkg// | sed s/com.mentor.nucleus.bp.doc// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.test// | sed s/com.mentor.nucleus.help.bp.mc//`
 
     cd ${build_dir}
 
     for module in ${modules}; do
-        if [ -e ${module}/generate.xml ]; then
-            echo -e "Building version ${branch} of ${module}"
-            ${cli_cmd} ${cli_opts} -project ${module}
-            ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
-        elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
-            echo -e "Building version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/build.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
-        fi
+        echo -e "Building version ${branch} of ${module}"
+        ${cli_cmd} Build ${cli_opts} -project ${module} > ${build_log_dir}/${module}_build.log 2>&1
     done
 
     # Check for errors and place in a temp file for later use.
@@ -152,7 +144,7 @@ function build_modules {
             error_count=`grep -c -i -w "ERROR" ${build_log_dir}/${module}_build.log`
             failed_count=`grep -c -i -w "FAILED" ${build_log_dir}/${module}_build.log`
             failure_count=`grep -c -i -w "FAILURE" ${build_log_dir}/${module}_build.log`
-
+    
             if [ ${error_count} -gt 0 ] || [ ${failed_count} -gt 0 ] || [ ${failure_count} -gt 0 ]; then
                 build_log_path=`cygpath -m ${build_log_dir}/${module}_build.log`
                 echo -e "Errors or failures found during the build of $module.  Check ${build_log_path}.\n" >> ${error_file}
@@ -160,57 +152,50 @@ function build_modules {
         fi
     done
 
-    modules="${modules} com.mentor.nucleus.bp.welcome"
+    # TODO SKB - still needed?
+    #modules="${modules} com.mentor.nucleus.bp.welcome"
 }
 
 function compile_modules {
+    # We do two passes of the build in order make sure any dependencies that weren't satisfied the first time through
+    # are fulfilled.
+    #  
+    # TODO SKB - may need to add a touch of bp.core/.../Component_c.java and a second build pass to get around 
+    # the issue where org.eclipse imports are not seen.
+    #
     build_modules
-
+    #build_modules
+    
     # Have to make sure the plugin compilation is ordered properly.
     # Move bp.utilities so it compiles to before bp.mc, and move several others to later in the build order.
-    modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.docgen// | sed s/com.mentor.nucleus.bp.cdt// | sed s/com.mentor.nucleus.bp.utilities// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.cli//`
-    modules=`echo ${modules} | sed 's/com.mentor.nucleus.bp.mc /com.mentor.nucleus.bp.utilities com.mentor.nucleus.bp.mc /'`
-    modules_to_compile_later="com.mentor.nucleus.bp.docgen com.mentor.nucleus.bp.cdt com.mentor.nucleus.bp.welcome com.mentor.nucleus.bp.cli"
+    #modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.docgen// | sed s/com.mentor.nucleus.bp.cdt// | sed s/com.mentor.nucleus.bp.utilities// | sed s/com.mentor.nucleus.bp.welcome// | sed s/com.mentor.nucleus.bp.cli//`
+    #modules=`echo ${modules} | sed 's/com.mentor.nucleus.bp.mc /com.mentor.nucleus.bp.utilities com.mentor.nucleus.bp.mc /'`
+    #modules_to_compile_later="com.mentor.nucleus.bp.docgen com.mentor.nucleus.bp.cdt com.mentor.nucleus.bp.welcome com.mentor.nucleus.bp.cli"
     
-    cd ${build_dir}
+    #cd ${build_dir}
 
-    for module in ${modules}; do
-        if [ -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        fi
-    done
+    #for module in ${modules}; do
+    #    if [ -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #        ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #        ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    fi
+    #done
 
-    for module in ${modules_to_compile_later}; do
-        if [ -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-             ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
-            echo -e "Compiling version ${branch} of ${module}"
-            ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
-        fi
-    done
+    #for module in ${modules_to_compile_later}; do
+    #    if [ -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #         ${ant_cmd} ${ant_opts} -f ${module}/generate.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    elif [ -e ${module}/build.xml  ] && [ ! -e ${module}/generate.xml ]; then
+    #        echo -e "Compiling version ${branch} of ${module}"
+    #        ${ant_cmd} ${ant_opts} -f ${module}/build.xml compile > ${compile_log_dir}/${module}_compile.log 2>&1
+    #    fi
+    #done
     
-    modules="${modules} ${modules_to_compile_later}"
+    #modules="${modules} ${modules_to_compile_later}"
     
-    # Check for errors and place in a temp file for later use.
-    for module in ${modules}; do
-        # Special case to exclude als.oal package as its compiled from als
-        if [ ${module} != "com.mentor.nucleus.bp.als.oal" ] && [ ${module} != "com.mentor.nucleus.bp.ui.tree" ] && [ ${module} != "com.mentor.nucleus.bp.internal.tools" ]; then
-            # Check for all cases of error, failed, and failure
-            error_count=`grep -c -i -w "ERROR" ${compile_log_dir}/${module}_compile.log`
-            failed_count=`grep -c -i -w "FAILED" ${compile_log_dir}/${module}_compile.log`
-            failure_count=`grep -c -i -w "FAILURE" ${compile_log_dir}/${module}_compile.log`
-
-            if [ ${error_count} -gt 0 ] || [ ${failed_count} -gt 0 ] || [ ${failure_count} -gt 0 ]; then
-                compile_log_path=`cygpath -m ${compile_log_dir}/${module}_compile.log`
-                echo -e "Errors or failures found during the compilation of ${module}. Check ${compile_log_path}.\n" >> ${error_file}
-            fi
-        fi
-    done
 }
 
 

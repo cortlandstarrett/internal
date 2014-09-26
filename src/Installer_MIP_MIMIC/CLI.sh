@@ -1,7 +1,6 @@
 #!/bin/bash
 BPHOMEDIR="C:/mgc/BridgePoint"
 BP_VERSION="4.1.17"
-WORKSPACE="$HOME/workspace"
 
 function die() {
   echo -e $@
@@ -40,6 +39,17 @@ if [ "$1" != "Build" ]; then
     fi
   fi
 fi
+
+if [ "${WORKSPACE}" == "" ]; then
+    #
+    # Since the workspace to use is not set, use the standard location.  Users may
+    # choose to set the value in the environment, or modify the following line to
+    # point to the correct location.    
+    #
+    export WORKSPACE="$HOME/workspace"
+fi
+
+[ $WORKSPACE ] || die "No workspace to use is set up in ENV variable WORKSPACE."
 
 if [ "${MGLS_LICENSE_FILE}" == "" ]; then
   if [ "${LM_LICENSE_FILE}" == "" ]; then

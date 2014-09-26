@@ -3,15 +3,8 @@
 #
 # File:      process_build.sh
 #
-#(c) Copyright 2013 by Mentor Graphics Corp. All rights reserved.
-#
-#=====================================================================
-# This document contains information proprietary and confidential to
-# Mentor Graphics Corp. and is not for external distribution.
 #=====================================================================
 #
-#
-# Variables
 
 product_version="$1"
 git_repo_root="$2"
@@ -95,10 +88,5 @@ fi
 cat ${MAIL_TEMP} | ${MAIL_CMD} ${BUILD_ADMIN}
 
 rm -rf ${MAIL_TEMP}
-
-# TODO
-#if [ "${nb_tag}" != "" ]; then
-#  ./tag_bp_nb.sh ${nb_tag}
-#fi
 
 exit 0

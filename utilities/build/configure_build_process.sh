@@ -3,11 +3,6 @@
 #
 # File:      configure_build_process.sh
 #
-#(c) Copyright 2013 by Mentor Graphics Corp. All rights reserved.
-#
-#=====================================================================
-# This document contains information proprietary and confidential to
-# Mentor Graphics Corp. and is not for external distribution.
 #=====================================================================
 #
 #	configure_build_process.sh takes the following arguments
@@ -38,8 +33,7 @@ function configure_build_files {
     cp -f create_bp_release.sh ${build_dir}/create_bp_release.sh 2>>${error_file}
     cp -f create_release_functions.sh ${build_dir}/create_release_functions.sh 2>>${error_file}
     cp -f process_build.sh ${build_dir}/process_build.sh 2>>${error_file}
-    # TODO: cp -f tag_bp.sh ${build_dir}/tag_bp.sh 2>>${error_file}
-    # TODO: cp -f tag_bp_nb.sh ${build_dir}/tag_bp_nb.sh 2>>${error_file}
+    cp -f plugin_customization.ini ${build_dir}/plugin_customization.ini 2>>${error_file}
     
     cd ${build_dir}
     dos2unix -q configure_external_dependencies.sh

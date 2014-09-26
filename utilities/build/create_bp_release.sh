@@ -3,11 +3,6 @@
 #
 # File:      create_bp_release.sh
 #
-#(c) Copyright 2013 by Mentor Graphics Corp. All rights reserved.
-#
-#=====================================================================
-# This document contains information proprietary and confidential to
-# Mentor Graphics Corp. and is not for external distribution.
 #=====================================================================
 #
 #	create_tiger_release.sh takes the following arguments
@@ -147,6 +142,12 @@ function jar_specific_plugins {
 function create_build {
     cd $build_dir
 
+    # Set ${build_dir} into an environment variable that CLI can pick and use.
+    export WORKSPACE=`cygpath -w ${build_dir}`
+    
+    # Create a workspace at ${build_dir}, use the CLI script to help us here.
+    ${cli_cmd} Import -help
+    
     get_required_modules
     extract_release_files
     
@@ -165,7 +166,7 @@ function create_build {
         zip_distribution
     fi
 
-    # If theis build is being run on the official build server, opy plugins to release drop location.
+    # If this build is being run on the official build server, copy plugins to release drop location.
     host=`hostname`
     if [ "${host}" = "svr-orw-sle-10" ]; then
       cd ${build_dir}

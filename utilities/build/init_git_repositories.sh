@@ -41,26 +41,19 @@ init_repository ()
 {
   repo_name="$1"
   
-  if [ ! -x "${git_repo_root}/${repo_name}" ]; then
-    cd ${git_repo_root}
-    git clone https://mgbuilder:bui!db0y@github.com/xtuml/${repo_name}.git
+  cd ${git_repo_root}
+  if [ -x "${git_repo_root}/${repo_name}" ]; then
+    rm -rf ${repo_name}
   fi
+  git clone https://mgbuilder:bui!db0y@github.com/xtuml/${repo_name}.git
   cd ${git_repo_root}/${repo_name}
   
-  # Make sure our refs are up to date.  Remove any remote tracking branches
-  # that no longer exist on the remote.
-  git fetch --prune
-  
-  # Just to be safe, discard any local changes before we try to switch branches.
-  git reset --hard HEAD
-
   # Switch to the desired branch.  First see if we've used it before.  If not,
   # then get it from the remote.
   git checkout ${branch}
   if [ "$?" = "1" ]; then
     # We have never checked out (and thus created) a local branch named <branch>.
-    # The git fetch above will have pulled all the remotes into the origin/refs 
-    # already.  So, now we can check out the branch based on the remote.
+    # So, now we can check out the branch based on the remote.
     git checkout --track origin/${branch}
     if [ "$?" = "1" ]; then
       if [ "${allow_fallback}" = "no" ]; then
