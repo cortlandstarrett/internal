@@ -155,6 +155,9 @@ configure_mc_files
 
 MC_NAME="com.mentor.nucleus.bp.mc.systemc.source"
 configure_mc_files
+
+MC_NAME="com.mentor.nucleus.bp.mc.java.source"
+configure_mc_files
 # Done moving files for wine-based generation
 
 # Show release notes or not depending on their selection in the installer.

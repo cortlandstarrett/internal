@@ -215,6 +215,23 @@ configure_vhdl_src()
     cd ${build_dir}
 }
 
+configure_java_src()
+{
+    echo ""
+    echo "Configuring java_src for build."
+
+    # Copy in the "bp.mc.c.source/mc3020/" dir
+    cd $JAVA_SRC
+    rm -rf mc3020
+    cp -rf $MCC_SRC/mc3020 .
+    
+    # We don't want the model-based MC for this version, so remove it
+    rm -f ./mc3020/bin/mcmc
+    rm -f ./mc3020/bin/mcmc.exe
+     
+    cd ${build_dir}
+}
+
 
 #-------------------------------------------------------------------------------
 # Main
@@ -247,6 +264,7 @@ MCC_BIN=${build_dir}/com.mentor.nucleus.bp.mc.c.binary
 MCSYSTEMC_SRC=${build_dir}/com.mentor.nucleus.bp.mc.systemc.source
 MCCPP_SRC=${build_dir}/com.mentor.nucleus.bp.mc.cpp.source
 MCVHDL_SRC=${build_dir}/com.mentor.nucleus.bp.mc.vhdl.source
+MCJAVA_SRC=${build_dir}/com.mentor.nucleus.bp.mc.java.source
 MC3020_HELP=${build_dir}/com.mentor.nucleus.help.bp.mc
 
 get_user_supplied_binaries
@@ -256,6 +274,8 @@ configure_mcc_bin
 configure_mcsystemc_src
 configure_mccpp_src
 configure_vhdl_src
+configure_java_src
+
 
 configure_dap
 

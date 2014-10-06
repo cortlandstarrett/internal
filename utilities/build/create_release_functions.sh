@@ -51,6 +51,7 @@ independent_modules="com.mentor.nucleus.bp.mc.xmiexport
                      com.mentor.nucleus.bp.mc.systemc.source
                      com.mentor.nucleus.bp.mc.cpp.source
                      com.mentor.nucleus.bp.mc.vhdl.source
+                     com.mentor.nucleus.bp.mc.java
                      com.mentor.nucleus.bp.mc.template
                      com.mentor.nucleus.help.bp.mc
                      com.mentor.nucleus.bp.ui.session
