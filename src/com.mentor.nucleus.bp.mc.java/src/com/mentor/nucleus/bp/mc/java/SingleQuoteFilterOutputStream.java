@@ -1,4 +1,4 @@
-package com.mentor.nucleus.bp.internal.tools.mcjava;
+package com.mentor.nucleus.bp.mc.java;
 
 import java.io.FilterOutputStream;
 import java.io.OutputStream;
