@@ -41,7 +41,7 @@ import com.mentor.nucleus.bp.utilities.ui.ProjectUtilities;
 public class ExportBuilder extends AbstractExportBuilder {
 
 	// The shared instance
-	private static ExportBuilder singleton;
+	private static ExportBuilder singleton=null;
 	private IRunnableWithProgress m_exporter;
 	private File m_outputFile;
 	private ByteArrayOutputStream m_outStream;
@@ -49,7 +49,7 @@ public class ExportBuilder extends AbstractExportBuilder {
 	private List<SystemModel_c> m_exportedSystems;
 	private Map<String, String> m_args;
 
-	private ExportBuilder() {
+	public ExportBuilder() {
 		super(Activator.getDefault(), MCNature.getDefault());
 		m_elements = new ArrayList<NonRootModelElement>();
 		m_exportedSystems = new ArrayList<SystemModel_c>();
