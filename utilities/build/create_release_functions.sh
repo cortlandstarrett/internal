@@ -21,7 +21,7 @@ eclipse_home="c:/MentorGraphics/BridgePoint4.1.6/eclipse"
 ant_cmd="${eclipse_home}/ant/apache-ant-1.9.4/bin/ant"
 ant_opts="-Declipse-home=${eclipse_home}"
 cli_cmd="${eclipse_home}/CLI.bat"
-cli_opts="-os win32 -ws win32 -arch x86 -nl en_US -consoleLog -pluginCustomization ${build_dir}/plugin_customization.ini -prebuildOnly"
+cli_opts="-consoleLog -pluginCustomization `cygpath -w ${build_dir}/plugin_customization.ini`"
 antlr_tool="pt_antlr"
 git_internal="${git_repo_root}/internal"
 internal_modules="com.mentor.nucleus.bp.als
@@ -87,9 +87,10 @@ function verify_checkout {
 }
 
 function get_required_modules {
-    cp -rf ${git_internal}/src/${release_pkg} .
-    chown -R ${USERNAME} ${release_pkg}
+    # Import the top level release package into the build workspace
+    ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${release_pkg}` -deleteExisting
 
+    # Create a list of the names of all the packages contained in the top-level package
     if [ -e ${release_pkg}/feature.xml ]; then
         plugin_modules=`grep "<plugin id=" $build_dir/$release_pkg/feature.xml | awk -F"=" '{printf("%s\n", $2)}' | sed s/\"// | sed s/\"//`
         release_version=`awk -F"\"" '{if (/[0-9]\.[0-9]\.[0-9]/) {print $2; exit;}}' ${build_dir}/${release_pkg}/feature.xml`
@@ -97,8 +98,8 @@ function get_required_modules {
         echo "release version: ${release_version}"
     fi
     
-    cp -rf ${git_internal}/src/${antlr_tool} .
-    chown -R ${USERNAME} ${antlr_tool}    
+    # Import ${antlr_tool} into the build workspace
+    ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${antlr_tool}` -deleteExisting        
 }
 
 function extract_release_files {
@@ -107,18 +108,17 @@ function extract_release_files {
     # Rearrange modules so that core is built first
     modules=`echo ${modules} | sed s/com.mentor.nucleus.bp.core// | sed s/^/"com.mentor.nucleus.bp.core "/`
 
+    # Import all of the projects we need into the build workspace
     for module in ${modules} ${all_feature_modules} ${model_compiler_modules} ${plugin_fragments}; do
-        echo "Checking out ${module} for release: ${branch}"
-        cp -rf ${git_internal}/src/${module} .
-        chown -R ${USERNAME} ${module}
+        echo "Importing into build workspace: ${module} for release ${branch}"
+        ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${module}` -deleteExisting
     done
 }
 
 function extract_unit_test_modules {
     for module in ${unit_test_modules}; do
-        echo "Checking out ${module} for release: ${branch}"
-		cp -rf ${git_internal}/src/${module} .
-        chown -R ${USERNAME} ${module}
+        echo "Importing into build workspace: ${module} for release ${branch}"
+        ${cli_cmd} Import ${cli_opts} -project `cygpath -w ${git_internal}/src/${module}` -deleteExisting
     done
 }
 
@@ -131,10 +131,11 @@ function build_modules {
     for module in ${modules}; do
         if [ -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
-            ${cli_cmd} Build ${cli_opts} -project ${module}
+            ${cli_cmd} Build ${cli_opts} -prebuildOnly -project ${module}
             ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
         elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
+            ${cli_cmd} Build ${cli_opts} -prebuildOnly -project ${module}
             ${ant_cmd} ${ant_opts} -f ${module}/build.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
         fi
     done
