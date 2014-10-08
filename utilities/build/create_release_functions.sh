@@ -131,7 +131,7 @@ function build_modules {
     for module in ${modules}; do
         if [ -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
-            ${cli_cmd} ${cli_opts} -project ${module}
+            ${cli_cmd} Build ${cli_opts} -project ${module}
             ${ant_cmd} ${ant_opts} -f ${module}/generate.xml nb_all > ${build_log_dir}/${module}_build.log 2>&1
         elif [ -e ${module}/build.xml ] && [ ! -e ${module}/generate.xml ]; then
             echo -e "Building version ${branch} of ${module}"
