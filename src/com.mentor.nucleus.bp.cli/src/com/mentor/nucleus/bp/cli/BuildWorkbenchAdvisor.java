@@ -29,7 +29,9 @@ import com.mentor.nucleus.bp.core.SystemModel_c;
 import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.PersistableModelComponent;
 import com.mentor.nucleus.bp.core.common.PersistenceManager;
-import com.mentor.nucleus.bp.mc.c.binary.ExportBuilder;
+import com.mentor.nucleus.bp.mc.AbstractExportBuilder;
+import com.mentor.nucleus.bp.mc.c.binary.*;
+import com.mentor.nucleus.bp.mc.java.*;
 
 public class BuildWorkbenchAdvisor extends BPCLIWorkbenchAdvisor {
 	String projectName = null;
@@ -288,13 +290,25 @@ public class BuildWorkbenchAdvisor extends BPCLIWorkbenchAdvisor {
  							+ project.getName());         
         }
 
-         ExportBuilder eb = new ExportBuilder();   // Note that we are using the bp.mc.c binary plugin to instantiate this EXportBuilder
-											         // We are only using the "Export Builder" license atomic, so it does not matter 
-													   // which Model Compiler is used, and the binary MC is always supplied with any
-											         // system licensed for a model compiler.  Note that DocGen takes this same approach
-											         // to acquire an ExportBuilder instance.
-
-         
+         AbstractExportBuilder eb;
+         //TODO: have to check properties to see which mc this is, and 
+         //      instantiate the right one.  The default will be bc.mc.c.binary
+         //      but for now I am making it java to assure hte new java mc is 
+         //      working in the branch.
+         // Here was the old comment on this line:
+         // Note that we are using the bp.mc.c binary plugin to 
+         // instantiate this ExportBuilder We are only using the 
+         // "Export Builder" license atomic, so it does not matter 
+         // which Model Compiler is used, and the binary MC is always 
+         // supplied with any system licensed for a model compiler.  
+         // Note that DocGen takes this same approach
+         // to acquire an ExportBuilder instance.
+         boolean isJava = true;
+         if (isJava) {
+        	 eb = new com.mentor.nucleus.bp.mc.c.binary.ExportBuilder();   
+         } else {
+        	 eb = new com.mentor.nucleus.bp.mc.java.ExportBuilder();   
+         }
          IPath destPath = eb.getCodeGenFolderPath(project);
          if (!destPath.toFile().exists()) {
         	 destPath.toFile().mkdir();
