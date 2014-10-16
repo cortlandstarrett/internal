@@ -162,12 +162,7 @@ public class Svx_c {
 	{
 
   		try {
-			// String lookUpName = "";
-			// SVXNativeJNI svxNativeJNI = new SVXNativeJNI();
-			// ISVXNativeHandle target =
-			// svxNativeJNI.constructSVXComponentTargetDyn(SVXBridgePointPreferencesStore.simulationTime,
-			// SVXBridgePointPreferencesStore.isSequencer, lookUpName);
-			//
+			 
 			Iterator<String> iterator = SVXBridgePointPreferencesStore.channels
 					.iterator();
 			while (iterator.hasNext()) {
@@ -190,7 +185,7 @@ public class Svx_c {
 
 			}
 
-			Component_c nehadComp = Component_c.getOneC_COnR4010(port);
+			Component_c cmp = Component_c.getOneC_COnR4010(port);
 
 			if (Requirement_c.getOneC_ROnR4009(InterfaceReference_c
 					.getOneC_IROnR4016(port)) != null) {
@@ -199,7 +194,7 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
-					BPSVXXSignal bpSig = new BPSVXXSignal(nehadComp.getName(),
+					BPSVXXSignal bpSig = new BPSVXXSignal(cmp.getName(),
 							port.getName(), IfaceOps[i].getName());
 					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 							.get(bpSig);
@@ -243,7 +238,7 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
-					BPSVXXSignal bpSig = new BPSVXXSignal(nehadComp.getName(),
+					BPSVXXSignal bpSig = new BPSVXXSignal(cmp.getName(),
 							port.getName(), IfaceOps[i].getName());
 					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 							.get(bpSig);
@@ -283,11 +278,10 @@ public class Svx_c {
 
 				e.printStackTrace();
 			}
-			// targetMap.put(port.getId(), target);
-			// svxNativeJNIMap.put(port.getId(), svxNativeJNI);
+ 
 
 			channelInitialized.put(port.getId(), true);
-			// portTimedOut.put(port.getId(), false);
+			 
 			User_c.Loginfo("The channel "
 					+ "that is associated with the port : " + port.getName()
 					+ " was initialized successfully");
@@ -327,8 +321,7 @@ public class Svx_c {
 
 				try {
 					User_c.Loginfo("This port has exeeded the big end time value and will be shut down");
-					// svxNativeJNIMap.get(port.getId()).shutdownSystem_SVXComponentTarget(targetMap.get(port.getId()));
-
+					svxNativeJNI.targetShutDown(target);
 					Double result = (double) 0.0;
 					return (Object) Double.toString(result);
 
@@ -471,7 +464,9 @@ public class Svx_c {
 			else {
 
 				try {
-					User_c.Loginfo("This port has exeeded the big end time");
+
+					User_c.Loginfo("This port has exeeded the big end time value and will be shut down");
+					svxNativeJNI.targetShutDown(target);
 
 				} catch (Exception e) {
 					User_c.Logerror(
