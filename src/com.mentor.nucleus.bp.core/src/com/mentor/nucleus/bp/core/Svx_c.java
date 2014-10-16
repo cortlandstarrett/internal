@@ -11,7 +11,7 @@ import sun.awt.SunHints.Value;
 
 import lib.LOG;
 
-import com.mentor.nucleus.bp.core.common.BPSVXXSignal;
+import com.mentor.nucleus.bp.core.common.BPSVXSignal;
 import com.mentor.nucleus.bp.core.common.ILogger;
 import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.SVXBridgePointPreferencesStore;
@@ -62,7 +62,7 @@ public class Svx_c {
 		Port_c retrievedPort = retrievePort(p_Portid);
 		Component_c component = Component_c.getOneC_COnR4010(retrievedPort);
 
-		BPSVXXSignal bpSig = new BPSVXXSignal(component.getName(),
+		BPSVXSignal bpSig = new BPSVXSignal(component.getName(),
 				retrievedPort.getName(), epNamefinal);
 		SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 				.get(bpSig);
@@ -199,14 +199,14 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
-					BPSVXXSignal bpSig = new BPSVXXSignal(nehadComp.getName(),
+					BPSVXSignal bpSig = new BPSVXSignal(nehadComp.getName(),
 							port.getName(), IfaceOps[i].getName());
 					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 							.get(bpSig);
 					ISVXNativeHandle temporalSpec = svxNativeJNI
 							.constructSVXTemporalSpecPointInTime(
 									signal.timeValue, signal.isSporadic,
-									signal.isRecursive);
+									signal.doesRecure);
 
 					if (IfaceOps[i].getDirection() == 1) // from provider
 															// consumer
@@ -243,14 +243,14 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
-					BPSVXXSignal bpSig = new BPSVXXSignal(nehadComp.getName(),
+					BPSVXSignal bpSig = new BPSVXSignal(nehadComp.getName(),
 							port.getName(), IfaceOps[i].getName());
 					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 							.get(bpSig);
 					ISVXNativeHandle temporalSpec = svxNativeJNI
 							.constructSVXTemporalSpecPointInTime(
 									signal.timeValue, signal.isSporadic,
-									signal.isRecursive);
+									signal.doesRecure);
 
 					if (IfaceOps[i].getDirection() == 1) // from provider
 															// generator
@@ -415,7 +415,7 @@ public class Svx_c {
 		double valueToBeSent = 0.0;
 		valueToBeSent = getValueToBeSent(retrievedValue);
 
-		BPSVXXSignal bpSig = new BPSVXXSignal(component.getName(),
+		BPSVXSignal bpSig = new BPSVXSignal(component.getName(),
 				retrievedPort.getName(), stringName);
 		SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 				.get(bpSig);

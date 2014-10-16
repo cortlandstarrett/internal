@@ -49,7 +49,7 @@ public class SVXBridgePointPreferencesStore implements IPreferenceModelStore {
 	 public static double simulationTime = 1.0;
 	 public static ArrayList<String> channels = new ArrayList<String>();
 	 
-	 public static HashMap<BPSVXXSignal, SVXSignal> signalMapping = new HashMap<BPSVXXSignal, SVXSignal>();
+	 public static HashMap<BPSVXSignal, SVXSignal> signalMapping = new HashMap<BPSVXSignal, SVXSignal>();
 	 
 	 
 	
@@ -152,11 +152,11 @@ public class SVXBridgePointPreferencesStore implements IPreferenceModelStore {
 				isSequencer = (Boolean) derializer2 .readObject();
 				simulationTime = (Double) derializer2 .readObject();
 				channels = (ArrayList<String>) derializer2 .readObject();
-				signalMapping = (HashMap<BPSVXXSignal, SVXSignal>) derializer2 .readObject();
+				signalMapping = (HashMap<BPSVXSignal, SVXSignal>) derializer2 .readObject();
 				
 				
 				if ( signalMapping  == null){
-					signalMapping  = new HashMap<BPSVXXSignal, SVXSignal>();
+					signalMapping  = new HashMap<BPSVXSignal, SVXSignal>();
 				}
 				
 				inputStreamExPropertySignalName.close();
