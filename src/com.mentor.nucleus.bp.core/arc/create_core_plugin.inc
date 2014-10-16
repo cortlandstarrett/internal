@@ -74,7 +74,7 @@ This file is the plugin manifest for the BridgePoint core plugin.
                name="*">
         </export>
       </library>
-      <library name="SVXforBP.jar">
+      <library name="BP_SVX.jar">
         <export
                name="*">
         </export>
