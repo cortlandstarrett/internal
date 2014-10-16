@@ -194,7 +194,7 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
-					BPSVXSignal bpSig = new BPSVXSignal(nehadComp.getName(),
+					BPSVXSignal bpSig = new BPSVXSignal(cmp.getName(),
 							port.getName(), IfaceOps[i].getName());
 					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 							.get(bpSig);
@@ -238,7 +238,7 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
-					BPSVXSignal bpSig = new BPSVXSignal(nehadComp.getName(),
+					BPSVXSignal bpSig = new BPSVXSignal(cmp.getName(),
 							port.getName(), IfaceOps[i].getName());
 					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping
 							.get(bpSig);
