@@ -1,6 +1,7 @@
 package com.mentor.nucleus.bp.core;
 
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.UUID;
 
 import org.eclipse.swt.widgets.Display;
@@ -10,10 +11,12 @@ import sun.awt.SunHints.Value;
 
 import lib.LOG;
 
+import com.mentor.nucleus.bp.core.common.BPSVXXSignal;
 import com.mentor.nucleus.bp.core.common.ILogger;
 import com.mentor.nucleus.bp.core.common.InstanceList;
 import com.mentor.nucleus.bp.core.common.SVXBridgePointPreferencesStore;
 import com.mentor.nucleus.bp.core.common.SVXChannel;
+import com.mentor.nucleus.bp.core.common.SVXSignal;
 import com.mentor.nucleus.bp.core.util.OoaofooaUtil;
 import com.mentor.nucleus.bp.core.util.OoaofooaUtil;
  
@@ -28,23 +31,44 @@ import com.mentor.nucleus.bp.core.util.OoaofooaUtil;
 //Mentor Graphics Corp., and is not for external distribution.
 //========================================================================
 
-import com.mentor.systems.svx.ISVXNativeHandle;
-import com.mentor.systems.svx.SVXNativeJNI;
-import com.mentor.systems.svx.SVXStatusException;
-import com.mentor.systems.svx.SVXTimeRange;
+import com.mentor.systems.svx.*;
+ 
 
 // SVX
 public class Svx_c {
+	
+	
+		   static  String lookUpName ;
+		   static SVXNativeJNI svxNativeJNI ;
+		   static	ISVXNativeHandle target ;
 
+				
+	static {
+   lookUpName = "";
+   svxNativeJNI = new SVXNativeJNI();
+   try {
+	target = svxNativeJNI.constructSVXComponentTargetDyn(SVXBridgePointPreferencesStore.simulationTime, SVXBridgePointPreferencesStore.isSequencer, lookUpName);
+} catch (SVXStatusException e) {
+	// TODO Auto-generated catch block
+	e.printStackTrace();
+}
+
+	}
 	public static Object Getsvxvalue(final java.util.UUID p_Messagevalueid,
-			final java.util.UUID p_Portid) {
+			final java.util.UUID p_Portid, final String epName) {
 		Ooaofooa.log.println(ILogger.BRIDGE, "getSVXValue",
 				" Bridge entered: Svx::Getsvxvalue");
 		
   Port_c retrievedPort = retrievePort(p_Portid);
-		SVXChannel retSvxChannel = retrieveChannel(retrievedPort);
-		if (retSvxChannel != null) {
-			return getSVXValue(retrievedPort, retSvxChannel, p_Messagevalueid);
+  Component_c component = Component_c.getOneC_COnR4010(retrievedPort);
+  
+  BPSVXXSignal bpSig = new BPSVXXSignal(component.getName(), retrievedPort.getName(), epName);
+	SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping.get(bpSig );
+	
+	
+		 
+		if (signal != null) {
+			return getSVXValue(retrievedPort, signal, p_Messagevalueid);
 		} else {
 			User_c.Logerror(
 					"No Channel Configuration Was provided for Port :"
@@ -122,74 +146,47 @@ public class Svx_c {
 		return id;
 	}
 
-	static HashMap<UUID, SVXNativeJNI> svxNativeJNIMap = new HashMap<UUID, SVXNativeJNI>();
-	static HashMap<UUID, ISVXNativeHandle> targetMap = new HashMap<UUID, ISVXNativeHandle>();
-	static HashMap<UUID, ISVXNativeHandle> factoryMap = new HashMap<UUID, ISVXNativeHandle>();;
+//	static HashMap<UUID, SVXNativeJNI> svxNativeJNIMap = new HashMap<UUID, SVXNativeJNI>();
+//	static HashMap<UUID, ISVXNativeHandle> targetMap = new HashMap<UUID, ISVXNativeHandle>();
+
 	static HashMap<UUID, ISVXNativeHandle> consumerMap = new HashMap<UUID, ISVXNativeHandle>();
 	static HashMap<UUID, ISVXNativeHandle> generatorMap = new HashMap<UUID, ISVXNativeHandle>();
 	static HashMap<UUID, Boolean> channelInitialized = new HashMap<UUID, Boolean>();
-	static HashMap<UUID, Boolean> portTimedOut = new HashMap<UUID, Boolean>();
+	//static HashMap<UUID, Boolean> portTimedOut = new HashMap<UUID, Boolean>();
 
-	static void initialize(Port_c port, SVXChannel retSvxChannel
-			,double valueToBeSent)
+	static void initialize(Port_c port ,double valueToBeSent)
 
 	{
-		// the following values are yet to be supported as configurable
-		com.mentor.systems.svx.SVXTimeRange sendLatencyRange = SVXTimeRange.SVX_ZERO_TIME_RANGE;
-		int sendLatencyValue = 0;
-		com.mentor.systems.svx.SVXTimeRange communicationLatencyRange = SVXTimeRange.SVX_ZERO_TIME_RANGE;
-		int communicationLatencyValue = 0;
-		com.mentor.systems.svx.SVXTimeRange recvLatencyRange = SVXTimeRange.SVX_ZERO_TIME_RANGE;
-		int recvLatencyValue = 0;
-		com.mentor.systems.svx.SVXTimeRange periodMinRange = SVXTimeRange.SVX_MILLI_TIME_RANGE;
-		int periodMinValue = 1;
-		com.mentor.systems.svx.SVXTimeRange periodMaxRange = SVXTimeRange.SVX_MILLI_TIME_RANGE;
-		int periodMaxValue = 1;
-		com.mentor.systems.svx.SVXTimeRange consumptionLatencyRange = SVXTimeRange.SVX_ZERO_TIME_RANGE;
-		int consumptionLatencyValue = 0;
-		com.mentor.systems.svx.SVXTimeRange signalMaxLatencyRange = SVXTimeRange.SVX_ZERO_TIME_RANGE;
-
-		com.mentor.systems.svx.SVXTimeRange generationLatencyRange = SVXTimeRange.SVX_ZERO_TIME_RANGE;
-		int generationLatencyValue = 0;
-
+		 
 		int signalMaxLatencyValue = 0;
 		double initialValue = valueToBeSent;
 
 		try {
-
-			SVXNativeJNI svxNativeJNI = new SVXNativeJNI();
-			ISVXNativeHandle target = svxNativeJNI.create_SVXComponentTarget(
-					retSvxChannel.isAppSequencer(),
-					retSvxChannel.getLookUpName());
-			ISVXNativeHandle factory = svxNativeJNI
-					.getFactory_SVXComponentTarget(target);
-
-			if (retSvxChannel.isAppSequencer() == true) {
-				svxNativeJNI.create_SVXComponentConnectionConnectorSockets(
-						factory, retSvxChannel.getPortNumber(),
-						retSvxChannel.getiP(), retSvxChannel.getLookUpName());
-				// channel is created at the connector side this comes from SVX
-				svxNativeJNI.create_SVXComponentChannel(factory,
-						retSvxChannel.getChannelName(), sendLatencyRange,
-						sendLatencyValue, communicationLatencyRange,
-						communicationLatencyValue, recvLatencyRange,
-						recvLatencyValue, retSvxChannel.getLookUpName());
+//            String lookUpName = "";
+//			SVXNativeJNI svxNativeJNI = new SVXNativeJNI();
+//			ISVXNativeHandle target = svxNativeJNI.constructSVXComponentTargetDyn(SVXBridgePointPreferencesStore.simulationTime, SVXBridgePointPreferencesStore.isSequencer, lookUpName);
+// 
+			Iterator<String> iterator = SVXBridgePointPreferencesStore.channels.iterator();
+				while(iterator.hasNext()){
+					svxNativeJNI.constructSVXChannel(target, iterator.next(), lookUpName);
+				}
+			
+			
+			if (SVXBridgePointPreferencesStore.isSequencer== true) {
+				svxNativeJNI.constructSVXComponentConnectionConnectorSocketsDyn(target, SVXBridgePointPreferencesStore.portNumber, SVXBridgePointPreferencesStore.ip ,lookUpName);
+			
 
 			} else {
-				svxNativeJNI.create_SVXComponentConnectionAcceptorSockets(
-						factory, retSvxChannel.getPortNumber(),
-						retSvxChannel.getLookUpName());
-				
-				
-				svxNativeJNI.create_SVXComponentChannel(factory,
-						retSvxChannel.getChannelName(), sendLatencyRange,
-						sendLatencyValue, communicationLatencyRange,
-						communicationLatencyValue, recvLatencyRange,
-						recvLatencyValue, retSvxChannel.getLookUpName());	
+				 
+				svxNativeJNI.constructSVXComponentConnectionAcceptorSocketsDyn(target, SVXBridgePointPreferencesStore.portNumber, lookUpName);
+
+
 						
 			}
 
-			// decide what to create consumer or generator
+			Component_c nehadComp = Component_c.getOneC_COnR4010(port);
+
+	 
 
 			if (Requirement_c.getOneC_ROnR4009(InterfaceReference_c
 					.getOneC_IROnR4016(port)) != null) {
@@ -198,34 +195,24 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
+					BPSVXXSignal bpSig = new BPSVXXSignal(nehadComp.getName(), port.getName(), IfaceOps[i].getName());
+					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping.get(bpSig );
+					ISVXNativeHandle temporalSpec = svxNativeJNI.constructSVXTemporalSpecPointInTime(signal.timeValue, signal.isSporadic, signal.isRecursive);
+					
 					if (IfaceOps[i].getDirection() == 1) // from provider
 															// consumer
 					{
-						ISVXNativeHandle dummyConsumer = svxNativeJNI
-								.create_SVXComponentSignalConsumerDouble(
-										factory, signalName,
-										retSvxChannel.getChannelName(),
-										periodMinRange, periodMinValue,
-										periodMaxRange, periodMaxValue,
-										consumptionLatencyRange,
-										consumptionLatencyValue,
-										signalMaxLatencyRange,
-										signalMaxLatencyValue, initialValue,
-										retSvxChannel.getLookUpName());
+						
+						
+						
+						ISVXNativeHandle dummyConsumer = svxNativeJNI.constructSVXComponentSignalConsumerDouble(target, signal.SVXSignal, signal.channelName, 0.0, temporalSpec, lookUpName);
+ 
 						consumerMap.put(IfaceOps[i].getId(), dummyConsumer);
 
 					} else if (IfaceOps[i].getDirection() == 0)
 						// to provider generator
 					{
-						ISVXNativeHandle dummyGenerator = svxNativeJNI
-								.create_SVXComponentSignalGeneratorDouble(
-										factory, signalName,
-										retSvxChannel.getChannelName(),
-										periodMinRange, periodMinValue,
-										periodMaxRange, periodMaxValue,
-										generationLatencyRange,
-										generationLatencyValue, initialValue,
-										retSvxChannel.getLookUpName());
+						ISVXNativeHandle dummyGenerator = svxNativeJNI.constructSVXComponentSignalGeneratorDouble(target, signal.SVXSignal, signal.channelName, 0.0, temporalSpec, lookUpName);
 						generatorMap.put(IfaceOps[i].getId(), dummyGenerator);
 
 					}
@@ -241,34 +228,20 @@ public class Svx_c {
 					String signalName = SVXBridgePointPreferencesStore.exPropertySignalName
 							.get(IfaceOps[i].getId());
 
+					BPSVXXSignal bpSig = new BPSVXXSignal(nehadComp.getName(), port.getName(), IfaceOps[i].getName());
+					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping.get(bpSig );
+					ISVXNativeHandle temporalSpec = svxNativeJNI.constructSVXTemporalSpecPointInTime(signal.timeValue, signal.isSporadic, signal.isRecursive);
+					
 					if (IfaceOps[i].getDirection() == 1) // from provider
 															// generator
 					{
-						ISVXNativeHandle dummyGenerator = svxNativeJNI
-								.create_SVXComponentSignalGeneratorDouble(
-										factory, signalName,
-										retSvxChannel.getChannelName(),
-										periodMinRange, periodMinValue,
-										periodMaxRange, periodMaxValue,
-										generationLatencyRange,
-										generationLatencyValue, initialValue,
-										retSvxChannel.getLookUpName());
+						ISVXNativeHandle dummyGenerator =  svxNativeJNI.constructSVXComponentSignalGeneratorDouble(target, signal.SVXSignal, signal.channelName, 0.0, temporalSpec, lookUpName);
 						generatorMap.put(IfaceOps[i].getId(), dummyGenerator);
 					} else if (IfaceOps[i].getDirection() == 0) // to provider
 																// consumer
 					{
 
-						ISVXNativeHandle dummyConsumer = svxNativeJNI
-								.create_SVXComponentSignalConsumerDouble(
-										factory, signalName,
-										retSvxChannel.getChannelName(),
-										periodMinRange, periodMinValue,
-										periodMaxRange, periodMaxValue,
-										consumptionLatencyRange,
-										consumptionLatencyValue,
-										signalMaxLatencyRange,
-										signalMaxLatencyValue, initialValue,
-										retSvxChannel.getLookUpName());
+						ISVXNativeHandle dummyConsumer = svxNativeJNI.constructSVXComponentSignalConsumerDouble(target, signal.SVXSignal, signal.channelName, 0.0, temporalSpec, lookUpName);
 						consumerMap.put(IfaceOps[i].getId(), dummyConsumer);
 
 					}
@@ -277,19 +250,17 @@ public class Svx_c {
 			}
 
 			try {
-	    		svxNativeJNI.startupSystem_SVXComponentTarget(target,
-						retSvxChannel.getBIGendTime());
+	    		svxNativeJNI.targetStartUp(target);
 			} catch (SVXStatusException e) {
 
 				e.printStackTrace();
 			}
-			targetMap.put(port.getId(), target);
-			svxNativeJNIMap.put(port.getId(), svxNativeJNI);
-			factoryMap.put(port.getId(), factory);
-			channelInitialized.put(port.getId(), true);
-			portTimedOut.put(port.getId(), false);
-			User_c.Loginfo("The channel : " + retSvxChannel.getChannelName()
-					+ "that is associated with the port : " + port.getName()
+//			targetMap.put(port.getId(), target);
+//			svxNativeJNIMap.put(port.getId(), svxNativeJNI);
+			
+		channelInitialized.put(port.getId(), true);
+			//portTimedOut.put(port.getId(), false);
+			User_c.Loginfo("The channel " + "that is associated with the port : " + port.getName()
 					+ " was initialized successfully");
 
 		} catch (Exception e) {
@@ -301,42 +272,38 @@ public class Svx_c {
 		}
 	}
 
-	public static Object getSVXValue(Port_c port, SVXChannel retSvxChannel,
+	public static Object getSVXValue(Port_c port, SVXSignal signal,
 			java.util.UUID p_Messagevalueid) {
 
 		if (!isInitialized(port)) {
 			double initialVal = 0.0;
-			initialize(port, retSvxChannel,initialVal);
+			initialize(port,  initialVal);
 		}
  
 
 		double dum = 0;
 
-		if (!portTimedOut.get(port.getId())) {
+ 
 			try {
-				
-				double nowTime = svxNativeJNIMap.get(port.getId()).getNowTime_SVXComponentTarget(targetMap.get(port.getId()));
-				if ( (nowTime + retSvxChannel.getSeconds())< retSvxChannel.getBIGendTime()) {
-					dum = (svxNativeJNIMap.get(port.getId()))
-							.get_SVXComponentSignalConsumerDouble(consumerMap
-									.get(retrieveId(p_Messagevalueid)));
-					(svxNativeJNIMap.get(port.getId()))
-							.executeSeconds_SVXComponentTarget(
-									targetMap.get(port.getId()),
-									retSvxChannel.getSeconds());
-					(svxNativeJNIMap.get(port.getId()))
-							.waitTargetExecution_SVXComponentTarget(
-									targetMap.get(port.getId()),
-									SVXTimeRange.SVX_INFINITE_TIME_RANGE,
-									retSvxChannel.getValue());
+				 
+				if (!svxNativeJNI.targetIsEndTime(target)) {
+					dum = svxNativeJNI.consumerDoubleGetValue(consumerMap
+							.get(retrieveId(p_Messagevalueid)));
+							 
+					 svxNativeJNI.targetExecute(target, signal.timeValue);
+					 
+					 svxNativeJNI.targetWait(target);		 
+				 
 				}
 
 				else {
 
 					try {
 						User_c.Loginfo("This port has exeeded the big end time value and will be shut down");
-						svxNativeJNIMap.get(port.getId()).shutdownSystem_SVXComponentTarget(targetMap.get(port.getId()));
-						portTimedOut.put(port.getId(), true);
+						//svxNativeJNIMap.get(port.getId()).shutdownSystem_SVXComponentTarget(targetMap.get(port.getId()));
+
+						Double result = (double) 0.0;
+						return  (Object) Double.toString(result);
 						
 
 					} catch (Exception e) {
@@ -354,17 +321,8 @@ public class Svx_c {
 			}
 			Double result = (double) dum;
 			return  (Object) Double.toString(result);
-		} else {
-			User_c.Logerror(
-					"This  Channel : "
-							+ retSvxChannel.getChannelName()
-							+ " that is associated with the port : "
-							+ port.getName()
-							+ " has times out and value of 0.0 will be returned. Try Increasing the Big End Time",
-					null);
-			Double result = (double) 0.0;
-			return  (Object) Double.toString(result);
-		}
+		
+		 
 
 	}
 
@@ -421,18 +379,21 @@ public class Svx_c {
 				
 	}
 
-	public static void Setsvxvalue(UUID v_invocationId, UUID id, UUID value_id) {
+	public static void Setsvxvalue(UUID v_invocationId, UUID id, UUID value_id, final String stringName) {
 
 		Port_c retrievedPort = retrievePort(id);
+		Component_c component = Component_c.getOneC_COnR4010(retrievedPort);
 		Value_c retrievedValue = retrieveValue(value_id);
 		double valueToBeSent = 0.0;
 		valueToBeSent = getValueToBeSent(retrievedValue);
 
-		SVXChannel retSvxChannel = retrieveChannel(retrievedPort);
-		if (retSvxChannel != null) {
+		BPSVXXSignal bpSig = new BPSVXXSignal(component.getName(),retrievedPort.getName(),stringName);
+		SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping.get(bpSig );
+		
+		if (signal != null) {
 		
 			
-			setSvxValue(retrievedPort, retSvxChannel, valueToBeSent, v_invocationId);
+			setSvxValue(retrievedPort, signal, valueToBeSent, v_invocationId);
 			
 			
 		} else {
@@ -463,32 +424,23 @@ public class Svx_c {
 		 
  		return valueToBeSent;
 	}
-	private static void setSvxValue(Port_c port, SVXChannel retSvxChannel , double valueToBeSent ,UUID invocationID)
+	private static void setSvxValue(Port_c port, SVXSignal signal , double valueToBeSent ,UUID invocationID)
 	{
 
 
 		if (!isInitialized(port)) {
-			initialize(port, retSvxChannel,valueToBeSent);
+			initialize(port,  valueToBeSent);
 		}
 
-
-		if (!portTimedOut.get(port.getId())) {
+ 
 			try {
-				
-				double nowTime = svxNativeJNIMap.get(port.getId()).getNowTime_SVXComponentTarget(targetMap.get(port.getId()));
-				if ( (nowTime + retSvxChannel.getSeconds())< retSvxChannel.getBIGendTime()) {
-				(svxNativeJNIMap.get(port.getId())).set_SVXComponentSignalGeneratorDouble(((ISVXNativeHandle)generatorMap.get(invocationID)), valueToBeSent);
-			
-							
-					(svxNativeJNIMap.get(port.getId()))
-							.executeSeconds_SVXComponentTarget(
-									targetMap.get(port.getId()),
-									retSvxChannel.getSeconds());
-					(svxNativeJNIMap.get(port.getId()))
-							.waitTargetExecution_SVXComponentTarget(
-									targetMap.get(port.getId()),
-									SVXTimeRange.SVX_INFINITE_TIME_RANGE,
-									retSvxChannel.getValue());
+		 
+				if (!svxNativeJNI.targetIsEndTime(target)) {
+			 
+			svxNativeJNI.generatorDoubleSetValue(((ISVXNativeHandle)generatorMap.get(invocationID)), valueToBeSent);
+			svxNativeJNI.targetExecute(target, signal.timeValue);
+			svxNativeJNI.targetWait(target);
+		 
 				}
 
 				else {
@@ -496,7 +448,7 @@ public class Svx_c {
 					try {
 						User_c.Loginfo("This port has exeeded the big end time");
 					 
-						portTimedOut.put(port.getId(), true);
+						 
 						 
 					} catch (Exception e) {
 						User_c.Logerror(
@@ -512,16 +464,7 @@ public class Svx_c {
 				e.printStackTrace();
 			}
 			 
-		} else {
-			User_c.Logerror(
-					"This  Channel : "
-							+ retSvxChannel.getChannelName()
-							+ " that is associated with the port : "
-							+ port.getName()
-							+ " has times out and value of 0.0 will be returned. Try Increasing the Big End Time",
-					null);
 		 
-		}
 
 	
 		
