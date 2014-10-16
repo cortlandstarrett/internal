@@ -90,7 +90,7 @@ import com.mentor.nucleus.bp.core.common.BPElementID;
 import com.mentor.nucleus.bp.core.common.BridgePointPreferencesStore;
 import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.SVXBridgePointPreferencesStore;
-import com.mentor.nucleus.bp.core.common.BPSVXXSignal;
+import com.mentor.nucleus.bp.core.common.BPSVXSignal;
 import com.mentor.nucleus.bp.core.common.SVXSignal;
 import com.mentor.nucleus.bp.core.common.SVXChannel;
 import com.mentor.nucleus.bp.core.ui.ICoreHelpContextIds;
@@ -337,6 +337,7 @@ IPreferencePage {
 		});
 		
 		
+		
 		Label channelLabelTip = new Label(composite,  SWT.BOLD);
 		channelLabelTip.setText("Note:  Enter channels Name seperated by comma for multi channel\n" +
 								"Note:  Leave the field blank if the channel creation exists in another partition");
@@ -359,7 +360,8 @@ IPreferencePage {
 		MainTable.setLinesVisible(true);
 		MainTable.setHeaderVisible(true);
 		MainTable.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 4, 1));
-		String[] titles = { "Port Name " /*0*/, "Interface Message"/*1*/, "SVX Signal" /*2*/, "Channel Name" /*3*/, "Time Window" /*4*/, "Is Recursive" /*5*/, "Is Sporadic" /*6*/}; //$NON-NLS-1$
+		String[] titles = { "Port Name " /*0*/, "Interface Message"/*1*/, "SVX Signal" /*2*/, "Channel Name" /*3*/, 
+				"Time Window" /*4*/, "Does Recure" /*5*/, "Is Sporadic" /*6*/, "Initial Value" /*7*/}; //$NON-NLS-1$
 		
 		for (int i = 0; i < titles.length; i++) {
 			TableColumn column = new TableColumn(MainTable, SWT.NONE);
@@ -384,7 +386,7 @@ IPreferencePage {
 				
 				for (ExecutableProperty_c ee : ees) {
 					
-					BPSVXXSignal bpSig = new BPSVXXSignal(currentComponent.getName(), ports[i].getName(), ee.getName());
+					BPSVXSignal bpSig = new BPSVXSignal(currentComponent.getName(), ports[i].getName(), ee.getName());
 					SVXSignal signal = SVXBridgePointPreferencesStore.signalMapping.get(bpSig );
 							
 					TableItem newRow  = new TableItem(MainTable, SWT.NONE);
@@ -398,12 +400,14 @@ IPreferencePage {
 						newRow.setText(4, "0.001");
 						newRow.setText(5, "False");
 						newRow.setText(6, "False");
+						newRow.setText(7, "0.0");
 					}else{
 						newRow.setText(2, signal.SVXSignal);
 						newRow.setText(3, signal.channelName);
 						newRow.setText(4, String.valueOf(signal.timeValue));
-						newRow.setText(5, String.valueOf(signal.isRecursive).toUpperCase());
+						newRow.setText(5, String.valueOf(signal.doesRecure).toUpperCase());
 						newRow.setText(6, String.valueOf(signal.isSporadic).toUpperCase());
+						newRow.setText(7, String.valueOf(signal.initialValue).toUpperCase());
 					}
 				} 
 			}
@@ -653,8 +657,9 @@ IPreferencePage {
 //            SVXSignal sign = new SVXSignal();
 //            channel.setIp(ip)
             
-            SVXBridgePointPreferencesStore.signalMapping.put(new BPSVXXSignal(currentComponent.getName(), tableItem.getText(0), tableItem.getText(1)), 
-            		new SVXSignal(tableItem.getText(2), tableItem.getText(3), Double.parseDouble( tableItem.getText(4)), Boolean.parseBoolean(tableItem.getText(5)), Boolean.parseBoolean(tableItem.getText(6))));
+            SVXBridgePointPreferencesStore.signalMapping.put(new BPSVXSignal(currentComponent.getName(), tableItem.getText(0), tableItem.getText(1)), 
+            		new SVXSignal(tableItem.getText(2), tableItem.getText(3), Double.parseDouble( tableItem.getText(4)), 
+            				Boolean.parseBoolean(tableItem.getText(5)), Boolean.parseBoolean(tableItem.getText(6)), tableItem.getText(7)));
             
 //            channel.setPortName(tableItem.getText(0));
 //		    channel.setChannelName(tableItem.getText(1));
