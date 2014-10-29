@@ -48,17 +48,20 @@ import org.eclipse.swt.graphics.Color;
 import org.eclipse.swt.graphics.Cursor;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
+import org.eclipse.swt.layout.FillLayout;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
 import org.eclipse.swt.widgets.Combo;
 import org.eclipse.swt.widgets.Composite;
 import org.eclipse.swt.widgets.Control;
+import org.eclipse.swt.widgets.Display;
 import org.eclipse.swt.widgets.Event;
 import org.eclipse.swt.widgets.Group;
 import org.eclipse.swt.widgets.Label;
 import org.eclipse.swt.widgets.Listener;
 import org.eclipse.swt.widgets.MessageBox;
+import org.eclipse.swt.widgets.Shell;
 import org.eclipse.swt.widgets.Table;
 import org.eclipse.swt.widgets.TableColumn;
 import org.eclipse.swt.widgets.TableItem;
@@ -110,12 +113,14 @@ IPreferencePage {
 	private Label selectComponentLabel;
 	private Combo selectComponentCombo;
 	private Table MainTable;
-	private Table secondaryTable;
+//	private Table secondaryTable;
 	private Text ipText;
 	private Text portText;
 	private Combo sequencerCombo;
 	private Text endTimeText;
 	private Text channelText;
+	private Display display;
+	private Button editSignal;
 
 	public SVXBridgePointProjectPreferences(Preferences projectNode) {
 		super();
@@ -125,6 +130,8 @@ IPreferencePage {
 	protected Control createContents(Composite parent) {
 		// get the system model element of the selected project
 
+		display = parent.getDisplay();
+		
 		IStructuredSelection structuredSelection = Selection.getInstance()
 				.getStructuredSelection();
 		if (structuredSelection != null) {
@@ -172,7 +179,14 @@ IPreferencePage {
 		selectComponentCombo.setItems(componentsNames);
 		selectComponentCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, false, false, 1, 1));
 		new Label(mainComposite, SWT.LEFT);
-		new Label(mainComposite, SWT.LEFT);
+		
+		editSignal = new  Button(mainComposite, SWT.NONE);
+		editSignal.setText("Edit");
+		GridData gd_editSignal = new GridData(SWT.RIGHT, SWT.FILL, true, false,1,1);
+		gd_editSignal.widthHint = 100;
+		editSignal.setLayoutData(gd_editSignal);
+		editSignal.setEnabled(false);
+		
 		
 		
 		selectComponentCombo.addSelectionListener(new SelectionAdapter() {
@@ -227,13 +241,13 @@ IPreferencePage {
 	private void createSVXConfigurationPanel(Composite composite) {
 		Label ipLabel = new Label(composite, SWT.BOLD);
 		ipLabel.setText("IP");
-		
-		
+
+
 		ipText = new Text(composite, SWT.BORDER );
 		ipText.setText(SVXBridgePointPreferencesStore.ip);
 		ipText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
 		ipText.addVerifyListener(new VerifyListener() {
-			
+
 			@Override
 			public void verifyText(VerifyEvent e) {
 				if (e.text.equalsIgnoreCase("")){
@@ -241,15 +255,15 @@ IPreferencePage {
 				}
 				Pattern ipPattern = Pattern.compile("\\d{1,3}?(\\.\\d{0,3}){0,3}");
 				Matcher verifier = ipPattern.matcher(ipText.getText() +  e.text);
-				
+
 				e.doit = verifier.matches();
 			}
 		});
-		
-		
+
+
 		Label portLabel = new Label(composite, SWT.BOLD);
 		portLabel.setText("Port Number");
-		
+
 		portText = new Text(composite, SWT.BORDER);
 		portText.setText(String.valueOf(SVXBridgePointPreferencesStore.portNumber));
 		portText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
@@ -272,10 +286,10 @@ IPreferencePage {
 				}
 			}
 		});
-		
+
 		Label sequencerLabel = new Label(composite, SWT.BOLD);
 		sequencerLabel.setText("Is Sequencer");
-		
+
 		sequencerCombo = new Combo(composite, SWT.READ_ONLY);
 		sequencerCombo.setText("Not Sequencer");
 		sequencerCombo.add("Sequencer");
@@ -288,7 +302,7 @@ IPreferencePage {
 		
 		Label endTimeLabel = new Label(composite,  SWT.BOLD);
 		endTimeLabel.setText("Simlation Time");
-		
+
 		endTimeText = new Text(composite, SWT.BORDER );
 		endTimeText.setText(String.valueOf(SVXBridgePointPreferencesStore.simulationTime));
 		endTimeText.setLayoutData(new GridData(GridData.FILL_HORIZONTAL));
@@ -308,12 +322,14 @@ IPreferencePage {
 				}
 			}
 		});
+
+		final Button channelLabel = new Button(composite,  SWT.CHECK);
+		channelLabel.setText("Add SVX Channels");
 		
-		Label channelLabel = new Label(composite,  SWT.BOLD);
-		channelLabel.setText("SVX Channels");
 
 		channelText = new Text(composite, SWT.BORDER );
 		String channels = "";
+		channelText.setEnabled(false);
 		Iterator<String> iterator = SVXBridgePointPreferencesStore.channels.iterator();
 		if ( iterator.hasNext()){
 			channels = iterator.next();
@@ -324,49 +340,305 @@ IPreferencePage {
 		channelText.setText(channels);
 		channelText.setLayoutData((new GridData(SWT.FILL, SWT.CENTER, true, false, 3, 1)));
 		channelText.addVerifyListener(new VerifyListener() {
-			
+
 			@Override
 			public void verifyText(VerifyEvent e) {
 				if (e.text.equalsIgnoreCase("")){
 					return;
 				}
-				Pattern channelPattern = Pattern.compile("[a-z]\\w*(\\s*,\\s*(([A-Z]|[a-z])\\w*)*)*");
+				Pattern channelPattern = Pattern.compile("([A-Z]|[a-z])\\w*(\\s*,\\s*(([A-Z]|[a-z])\\w*)*)*");
 				Matcher verifier = channelPattern.matcher(channelText.getText() + e.text);
 				e.doit = verifier.matches();
 			}
 		});
-		
-		
-		
+		channelLabel.addSelectionListener(new SelectionListener() {
+			
+			@Override
+			public void widgetSelected(SelectionEvent e) {
+				channelText.setEnabled(!channelText.isEnabled());
+			}
+			
+			@Override
+			public void widgetDefaultSelected(SelectionEvent e) {
+				channelText.setEnabled(channelLabel.isEnabled());				
+			}
+		});
+
+
+
 		Label channelLabelTip = new Label(composite,  SWT.BOLD);
 		channelLabelTip.setText("Note:  Enter channels Name seperated by comma for multi channel\n" +
-								"Note:  Leave the field blank if the channel creation exists in another partition");
+				"Note:  Leave the field blank if the channel creation exists in another partition");
 		channelLabelTip.setLayoutData((new GridData(SWT.FILL, SWT.CENTER, true, false, 4, 1)));
-	
+
 	}
 
 	private void showPortsPreferences() {
 		if (MainTable != null) {
-			MainTable.dispose();
+			MainTable.removeAll();
+			editSignal.setEnabled(false);
 		}
-		if (secondaryTable != null) {
-			secondaryTable.dispose();
-		}
-		mainComposite.layout();
+			mainComposite.layout();
 
-	
-		MainTable = new Table(mainComposite, SWT.BORDER | SWT.MULTI | SWT.FULL_SELECTION );
-//		MainTable.setLayoutData(new GridData(GridData.FILL_BOTH));
-		MainTable.setLinesVisible(true);
-		MainTable.setHeaderVisible(true);
-		MainTable.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 4, 1));
-		String[] titles = { "Port Name " /*0*/, "Interface Message"/*1*/, "SVX Signal" /*2*/, "Channel Name" /*3*/, 
-				"Time Window" /*4*/, "Does Recure" /*5*/, "Is Sporadic" /*6*/, "Initial Value" /*7*/}; //$NON-NLS-1$
-		
-		for (int i = 0; i < titles.length; i++) {
-			TableColumn column = new TableColumn(MainTable, SWT.NONE);
-			column.setWidth(125);
-			column.setText(titles[i]);
+		if (MainTable == null){	
+
+			MainTable = new Table(mainComposite, SWT.BORDER | SWT.MULTI | SWT.FULL_SELECTION );
+			//		MainTable.setLayoutData(new GridData(GridData.FILL_BOTH));
+			MainTable.setLinesVisible(true);
+			MainTable.setHeaderVisible(true);
+			MainTable.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, true, 4, 1));
+			String[] titles = { "Port Name " /*0*/, "Interface Message"/*1*/, "SVX Signal" /*2*/, "Channel Name" /*3*/, 
+					"Time Window" /*4*/, "Does Recure" /*5*/, "Is Sporadic" /*6*/, "Initial Value" /*7*/}; //$NON-NLS-1$
+
+			for (int i = 0; i < titles.length; i++) {
+				TableColumn column = new TableColumn(MainTable, SWT.NONE);
+				column.setWidth(125);
+				column.setText(titles[i]);
+			}
+			
+			MainTable.addSelectionListener(new SelectionListener() {
+				
+				@Override
+				public void widgetSelected(SelectionEvent e) {
+					editSignal.setEnabled(true);
+				}
+				
+				@Override
+				public void widgetDefaultSelected(SelectionEvent e) {
+					editSignal.setEnabled(true);
+					
+				}
+			});
+			
+			editSignal.addSelectionListener(new SelectionListener() {
+				
+				
+				@Override
+				public void widgetSelected(SelectionEvent e) {
+					
+					TableItem[] selection = MainTable.getSelection();
+//					final TableItem row = cursor.getRow();
+					if (selection.length == 0)
+						return;
+					final TableItem row = selection[0];
+					
+					
+					
+					final Shell shell = new Shell(mainComposite.getShell(), SWT.CLOSE | SWT.APPLICATION_MODAL );	
+					shell.setSize(450, 300);
+					shell.setText("Edit SVX Signal");
+					shell.setLayout(new FillLayout(SWT.HORIZONTAL));
+					
+					Composite composite = new Composite(shell, SWT.NONE);
+					composite.setLayout(new GridLayout(4, false));
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					
+					Label lblPortName = new Label(composite, SWT.NONE);
+					lblPortName.setText("Port Name");
+					
+					Label portNameValue = new Label(composite, SWT.NONE);
+					portNameValue.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+					portNameValue.setText(row.getText(0));
+					new Label(composite, SWT.NONE);
+					
+					Label lblInterfaceMessage = new Label(composite, SWT.NONE);
+					lblInterfaceMessage.setText("Interface Message");
+					
+					Label interfaceNameValue = new Label(composite, SWT.NONE);
+					interfaceNameValue.setLayoutData(new GridData(SWT.LEFT, SWT.TOP, true, false, 2, 1));
+					interfaceNameValue.setText(row.getText(1));
+					new Label(composite, SWT.NONE);
+					
+					Label lblSvxSignalName = new Label(composite, SWT.NONE);
+					lblSvxSignalName.setText("SVX Signal Name");
+					
+					final Text signalNameText = new Text(composite, SWT.BORDER);
+					signalNameText.setText(row.getText(2));
+					signalNameText.setLayoutData(new GridData(SWT.FILL, SWT.FILL, true, false, 2, 1));
+					signalNameText.addVerifyListener(new VerifyListener() {
+
+						@Override
+						public void verifyText(VerifyEvent e) {
+							if (e.text.equalsIgnoreCase("")){
+								return;
+							}
+							Pattern channelPattern = Pattern.compile("([A-Z]|[a-z])\\w*");
+							Matcher verifier = channelPattern.matcher(signalNameText.getText() + e.text);
+							e.doit = verifier.matches();
+						}
+					});
+					new Label(composite, SWT.NONE);
+					
+					Label lblSvxChannelName = new Label(composite, SWT.NONE);
+					lblSvxChannelName.setLayoutData(new GridData(SWT.RIGHT, SWT.CENTER, false, false, 1, 1));
+					lblSvxChannelName.setText("SVX Channel Name");
+					
+					final Text channelNameText = new Text(composite, SWT.BORDER);
+					channelNameText.setText(row.getText(3));
+					channelNameText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+					channelNameText.addVerifyListener(new VerifyListener() {
+
+						@Override
+						public void verifyText(VerifyEvent e) {
+							if (e.text.equalsIgnoreCase("")){
+								return;
+							}
+							Pattern channelPattern = Pattern.compile("([A-Z]|[a-z])\\w*");
+							Matcher verifier = channelPattern.matcher(channelNameText.getText() + e.text);
+							e.doit = verifier.matches();
+						}
+					});
+					new Label(composite, SWT.NONE);
+					
+//					Button btnTimeValue = new Button(composite, SWT.RADIO);
+//					btnTimeValue.setText("Time Value");
+//					
+//					Button btnTimeWindow = new Button(composite, SWT.RADIO);
+//					btnTimeWindow.setText("Time Window");
+//					new Label(composite, SWT.NONE);
+//					new Label(composite, SWT.NONE);
+					
+					Label timeValue = new Label(composite, SWT.NONE);
+					timeValue.setText("Time Value");
+					
+					final Text timeValueValue = new Text(composite, SWT.BORDER);
+					timeValueValue.setText(row.getText(4));
+					timeValueValue.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+					timeValueValue.addVerifyListener(new VerifyListener() {
+						@Override
+						public void verifyText(VerifyEvent e) {
+							if (e.text.equalsIgnoreCase("")){
+								return;
+							}
+							if (!( e.text.matches("\\d|\\."))){
+								e.doit = false;
+							}
+							if (  e.text.matches("\\.")){
+								if (((Text)e.widget).getText().contains(".")){
+									e.doit = false;
+								}
+							}
+						}
+					});
+					
+					new Label(composite, SWT.NONE);
+					
+					Label lblDoesRecure = new Label(composite, SWT.NONE);
+					lblDoesRecure.setText("Does Recure");
+					
+					final Combo doesRecureCombo = new Combo(composite, SWT.NONE);
+					doesRecureCombo.setItems(new String[] {"FALSE", "TRUE"});
+					doesRecureCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+					doesRecureCombo.setText(row.getText(5));
+					new Label(composite, SWT.NONE);
+					
+					Label lblIsSporadic = new Label(composite, SWT.NONE);
+					lblIsSporadic.setText("Is Sporadic");
+					
+					final Combo isSporadicCombo = new Combo(composite, SWT.NONE);
+					isSporadicCombo.setItems(new String[] {"FALSE", "TRUE"});
+					isSporadicCombo.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+					isSporadicCombo.setText(row.getText(6));
+					new Label(composite, SWT.NONE);
+					
+					Label lblInitialValue = new Label(composite, SWT.NONE);
+					lblInitialValue.setText("Initial Value");
+					
+					final Text initialValueText = new Text(composite, SWT.BORDER);
+					initialValueText.setText(row.getText(7));
+					initialValueText.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false, 2, 1));
+					initialValueText.addVerifyListener(new VerifyListener() {
+						@Override
+						public void verifyText(VerifyEvent e) {
+							if (e.text.equalsIgnoreCase("")){
+								return;
+							}
+							if (!( e.text.matches("\\d|\\."))){
+								e.doit = false;
+							}
+							if (  e.text.matches("\\.")){
+								if (((Text)e.widget).getText().contains(".")){
+									e.doit = false;
+								}
+							}
+						}
+					});
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					new Label(composite, SWT.NONE);
+					
+					Composite composite_1 = new Composite(composite, SWT.NONE);
+					composite_1.setLayoutData(new GridData(SWT.RIGHT, SWT.FILL, false, false, 1, 1));
+					composite_1.setLayout(new GridLayout(2, false));
+					
+					Button okButton = new Button(composite_1, SWT.NONE);
+					GridData gd_okButton = new GridData(SWT.LEFT, SWT.CENTER, false, false, 1, 1);
+					gd_okButton.widthHint = 75;
+					okButton.setLayoutData(gd_okButton);
+					okButton.setText("OK");
+					okButton.addSelectionListener(new SelectionListener() {
+						
+						@Override
+						public void widgetSelected(SelectionEvent e) {
+							row.setText(2, signalNameText.getText());
+							row.setText(3, channelNameText.getText());
+							row.setText(4, timeValueValue.getText());
+							row.setText(5, doesRecureCombo.getText());
+							row.setText(5, doesRecureCombo.getText());
+							row.setText(6, isSporadicCombo.getText());  
+							row.setText(7, initialValueText.getText());
+							shell.close();
+							shell.dispose();
+						}
+						
+						@Override
+						public void widgetDefaultSelected(SelectionEvent e) {
+							// DO Nothing
+						}
+					});
+					
+					Button cancelButton = new Button(composite_1, SWT.NONE);
+					GridData gd_cancelButton = new GridData(SWT.RIGHT, SWT.CENTER, false, false, 1, 1);
+					gd_cancelButton.widthHint = 75;
+					cancelButton.setLayoutData(gd_cancelButton);
+					cancelButton.setText("Cancel");
+					cancelButton.addSelectionListener(new SelectionListener() {
+						
+						@Override
+						public void widgetSelected(SelectionEvent e) {
+							shell.close();
+							shell.dispose();
+						}
+						
+						@Override
+						public void widgetDefaultSelected(SelectionEvent e) {
+							// Do Nothing
+						}
+					});
+					
+//					shell.setLocation(editSignal.getLocation());
+					shell.setBounds(mainComposite.getShell().getLocation().x + 100, mainComposite.getShell().getLocation().y+ 100, 450 , 300);
+					shell.open();
+					shell.layout();
+					
+				}
+			
+				@Override
+				public void widgetDefaultSelected(SelectionEvent e) {
+					
+					System.out.println("Key Initialized");
+					
+				}
+			});
+
 		}
 		
 //		TableColumn[] cls = MainTable.getColumns();
@@ -413,209 +685,210 @@ IPreferencePage {
 			}
 		}
 		
-		final TableCursor cursor = new TableCursor(MainTable, SWT.NONE);
-		 final ControlEditor editor = new ControlEditor(MainTable);
+//		final TableCursor cursor = new TableCursor(MainTable, SWT.NONE);
+		final ControlEditor editor = new ControlEditor(MainTable);
 		editor.grabHorizontal = true;
 		editor.grabVertical = true;
 
 		final int EDITABLECOLUMN_num = 2;
 		
-		cursor.addSelectionListener(new SelectionAdapter() {
-			// when the TableEditor is over a cell, select the corresponding row in 
-			// the table
-			Control cellElement;
-			public void widgetSelected(SelectionEvent e) {
-				MainTable.setSelection(new TableItem[] {cursor.getRow()});
-				if ( cellElement != null){
-					if ( !cellElement.isDisposed() ) {
-						cellElement.dispose();
-					}
-				}
-			}
-			// when the user hits "ENTER" in the TableCursor, pop up a text editor so that 
-			// they can change the text of the cell
-			public void widgetDefaultSelected(SelectionEvent e){
-
-				final int column = cursor.getColumn();
-				final TableItem row = cursor.getRow();
-
-				if ( column == 0 || column == 1 ){
-					return;
-				}else if ( column == 5 || column == 6 ){
-					String timeArray[]  = new String[]{"True", "False"}; 
-					int index = Arrays.asList(timeArray).indexOf(row.getText(column));
-					if ( row.getText(column).equalsIgnoreCase("")){
-						index = 1;
-					}
-					cellElement = new Combo(cursor, SWT.NONE );
-					final Combo  cellCombo  =  (Combo)cellElement;
-					for (String value : timeArray) {
-						cellCombo.add(value);
-					}
-					cellCombo.select(index);
-
-					cellCombo.addKeyListener(new KeyAdapter() {
-						@Override
-						public void keyPressed(KeyEvent e) {
-							int code = e.keyCode;
-							if (e.character == SWT.CR) {
-								TableItem row = cursor.getRow();	
-								int column = cursor.getColumn();
-								row.setText(column,  cellCombo.getItem(  cellCombo.getSelectionIndex()));
-								cellElement.dispose();
-							}
-							else if (e.character == SWT.TAB) {
-								cellElement.dispose();
-								cursor.setSelection(row, column);
-							}
-							else if ((code == 16777217 /*Arrow Up*/) || (code == 16777218 /*Arrow Down*/))  {
-								// skip
-							}
-							else {
-								e.doit = false;
-							}
-						}
-					});
-					editor.setEditor(cellElement /*, row, column */);
-					cellElement.setFocus();
-				}else { 
-					cellElement = new Text(cursor, SWT.NONE);
-					final Text cellText = (Text)cellElement;
-					cellText.setText(row.getText(column));
-					cellElement.addKeyListener(new KeyAdapter() {
-						public void keyPressed(KeyEvent e) {
-							// close the text editor and copy the data over 
-							// when the user hits "ENTER"
-							if (e.character == SWT.CR) {
-								TableItem row = cursor.getRow();	
-								int column = cursor.getColumn();
-								row.setText(column,  cellText.getText());
-								cellElement.dispose();
-							}
-							// close the text editor when the user hits "ESC"
-							if (e.character == SWT.TAB) {
-								cellElement.dispose();
-							}
-						}
-					});
-					editor.setEditor(cellElement /*, row, column */);
-					cellElement.setFocus();
-				}
-			}
-		});
+//		cursor.addSelectionListener(new SelectionAdapter() {
+//			// when the TableEditor is over a cell, select the corresponding row in 
+//			// the table
+//			Control cellElement;
+//			public void widgetSelected(SelectionEvent e) {
+//				MainTable.setSelection(new TableItem[] {cursor.getRow()});
+//				if ( cellElement != null){
+//					if ( !cellElement.isDisposed() ) {
+//						cellElement.dispose();
+//					}
+//				}
+//			}
+//			// when the user hits "ENTER" in the TableCursor, pop up a text editor so that 
+//			// they can change the text of the cell
+//			public void widgetDefaultSelected(SelectionEvent e){
+//
+//				final int column = cursor.getColumn();
+//				final TableItem row = cursor.getRow();
+//
+//				if ( column == 0 || column == 1 ){
+//					return;
+//				}else if ( column == 5 || column == 6 ){
+//					String timeArray[]  = new String[]{"True", "False"}; 
+//					int index = Arrays.asList(timeArray).indexOf(row.getText(column));
+//					if ( row.getText(column).equalsIgnoreCase("")){
+//						index = 1;
+//					}
+//					cellElement = new Combo(cursor, SWT.NONE );
+//					final Combo  cellCombo  =  (Combo)cellElement;
+//					for (String value : timeArray) {
+//						cellCombo.add(value);
+//					}
+//					cellCombo.select(index);
+//
+//					cellCombo.addKeyListener(new KeyAdapter() {
+//						@Override
+//						public void keyPressed(KeyEvent e) {
+//							int code = e.keyCode;
+//							if (e.character == SWT.CR) {
+//								TableItem row = cursor.getRow();	
+//								int column = cursor.getColumn();
+//								row.setText(column,  cellCombo.getItem(  cellCombo.getSelectionIndex()));
+//								cellElement.dispose();
+//							}
+//							else if (e.character == SWT.TAB) {
+//								cellElement.dispose();
+//								cursor.setSelection(row, column);
+//							}
+//							else if ((code == 16777217 /*Arrow Up*/) || (code == 16777218 /*Arrow Down*/))  {
+//								// skip
+//							}
+//							else {
+//								e.doit = false;
+//							}
+//						}
+//					});
+//					editor.setEditor(cellElement /*, row, column */);
+//					cellElement.setFocus();
+//				}else { 
+//					cellElement = new Text(cursor, SWT.NONE);
+//					final Text cellText = (Text)cellElement;
+//					cellText.setText(row.getText(column));
+//					cellElement.addKeyListener(new KeyAdapter() {
+//						public void keyPressed(KeyEvent e) {
+//							// close the text editor and copy the data over 
+//							// when the user hits "ENTER"
+//							if (e.character == SWT.CR) {
+//								TableItem row = cursor.getRow();	
+//								int column = cursor.getColumn();
+//								row.setText(column,  cellText.getText());
+//								cellElement.dispose();
+//							}
+//							// close the text editor when the user hits "ESC"
+//							if (e.character == SWT.TAB) {
+//								cellElement.dispose();
+//							}
+//						}
+//					});
+//					editor.setEditor(cellElement /*, row, column */);
+//					cellElement.setFocus();
+//				}
+//			}
+//		});
+		
 	}
 
-	public void showPortOperationsAndSignals(final String portName) {
-		if (secondaryTable != null) {
-			secondaryTable.dispose();
-		}
-		mainComposite.layout();
-
-		currentPort = Port_c.getOneC_POOnR4010(currentComponent,
-				new ClassQueryInterface_c() {
-
-			public boolean evaluate(Object candidate) {
-				return ((Port_c) candidate).getName().equals(portName);
-			}
-
-		});
-
-		InterfaceOperation_c[] ops = InterfaceOperation_c
-				.getManyC_IOsOnR4004(ExecutableProperty_c
-						.getManyC_EPsOnR4003(Interface_c
-								.getOneC_IOnR4012(InterfaceReference_c
-										.getOneC_IROnR4016(currentPort))));
-		InterfaceSignal_c[] sigs = InterfaceSignal_c
-				.getManyC_ASsOnR4004(ExecutableProperty_c
-						.getManyC_EPsOnR4003(Interface_c
-								.getOneC_IOnR4012(InterfaceReference_c
-										.getOneC_IROnR4016(currentPort))));
-
-		/*final Table*/ secondaryTable = new Table(mainComposite, SWT.MULTI | SWT.BORDER
-				| SWT.FULL_SELECTION);
-		//secondaryTable = table;
-		secondaryTable.setLinesVisible(true);
-		secondaryTable.setHeaderVisible(true);
-		GridData tableData = new GridData(SWT.FILL, SWT.FILL, true, true);
-		tableData.heightHint = 200;
-		secondaryTable.setLayoutData(tableData);
-		String[] titles = { "Excutable Property ", "Signal Name" };
-		for (int j = 0; j < titles.length; j++) {
-			TableColumn column = new TableColumn(secondaryTable, SWT.NONE);
-			column.setText(titles[j]);
-		}
-
-		for (int k = 0; k < ops.length; k++) {
-			TableItem item = new TableItem(secondaryTable, SWT.NONE);
-			item.setText(0, ops[k].getName());
-			
-		 String exPropertyname = SVXBridgePointPreferencesStore.exPropertySignalName.get(ops[k].getId());
-				 if(exPropertyname!=null)
-				 {
-					 item.setText(1,exPropertyname);
-				 }
-
-		}
-		for (int k = ops.length; k < ops.length + sigs.length; k++) {
-			TableItem item = new TableItem(secondaryTable, SWT.NONE);
-
-			item.setText(0, sigs[k - ops.length].getName());// sigs[k].getName());
-			 String exPropertyname = SVXBridgePointPreferencesStore.exPropertySignalName.get(sigs[k - ops.length].getId());
-			 if(exPropertyname!=null)
-			 {
-				 item.setText(1,exPropertyname);
-			 }
-			
-			
-			
-
-		}
-		final int CHANNLEDITABLECOLUMN = 1;
-		secondaryTable.addSelectionListener(new SelectionAdapter() {
-			@Override
-			public void widgetSelected(SelectionEvent e) {
-				// Clean up any previous editor control
-				final TableEditor editor = new TableEditor(secondaryTable);
-				// The editor must have the same size as the cell and must
-				// not be any smaller than 50 pixels.
-				editor.horizontalAlignment = SWT.LEFT;
-				editor.grabHorizontal = true;
-				editor.minimumWidth = 50;
-				Control oldEditor = editor.getEditor();
-				if (oldEditor != null)
-					oldEditor.dispose();
-
-				// Identify the selected row
-				TableItem item = (TableItem) e.item;
-				if (item == null)
-					return;
-
-				// The control that will be the editor must be a child of the
-				// Table
-				Text newEditor = new Text(secondaryTable, SWT.NONE);
-				newEditor.setText(item.getText(CHANNLEDITABLECOLUMN));
-
-				newEditor.addModifyListener(new ModifyListener() {
-					public void modifyText(ModifyEvent me) {
-						Text text = (Text) editor.getEditor();
-						editor.getItem().setText(CHANNLEDITABLECOLUMN,
-								text.getText());
-					}
-				});
-				newEditor.selectAll();
-				newEditor.setFocus();
-				editor.setEditor(newEditor, item, CHANNLEDITABLECOLUMN);
-
-			}
-
-		});
-		for (int l = 0; l < titles.length; l++) {
-			secondaryTable.getColumn(l).setAlignment(SWT.LEFT_TO_RIGHT);
-			secondaryTable.getColumn(l).pack();
-		}
-		mainComposite.layout();
-
-	}
+//	public void showPortOperationsAndSignals(final String portName) {
+//		if (secondaryTable != null) {
+//			secondaryTable.dispose();
+//		}
+//		mainComposite.layout();
+//
+//		currentPort = Port_c.getOneC_POOnR4010(currentComponent,
+//				new ClassQueryInterface_c() {
+//
+//			public boolean evaluate(Object candidate) {
+//				return ((Port_c) candidate).getName().equals(portName);
+//			}
+//
+//		});
+//
+//		InterfaceOperation_c[] ops = InterfaceOperation_c
+//				.getManyC_IOsOnR4004(ExecutableProperty_c
+//						.getManyC_EPsOnR4003(Interface_c
+//								.getOneC_IOnR4012(InterfaceReference_c
+//										.getOneC_IROnR4016(currentPort))));
+//		InterfaceSignal_c[] sigs = InterfaceSignal_c
+//				.getManyC_ASsOnR4004(ExecutableProperty_c
+//						.getManyC_EPsOnR4003(Interface_c
+//								.getOneC_IOnR4012(InterfaceReference_c
+//										.getOneC_IROnR4016(currentPort))));
+//
+//		/*final Table*/ secondaryTable = new Table(mainComposite, SWT.MULTI | SWT.BORDER
+//				| SWT.FULL_SELECTION);
+//		//secondaryTable = table;
+//		secondaryTable.setLinesVisible(true);
+//		secondaryTable.setHeaderVisible(true);
+//		GridData tableData = new GridData(SWT.FILL, SWT.FILL, true, true);
+//		tableData.heightHint = 200;
+//		secondaryTable.setLayoutData(tableData);
+//		String[] titles = { "Excutable Property ", "Signal Name" };
+//		for (int j = 0; j < titles.length; j++) {
+//			TableColumn column = new TableColumn(secondaryTable, SWT.NONE);
+//			column.setText(titles[j]);
+//		}
+//
+//		for (int k = 0; k < ops.length; k++) {
+//			TableItem item = new TableItem(secondaryTable, SWT.NONE);
+//			item.setText(0, ops[k].getName());
+//			
+//		 String exPropertyname = SVXBridgePointPreferencesStore.exPropertySignalName.get(ops[k].getId());
+//				 if(exPropertyname!=null)
+//				 {
+//					 item.setText(1,exPropertyname);
+//				 }
+//
+//		}
+//		for (int k = ops.length; k < ops.length + sigs.length; k++) {
+//			TableItem item = new TableItem(secondaryTable, SWT.NONE);
+//
+//			item.setText(0, sigs[k - ops.length].getName());// sigs[k].getName());
+//			 String exPropertyname = SVXBridgePointPreferencesStore.exPropertySignalName.get(sigs[k - ops.length].getId());
+//			 if(exPropertyname!=null)
+//			 {
+//				 item.setText(1,exPropertyname);
+//			 }
+//			
+//			
+//			
+//
+//		}
+//		final int CHANNLEDITABLECOLUMN = 1;
+//		secondaryTable.addSelectionListener(new SelectionAdapter() {
+//			@Override
+//			public void widgetSelected(SelectionEvent e) {
+//				// Clean up any previous editor control
+//				final TableEditor editor = new TableEditor(secondaryTable);
+//				// The editor must have the same size as the cell and must
+//				// not be any smaller than 50 pixels.
+//				editor.horizontalAlignment = SWT.LEFT;
+//				editor.grabHorizontal = true;
+//				editor.minimumWidth = 50;
+//				Control oldEditor = editor.getEditor();
+//				if (oldEditor != null)
+//					oldEditor.dispose();
+//
+//				// Identify the selected row
+//				TableItem item = (TableItem) e.item;
+//				if (item == null)
+//					return;
+//
+//				// The control that will be the editor must be a child of the
+//				// Table
+//				Text newEditor = new Text(secondaryTable, SWT.NONE);
+//				newEditor.setText(item.getText(CHANNLEDITABLECOLUMN));
+//
+//				newEditor.addModifyListener(new ModifyListener() {
+//					public void modifyText(ModifyEvent me) {
+//						Text text = (Text) editor.getEditor();
+//						editor.getItem().setText(CHANNLEDITABLECOLUMN,
+//								text.getText());
+//					}
+//				});
+//				newEditor.selectAll();
+//				newEditor.setFocus();
+//				editor.setEditor(newEditor, item, CHANNLEDITABLECOLUMN);
+//
+//			}
+//
+//		});
+//		for (int l = 0; l < titles.length; l++) {
+//			secondaryTable.getColumn(l).setAlignment(SWT.LEFT_TO_RIGHT);
+//			secondaryTable.getColumn(l).pack();
+//		}
+//		mainComposite.layout();
+//
+//	}
 
 	public void init(IWorkbench workbench) {
 		// Initialize the Core preference store
@@ -633,7 +906,6 @@ IPreferencePage {
 		// syncPreferencesWithUI();
 		//flushStore();
 		
-		TableItem[] items = MainTable.getItems();
 		
 		SVXBridgePointPreferencesStore.ip = ipText.getText();
 		SVXBridgePointPreferencesStore.portNumber = Integer.parseInt(portText.getText());
@@ -641,6 +913,7 @@ IPreferencePage {
 		SVXBridgePointPreferencesStore.isSequencer = sequencerCombo.getText().equalsIgnoreCase("Sequencer") ? true : false;
 		
 		
+		if (channelText.isEnabled()){
 		SVXBridgePointPreferencesStore.channels.clear();
 		if (!channelText.getText().equalsIgnoreCase("")){
 			String[] enteredChannels = channelText.getText().split("\\s*,\\s*");
@@ -650,42 +923,17 @@ IPreferencePage {
 				}
 			}
 		}
-		
-		for (int i = 0; i < items.length; i++) {
-			TableItem tableItem = items[i];
-//            SVXChannel channel = new SVXChannel();
-//            SVXSignal sign = new SVXSignal();
-//            channel.setIp(ip)
-            
-            SVXBridgePointPreferencesStore.signalMapping.put(new BPSVXSignal(currentComponent.getName(), tableItem.getText(0), tableItem.getText(1)), 
-            		new SVXSignal(tableItem.getText(2), tableItem.getText(3), Double.parseDouble( tableItem.getText(4)), 
-            				Boolean.parseBoolean(tableItem.getText(5)), Boolean.parseBoolean(tableItem.getText(6)), tableItem.getText(7)));
-            
-//            channel.setPortName(tableItem.getText(0));
-//		    channel.setChannelName(tableItem.getText(1));
-//            channel.setPortNumber(Integer.parseInt(tableItem.getText(2)));
-//			channel.setAppSequencer(Boolean.parseBoolean(tableItem.getText(3)));
-//			channel.setiP(tableItem.getText(4));
-//			channel.setLookUpName(tableItem.getText(5));
-//			channel.setSeconds(Double.parseDouble(tableItem.getText(6)));
-//			channel.setValue(Integer.parseInt(tableItem.getText(7)));
-//			channel.setBIGendTime(Double.parseDouble(tableItem.getText(8)));
-//			channel.setBIGendTime(Double.parseDouble(tableItem.getText(8)));
-			
-//			SVXBridgePointPreferencesStore.portIDChannel.put(
-//					getPortID(tableItem.getText(0)), channel);
-
-
 		}
 		
-		
-//		TableItem[] secondaryitems = secondaryTable.getItems();
-//		for (int i = 0; i < secondaryitems.length; i++) {
-//			
-//		SVXBridgePointPreferencesStore.exPropertySignalName.put(ifaceExPropertyId(secondaryitems[i].getText(0)), secondaryitems[i].getText(1));
-//		
-//		}
-		
+		if (MainTable != null ){
+			TableItem[] items = MainTable.getItems();
+			for (int i = 0; i < items.length; i++) {
+				TableItem tableItem = items[i];
+				SVXBridgePointPreferencesStore.signalMapping.put(new BPSVXSignal(currentComponent.getName(), tableItem.getText(0), tableItem.getText(1)), 
+						new SVXSignal(tableItem.getText(2), tableItem.getText(3), Double.parseDouble( tableItem.getText(4)), 
+								Boolean.parseBoolean(tableItem.getText(5)), Boolean.parseBoolean(tableItem.getText(6)), tableItem.getText(7)));
+			}
+		}
 		SVXBridgePointPreferencesStore.saveModel(sysMdl.getName()); 
 		return true;
 	}
@@ -715,12 +963,12 @@ IPreferencePage {
 		
 		
 		
-		TableItem[] secondaryitems = secondaryTable.getItems();
-		for (int i = 0; i < secondaryitems.length; i++) {
-			
-		SVXBridgePointPreferencesStore.exPropertySignalName.put(ifaceExPropertyId(secondaryitems[i].getText(0)), secondaryitems[i].getText(1));
-		
-		}
+//		TableItem[] secondaryitems = secondaryTable.getItems();
+//		for (int i = 0; i < secondaryitems.length; i++) {
+//			
+//		SVXBridgePointPreferencesStore.exPropertySignalName.put(ifaceExPropertyId(secondaryitems[i].getText(0)), secondaryitems[i].getText(1));
+//		
+//		}
 		
 		SVXBridgePointPreferencesStore.saveModel(sysMdl.getName()); 
 		
