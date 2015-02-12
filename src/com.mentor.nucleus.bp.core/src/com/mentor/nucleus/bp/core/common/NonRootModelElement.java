@@ -31,22 +31,30 @@ import java.util.UUID;
 
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.ResourcesPlugin;
+import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IAdaptable;
 import org.eclipse.core.runtime.IPath;
+import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
 
 import com.mentor.nucleus.bp.core.ClassStateMachine_c;
+import com.mentor.nucleus.bp.core.ComponentResultSet_c;
+import com.mentor.nucleus.bp.core.ComponentVisibility_c;
 import com.mentor.nucleus.bp.core.Component_c;
 import com.mentor.nucleus.bp.core.CoreDataType_c;
 import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.DataTypePackage_c;
 import com.mentor.nucleus.bp.core.DataType_c;
+import com.mentor.nucleus.bp.core.ElementVisibility_c;
+import com.mentor.nucleus.bp.core.Elementtypeconstants_c;
 import com.mentor.nucleus.bp.core.Gd_c;
 import com.mentor.nucleus.bp.core.InstanceStateMachine_c;
 import com.mentor.nucleus.bp.core.IntegrityManager_c;
 import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.Package_c;
 import com.mentor.nucleus.bp.core.PackageableElement_c;
+import com.mentor.nucleus.bp.core.Pref_c;
+import com.mentor.nucleus.bp.core.SearchResultSet_c;
 import com.mentor.nucleus.bp.core.Severity_c;
 import com.mentor.nucleus.bp.core.SpecificationPackage_c;
 import com.mentor.nucleus.bp.core.SystemDatatypePackage_c;
@@ -55,10 +63,12 @@ import com.mentor.nucleus.bp.core.UserDataType_c;
 import com.mentor.nucleus.bp.core.inspector.IModelClassInspector;
 import com.mentor.nucleus.bp.core.inspector.ModelInspector;
 import com.mentor.nucleus.bp.core.ui.marker.UmlProblem;
+import com.mentor.nucleus.bp.core.util.CoreUtil;
 import com.mentor.nucleus.bp.core.util.OoaofgraphicsUtil;
 import com.mentor.nucleus.bp.core.util.PersistenceUtil;
 import com.mentor.nucleus.bp.core.util.RTOUtil;
 import com.mentor.nucleus.bp.core.util.SupertypeSubtypeUtil;
+import com.mentor.nucleus.bp.core.util.UIUtil;
 
 
 public abstract class NonRootModelElement extends ModelElement implements IAdaptable {
@@ -130,30 +140,148 @@ public abstract class NonRootModelElement extends ModelElement implements IAdapt
     	// do nothing let subtypes override
     }
     
-    public void checkReferentialIntegrity() {
-    	// gather all rtos and for any that are not
-    	// resolvable create an integrity issue
-    	List<NonRootModelElement> rtos = RTOUtil.getRTOs(this);
-    	for(NonRootModelElement rto : rtos) {
-    		if(rto.isProxy()) {
-    			// should have been loaded, we have a dangling
-    			// reference
-				IntegrityManager_c
-						.Createissue(
-								getModelRoot(),
-								"Found a dangling reference.  An element with the following attributes could not be found:\n\n"
-										+ "Referenced Element ID: "
-										+ rto.Get_ooa_id()
-										+ "\n"
-										+ "Referenced Element file: "
-										+ rto.getContent(), this,
-								Get_ooa_id(), getName(), getPath(),
-								Severity_c.Error,
-								((SystemModel_c) getRoot()).getSys_id());
-    		}
-    	}
-    }
+	public void checkReferentialIntegrity() {
+		// gather all rtos and for any that are not
+		// resolvable create an integrity issue
+		List<NonRootModelElement> rtos = RTOUtil.getRTOs(this);
+		for (NonRootModelElement rto : rtos) {
+			if (rto.isProxy()) {
+				// before going further try to load the proxy
+				rto.loadProxy();
+				if (rto.isProxy()) {
+					// should have been loaded, we have a dangling
+					// reference
+					// first load the entire workspace and then search
+					// globally for the element, if found batchRelate
+					// the rto
+					synchronized (getPersistableComponent()) {
+						final NonRootModelElement element = (NonRootModelElement) Ooaofooa
+								.getDefaultInstance()
+								.getInstanceList(rto.getClass())
+								.getGlobal(rto.getInstanceKey(), false);
+						if (element != null && !element.isProxy()) {
+							// honor IPR settings if this element is not in
+							// the same system
+							if (!getRoot().equals(element.getRoot())
+									&& getRoot() instanceof SystemModel_c) {
+								if (!Pref_c
+										.Getsystemboolean(
+												"com.mentor.nucleus.bp.ui.project.references",
+												getRoot().getName())) {
+									continue;
+								}
+							}
+							NonRootModelElement[] results = null;
+							// now we must honor visibility settings
+							Package_c parentPackage = getParentPackage();
+							if (parentPackage != null) {
+								parentPackage.Clearscope();
+								parentPackage.Collectvisibleelementsforname(
+										((SystemModel_c) getRoot())
+												.getUseglobals(), Gd_c
+												.Null_unique_id(), false, element.getName(),
+										parentPackage.getPackage_id(),
+										element.getElementType());
+								class SearchResultSet_test455_c implements
+										ClassQueryInterface_c {
+									public boolean evaluate(Object candidate) {
+										SearchResultSet_c selected = (SearchResultSet_c) candidate;
+										return ((selected.getName().equals(element.getName())) && (selected
+												.getType() == element.getElementType()));
+									}
+								}
+								SearchResultSet_c srs = SearchResultSet_c
+										.getOnePE_SRSOnR8005(parentPackage,
+												new SearchResultSet_test455_c());
+
+								results = PackageableElement_c
+										.getManyPE_PEsOnR8002(ElementVisibility_c
+												.getManyPE_VISsOnR8006(srs));
+							}
+							Component_c parentComponent = getFirstParentComponent();
+							if (parentComponent != null) {
+								parentComponent.Clearscope();
+								parentComponent.Collectvisibleelementsforname(
+										((SystemModel_c) getRoot())
+												.getUseglobals(), Gd_c
+												.Null_unique_id(), element.getName(),
+										parentComponent.getId(),
+										element.getElementType());
+								class ComponentResultSet_test456_c implements
+										ClassQueryInterface_c {
+									public boolean evaluate(Object candidate) {
+										ComponentResultSet_c selected = (ComponentResultSet_c) candidate;
+										return ((selected.getName().equals(element.getName())) && (selected
+												.getType() == element.getElementType()));
+									}
+								}
+								ComponentResultSet_c compResultSet = ComponentResultSet_c
+										.getOnePE_CRSOnR8007(
+												parentComponent,
+												new ComponentResultSet_test456_c());
+
+								results = PackageableElement_c
+										.getManyPE_PEsOnR8004(ComponentVisibility_c
+												.getManyPE_CVSsOnR8008(compResultSet));
+
+							}
+							// if the element does not exist in the result
+							// set, then it is not visible
+							boolean foundValidElement = false;
+							for (NonRootModelElement result : results) {
+								List<NonRootModelElement> subtypes = SupertypeSubtypeUtil.getSubtypes(result);
+								// should only be one just check the first element
+								if (element.equals(subtypes.get(0))) {
+									foundValidElement = true;
+									break;
+								}
+							}
+							if (!foundValidElement) {
+								continue;
+							}
+							// first unrelate, here we do not know the
+							// association so we unrelate all
+							batchUnrelate();
+							// delete the proxy that was created
+							rto.delete_unchecked();
+							// now re-associate all elements
+							batchRelate(getModelRoot(), false, true, true);
+							// need to clear any synchronization flags
+							UIUtil.refresh(null);
+						} else {
+							// still could not find the element, log the
+							// integrity issue
+							IntegrityManager_c
+									.Createissue(
+											getModelRoot(),
+											"Found a dangling reference.  An element with the following attributes could not be found:\n\n"
+													+ "Referenced Element ID: "
+													+ rto.Get_ooa_id()
+													+ "\n"
+													+ "Referenced Element file: "
+													+ rto.getContent(), this,
+											Get_ooa_id(), getName(), getPath(),
+											Severity_c.Error,
+											((SystemModel_c) getRoot())
+													.getSys_id());
+						}
+					}
+				}
+			}
+		}
+	}
     
+	private int getElementType() {
+		PackageableElement_c pe = PackageableElement_c.getOnePE_PEOnR8000(getFirstParentPackage());
+		if(pe == null) {
+			pe = PackageableElement_c.getOnePE_PEOnR8003(getFirstParentComponent());
+		}
+		if(pe != null) {
+			return pe.getType();
+		}
+		return Elementtypeconstants_c.OOA_UNINITIALIZED_ENUM;
+	}
+
 	public String getPath() {
 		ModelInspector inspector = new ModelInspector();
 		String path = getName();
@@ -820,11 +948,9 @@ public abstract class NonRootModelElement extends ModelElement implements IAdapt
 	}
 	
 	/** 
-	 * This method is currently only called in ui.properties.  The properties 
-	 * are looking for the first parent of either a package or a component.  
-	 * It needs the first because it is using the visible element collection 
-	 * infrastructure and must start at the right place to collect the correct 
-	 * elements.
+	 * This method is looking for the first parent of the element. It can be  
+	 * used when the visible element collection infrastructure is required and
+	 * the correct starting place is required.
 	 * 
 	 */
 	public Package_c getFirstParentPackage() {
@@ -858,11 +984,7 @@ public abstract class NonRootModelElement extends ModelElement implements IAdapt
 	}
 	
 	/** 
-	 * This method is currently only called in ui.properties.  The properties 
-	 * are looking for the first parent of either a package or a component.  
-	 * It needs the first because it is using the visible element collection 
-	 * infrastructure and must start at the right place to collect the correct 
-	 * elements.
+	 * See the description for {@code NonRootModelElement.getFirstParentPackage()}
 	 * 
 	 */
 	public Component_c getFirstParentComponent() {

@@ -44,7 +44,7 @@ import com.mentor.nucleus.bp.core.inspector.ObjectElement;
  */
 public class IntegrityChecker {
 	
-	static ModelInspector inspector = new ModelInspector();
+	static ModelInspector inspector = new ModelInspector(false);
 	
 	private static IntegrityIssue_c[] issues;
 	
