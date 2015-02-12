@@ -19,6 +19,8 @@
 //======================================================================== 
 package com.mentor.nucleus.bp.core.common;
 
+import java.util.UUID;
+
 import org.eclipse.core.resources.IFile;
 import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.resources.IWorkspaceRunnable;
@@ -46,6 +48,10 @@ public class IntegrityChecker {
 	
 	static ModelInspector inspector = new ModelInspector(false);
 	
+	static final String ID_TYPE   = "org.xtuml.core.integrity.element.id";
+	static final String TYPE_TYPE = "org.xtuml.core.integrity.element.type";
+	static final String PATH_TYPE   = "org.xtuml.core.integrity.model.file.path";
+
 	private static IntegrityIssue_c[] issues;
 	
 	public static IntegrityIssue_c[] runIntegrityCheck(final NonRootModelElement element, final IntegrityManager_c manager) {
@@ -167,6 +173,16 @@ public class IntegrityChecker {
 						createMarker.setAttribute(IMarker.LOCATION, issue.getPath());
 						createMarker.setAttribute(IMarker.SEVERITY,
 								IMarker.SEVERITY_ERROR);
+						createMarker.setAttribute(IntegrityChecker.PATH_TYPE, element.getFile().getFullPath().toString());
+						Object[] key = (Object[])element.getInstanceKey();
+						String keyString = "";
+						String sep = "";
+						for (Object elem: key) {
+							keyString = keyString + sep + elem.toString();
+							sep = "%";
+						}
+						createMarker.setAttribute(IntegrityChecker.ID_TYPE, keyString);
+						createMarker.setAttribute(IntegrityChecker.TYPE_TYPE, element.getClass().toString());
 					}
 				}
 			} catch (CoreException e) {
