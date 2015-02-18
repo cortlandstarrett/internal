@@ -170,7 +170,7 @@ public class IntegrityChecker {
 								.getElement()).getFile().createMarker(IMarker.PROBLEM);
 						createMarker.setAttribute(IMarker.MESSAGE,
 								issue.getDescription());
-						createMarker.setAttribute(IMarker.LOCATION, issue.getPath());
+						createMarker.setAttribute(IMarker.LOCATION, element.getPath());
 						createMarker.setAttribute(IMarker.SEVERITY,
 								IMarker.SEVERITY_ERROR);
 						createMarker.setAttribute(IntegrityChecker.PATH_TYPE, element.getFile().getFullPath().toString());
