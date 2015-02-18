@@ -57,7 +57,7 @@ public class BPQuickFix implements IMarkerResolution {
 
 	@Override
 	public String getLabel() {
-		return "Use the Chooser to locate a replacement element.";
+		return "Click Finish to open the Chooser and locate a replacement element.";
 	}
 
 	@Override
