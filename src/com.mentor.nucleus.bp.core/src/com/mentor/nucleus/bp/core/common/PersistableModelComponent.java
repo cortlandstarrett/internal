@@ -36,14 +36,11 @@ import org.eclipse.core.resources.IProject;
 import org.eclipse.core.resources.IWorkspaceRoot;
 import org.eclipse.core.resources.ResourceAttributes;
 import org.eclipse.core.resources.ResourcesPlugin;
-import org.eclipse.core.resources.WorkspaceJob;
 import org.eclipse.core.runtime.CoreException;
 import org.eclipse.core.runtime.IPath;
 import org.eclipse.core.runtime.IProgressMonitor;
-import org.eclipse.core.runtime.IStatus;
 import org.eclipse.core.runtime.NullProgressMonitor;
 import org.eclipse.core.runtime.Path;
-import org.eclipse.core.runtime.Status;
 import org.eclipse.jface.operation.IRunnableWithProgress;
 import org.eclipse.ui.WorkbenchException;
 
@@ -707,18 +704,6 @@ public class PersistableModelComponent implements Comparable {
         int validate_result = importer.countAndValidateInsertStatements();
         if (validate_result > 0) {
           importer.run(monitor);
-          // check integrity after load
-          WorkspaceJob job = new WorkspaceJob("Integrity check job") {
-
-        	  @Override
-        	  public IStatus runInWorkspace(IProgressMonitor monitor)
-        			  throws CoreException {
-        		  IntegrityChecker.createIntegrityIssues(getRootModelElement());
-        		  return Status.OK_STATUS;
-        	  }
-          };
-		  job.schedule();
-
           NonRootModelElement rootME = importer.getRootModelElement();
           
           if (rootME == null) {
@@ -728,12 +713,15 @@ public class PersistableModelComponent implements Comparable {
                 .fillInStackTrace());
           }else{
             importer.finishComponentLoad(monitor, true);
-                status = STATUS_LOADED;
+            // check integrity after load
+    		IntegrityChecker.createIntegrityIssuesForLoad(getRootModelElement());
+
+            status = STATUS_LOADED;
             
-                if( !underlyingResource.equals(dummyCompareName)){
+            if( !underlyingResource.equals(dummyCompareName)){
               try{
                         checkComponentConsistancy(rootME);
-              }catch (CoreException e) {
+             }catch (CoreException e) {
                         status = STATUS_NOTLOADED;
                         PersistenceManager.addInconsistentComponent(this);
                         deleteSelfAndChildren();

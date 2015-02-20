@@ -26,6 +26,7 @@ import org.eclipse.core.resources.IMarker;
 import org.eclipse.core.runtime.NullProgressMonitor;
 
 import com.mentor.nucleus.bp.core.Association_c;
+import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.ModelClass_c;
 import com.mentor.nucleus.bp.core.Package_c;
 import com.mentor.nucleus.bp.core.PackageableElement_c;
@@ -70,6 +71,7 @@ public class IntegrityIssueTests extends BaseTest {
 		assocs[0].getFile().setContents(history[0], IFile.FORCE,
 				new NullProgressMonitor());
 		BaseTest.dispatchEvents(0);
+		CorePlugin.getDefault().scheduler.join();
 		// verify that the association markers have been removed
 		markers = assocs[0].getFile().findMarkers(IMarker.PROBLEM, true,
 				IFile.DEPTH_INFINITE);

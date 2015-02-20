@@ -955,6 +955,11 @@ public abstract class NonRootModelElement extends ModelElement implements IAdapt
 	 */
 	public Package_c getFirstParentPackage() {
 		PersistableModelComponent parent = getPersistableComponent();
+		// the parent can be null in certain cases due
+		// to a different thread unloading the element
+		if(parent == null) {
+			return null;
+		}
 		if(this instanceof Component_c) {
 			// we are looking for the parent of the component
 			parent = parent.getParent();
