@@ -1,8 +1,8 @@
 .//====================================================================
 .//
 .// File:      $RCSfile: arch_utils.inc,v $
-.// Version:   $Revision: 1.27 $
-.// Modified:  $Date: 2013/01/10 23:16:38 $
+.// Version:   $Revision: 1.27.32.1 $
+.// Modified:  $Date: 2013/07/19 12:26:01 $
 .//
 .// (c) Copyright 2003-2014 Mentor Graphics Corporation  All rights reserved.
 .//
@@ -13,9 +13,9 @@
 .//
 .//====================================================================
 .//
-.function get_domain_name
-  .param inst_ref domain
-$cr{domain.Name}\
+.function get_root_pkg_name
+  .param inst_ref pkg
+$cr{pkg.Name}\
 .end function
 .//
 .//====================================================================
@@ -345,9 +345,11 @@ $Cr{dt.Name}_c\
 .//
 .//====================================================================
 .//
-.function get_enumerator_name_from_str
-  .param string p_enum
-$_{p_enum}\
+.function get_enumerator_name_from_value
+  .param inst_ref p_enum_val
+  .//
+  .select one enum related by p_enum_val->S_ENUM[R824]
+$_{enum.Name}\
 .end function
 .//
 .//============================================================================
@@ -374,22 +376,20 @@ $r{p_class.Name}ActionFilter\
   .assign attr_result = true
   .if ( class_kl == "ACT_SMT" )
     .invoke gss = get_context_for_statement( elem )
-    .if ( gss.ss_ok )
-      .assign ss = gss.ss
-      .invoke csfnc = check_subsystem_for_notifies_changes(ss)
+    .if ( gss.pkg_ok )
+      .assign pkg = gss.pkg
+      .invoke csfnc = check_pkg_for_notifies_changes(pkg)
       .assign attr_result = csfnc.result
-    .elif ( gss.dom_ok )
-      .assign dom = gss.dom
-      .invoke nc = notifies_changes( dom, "S_DOM" )
-      .assign attr_result = nc.result
+    .elif ( gss.root_ok )
+      .assign attr_result = true
     .end if
   .elif ( class_kl == "O_ATTR" )
     .if ( "$l{elem.Descrip:Persistent}" != "false" )
        .if ("${elem.Descrip:Notify_Changes}" == "false")
           .assign attr_result = false
        .else
-        .select one ss related by elem->O_OBJ[R102]->S_SS[R2]
-        .invoke csfnc = check_subsystem_for_notifies_changes(ss)
+        .select one pkg related by elem->O_OBJ[R102]->PE_PE[R8001]->EP_PKG[R8000]
+        .invoke csfnc = check_pkg_for_notifies_changes(pkg)
         .assign attr_result = csfnc.result
 	   .end if
     .else
@@ -397,8 +397,8 @@ $r{p_class.Name}ActionFilter\
       .assign attr_result = false
     .end if
   .elif ( class_kl == "O_OBJ" )
-    .select one ss related by elem->S_SS[R2]
-    .invoke csfnc = check_subsystem_for_notifies_changes(ss)
+    .select one pkg related by elem->PE_PE[R8001]->EP_PKG[R8000]
+    .invoke csfnc = check_pkg_for_notifies_changes(pkg)
     .assign attr_result = csfnc.result
   .else
     .if ("${elem.Descrip:Notify_Changes}" == "false")
@@ -409,63 +409,66 @@ $r{p_class.Name}ActionFilter\
 .//
 .//====================================================================
 .//
-.function check_subsystem_for_notifies_changes
-  .param inst_ref ss
+.function check_pkg_for_notifies_changes
+  .param inst_ref pkg
   .assign attr_result = true
-  .invoke nc = notifies_changes( ss, "S_SS" )
+  .invoke nc = notifies_changes( pkg, "EP_PKG" )
   .assign attr_result = nc.result
   .if (attr_result)
-    .// still true, also check domain
-    .select one dom related by ss->S_DOM[R1]
-    .invoke nc = notifies_changes( dom, "S_DOM" )
-    .assign attr_result = nc.result
+    .// still true, also check parent package
+    .select one parent related by pkg->PE_PE[R8001]->EP_PKG[R8000]
+    .if (not_empty parent)
+      .invoke nc = notifies_changes( parent, "EP_PKG" )
+      .assign attr_result = nc.result
+    .end if
   .end if
 .end function 
 .//
 .//====================================================================
-.// attr_ss is only valid if attr_ss_ok == true
-.// attr_dom is only valid if attr_dom_ok == true
+.// attr_pkg is only valid if attr_pkg_ok == true
+.// attr_root is only valid if attr_root_ok == true
 .//
 .function get_context_for_statement
   .param inst_ref stmt  .// ACT_SMT
   .//
   .select one act related by stmt->ACT_BLK[R602]->ACT_ACT[R601]
-  .select any attr_ss from instances of S_SS
-  .select any attr_dom from instances of S_DOM
-  .assign attr_ss_ok = false
-  .assign attr_dom_ok = false
-   .assign attr_return_dt_name = "void"
-  .if ( act.Type == "SM" )
-    .select any smact from instances of SM_ACT where ( "${selected.Act_ID}" == act.Action_Id )
-    .select one ism related by smact->SM_SM[R515]->SM_ISM[R517]
-    .if ( not_empty ism )
-      .select one attr_ss related by ism->O_OBJ[R518]->S_SS[R2]
-      .assign attr_ss_ok = true
-    .else
-      .select one asm related by smact->SM_SM[R515]->SM_ASM[R517]
-      .select one attr_ss related by asm->O_OBJ[R519]->S_SS[R2]
-      .assign attr_ss_ok = true
-    .end if
-  .elif ( (act.Type == "CO") or (act.Type == "IO") )
-    .select any tfr from instances of O_TFR where ( "${selected.Tfr_ID}" == act.Action_Id )
-    .select one attr_ss related by tfr->O_OBJ[R115]->S_SS[R2]
-    .assign attr_ss_ok = true
-     .select one ret_dt related by tfr->S_DT[R116]
-     .assign attr_return_dt_name = ret_dt.Name
-  .elif ( act.Type == "FN" )
-.//  assume there is only one domain
-     .select any func from instances of S_SYNC where ( "${selected.Sync_ID}" == act.Action_Id )
-.//    .select one attr_dom related by func->S_DOM[R23]
-    .assign attr_dom_ok = true
-     .select one ret_dt related by func->S_DT[R25]
-     .assign attr_return_dt_name = ret_dt.Name
-  .elif ( act.Type == "BR" )
-.//  assume there is only one domain
-     .select any brg from instances of S_BRG where ( "${selected.Brg_ID}" == act.Action_Id )
-.//    .select one attr_dom related by func->S_EE[R19]->S_DOM[R8]
-    .assign attr_dom_ok = true
-     .select one ret_dt related by func->S_DT[R20]
-     .assign attr_return_dt_name = ret_dt.Name
+  .select any attr_pkg from instances of EP_PKG
+  .assign attr_pkg_ok = false
+  .assign attr_sys_ok = false
+  .assign attr_return_dt_name = "void"
+  .select one smact related by act->ACT_SAB[R698]->SM_ACT[R691]
+  .if (empty smact)
+    .//might as well handle transitions now
+    .select one smact related by act->ACT_TAB[R698]->SM_ACT[R688]
+  .end if
+  .select one ism related by smact->SM_SM[R515]->SM_ISM[R517]
+  .if ( not_empty ism )
+    .select one attr_pkg related by ism->O_OBJ[R518]->PE_PE[R8001]->EP_PKG[R8000]
+    .assign attr_pkg_ok = true
+  .end if
+  .select one asm related by smact->SM_SM[R515]->SM_ASM[R517]
+  .if (not_empty asm)
+    .select one attr_pkg related by asm->O_OBJ[R519]->PE_PE[R8001]->EP_PKG[R8000]
+    .assign attr_pkg_ok = true
+  .end if
+  .select one tfr related by act->ACT_OPB[R698]->O_TFR[R696]
+  .if (not_empty tfr)
+    .select one attr_pkg related by tfr->O_OBJ[R115]->PE_PE[R8001]->EP_PKG[R8000]
+    .assign attr_pkg_ok = true
+    .select one ret_dt related by tfr->S_DT[R116]
+    .assign attr_return_dt_name = ret_dt.Name
+  .end if
+  .select one func related by act->ACT_FNB[R698]->S_SYNC[R695]
+  .if (not_empty func)
+    .assign attr_root_ok = true
+    .select one ret_dt related by func->S_DT[R25]
+    .assign attr_return_dt_name = ret_dt.Name
+  .end if
+  .select one brg related by act->ACT_BRB[R698]->S_BRG[R697]
+  .if (not_empty brg)
+    .assign attr_root_ok = true
+    .select one ret_dt related by func->S_DT[R20]
+    .assign attr_return_dt_name = ret_dt.Name
   .end if
 .end function
 .//
@@ -501,6 +504,7 @@ $r{p_class.Name}ActionFilter\
 .//====================================================================
 .//
 .function gen_parameter_list
+  .param string root_pkg_name
   .param inst_ref_set parameters
   .param boolean prefix_param_delimiter
   .//
@@ -517,7 +521,7 @@ $r{p_class.Name}ActionFilter\
         .if ( parameter.Order == item_number )
           .select one value related by parameter->V_VAL[R800]
           .if (value.buffer == "")
-            .invoke gen_value(value)
+            .invoke gen_value(root_pkg_name, value)
           .end if
 			.//
 			.// now, we want to detm if the parameter is a real, in which case
@@ -526,30 +530,34 @@ $r{p_class.Name}ActionFilter\
 			.// an operation, a bridge, or a function; 
 			.// if the call is to an operation
 			.select any paramDataType from instances of S_DT where (selected.DT_ID == -1)
-			.select any operInvoc related by parameter->ACT_TFM[R627]
-			.if (not_empty operInvoc)
+			.select one oper related by parameter->ACT_TFM[R627]->O_TFR[R673]
+			.if (empty oper)
+			  .select one oper related by parameter->V_TRV[R811]->O_TFR[R829]
+			.end if
+			.if (not_empty oper)
 				.// detm the parameter's type through it's associated operation-parameter
-				.select any class from instances of O_OBJ where (selected.Key_Lett == operInvoc.Object_KL)
-				.select any oper related by class->O_TFR[R115] where (selected.Name == operInvoc.Method_Name)
 				.select one operParam related by oper->O_TPARM[R117] where (selected.Name == parameter.Name)
 				.select one paramDataType related by operParam->S_DT[R118]
 			.// otherwise
 			.else 
 				.// if the call is to a bridge
-				.select any bridgeInvoc related by parameter->ACT_BRG[R628]
-				.if (not_empty bridgeInvoc)
+				.select any bridge related by parameter->ACT_BRG[R628]->S_BRG[R674]
+				.if (empty bridge)
+				  .select one bridge related by parameter->V_BRV[R810]->S_BRG[R828]
+				.end if
+				.if (not_empty bridge)
 					.// detm the parameter's type through it's associated bridge-parameter
-					.select any extEntity from instances of S_EE where (selected.Key_Lett == bridgeInvoc.External_Entity_KL)
-					.select any bridge related by extEntity->S_BRG[R19] where (selected.Name == bridgeInvoc.Method_Name)
 					.select one bridgeParam related by bridge->S_BPARM[R21] where (selected.Name == parameter.Name)
 					.select one paramDataType related by bridgeParam->S_DT[R22]
 				.// otherwise
 				.else
 					.// if the call is to a function
-					.select any funcInvoc related by parameter->ACT_FNC[R669]
-					.if (not_empty funcInvoc)
+					.select any func related by parameter->ACT_FNC[R669]->S_SYNC[R675]
+					.if (empty func)
+					  .select one func related by parameter->V_FNV[R817]->S_SYNC[R827]
+					.end if
+					.if (not_empty func)
 						.// detm the parameter's type through it's associated function-parameter
-						.select any func from instances of S_SYNC where (selected.Name == funcInvoc.Function_Name)
 						.select one funcParam related by func->S_SPARM[R24] where (selected.Name == parameter.Name)
 						.select one paramDataType related by funcParam->S_DT[R26]
 					.end if
@@ -561,8 +569,8 @@ $r{p_class.Name}ActionFilter\
 			.assign intCast2 = ""
 			.if (not_empty paramDataType)
 				.// detm the (core) data-type of the value supplied for the parameter
-			    .select any valueDataType from instances of S_DT where ("${selected.DT_ID}" == value.DT_ID)
-			    .select one coreDataType related by valueDataType->S_UDT[R17]->S_CDT[R18]->S_DT[R17];
+			    .select any valueDataType related by value->S_DT[R820]
+			    .select one coreDataType related by valueDataType->S_UDT[R17]->S_DT[R18]
 			    .if (not_empty coreDataType) 
 			    	.assign valueDataType = coreDataType;
 			    .end if
@@ -573,7 +581,7 @@ $r{p_class.Name}ActionFilter\
 					.// syntax error in the generated code
 					.assign intCast1 = "(int)("
 					.assign intCast2 = ")"
-				.end if
+			    .end if
 			.end if
 			.//
 ${param_delimiter}${intCast1}${value.buffer}${intCast2}\
@@ -633,11 +641,12 @@ ${param_delimiter}${intCast1}${value.buffer}${intCast2}\
   .//
   .assign attr_result = false
   .assign attr_Method_Name = ""
-  .select one brg_call related by p_val->V_BRV[R801]->ACT_BRG[R810]
+  .select one brg_call related by p_val->V_BRV[R801]->S_BRG[R828]
   .if ( not_empty brg_call )
-    .if (brg_call.External_Entity_KL == "USER")
+    .select one ee related by brg_call->S_EE[R19]
+    .if (ee.Key_Lett == "USER")
       .assign attr_result = true
-      .assign attr_Method_Name = brg_call.Method_Name
+      .assign attr_Method_Name = brg_call.Name
     .end if
   .end if
 .end function
@@ -681,16 +690,6 @@ ${param_delimiter}${intCast1}${value.buffer}${intCast2}\
           .assign attr_result = true
           .assign attr_Method_Name = hubi.Method_Name
         .end if
-      .else
-        .select one pex related by p_val->V_PEX[R801]
-        .if ( not_empty pex )
-          .select one op related by pex->V_VAL[R824]
-          .invoke hubi = has_user_bridge_invocation(op)
-          .if ( hubi.result )
-            .assign attr_result = true
-            .assign attr_Method_Name = hubi.Method_Name
-          .end if
-        .end if  .// not_empty pex
       .end if  .// not_empty unary_expr 
     .end if   .// not_empty bin_expr
   .end if
@@ -701,7 +700,7 @@ ${param_delimiter}${intCast1}${value.buffer}${intCast2}\
 .//
 .function getCoreDataType
 	.param inst_ref type
-	.select one coreType related by type->S_UDT[R17]->S_CDT[R18]->S_DT[R17];
+	.select one coreType related by type->S_UDT[R17]->S_DT[R18]
 	.if (not_empty coreType) 
 		.assign type = coreType;
 	.end if
@@ -715,12 +714,12 @@ ${param_delimiter}${intCast1}${value.buffer}${intCast2}\
 .function get_last_link_in_chain
   .param inst_ref sel_inst_rel  .// ACT_SEL
   .//
-  .select any first_link related by sel_inst_rel->ACT_LNK[R637] where (selected.Next_Link_Id == "0")
+  .select any first_link related by sel_inst_rel->ACT_LNK[R637]
   .assign last_link = first_link
-  .select one next_link related by first_link->ACT_LNK[R604.'precedes']
+  .select one next_link related by first_link->ACT_LNK[R604.'succeeds']
   .while (not_empty next_link)
-	.assign last_link = next_link
-	.select one next_link related by next_link->ACT_LNK[R604.'precedes']
+    .assign last_link = next_link
+    .select one next_link related by next_link->ACT_LNK[R604.'succeeds']
   .end while
   .assign attr_last_link = last_link
 .end function
@@ -980,8 +979,8 @@ ${param_delimiter}${intCast1}${value.buffer}${intCast2}\
 
   .assign attr_result = true
   .//check parent SS property
-  .select one ss related by class->S_SS[R2]
-  .assign persistent_kw = "$l{ss.Descrip:Persistent}"
+  .select one pkg related by class->PE_PE[R8001]->EP_PKG[R8000]
+  .assign persistent_kw = "$l{pkg.Descrip:Persistent}"
   .assign attr_result = not (persistent_kw == "false")
   
   .//Override persistent property if specified in the class

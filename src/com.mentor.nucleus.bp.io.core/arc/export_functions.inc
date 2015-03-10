@@ -309,7 +309,7 @@ throws IOException
     m_fh.print( "INSERT INTO ${table.Key_Lett}_PROXY\n\tVALUES (" ); //$$NON-NLS-1$$
     write_${r.body}_attr_sql(inst);
     m_fh.print(",\n\t"); //$$NON-NLS-1$$
-    m_fh.print("'" + (!forceProxyExport ? inst.getContent(m_inst.getPersistableComponent().getFullPath()):inst.getContent()) + "'");
+    m_fh.print("'" + (!inst.getModelRoot().isCompareRoot() ? inst.getContent(m_inst.getPersistableComponent().getFullPath()):inst.getContent()) + "'");
     m_fh.print(");\n"); //$$NON-NLS-1$$
   }
 }
@@ -357,30 +357,16 @@ ${attrs.body}\
 		  if (geis != null) {
 		  	isGlobal = true;
 		  }
-	  .select one dom related by obj->S_SS[R2]->S_DOM[R1];
-	  .if(dom.Name == "ooaofooa")
-		  if(!isGlobal && ${temp_var} != null && forceProxyExport) {
-		        ProxyPath proxyPath = new ProxyPath(${temp_var}, m_inst);
-                collectedProxies.add(proxyPath);
-		  }
-      .end if
 		  // Global elements are not persisted, so do not throw an exception in this case
-		  if(!isGlobal && ${temp_var} != null && !forceProxyExport) {
+		  if(!isGlobal && ${temp_var} != null) {
 	.else
-	  .select one dom related by obj->S_SS[R2]->S_DOM[R1];
-	  .if(dom.Name == "ooaofooa")
-	      if(forceProxyExport && ${temp_var} != null) {
-		       	ProxyPath proxyPath = new ProxyPath(${temp_var}, m_inst);
-                collectedProxies.add(proxyPath);
-          }	      
-     .end if
-		  if(${temp_var} != null && !forceProxyExport) {
+		  if(${temp_var} != null) {
 	.end if
                 PersistableModelComponent inst_pmc = m_inst.getPersistableComponent();
                 PersistableModelComponent ${temp_var}_pmc = ${temp_var}.getPersistableComponent();
-                if (( inst_pmc != null ) && ( ${temp_var}_pmc != null ))
+                if ((( inst_pmc != null ) && ( ${temp_var}_pmc != null )) || (m_inst.getModelRoot().isCompareRoot() && ${temp_var}.isProxy()))
                 {
-                    if(!m_inst.getPersistableComponent().getFullPath().isPrefixOf(
+                    if((m_inst.getModelRoot().isCompareRoot() && ${temp_var}.isProxy()) || !m_inst.getPersistableComponent().getFullPath().isPrefixOf(
                                   ${temp_var}.getPersistableComponent().getFullPath()))
                   {
   .else
@@ -445,7 +431,7 @@ ${attrs.body}\
                   .// in the stream export mechanism but not in the model
                   .// file.  This test is only valid for type that we expect
                   .// should have a PMC.
-                  if (isPersistable && !forceProxyExport && !ignoreMissingPMCErrors) {
+                  if (isPersistable && !ignoreMissingPMCErrors) {
                       if ( ${temp_var}.getPersistableComponent() == null ) {
                             Throwable e = new Throwable("Unable to locate PMC: " + ${temp_var}.getContent());
                             e.fillInStackTrace();
@@ -467,7 +453,7 @@ ${attrs.body}\
     .// udts may fully be resolved
     .if((rel.Numb == 18) and (obj.Name == "Core Data Type"))
                 if(m_inst instanceof UserDataType_c) {
-                  CoreDataType_c coreType = CoreDataType_c.getOneS_CDTOnR18(inst, false);
+                  CoreDataType_c coreType = CoreDataType_c.getOneS_CDTOnR17(DataType_c.getOneS_DTOnR18(inst, false));
                   ProxyPath proxyPath = new ProxyPath(coreType, m_inst);
                   collectedProxies.add(proxyPath);
                   DataType_c dt = DataType_c.getOneS_DTOnR17(coreType);
@@ -534,6 +520,8 @@ ${attrs.body}\
 	  .assign attr_result = true	
 	.elif(object.Key_Lett == "CL_IIR")
 	  .assign attr_result = true	
+	.elif(object.Key_Lett == "CL_POR")
+	  .assign attr_result = true	  
 	.end if
 .end function
 .//
@@ -575,11 +563,11 @@ ${attrs.body}\
       .assign addExportRGOProxyCall = false
       .if(not_empty parent_table)
         .select any class from instances of O_OBJ where (selected.Key_Lett == parent_table.Key_Lett)
-        .select one domain related by class->S_SS[R2]->S_DOM[R1]
+        .select one root_pkg related by class->PE_PE[R8001]->EP_PKG[R8000]->PE_PE[R8001]->EP_PKG[R8000]
         .// no need to export RGO proxies for ooaofgraphics
         .// currently only data types are supported
 		.invoke rgoResolution = rgo_resolution_supported(parent_table.Key_Lett)
-        .if(((checkParentForComponentContainment) and (not_empty domain)) and (rgoResolution.supported))
+        .if(((checkParentForComponentContainment) and (not_empty root_pkg)) and (rgoResolution.supported))
           .assign proxy_index = 0
           .// for every rto associated with the class, export an RGO
           .// proxy
@@ -1014,6 +1002,8 @@ ${gpe.body}\
 	  .assign attr_supported = true
 	.elif(lett == "C_IR")
 	  .assign attr_supported = true
+     .elif(lett == "C_PO")
+	  .assign attr_supported = true  
 	.end if
 .end function
 .//

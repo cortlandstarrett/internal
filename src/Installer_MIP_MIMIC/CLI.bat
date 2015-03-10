@@ -1,5 +1,5 @@
 @echo off
-set BP_VERSION=4.2.0
+set BP_VERSION=4.2.1
 set WORKSPACE=%~d0\mgc\BridgePoint\workspace
 
 ::Check that a valid argument is specified
@@ -29,7 +29,7 @@ echo.
 goto exit
 :ArgsOK
 
-::
+  ::
 :: DO NOT MODIFY ANY OF THE FOLLOWING LINES.
 ::
 set ORIGINAL_PATH=%PATH%

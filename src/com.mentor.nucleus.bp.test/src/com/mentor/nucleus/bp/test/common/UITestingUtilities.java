@@ -31,9 +31,11 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
+import java.util.Vector;
 
 import junit.framework.Assert;
 
+import org.eclipse.compare.internal.CompareEditor;
 import org.eclipse.gef.EditPart;
 import org.eclipse.gef.GraphicalEditPart;
 import org.eclipse.gef.GraphicalViewer;
@@ -41,6 +43,8 @@ import org.eclipse.gef.editparts.AbstractGraphicalEditPart;
 import org.eclipse.gef.tools.AbstractTool;
 import org.eclipse.jface.action.MenuManager;
 import org.eclipse.jface.dialogs.InputDialog;
+import org.eclipse.jface.viewers.StructuredSelection;
+import org.eclipse.jface.viewers.Viewer;
 import org.eclipse.swt.SWT;
 import org.eclipse.swt.graphics.Point;
 import org.eclipse.swt.graphics.Rectangle;
@@ -54,14 +58,25 @@ import org.eclipse.swt.widgets.Text;
 import org.eclipse.swt.widgets.Tree;
 import org.eclipse.swt.widgets.TreeItem;
 import org.eclipse.swt.widgets.Widget;
+import org.eclipse.team.core.diff.IThreeWayDiff;
+import org.eclipse.team.internal.ui.mapping.CommonViewerAdvisor.NavigableCommonViewer;
+import org.eclipse.team.internal.ui.mapping.DiffTreeChangesSection;
+import org.eclipse.team.internal.ui.mapping.ModelSynchronizePage;
+import org.eclipse.team.internal.ui.synchronize.SynchronizeView;
+import org.eclipse.team.ui.synchronize.ISynchronizeView;
 import org.eclipse.ui.IEditorPart;
 import org.eclipse.ui.IEditorReference;
+import org.eclipse.ui.IViewPart;
 import org.eclipse.ui.IViewReference;
 import org.eclipse.ui.IWorkbenchPage;
 import org.eclipse.ui.IWorkbenchWindow;
+import org.eclipse.ui.PartInitException;
 import org.eclipse.ui.PlatformUI;
+import org.eclipse.ui.navigator.CommonNavigator;
+import org.eclipse.ui.part.IPage;
 import org.eclipse.ui.views.properties.PropertySheet;
 
+import com.mentor.nucleus.bp.core.CorePlugin;
 import com.mentor.nucleus.bp.core.Ooaofooa;
 import com.mentor.nucleus.bp.core.common.ClassQueryInterface_c;
 import com.mentor.nucleus.bp.core.common.ModelRoot;
@@ -92,7 +107,7 @@ import com.mentor.nucleus.bp.utilities.ui.CanvasUtilities;
 
 public class UITestingUtilities {
 	private static Point fDownLocation;
-
+	
 	public static void printControl(Composite parent, String intend) throws Exception {
 		System.out.print(intend);
 		printOject("Parent", parent); //$NON-NLS-1$

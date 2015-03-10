@@ -1,8 +1,8 @@
 #!/bin/bash
 BPHOMEDIR="C:/mgc/BridgePoint"
-BP_VERSION="4.2.0"
+BP_VERSION="4.2.1"
 
-#
+    #
 # DO NOT MODIFY ANY OF THE FOLLOWING LINES.
 #
 export ORIGINAL_PATH=$PATH

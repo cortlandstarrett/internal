@@ -52,7 +52,6 @@ public abstract class CoreExport implements IRunnableWithProgress {
     private boolean m_exportOAL = false;
     private boolean m_exportGraphics = true;
 	private boolean errorLoggedDuringParse = false;
-	public static boolean forceProxyExport = false;
 	public boolean outputCachedIDs = false;
 	public static boolean forceWriteAsProxy = false;
 	public static boolean ignoreMissingPMCErrors = false;
