@@ -43,6 +43,8 @@ distributions:
     $ sudo apt-get install wine 
     $ sudo apt-get install libstdc++5
     $ sudo apt-get install g++
+    $ sudo apr-get install ant
+    $ sudo apr-get install git
     $ cd /usr/bin 
     $ sudo ln -s  fromdos dos2unix 
     $ sudo ln -s todos unix2dos  
@@ -53,12 +55,16 @@ distributions:
     $ sudo yum install dos2unix
     $ sudo yum install compat-libstdc++-33 
     $ sudo yum install gtk2.i686
+    $ sudo yum install ant
+    $ sudo yum install git
     
   Debian Wheezy:
     $ sudo apt-get install ia32-libs 
     $ sudo apt-get install ia32-libs-gtk 
     $ sudo apt-get install libgtk2.0-0 
     $ sudo apt-get install lib32ncurses5
+    $ sudo apr-get install ant
+    $ sudo apr-get install git
   
 _- Download the latest released version of the tool.  You will find all the releases at [3].
    Linux installers have an ixl file extension.
