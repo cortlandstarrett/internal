@@ -1,5 +1,5 @@
-Configuring build server
--------------------------
+Configuring build server on Windows
+------------------------------------
 - add local user build with administrator rights
 - add firefox
 - add cygwin (with subversion, ssh, perl, smtp, ca-certificates, libsasl2, git, zip, unzip)
