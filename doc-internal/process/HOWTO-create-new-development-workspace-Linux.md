@@ -45,6 +45,7 @@ distributions:
     $ sudo apt-get install g++
     $ sudo apr-get install ant
     $ sudo apr-get install git
+    $ sudo apt-get install  openjdk-7-jdk
     $ cd /usr/bin 
     $ sudo ln -s  fromdos dos2unix 
     $ sudo ln -s todos unix2dos  
