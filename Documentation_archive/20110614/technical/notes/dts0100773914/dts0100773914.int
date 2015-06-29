@@ -1,0 +1,152 @@
+========================================================================
+
+File:      $RCSfile: dts0100773914.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Remove erroneous syntax errors when using send without 'to'
+
+1. Abstract
+-----------
+Some inappropriate syntax errors are reported when using send without
+'to' clause when Implicit Component Addressing is disabled. This note details
+the fix required.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100773914 - Erroneous syntax error when implicit
+    component addressing is disabled.
+[2] SVN/Documentation_archive/20070830/notes/i2924.ant - New OAL syntax to
+    support Components
+[3] SVN/Documentation_archive/20070830/notes/i2924-01.dnt - New OAL syntax to
+    support Components
+[4] SVN/Documentation_archive/20070830/notes/i2924-02.dnt - Support required
+    Implicit Component Addressing preference
+
+4. Background
+-------------
+During creation and implementation of inter-component messaging[2,3,4], the
+concept of unambiguous component messaging and the sender keyword were
+confounded. As a result, some inappropriate syntax errors are reported.
+
+5. Analysis
+-----------
+The unexpected errors are of the form:
+
+ "Implicit component addressing is valid only where a message is serviced
+directly."
+
+They are reported by the function, is_valid_implicit_component_addressing, found
+in the OAL Validation Utility Functions package in core. Using a send statement
+without a 'to' clause should not imply a 'to sender' destination and so it is
+inappropriate to call this validation function when validating this syntax.
+
+Accordingly, the calls to this function should be removed in three places;
+
+- Invocation_validate (2 places)
+- Message_invocation_end
+
+6. Design
+---------
+6.1 Invocation_validate
+In his function is_valid_implicit_component_addressing gets called in two
+places, once for signals and once for interface operations. Both calls, together
+with the string test and log call should be removed.
+
+6.2 Message_invocation_end
+In this function, is_valid_implicit_component_addressing gets called just once.
+Because this function validates messages with a return value, only interface
+operations need be handled. Again the call and the result handling should simply
+be removed.
+
+7. Implementation Comments
+--------------------------
+7.1 is_valid_implicit_component_addressing changes
+During testing, it was noted that with implicit component addressing off, send
+statements in a required operation with a 'to sender' clause were also causing
+errors to be reported. This was traced to is_valid_implicit_component_addressing
+as well. In this case, it was found that an old assumption, that only provided
+message bodies could use the 'to sender' syntax was no longer valid. Instead,
+any message body may use 'to sender' so long as the message body is incoming
+(i.e. the message has the direction ClientToServer in the provided case and
+ServerToClient in the required case. The function was reworked to make the
+correct check. While modifying this, the error messages were reworded to refer
+to the sender keyword rather than the Implicit component addressing concept
+which will be retired in a later release.
+
+7.2 OAL test results
+As a result of the messaging changes described in 7.1, several OAL tests fail.
+These are corrected in both the specialized and generic test variants to expect
+the new error messages.
+ 
+8. Unit Test
+------------
+8.1 Headline issue
+_- Manually download and import the project attached to the issue.
+_- Navigate to the Library::As::As::AsOutgoingRequest class
+_- Open the TC1 operation and touch it to start a parse.
+_R No errors are reported.
+
+8.2 Implementation comment change 
+_- Check out the VerifierMessageTest model from svn
+_- Navigate to the Test Library::Component Execution Test Requirer::
+   same::pingRequirerS interface operation.
+_- Touch it to start a parse
+_R No errors are reported. 
+_- Navigate to the Test Interface::Test Interface::pingRequirerS operation
+   definition. Change it from 'From Provider' to 'To Provider;
+_- Navigate back to the Test Library::Component Execution Test Requirer::
+   same::pingRequirerS interface operation.
+_- Touch it to start a parse
+_R "Sender keyword can only be used in an incoming Interface Operation." is
+   reported.
+
+8.3 Existing tests
+Since these changes are limited to parser functionality, only OALTestGenerics,
+OALTest, Verifier and ui.text tests need be rerun.
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100773914
+
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ImplicitComponentAddressTest_Generics.java
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ImplicitComponentAddressTest.java
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+
+End
+---
+
+$Log: dts0100773914.int,v $
+Revision 1.4  2011/05/27 16:20:58  campbell
+Job:dts0100773914
+Address review minutes.
+
+Revision 1.3  2011/05/27 15:26:31  campbell
+Job:dts0100773914
+Cosmetic changes.
+
+Revision 1.2  2011/05/27 15:23:50  campbell
+Job:dts0100773914
+Ready for review.
+
+Revision 1.1  2011/05/27 14:59:12  campbell
+Job:dts0100773914
+Introduced.

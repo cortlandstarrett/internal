@@ -1,0 +1,323 @@
+========================================================================
+
+File:      $RCSfile: i461.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:25 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Allowing the Selection of Supertype Events During Event Assignment
+
+Abstract
+--------
+This note describes the design for allowing the user to select valid supertype 
+events when assigning an event to a transition in a state machine, as well 
+as when marking an event as ignored or can't happen on a given state.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 461
+[2] Bugzilla issue 278
+
+Analysis
+--------
+From [1], comment #22:
+
+"The set of available events for adding to a transition
+(_before_ applying the existing same data rules etc.) is:
+
+- (the set of all events declared on this state model, LESS
+  any which are consumed on a subtypes state model) PLUS
+  (the set of all events declared on any supertype state model LESS
+    any which are consumed in any supertype)
+
+When a supertype's event is selected for assignment to a transition, it is 
+migrated to a polymorphic event (in the supertype) if it is not one already and 
+a NLEVT is created in the current SM and related to the PE across R527.
+
+When a non local event is removed from a transition, it's counterpart PE is 
+migrated to a local event (in its supertype) iff the cardinality of SM_NLEVT's 
+across R527 is 0."
+
+Event assignment as discussed in this issue is intended to include the marking 
+of an event as ignored or can't happen on a given state.
+
+Polymorphic events are not implemented in MC-Java, and there is no requirement
+to add support for them as part of this issue.  
+
+Design
+------
+1.
+Changes are made to ooaofooa.xtuml to support the inclusion of valid 
+supertype events in the list of choices presented to the user at assignment
+time.
+
+1.1
+An operation isSupertypeMachineOf() is added to State Machine.  It returns 
+whether the callee is a supertype machine of the one whose ID is given.
+
+1.2
+[State Machine Event].get_event_text() is modified to see if the event is 
+non-local, in which case it uses the supplemental data of the aliased
+polymorphic event when determining the text for the data items.
+
+1.3
+An operation isAssignableToStateMachine() is added to State Machine Event
+that returns whether the event is assignable to the state machine of the given 
+ID, taking into account that the event may not be assigned at more than one 
+level in a generalization hierarchy.
+
+1.4
+An operation isAssignedInSubtypeStateMachine() is added to State Machine Event
+which recursively traverses the subtree of subtype state machines rooted at the 
+state machine of the given ID, returning whether the event is assigned 
+in at least one of those machines.
+
+1.5
+An operation isAssignedInSupertypeStateMachine() is added to State Machine Event
+which recursively traverses the upwards subtree of supertype state machines 
+rooted at the state machine of the given ID, returning whether the event is 
+assigned in at least one of those machines.
+
+1.6
+A function canStateIgnoreOrSayEventCantHappen() is added to the domain. 
+It is merely a pass-through function, meant as a workaround to an MC-Java 
+bug [2] where method calls made on object instances in the 'where' clause of a 
+select statement are not generated correctly in certain cases.  A call to this 
+function may be made in such circumstances to access the operation indirectly.
+
+There are other operations created to serve the same purpose in a similar
+situation, that of calling an operation specifically on the 'selected' instance
+of the 'where' clause:
+
+[State Machine].canAssignEvent
+[State Machine Event].canStateIgnoreOrSayEventCantHappen
+
+1.7
+The actionFilter() operation of State Machine Event is modified to consider
+all instances of the State Machine State class when deciding whether 
+there are any states on which the event may be marked as ignored or 
+can't happen.  This is because subtype states of the event's state machine
+may now be selected for such purposes.
+
+1.8
+Operations ignoreOnState() and sayCantHappenOnState() are added to State 
+Machine Event which have the event (or its relevant subtype alias) change its 
+matrix entry for the given state from a can't happen to an ignore
+(or vice-versa, in the latter case).
+
+1.9
+An operation getAssociatedEventForStateMachine() is added to State Machine Event
+which returns the event related to the callee that applies to the given state
+machine.  If the given state machine is the one to which the callee belongs,
+then the callee is returned.  Else, if the callee is polymorphic, the alias 
+associated with the given state machine is returned (with one being created 
+if it doesn't already exist).  Otherwise, the callee is made polymorphic, 
+and an alias for the given state machine is created and returned.
+
+1.10
+The notAlreadyAssigned() operation of State Machine State is modified to see
+if the given event is polymorphic, in which case the alias local to the
+callee is considered, instead.
+
+1.11
+An operation isEventCompatibleWithOthersReceived() is added to 
+State Machine State which returns whether the supplemental data of the given 
+event is compatible with the supplemental data of the events currently received 
+by the state.
+
+1.12
+An operation canIgnoreOrSayEventCantHappen() is added to State Machine State 
+which returns whether the given event may be selected to be marked as ignored 
+by, or said to can't-happen on (as dictated by the given considerCantHappen 
+parameter), the callee.
+
+1.13
+An operation getNameWithClass() is added to State Machine State which
+returns the state's name qualified by the key-letters of its owning class.
+
+1.14
+The addEvent() operation of Transition is modified to add the local alias of 
+the given event, if that event is polymorphic.  The operation is also modified 
+to check if the event (if any) replaced by the added event was the last 
+assignment of a polymorphic event (through an alias) to any of its subtype 
+state machines.
+
+1.15
+The removeEvent() operation of Transition is modified to check if the event 
+removed was the last assignment of a polymorphic event (through an alias) to 
+any of its subtype state machines.
+
+1.16
+An operation createNonLocalEventForStateMachine() is added to Polymorphic Event 
+which creates a non-local event that is an alias of the callee for the given 
+state machine.
+
+1.17
+An operation createDefaultMatrixEntries() is added to SEM Event which creates 
+a can't-happen matrix entry for the callee for each state in the callee's 
+state machine.
+
+1.18
+An operation checkIfNoLongerAssigned() is added to Non Local Event which checks 
+to see if the callee is no longer assigned anywhere in its state machine, 
+and if so, disposes of it.  Further, if the callee is disposed, then if it was 
+the last alias of its associated polymorphic event, then that polymorphic event 
+is migrated back to a local event.
+
+2.
+In bp.core's cme_functions.sql, the part of the SM_TXN_AssignEvent function that
+determines what events to put in the drop-down list is changed from:
+
+select any event related by txn->SM_SM[R505]->SM_EVT[R502]
+      where USER::selectOne(id:selected.SMevt_ID)
+         and legal_evt_defining_state.notAlreadyAssigned(event: selected.SMevt_ID, crtxn: creation_transition)
+         and ((selected.SMspd_ID == dest_state.SMspd_ID) or 
+              (dest_state.SMspd_ID == GD::NULL_UNIQUE_ID()));
+
+to:
+
+// select all events in the domain (the class-traversal being specified the
+// way it is because selecting from all instances of the event class is
+// not possible, since the transaction is our only link into the model`s 
+// instance population) that meet our criteria for assignment
+select one stateMachine related by txn->SM_SM[R505];
+select one data related by dest_state->SM_SUPDT[R521];
+select any event related by txn->SM_SM[R505]->SM_ISM[R517]->O_OBJ[R518]
+	->S_SS[R2]->S_DOM[R1]->S_SS[R1]->O_OBJ[R2]->SM_ISM[R518]->SM_SM[R517]->SM_EVT[R502]
+	where USER::selectOne(id:selected.SMevt_ID)
+    	and stateMachine.canAssignEvent(
+    		eventId:selected.SMevt_ID, eventStateMachineId: selected.SM_ID)
+	    and legal_evt_defining_state.notAlreadyAssigned(
+	    	event:selected.SMevt_ID, eventStateMachineId: selected.SM_ID, crtxn: creation_transition)
+	    and dest_state.isEventCompatibleWithOthersReceived(
+	    	eventId:selected.SMevt_ID, eventStateMachineId: selected.SM_ID);
+
+As can be seen, all events are now considered during the selection, but the list
+is additionally whittled down by the [State Machine].canAssignEvent() and 
+[State Machine State].isEventCompatibleWithOthersReceived() tests.
+
+Analogous changes are made to other functions in the same file: 
+
+SM_EVT_IgnoreInState
+SM_EVT_CantHappenInState
+SM_STATE_IgnoreEvent
+SM_STATE_CantHappenEvent
+
+3.
+In core's page.inc, a check is added to see if a list of events is being 
+assembled for either the ignore-event-in-state or event-can't-happen-in-state 
+dialogs, in which case the event name that is placed into the list is 
+qualified by the key letters of its owning class.
+
+4.
+In ui.explorer's create_adapters.inc, code is added so that non-local events
+are not displayed in the model explorer.
+
+5.
+In MC-Java's java.arc, a 'final' qualifier is added to a local variable so that 
+a method call on the selected element of a 'where' clause is generated without 
+Java errors in a certain case.
+
+Unit Test
+---------
+- open a model which contains a class A with one subtype Mid, with
+	Mid having subtypes B and C
+- choose an event E on A that is assigned in A
+- right-click a transition in B for which E is valid and select 
+	"Assign Event..."
+R E does not appear in the list of events that may be assigned
+- remove all assignments of E on A
+- right-click a transition in B for which E is valid and select 
+	"Assign Event..."
+R E appears in the list of events that may be assigned, qualified by A's 
+	key-letters
+- select E for assignment
+R E is assigned to the transition
+- right-click a transition in A for which E is valid and select 
+	"Assign Event..."
+R E does not appear in the list
+- remove E from the transition in B
+- right-click a transition in A for which E is valid and select 
+	"Assign Event..."
+R E appears in the list
+- right-click a state in B and select "Ignore Event..."
+R E does not appear in the list
+- assign E to a valid transition in B
+- right-click a state in A and select "Ignore Event..."
+R E does not appear in the list
+- right-click a state in C and select "Ignore Event..."
+R E appears in the list
+- choose E from the list
+- remove E from its assignment in B
+- right-click a transition in A for which E is valid and select 
+	"Assign Event..."
+R E does not appear in the list
+- right-click the state in C where E is ignored and select 
+	"Can't Happen Event..."
+R E appears in the list
+- choose E from the list
+- right-click a transition in A for which E is valid and select	
+	"Assign Event..."
+R E appears in the list
+- right-click E in the model explorer and select "Ignore in State..."
+R only A's states appear in the list
+- assign E to a valid transition in B
+- right-click E in the model explorer and select "Ignore in State..."
+R only states of B and C appear in the list
+- choose a state in B from the list
+- right-click E in the model explorer and select "Can't Happen in State..."
+R the state in B in which E is ignored appears in the list
+- choose E from the list
+- right-click E in the model explorer and select "Ignore in State..."
+R the state in B in which E was previously ignored appears in the list
+
+- create a creation transition in C
+- right-click the creation transition in C and select "Assign Event..."
+R E does not appear in the list
+
+- create an event in C with a different data item set than E's and assign
+	that event to a transition in C
+- right-click the above transition in C and select "Assign Event..."
+R E does not appear in the list
+
+[All tests automated in core.test.PolymorphicEventAssignmentTest]
+ 
+End
+---
+
+$Log: i461.dnt,v $
+Revision 1.1  2009/09/03 18:22:25  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:14:03  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.30.1  2008/12/31 16:11:18  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/11/15 18:17:24  jmather
+Job: 461
+Addressed review comments.
+
+Revision 1.2  2005/11/10 18:30:24  jmather
+Job: 461
+Ready for review.
+
+Revision 1.1  2005/11/09 23:01:10  jmather
+Job: 461
+Introduced.
+

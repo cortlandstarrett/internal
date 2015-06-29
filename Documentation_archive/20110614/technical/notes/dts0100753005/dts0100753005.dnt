@@ -1,0 +1,866 @@
+========================================================================
+
+File:      $RCSfile: dts0100753005.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Enhance connector behavior
+
+1. Abstract
+-----------
+This note describes many changes that enhance the behavior of connector
+manipulation in the tool.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100753005
+[2] com.mentor.nucleus.bp.ui.canvas.test/matrices/non_generated/
+    graphical_anchors.txt revision 1.1
+[3] com.mentor.nucleus.bp.ui.canvas.test/matrices/non_generated/
+    connector_move.txt revision 1.1
+    
+4. Background
+-------------
+Connector manipulation in the new graphics is incomplete.  Parts of the behavior
+are native GEF based support while others remain handled under the ooaofgraphics
+operations.  Connectors that are anchored to other connectors are not fully
+supported in that the movement which occurs is different during the drag then
+what the user is left with after the drag.  When multiple segments are involved
+the appropriate GD_AOS instance is not always updated properly.  This can cause
+the attached connector to appear off of the target connector.
+
+In addition to the above, sequence diagram creation is not easy.  The following
+functionality is missing and can greatly ease the creation of sequence diagrams:
+
+- Extending lifeline without moving attached connectors
+- Sliding attached connectors along the attached to lifeline
+- Matching of two connector ends (for example, timing mark end matched to
+  message end)
+
+5. Analysis
+-----------
+5.1 Support full GEF anchors
+
+GEF uses anchors to maintain connection end points.  The connected to figure
+owns the anchor and determines the proper location of the end point given a
+reference point (either a bend point or the other end point of the connection) 
+and an internal reference point.  To support our diagrams we require three
+different anchor types:
+
+1. ConnectorAnchor (end point is attached to a connector)
+2. ShapeAnchor (end point is attached to a shape)
+3. WSAnchor (end point is floating)
+
+The ConnectorAnchor shall handle three types of end point handling, start of the
+owner, end of the owner and middle of the owner.  For the start and end of the
+owner the start point or end point of the owner shall be returned as the end
+point location for the attached connector.  For the middle type, the anchor
+shall determine the intersection point of the given reference point and the
+internal reference point as the location for the attached connector's end point.
+The internal reference point shall be either the last stored end point of the
+connector, or the current mouse location of a request.  The supported requests
+shall be ReconnectRequest and GraphicsConnectionCreateRequest.  If a valid
+intersection is not possible, the anchor shall return a point from all owner
+segments that is closest to the internal reference point.
+
+The ShapeAnchor shall support two types of intersection calculation, rectangle
+shape and ellipse shape.  For each type the anchor shall return the intersection
+point of the given reference point and the internal reference point.  The
+internal reference point is set in the same way as the ConnectorAnchor.  If no
+intersection is possible, the anchor shall return the corner point nearest to
+the internal reference point.  If the anchor is supporting an ellipse shape this
+point shall be used to recalculate the intersection point on the ellipse.
+
+The WSAnchor shall be used whenever a connector ends or starts on white space.
+The WSAnchor shall simply return the internal reference point, which is set in
+the same way as the other two anchors.
+
+Once the tool supports full GEF anchors, the behavior of dragging will be
+different.  The difference is that now when the mouse is over a symbol the
+cropping will occur in real time.  Previously the tool would only crop the 
+connection when the user let go of the mouse button.  Connection's can still be
+re-targeted as the cropping will only occur while the mouse is within bounds of
+the anchor owner.  Once the mouse is out of the bounds, the next symbol's anchor
+is returned and handles the cropping.
+
+5.2 Support connector move for all connectors
+
+Connector movement shall be supported for all connectors, not just those that
+start and end on white space.  Having such support will allow sliding a
+connector up and down an attached to connector.  One concrete example where this
+would be helpful is when adjusting a timing mark.  With this support the user
+will be able to grab the timing mark and slide it up or down the attached to
+communication line.
+
+When moving a connector the segment that the mouse is over shall have both end
+points moved the mouse delta.  If the user has selected more than one connector,
+all connectors shall have all of their segments moved the mouse delta.
+
+All connectors that are attached to a moving connector shall have their anchor
+locations updated the same amount.
+
+5.3 Refactor data transfer to storage model
+
+The BridgePoint graphics transfer graphical data to the ooaofgraphics model for
+storage.  Currently, the tool will transfer this data for most elements when a
+user completes a modification (for instance when the user lets up on the mouse
+button).  With the addition of full GEF anchor support the current diagram is
+almost always configured in a state that can simply be transfered to storage.
+The one exception is when moving a shape, as GEF uses a ghost figure and only
+commits the new values when the mouse button is let up.
+
+The tool shall be changed such that all commands, with the exception of the
+shape move/resize command, simply transfer the current positional data to the
+storage model.
+
+5.4 Refactor connector creation
+
+With the use of the new anchor support the positional values for a connector
+that is being created are all correct.  For instance we no longer need to
+crop the newly created connection as that was done during the creation.
+
+The connection creation functionality shall be refactored to remove any
+unnecessary logic.
+
+5.5 Prevent command execution if no delta produced
+
+If a user modification produces no delta between the element being modified and
+the values that are stored than the tool shall not execute the command.
+
+5.6 Move floating text support to native GEF
+
+The floating text support in the new graphics has been a problem area.  A lot of
+work has been done to stabilize the code, but problems are still being found.
+GEF has native support for a text figure that has a string value which is word
+wrapped based on the figure's width.  The TextEditPart class shall be modified
+to make use of the native GEF text support.  Additionally, to show text moving
+while a connector is being manipulated, all floating text shall have its
+location maintained by a GEF Locator.  The location shall be determined using a
+relative point.  In the case of a connector as the owner the relative point(s)
+shall be the associated segment's end points.  Floating text can be associated
+with the start, end, or middle of a connector.  In the case of a shape as the
+owner, the shape's center point shall be the relative point.  Dragging text off
+of the viewable canvas area does not trigger a resize of the canvas unless the
+max canvas size is reached (8000,6000).
+
+5.7 Refactor diagram font usage
+
+GEF expects the IFigure.getFont() call to always return a font.  This method
+walks up the hierarchy until a font is found.  We currently do not set the font
+with any figure in any hierarchy.  This was fine until floating text was moved
+to native GEF support.  The calculations for word wrapping require the
+IFigure.getFont() method to return a valid font.
+
+The currently set font (via workspace preferences) shall be cached in the
+GraphicalEditor class.  The cache shall be static as we currently only allow one
+font setting for all diagrams.  The cached font shall also be set as the font
+for the GEF figure canvas associated with the GraphicalEditor.  The font really
+should only be set in the figure canvas but some figures we use require the font
+before the parent child hierarchy has been setup.  When all figures have been
+moved to native GEF implementations, this caching can likely be removed.
+
+The font preference needs to be listened to for changes.  When a change occurs
+the cached font shall be updated, and the old font shall be disposed.
+Additionally, the figure canvas font shall be updated.
+
+5.8 Refactor trackers
+
+A GEF tracker is used to track the current mouse position and provide command
+support when over items that can be manipulated.  An example is the GEF class
+DragEditPartsTracker, which tracks the mouse position.  When over a movable
+element it provides a command that will move the element if the user decides.
+
+The tool has multiple custom GEF trackers that are currently located in
+different packages.  These should all be moved to a new package, trackers.
+
+5.9 Refactor ConnectorEditPart
+
+The ConnectorEditPart class has a nested class which allows for some custom
+BridgePoint behavior.  This class, DecoratedPolylineConnection, shall be
+refactored to the figure package.
+
+Additionally, the ConnectorEditPart class overrides the
+ConnectionEndpointEditPolicy in-line.  A new class, ConnectorEndpointEditPolicy
+shall be created and the overridden methods shall be moved to this new class.
+
+5.10 Include floating text and all connectors in zoom all and marquee select
+
+When drawing a marquee around a group of elements, some connectors and text
+are not included.  Anything within the drawn marquee shall be selected.
+
+When zooming to all symbols, some connectors and text are not included. All
+symbols shall be included.
+
+5.11 Only move attached connectors if entire unit is moved 
+
+Most of the connector move behavior will be moved to native GEF support with
+this work.  The one exception is when moving a shape.
+
+Attached connectors shall only be moved when moving a connector (or segment) or
+when moving the shape attached to.  Moving a connector will always result in
+moving attached connectors.  When moving a shape we currently update the end
+point of the attached to connector, if both ends are on a shape and are moved at
+the same time the whole connector is moved.  The behavior of any connectors
+attached to such a connector is that they always have their end points updated
+even if only one side of the attached to connector is updated.  The code did use
+an interpolated value, so that it was kept at a relative distance from the
+attached to segment ends.  However, this allowed for moving lines that a user
+may not have wanted moved.  An example would be a user wanting to shift a shape
+slightly over for layout purposes. In this case they may not want the connector
+line's end moved, as it would likely cause the line to lose its straightness.
+
+The tool shall be changed to only update the connector ends if the whole unit is
+moved, which means both ends of the attached to connector are selected.
+
+5.12 Support line straightening
+
+The BendpointRouter class, used to route all connections, shall be overridden to
+allow straightening lines when the two end points are within a certain
+threshold.  The threshold shall be half of the current grid spacing.
+
+5.13 Enable keyboard copy
+
+When a diagram is focused the key combinations for copy/cut/paste should all
+work.  When a paste is performed the elements shall be placed with a slight
+offset to the copied elements, unless the copied elements are not copied from
+the same diagram.  In the latter case the elements shall be placed in the top
+left corner of the viewable area.
+
+6. Design
+---------
+6.1 Support full GEF anchors
+
+6.1.1 ConnectorAnchor
+
+The ConnectorAnchor class already existed in previous versions of the tool.  The
+class is modified to work as specified in the analysis section.  For determining
+intersection points the GMF PointListUtilities and LineSeg classes are used as
+they contain all necessary routines.  GMF requires the use of EMF for the
+underlying model, however these utilities do not require GMF based figures for
+calculations.
+
+6.1.2 ShapeAnchor
+
+A new class ShapeAnchor is created.  This class is designed to determine an
+intersection point on the shape, rectangle or ellipse.  The same GMF classes
+used for the ConnectorAnchor are used here.  If no intersection can be
+determined, the class will determine the corner of the owner that the internal
+reference point is closest to and return that point.
+
+6.1.3 WSAnchor
+
+The WSAnchor class already existed in previous versions of the tool.  The class
+already functioned as described in the analysis section.  The class has some
+utility methods added, getWSAnchorFor(Request, IFigure) and
+getWSAnchorFor(ConnectorEditPart, IFigure, boolean).  These methods will create
+a WSAnchor instance and set the required internal reference point for the
+caller.  This allows clients to not worry about proper point translation (to
+account for scrolling and zoom).
+
+Additionally, the class is modified to always return an absolute point as this
+is what GEF expects.  Previously a boolean was cached to determine if the point
+should be translated, now all internal reference points are relative and
+translated to absolute before being passed along.
+
+6.1.4 Use of anchors
+
+6.1.4.1 ConnectorEditPart as owner
+
+The following explains when the ConnectorAnchor class is used and what the
+internal reference point is:
+
+getSourceConnectionAnchor(ConnectionEditPart connection)
+
+  Called for normal layout operations, the ConnectorAnchor is used and the
+  connection argument's start point is used as the internal reference.
+
+getSourceConnectionAnchor(Request request)
+
+  Called when the user is modifying the end point or creating a new connection.
+  The ConnectorAnchor is used and the location within the request is used as the
+  internal reference point.
+
+getTargetConnectionAnchor(ConnectionEditPart connection)
+
+  Same as getSourceConnectionAnchor(ConnectionEditPart connection), only the end
+  point is used as the internal reference point.
+
+getTargetConnectionAnchor(Request request)
+
+  Same as getSourceConnectionAnchor(Request request).
+
+For the above methods that are passed a request, the attachment type (start,
+end, middle) is determined by calling a new method in ConnectorEditPart.  This
+method is getEndFromRequest(Request, boolean), where the request is either a
+ReconnectRequest or GraphicsConnectionCreateRequest and the boolean value
+tells whether the attached connection is attached at the start or end.   In the
+case of a GraphicsConnectionCreateRequest, the current tool is used to find the
+proper terminals and return the attachment type.  In the ReconnectRequest case
+the ConnectorEditPart instance being updated is used to determine the attachment
+type by calling the pre-existing getTerminatesAtOnConnector(boolean) method.
+
+6.1.4.2 ShapeEditPart as owner
+
+The following explains when the ShapeAnchor class is used and what the internal
+reference point is:
+
+getSourceConnectionAnchor(ConnectionEditPart connection)
+
+  Called for normal layout operations, the ShapeAnchor is used and the
+  connection argument's start point is used as the internal reference.
+
+getSourceConnectionAnchor(Request request)
+
+  Called when the user is modifying the end point or creating a new connection.
+  The ShapeAnchor is used and the location within the request is used as the
+  internal reference point.
+
+getTargetConnectionAnchor(ConnectionEditPart connection)
+
+  Same as getSourceConnectionAnchor(ConnectionEditPart connection), only the end
+  point is used as the internal reference point.
+
+getTargetConnectionAnchor(Request request)
+
+  Same as getSourceConnectionAnchor(Request request).
+
+Whenever the ShapeAnchor is created in the above examples the
+ElementSpecification_c for the owner is checked to determine if the shape uses
+the ellipse style, if so then the ShapeAnchor has the ellipse parameter passed
+as true.
+
+6.1.4.3 DiagramEditPart as owner
+
+The following explains when the WSAnchor class is used and what the internal
+reference point is:
+
+getSourceConnectionAnchor(ConnectionEditPart connection)
+
+  Called for normal layout operations, the WSAnchor is used and the connection
+  argument's start point is used as the internal reference.
+
+getSourceConnectionAnchor(Request request)
+
+  Called when the user is modifying the end point or creating a new connection.
+  The WSAnchor is used and the location within the request is used as the
+  internal reference point.
+
+getTargetConnectionAnchor(ConnectionEditPart connection)
+
+  Same as getSourceConnectionAnchor(ConnectionEditPart connection), only the end
+  point is used as the internal reference point.
+
+getTargetConnectionAnchor(Request request)
+
+  Same as getSourceConnectionAnchor(Request request).
+
+For all cases above the appropriate utility method in WSAnchor is used to create
+the anchor.
+
+6.2 Support connector move for all connectors
+
+All places where the ConnectorMovePolicy was set for a connection are modified
+to remove the check for ending and starting on white space.  This allows all
+connections to have the move policy.
+
+A new drag tracker is created to handle tracking of connector movement.  The new
+class is named ConnectorEditPartDragTracker and extends the DragEditPartsTracker
+GEF class.  This drag tracker will configure the
+ConnectorEditPartChangeBoundsRequest to include data about what segment we are
+over and whether or not all segments should be moved for the connection.
+According to the analysis all segments shall be moved when more than one
+connection is selected.
+
+The ConnectorMoveEditPolicy is modified to update the points in the line being
+moved.  The following variations are present:
+
+1. Single connector selected, over starting segment
+2. Single connector selected, over ending segment
+3. Single connector selected, over middle segment
+4. Multiple connectors selected
+
+For the first case the policy will update the start anchor internal reference
+location, and the first bend point or the end anchor internal reference location
+if no bend points exists.
+
+For the second case the policy will update the end anchor internal reference
+location, and the last bend point or the start anchor internal reference
+location if no bend points exists.
+
+For the third case the policy will update the bend points that make up the start
+and end of the segment.
+
+For the last case the policy will update both anchors and any bend points that
+exist.
+
+In order to support updating the internal reference points for the anchors a new
+interface is created, IAdjustableReferencePointAnchor.  This interface has one
+method defined, public PrecisionPoint getRawReferencePoint().  The policy
+modifies the point returned by this interface.  All anchors are modified to
+implement this interface.  The internal reference point described in 6.1 for
+each anchor is returned.  Note that GEF does not support this internally as they
+have not yet had the need.  The GEF framework does not support connection
+dragging.
+
+When moving a connector or segment of a connector, all attached connectors shall
+also be moved.
+
+6.3 Refactor data transfer to storage model
+
+The following new methods are added to ConnectorEditPart:
+
+transferLocation()
+transferTextLocations()
+transferAttachedConnectorLocations()
+updateAnchorAttachements(Graphconnector_c, Point)
+
+The transferLocation() method copies the current runtime points into the various
+Waypoint_c instances.  It additionally updates the positions of the
+Graphconnector_c instances associated with the start and end of the connector.
+
+The transferTextLocations() method, transfers the positional values for all
+TextEditPart children of the connector.
+
+The transferAttachedConnectorLocations() method calls the transferLocation()
+method for all connectors that are attached to the connector.
+
+The updateAnchorAttachements(Graphconnector_c, Point) method is called by the
+transferLocation() method to update the GD_AOS instances associated.  This
+keeps the GD_AOS and DIM_CON associations setup with the correct line segment.
+
+The following commands are modified to simply call the
+ConnectorEditPart.transferLocation() method:
+
+- ConnectorBendpointCreateCommand
+- ConnectorBendpointDeleteCommand
+- ConnectorBendpointMoveCommand
+- ConnectorMoveCommand
+- UpdateEndPointLocationCommand
+
+6.4 Refactor connector creation
+
+The following functions are removed as they are no longer needed with the
+support of full GEF anchors:
+
+cropSourceToShape()
+cropTargetToShape()
+finalizeConnection()
+
+A new method is added, createAnchorOnSegmentInstances(Connector_c).  This method
+handles creating the proper GD_AOS instances and associating them with the
+LineSegment_c instance that the start or end is over.  The Connector_c.cropTo()
+operation was previously called which handled the GD_AOS creation.
+
+6.5 Prevent command execution if no delta produced
+
+A new interface is created, IValidateDeltaCommand.  This interface defines a
+shouldExecute() method.
+
+The following commands are updated to implement the new interface:
+
+- ConnectorBendpointCreateCommand
+- ConnectorBendpointDeleteCommand
+- ConnectorBendpointMoveCommand
+- ConnectorMoveCommand
+- ShapeSetConstraintCommand
+- UpdateEndPointLocationCommand
+
+The first two commands simply return true, as there will always be a delta if
+they are created or deleted.
+
+The ConnectorBendpointMoveCommand has the shouldExecute() method return true
+only if the final location is different then what is stored in the model.
+
+The ConnectorMoveCommand has the shouldExecute() method compare all points on
+the connection against all of those stored, if any are different the command is
+executed.
+
+The ShapeSetConstraintCommand has the shouldExecute() method compare the new
+bounds with the last stored bounds, and returns true if they are different.  The
+method handles TextEditPart differently by comparing against the future values
+of the TextEditPart figure.  At the point of command validation, the bounds of
+the TextEditPart can be larger than when the command completes.  This is due to
+the way the bounds maintenance works for TextEditPart figures.
+
+The UpdateEndPointLocationCommand has the shouldExecute() method return true if
+the newly placed end point is different than that stored.
+
+The GraphicalCommandStack class is modified to check all commands before
+executing them in a transaction, if all of them should not be executed the
+transaction is canceled and nothing is executed.
+
+6.6 Move floating text support to native GEF
+
+GEF supports text figures through the TextFlow figure.  The TextFlow figure
+takes a string argument for the text to draw.  A TextFlow figure must have a
+FlowFigure as it's container.  For word wrapping support GEF provides the
+FlowPage figure.  The FlowPage figure can be set to wrap with the horizontal
+alignment at left, right, or center.  For our tool we will use left alignment.
+
+The TextEditPart class is modified to return a FlowFigure as it's figure, that
+has a TextFlow as a child.  The TextFlow figure has the text of the
+FloatingText_c set as its text to render.
+
+The TextEditPart.refreshVisual() method is modified to update the text of the
+TextFlow.  The method is called whenever a transaction is ended.  The method
+also handles updating the bounds of the FlowPage, such that if the width stored
+is too wide, or too small it will be updated.
+
+A new class is created, FloatingTextLocator.  This class implements the GEF
+Locator interface.  The class implements the relocate(IFigure) method.  If the
+text is associated with a connector end or start the end or start point of the
+connection is used as a relative point, otherwise the midpoint of the connector
+is used.  For the case where a shape is the parent we use the center point of
+the shape.  We then determine the delta if any by comparing the last point with
+the current point.  If there is a delta it is fully applied to the passed in
+figure.  In addition to adjusting the location of the figure we also crop the
+height.  This removes any extra space caused by a user resize.  If the current
+bounds of the passed in figure indicate that no width has ever been applied, the
+relocate() method will apply the smaller of 400 pixels and the necessary width
+to display all text on a single line. 
+
+In ConnectorEditPart and ShapeEditPart the addChildVisual() method is overridden
+so that any TextEditPart children are added with a new instance of the
+FloatingTextLocator class.
+
+In the TextResizableEditPolicy class, the code which previously limited the
+bounds to the wrapped text is removed.  This allows for a less restrictive feel
+when manipulating the figure bounds.  Now the width is freely adjustable, and
+readjusted (cropped) when the ShapeSetConstraintCommand is executed.  The policy
+will only update the figure bounds and not the storage element bounds.  This
+requires us to process the changes in the ShapeSetConstraintCommand, where
+before we were ignoring them.  If the ChangeBoundsRequest indicates that there
+was a move we simply transfer the positional values to the storage model.  If
+the request indicates that there was a resize delta, we ask the locator created
+above for the minimum width and height and pass that into the storage model.
+The minimum width is determined as the smallest value to contain the longest
+segment in the wrapped text.  The minimum height is determined as the number of
+lines times the line height.
+
+6.7 Refactor diagram font usage
+
+When the GraphicalEditor class is being configured we create the font based on
+the user preference.  This font is cached statically in the GraphicalEditor
+class and is set as the font for the FigureCanvas instance associated with the
+GraphicalEditor.
+
+To listen to preference changes, the GraphicalEditor class is modified to
+implement the IPropertyChangeListener interface.  The GraphicalEditor class is
+then added to the listener list in JFaceResources.getFontRegistry() at start up.
+During the dispose of the class it is removed from the listener list.  The
+propertyChange(PropertyChangeEvent) method is implemented to update the cached
+font if it was changed, and update the font stored with the FigureCanvas
+instance.
+
+All places that previously created the font based on the preference are changed
+to simply call GraphicalEditor.getFont().  The getFont() method returns the
+currently cached font.
+
+6.8 Refactor trackers
+
+The following trackers were refactored to live under a new package, trackers:
+
+- SnappingBendpointTracker
+- SnappingConnectionEndpointTracker
+- TextDragEditPartsTracker
+
+6.9 Refactor ConnectorEditPart
+
+The ConnectorEditPart class is refactored according to the analysis.
+
+6.10 Include floating text and all connectors in zoom all and marquee select
+
+The selection modification by marquee is handled by the
+GraphicsScalableFreeformEditPart class.  The getAllConnectorAndTextChildren()
+method is modified to include connector's text, and any source connectors
+attached and recursively get their children.  
+
+The zoom all functionality uses a method in GraphicalEditor, getAllSymbols().
+This method did not include connections starting on other connections and did
+not include floating text.  It is modified to include these elements.
+
+6.11 Only move attached connectors if entire unit is moved 
+  
+The code in LineSegment.moveStart() is modified to only move attached connectors
+if all ends of the connector owning the segment are selected.  Additionally, the
+LineSegment.moveEnd() operation no longer requires code to move attached
+connectors as only one call is necessary (the moveStart case).
+
+6.12 Support line straightening
+
+All connections in the tool use the BendpointConnectionRouter class provided by
+GEF.  This class is overridden to straighten all lines in a connection after
+they have been routed by the supertype if they are within the tolerance
+specified in the analysis section.
+
+6.13 Enable keyboard copy
+
+The GraphicalEditor class enabled a conflicting action, CopyTemplateAction.
+This action is used to drag and drop palette tools to create new elements.
+Since it is not fully supported the use of it in the GraphicalEditor class is
+removed.
+
+During a right click on any diagram, the selection tool will cache the location.
+This location is used during context menu paste operations to determine the
+paste location.  Considering that the last left click location is not relevant
+to a keyboard paste, the paste code is modified to clear this location whenever
+a key was used for the paste.  This is done by overriding the
+CanvasPasteAction.runWithEvent(Event) method.  In the overridden method we check
+to see if a keyCode is set against the passed in event, and clear the tool
+location if true.
+
+When updating the locations for the pasted elements we check to see whether or
+not the copied elements are local.  This is done by comparing the cached diagram
+id (in the first copied graphical element), with the diagram id of the host
+editor.  If there is a match the offset for the paste location is 15 pixels to
+the right and 15 pixels below the copied element's locations.  If the ids do not
+match, the offset is calculated such that the pasted elements will be located
+15 pixels to the right and 15 pixels below the top left of the viewable area.
+
+It was noticed that the pasted elements were not being selected once the paste
+was completed.  This was due to the fact that edit parts to select had not yet
+been created at this point.  In order to do so a simple refresh is called on the
+host editor.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design section.
+
+9. Unit Test
+------------
+9.1 Anchor testing
+
+See [2].
+
+9.2 Connector move tests
+
+See [3].
+
+9.3 Data transfer to storage model
+
+_- Move a bendpoint handle such that a new bendpoint is created
+_- Close and reopen the diagram
+_R The bendpoint is still present and the line positions have not changed
+
+_- Move a bendpoint such that it is deleted
+_- Close and reopen the diagram
+_R The bendpoint is still removed and the line positions have not changed
+
+_- Move a bendpoint (making sure it is not deleted by the move)
+_- Close and reopen the diagram
+_R The bendpoint position has not changed
+
+_- Move a connector end point such that the final position is different then
+   when moved
+_- Close and reopen the diagram
+_R The connector end point position is retained
+
+_- Move a free floating connector
+_- Close and reopen the diagram
+_R The connector position has not changed
+
+9.4 Command execution
+
+_- Check out a model from CVS (each shape and connector should be fully grid
+   snapped)
+_- Open any diagram with shapes and connectors
+_- Move a connector (any segment), and put it back to the original location
+   before letting go of the mouse button
+_R The model is not marked dirty
+
+_- Check out model from CVS (each shape and connector should be fully grid
+   snapped)
+_- Open any diagram with shapes and connectors
+_- Move a shape, and put it back to the original location before letting go of
+   the mouse button
+_R The model is not marked dirty
+
+_- Check out model from CVS (each shape and connector should be fully grid
+   snapped)
+_- Open any diagram with shapes and connectors
+_- Move a two shapes, and put them back to the original location before letting
+   go of the mouse button
+_R The model is not marked dirty
+
+_- Check out model from CVS (each shape and connector should be fully grid
+   snapped)
+_- Open any diagram with shapes and connectors
+_- Resize a shape, and put it back to the original size before letting go of the
+   mouse button
+_R The model is not marked dirty
+
+_- Check out model from CVS (each shape and connector should be fully grid
+   snapped)
+_- Open any diagram with shapes and connectors
+_- Resize two shapes, and put them back to the original size before letting go
+   of the mouse button
+_R The model is not marked dirty
+
+_- Check out model from CVS (each shape and connector should be fully grid
+   snapped)
+_- Open any diagram with shapes and connectors
+_- Move a connector end, and put it back to the original location before letting
+   go of the mouse button
+_R The model is not marked dirty
+
+_- Check out model from CVS (each shape and connector should be fully grid
+   snapped)
+_- Open any diagram with shapes and connectors
+_- Resize floating such that the current word wrapping is not changed and let go
+   of the mouse button
+_R The text outline is resized
+_R The model is not marked dirty
+
+9.5 Floating text
+
+9.5.1 Test creation for shape
+
+_- Create a new Accept Time Event Action (from Activity diagram)
+_R The floating text is created, containing the name
+
+9.5.2 Test creation word wrap
+
+_- Create a new Synchronous Message
+_R The floating text is created
+_R The text is not word wrapped
+
+9.5.3 Test parent move
+
+9.5.3.1 Connector as parent
+
+_- Open a diagram with a connection that has two bend points and start, end and
+   middle text
+_- Move the start point of the connector
+_R The start text is moved the same delta as the start point
+_R The middle text is not moved
+_R The end text is not moved
+_- Move the end point of the connector
+_R The end text is moved the same delta as the end point
+_R The middle text is not moved
+_R The start text is not moved
+_- Move one of the bend points
+_R The middle text is moved the same delta as the mid-point between both bend
+   points
+_R The start text is not moved
+_R The end text is not moved
+_- Move the middle segment
+_R The middle text is moved the same delta as the segment
+_R The start text is not moved
+_R The end text is not moved
+
+9.5.3.2 Shape as parent
+
+_- Open a diagram with a shape that has floating text
+_- Move the shape
+_R The floating text is moved the same delta as the shape
+
+9.5.3 Word wrapping/Resize
+
+_- Move the resize handle out further than necessary for the text with no
+   wrapping
+_R The text bounds are shrunk to the necessary space to accommodate the text
+_- Move the resize handle such that it would cut of the text
+_R The text is wrapped and the last word is moved to the second line
+_- Move the resize handle to the smallest possible size
+_R The text is wrapped such that there is one word per line
+_R The text bounds are expanded to show all text and encapsulate the largest
+   single line
+_- Close and reopen the diagram
+_R The text bounds are unchanged
+
+9.5.4 Outside changes
+
+_- Open a diagram containing a Synchronous Message
+_- Rename the message to a longer name
+_R The text bounds are modified to fully encapsulate the new text
+_- Rename the message to a shorter name
+_R The text bounds are shrunk to fully encapsulate the new text
+_- Resize the text bounds such that the text box bounds are changed
+_- Undo the resize
+_R The text bounds are returned to those prior to the undo
+_- Redo the resize
+_R The text bounds changes are redone
+
+9.6 Diagram font
+
+_- Open two diagrams that contain some elements and some floating text
+_R The font for all elements matches the set font in the preferences
+_- Open the font preferences and change the font including size
+_R The new font is used for all elements on both diagrams
+
+9.7 Zoom all
+
+_- Open a diagram that has floating text at one of the outer limits of all
+   symbols bounds (for example the floating text is the most right element)
+_- Hit the zoom all button
+_R All elements are zoomed
+_R The floating text is completely in view
+
+9.8 Marquee select
+
+_- Open a sequence diagram that has two shape elements with a lifeline each and
+   a message going between the two lifelines
+_- Using the selection tool drag a marquee around all elements
+_R All elements are selected including the message
+
+9.9 Line straightening
+
+_- Create a new connection such that the two end points are just slightly off (
+   which would cause a non-straight line)
+_R The line drawn is actually straight, both end points match
+
+9.10 Keyboard copy
+
+_- Open a class diagram and select some classes
+_- Hold the control key and press the c key
+_- Hold the control key and press the v key
+_R The selected symbols are copied and pasted at a slight offset to the original
+   symbols
+_R The pasted symbols are now selected
+
+_- Open two class diagrams and select some classes on one
+_- Hold the control key and press the c key
+_- On the other diagram hold the control key and press the v key
+_R The selected symbols are copied and pasted at a slight offset to the top
+   right corner of the viewable area
+_R The pasted symbols are now selected
+
+_- Open a class diagram and select some classes
+_- Right click and select Copy
+_- Move the mouse and right click then select Paste
+_R The elements are pasted at the right click location
+_R The elements pasted are now selected
+   
+End
+---
+
+$Log: dts0100753005.dnt,v $
+Revision 1.3  2011/03/17 22:05:55  tlondon
+Job: dts0100753005
+
+Address review minutes
+
+Revision 1.2  2011/03/10 14:56:58  tlondon
+Job: dts0100753005
+
+Update note according to pre-review comments
+
+Revision 1.1  2011/03/08 23:00:55  tlondon
+Job: dts0100753005
+
+Add design note and test matrices
+

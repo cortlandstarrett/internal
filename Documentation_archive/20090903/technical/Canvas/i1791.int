@@ -1,0 +1,120 @@
+========================================================================
+
+File:      $RCSfile: i1791.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Fixing a Performance Problem When Dragging Many Selected Elements
+
+
+Abstract
+--------
+This note describes an implementation for speeding the performance of the 
+tool when dragging many selected elements across a canvas.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 1791
+[2] Issue 1307
+[3] TPTP profiler - http://www.eclipse.org/articles/Article-TPTP-Profiling-Tool
+	/tptpProfilingArticle.html
+	
+Background
+----------
+Currently, if you select a large number of model elements within a diagram
+and drag them around, the tool slows down to the point of becoming almost 
+unresponsive on our laptop development machines.
+
+The recent work done for [2] actually eliminated some of the performance 
+degradation by not storing within a transaction multiple deltas for changes 
+to a single model element attribute, such as a shape's x or y value.  Rather, 
+only one delta is kept, containing the attribute's final value.
+
+Analysis
+--------
+Running the profiler [3] on the tool during a drag of a large number of 
+model elements reveals that the work for [2] could itself merit some 
+performance enhancement.  A large percentage of the time spent during the drag
+is on calls from ModelRoot.doFirePrework() to the indexOf() method of the 
+list that is storing the collected deltas for the current transaction.  
+The purpose of each call is to determine whether a delta has already been 
+stored for a particular model element attribute.  With a large number of 
+model elements having the positional values of their corresponding graphics 
+instances changed due to the drag, the O(n^2) cumulative nature of the 
+lookups becomes a drag (no pun intended) on performance.  A faster way to do 
+the lookups should therefore be implemented.
+
+Design
+------
+In core.common.ModelRoot, the check for a redundant model-element 
+attribute-change delta in doFirePrework() is made to employ a hashmap to store 
+the pertinent deltas by their hashcodes, to reduce lookup times when large 
+inputs are involved.
+
+In core.common.AttributeChangeModelDelta, an override of the hashCode() method
+is added which correlates with the tests performed in the pre-existing
+equals() override, so that two distinct instances that are deemed equal will 
+return the same hashcode, as per the contract of hashCode().
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+The work for this issue implements only a performance enhancement, so no new
+automated tests are necessary.
+
+Here's a manual test that should evince the speedup:
+
+- open the Domain subsystem of Ooaofooa
+- select all elements in the diagram
+- drag the elements around multiple times, releasing the mouse button after 
+	each drag to finalize the change and get it persisted
+R while each drag is somewhat slow to update in the canvas, the tool is still
+	usably responsive
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    AttributeChangeModelDelta.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+
+End
+---
+
+$Log: i1791.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:06  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.24.1  2008/12/31 16:10:09  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/03/14 21:45:14  jmather
+Job: 1791
+Put code changes in the correct section.
+
+Revision 1.2  2006/03/14 21:44:35  jmather
+Job: 1791
+Ready for review.
+
+Revision 1.1  2006/03/14 20:01:55  jmather
+Job: 1791
+Introduced.

@@ -1,0 +1,836 @@
+========================================================================
+
+File:      $RCSfile: i3405.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support Inter-component verification
+
+1. Abstract
+-----------
+This note describes the changes that allow for full component communication
+verification.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3405
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3405
+[2] Bugzilla item 3099 (Support Intra-component Verification)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3099
+[3] i3405.dnt
+[4] http://xpomul.bloggles.info/2008/07/24/using-advanced-features-in-eclipse-popup-menus/
+    An article about using advanced features in Eclipse popup menus.
+[5] Bugzilla item 3898 (Verifier fails to recognize Java bridge operation)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3898
+[6] Bugzilla item 3952 (Support 'sender' keyword.)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3952
+[7] Bugzilla item 3953
+    (Correctly handle implicit component addressing when non-ambiguous)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3953
+[8] Bugzilla item 3954
+    (Handle communication across imported interfaces)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3954
+[9] Bugzilla item 3955
+    (Correctly set up the sender component_ref value)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3955
+[10]Bugzilla item 3956
+    (Fully support Component and Port multiplicity)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3956
+[11]Bugzilla item 3942
+    (Transient arrays are not displayed properly in verifier
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3942
+[12]Bugzilla item 3915
+    (dts0100528914: Wierd OAL Parser and Model Verifier crash.)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3915
+[13]Bugzilla item 3961
+    (System builder licensing)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3961
+[14]Bugzilla item 3337
+    (Add unique_id interface to the LOG EE.)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3337
+[15]Bugzilla item 3979
+    (Pause while looping does not find source)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3979
+
+4. Background
+-------------
+See [4]
+
+5. Design
+---------
+i3405.dnt.8.1 Need to allow access to sender component
+i3405.dnt.8.1.1 Make Runtime Value support references to Components
+  - Introduced RV_SCV (Simple Core Value) and RV_CRV (Component Reference
+    Value) as subtypes of RV_SMV (Simple Value).  This is done to facilitate
+    access to instance values across components.
+  - Introduced RV_SMV.getValue() and RV_SMV.setValue().  The RV_SMV.Value
+    attribute was moved to RV_SCV.Value and these helper functions were
+    introduced to allow us to easily fixup all OAL that previously referenced
+    RV_SMV.Value to be able to retrieve and set the Value instance weather that
+    instance is a RV_SCV or a RV_CRV.
+  - Update OAL that previously used RV_SCV.Value to use RV_SCV.getValue() and
+    RV_SCV.setValue().
+  - Create RV_RVL.createSimpleValue() to facilitate creation of RV_SMV
+    instances.
+  - Introduce RV_SMV.{intialize & dispose}
+
+  - All the places in the ooaofooa that perform a
+    "create object instance <some name> of RV_SMV;" now call
+    RV_RVL.createSimpleValue() instead.  This operation creates and initializes
+    the Simple Value instance.
+  - Introduce I_EXE.convertToInstance().  this simply return the I_EXE as
+    an instance.  This is needed by RV_SMV.getValue() because when the value we
+    return is a RV_CRV, the I_EXE is the instance required.  In this case,
+    the I_EXE represents the Component on the "other-side" of the communcation
+    that we need to return.
+  - In getValue() if we are dealing with an SCV instance the return value is
+    RV_SCV.Value, if it is a RV_CRV then the result is the I_EXE instance
+    associated with the RV_CRV instance in which case we return
+    I_EXE.convertToInstance().
+  - In initialize() there is no OAL, but a comment to indicate that we can not
+    setup R3309 until we know what kind od instance needs to be stored.
+    Therefore, setup of R3309 does not happen until
+    RV_SMV.setValue(value:instance) is called.
+  - RV_SMV.dispose had been implemented to tear-down R3308 and R3309 as needed
+    and to dispose of the subtype.
+  - setValue() determines if the given instance is a RV_SCV or a RV_CRV and
+    then sets-up R3308/R3309 as needed.
+
+
+i3405.dnt.8.1.2 Support 'sender' keyword.
+  This has been broken out into a separate issue [6].
+
+i3405.dnt.8.1.3
+ The places in debug/ui/actions/ExecuteAction.java where the
+ disableCrossComponentCommunication variable is are refactored to allow
+ cross component communication.
+
+i3405.dnt.8.2 Handle blocking and message queuing
+	- In Interface operation invocation::setupParameter values the created
+	stack frame is associated with the stack that is at the other end of the
+	component and setup a new association between the stack that caused the
+	stack frame creation and the created stack frame.
+	- In I_EXE implemented a native notify() operation to signal a blocked
+	client when execution is complete.  This is used when the blocked client
+	is in a different I_EXE instance.
+	- In ACT_IOP.execute() and V_MSV.setupParameterValues if we are not
+	executing locally then wait on execution of the destination stack.
+	- When the thread created and launched inside the startModel() function
+	of BPThread.java is complete, call I_EXE.notify to wake any client that
+	may be blocked waiting for completion of this thread.
+
+
+i3405.dnt.8.3 Allow multiplicity configuration in launch specification
+  The control of multiplicity in the launch config dialog is defined in
+  bp/debug/ui/launch/VerifiableElementComposite.java.  The user is only allowed
+  to edit the multiplicity when the {C_C|C_IC}.Mult attribute for the model is
+  set to "Many".  The user sets this value in the model's property view.  When
+  the Mult attribute is set to "One" (which is the default), the multiplicity
+  edit box is disabled.
+
+i3405.dnt.8.4 Support initializer messages.
+  The user is allowed to select an initializer message from a dialog that
+  presents all possible initializers (all interface operations and signals).
+  This is done in defined in bp/debug/ui/launch/VerifiableElementComposite.java.
+
+i3405.dnt.8.5 Correctly display Imported Component icon in Debug Tree
+  Introduced bp.core/icons/metadata/InstanceOfImportedComponent.gif and
+  modified code in bp/debug/ui/BPDebugModelPresentation.java::getImage() to use
+  this icon.
+
+i3405.dnt.8.6 Support execute with multiplicity
+    The execute menu option is implemented as an object contribution in
+    bp.debug.ui/plugin.xml.  The action class that implements it's behavior
+    is in bp/debug/ui/actions/ExecuteAction.java.  Considering we do not want to
+    show Execute in Model Explorer, the contribution is changed to a viewer
+    contribution.  This allows for contribution to only the Session Explorer
+    view.  Additionally, there is no filtering requirements for Operations as
+    only class based operations are shown in the Session Explorer view.
+
+i3405.dnt.8.7 Correctly handle implicit component addressing when non-ambiguous
+  This has been broken out into a separate issue [7].
+
+i3405.dnt.8.8 Handle non-fully executed wirings (only one side of wiring
+              launched)
+	The ExecuteAction class was modified to determine if a component is wired
+	graphically as well as if the wired to component is being verified before
+	executing the OAL in the destination component.  The same checks are made in
+	the Interface Operation Invocation.execute and Signal Invocation.execute
+	operations.  As part of this work the message direction was honored in the
+	ExecuteAction class.  The invocation classes do not need to honor the
+	message direction as the parser should prevent the calls if the direction is
+	not valid.  The work done for this section actually adds the support for
+	finding the OAL to execute when fully wired.
+
+i3405.dnt.8.9 Handle communication across imported interfaces (wiring of
+              imported components)
+    This has been broken out into a separate issue [8]
+
+8.10 Correctly set up the sender component_ref value
+    This has been broken out into a separate issue [9]
+
+8.11 Fully support Component and Port multiplicity
+    Why it is now possible to launch multiple instances, there are threading
+    problems that must be addressed.  A separate issue [10] has been raised for
+    this.
+
+6. Implementation Comments
+--------------------------
+6.1 Prevent an AOOB in .../bp/debug/ui/launch/BPDebugUtils.java::
+  getEnabledIdsFromElementStrings() by making sure the element being examined
+  is launchable before checking it's enabled state.
+6.2 Introduced a couple of helper functions:
+  String[] getInternalElements(String elementString)
+  boolean elementIsEnabled(String elementString)
+  to help manage the launch configuration strings.  Several AOOBs were seen in
+  the manipulation of these strings, and these function prevent this and allow
+  this manipulation to be handled centrally.
+6.3 In bp/debug/ui/launch/VerifiableElementComposite.java::controlResized do
+  not assume the control has multiple columns.
+6.4 In ../bp/debug/ui/launch/LaunchShortcut.java::getVerifiableElementId when
+  handling a Component_c do not add the component to the buffer unless it has
+  children.  This prevents creation of an invalid launch configuration where
+  an element with only an id but no additional data exists.
+6.5 In ../bp/debug/ui/launch/LaunchShortcut.java::openLaunchConfigDialog()
+  prevent saving of the launch configuration information unless the user
+  actually select "debug".  Previously we were saving the launch configuration
+  even when the user selected cancel in the launch configuration dialog, this
+  led to saving of invalid launch configuration data because the file was saved
+  in cases where errors were being displayed in the launch config data and
+  the user selected cancel.
+
+6.6 In I_EVI.fireToClassSM() added error handling to account for the case where
+  no execution engine is found.  When this happens we report the error to the
+  user and return.
+
+6.7 Fixed a NPE that was seen when launching verifier from ME when the system
+    element was selected by watching for the case where System_c is the selected
+    element in .
+
+6.8 When we lookup CSME_CIE instances in ModelContentProvider.getChildren() we
+    must specify loadComponent=false.  This prevents us from trying to load
+    this component, which is not a persisted element.  This fixes a NPE in the
+    spotlight view.
+
+6.9 Added the appropriate PEI data to the session explorer PEI data to cause
+    domain function packages and their associated functions to appear in SE.
+    Since we removed the execute option from ME this is necessary and it is
+    also being user-friendly (users shouldn't have to switch between views to
+    execute).
+
+6.10 Canvas is hung after component package is created in formalized component
+     After creating a function package in a formalized component the canvas
+     won't allow tools other then the "pencil" to be  selected.  To recover
+     the Canvas must be closed and reopened.
+
+     This seems to have been a race condition caused during devleopment when
+     the Ooaofooa.eventMaskSemaphore was temporarily removed to allow multiple
+     component execution.  The Ooaofooa.eventMaskSemaphore was replace with
+     another locking mechanism (see 6.20) and this issue was no longer observed.
+
+6.11 The spotlight view content provider was using selections from instances of
+     Execution Engine.  This was preventing location of a Class In Engine
+     instance.  The code is changed to search for the Class In Engine related
+     to the element being monitored.
+
+6.12 Add plug-in entries to show Put In Spotlight and Remove From Spotlight on
+     Class In Engine instances.  Updated the action code to support Class In
+     Engine.
+
+6.13 Hitting pause on a looping model causes a code lookup failure, can't find
+     the source.
+
+     A separate issue has been raised to investigate this further [15].
+     
+6.14 The execute menu option in ME was removed as specified in i3405.dnt.8.6
+     above.  Unfortunately, for some reason the options have reappeared even
+     though the changes made have not been modified.  We need to understand
+     why and fix this.
+
+	This issue has been fixed and item 8.6 above was updated to reflect the
+	implementation.
+
+6.15 Updated the build server's create_release_functions.sh script to pull
+     and build the ui.session plugin before the debug.ui plugin.  Though we
+     have dependencies setup in eclipse, the build server's order of operations
+     is not controlled by our Eclipse settings and debug.ui requires the
+     ui.session plugin.  This script was updated on the build server and also
+     in com.mentor.nucleus.bp.core/tools where it is stored.
+
+6.16 The parser is changed to give an error when invocation of a message does
+     not adhere to the modeled direction.
+
+6.17 
+   SE is not always updated when a session is launched or terminated.  The user
+   must sometimes do an explicit refresh to get the correct state in SE.
+   Upon completion of a termination or launch action we should refresh SE to
+   fix this.
+
+6.18 Licensing
+    The current verifier license check is done in BPLaunchDelegate.java. The
+    codepath through LaunchShortcut.java varies widely depending on if the
+    launch configuration was pre-existing or if the dialog was popped up to
+    specify a new configuration.
+
+    However, all launches, regardless of how they originate go through
+    BPLaunchDelegate::launch().  Therefore, the chosen implementation adds a
+    check in launch() thats inspects the launch configuration to find out if
+    multiple components are specified in the launch config.  If they are, check
+    for a system verifier license. If it is only a single component/domain,
+    check for the regular verifier license as before.
+
+    The engineers discussed adding hooks in the tree selector to prevent the
+    user from selecting multiple components.  We chose not to go this route
+    because it either means being silently non-responsive to second component
+    selections (not a good idea), or it means popping up an error dialog
+    explaining why the selection is not allowed every time a second item is
+    clicked.  The error dialog seems too intrusive at this point, and really
+    only serves as a slightly earlier warning to the check (and error indication
+    if necessary) we are doing in the launch() function anyway.
+
+6.19 Binding with realized EEs is broken [5]
+	Override the loadClass(String name) function in BPClassLoader.java to
+	search the BPClassLoader's classmanager first.  If this is not done, the
+	BPClassLoader's delegate (which is the BPClassLoaders parent) is
+	searched for the class and the local classmanager is ignored (and our
+	local classes are not found).
+
+6.20 The Oaoofooa.eventMaskSemaphore prevents multiple components from executing
+     simultaneously.
+
+	The synchronized Ooaofooa.eventMaskSemaphore prevents multiple verifier
+	threads from running at the same time.  However, we need something like it
+	to block various operations while verifier is executing.  Instead of 1
+	object that was used in a "critical section" (Ooaofooa.eventMaskSemaphoe),
+	there are now 2 semaphores and 2 counters (protected by	the semaphores).
+	There are also 4 functions (startExecution/endExecution and
+	startSave/EndSave) implemented in MC-Java/java.arc.  The functions get
+	called in place of the old critical sections. This lets multiple saves or
+	multiple executions to happen concurrently while preventing saves and
+	executions from happening concurrently.
+
+
+6.21 Breakpoints are not always cleared.
+    This was reproduced using the blocking_test model.
+	_- Set a breakpoint in setup (line 1)
+	_- Set a breakpoint in setup (line 3)
+	_- Launch the verifier session
+	   Note: If the breakpoints are set AFTER the launch this problem does not happen.
+	_- Execute Component A > function > setup
+	_- Remove the breakpoint from line 3
+	_- Continue (Run)
+	_R Error!  Verifier stops on the line where the BP was removed.
+	_- Terminate the verifier
+	_- Relaunch
+	_- Execute Component A > function > setup
+	_R Breakpoin on line 1 is hit
+	_- Continue
+	_R Error! Verfier stops on line 3 even though there is no BP
+
+	The problem was that installation of breakpoints was occurring once per
+	element that was selected for launch.  This left duplicate Breakpoint
+	instances laying around, causing execution to halt when hitting the
+	statement which originally had the breakpoint set.  The call to install
+	deferred breakpoints was moved out of the launchElement method and at the
+	end of the setupSelectedModels method.
+
+6.22 Transient arrays are not displayed correctly in the variables view when
+    running verifier [11].
+	In Array Element Reference.getRuntimeValue() although the operation caters
+	for the possibility that the _element_ may not exist, it does not consider
+	the possibility that the transient is not yet characterized as an array.
+
+	The fix is to code to subtype the runtime value instance as an array value.
+
+6.23 There is an NPE in the parser in bad "select related-by where" calls [12].
+     If the user specifies a non-existant relationship in the "related by"
+     instance chain, there is a crash in the Where_spec_start validation
+     function.  That function gets an object instance and makes an unguarded
+     access to the instance's Obj_ID member.  The bug [12] details specific
+     information about the area where the parser/antlr seem to be having some
+     trouble.  However, we opted for a quicker fix, which is to simply add an
+     "if empty" check on the object instance.  This fix is included in this
+     branch.
+
+     The drawback is that the fix prevents the NPE but allows the parser to
+     keep processing the select statement, which leads to several follow-on
+     parse errors.  The user sees this as an error indicator with several errors
+     on the line instead of simply the bad relationship error only.
+
+6.24 In order to support the new BridgePoint System Designer composite license
+     as the only license in the customer configuration, we must make xtumlsysbld
+     active [13].
+
+     Added com.mentor.nucleus.bp.bld.pkg to the branch.  This was to support a
+     change to add licensing support for xtumlsysbld (System Model Builder).
+     Also edited create_core_plugin.arc to do the actual license check.  For
+     this release, the xtumlsysbld license will be functionally equivalent to
+     the xtumlbld license.  That is, the code change was to simply check for
+     xtumlsysbld right after the current check for xtumlbld and pass the license
+     check if either is true.
+
+6.25 A bug was observed that caused realized EEs to not be found in a loaded
+     class library.  The problem was that ordering of parameter values needed
+     to match in the realized code and in the query done by the model but the 
+     order from the query in the model was not guarenteed therefore it was 
+     possible to not be able to bind to a operation.  
+     
+     To fix this, ACT_BRG.execute(0 was modified to utilixed the new reflexive
+     association R55 that is used to sort the paramters.  The user can now
+     model the proper order for the parameters (so the model matches the 
+     realized code), and this order is used during parameter binding.  
+ 
+6.26 Add unique_id interface to the LOG EE [14].
+     Since issue 6.25 has been addressed, this similar issue was also 
+     investigated and fixed.  A customer reported that the LOG EE could not be
+     modified to create a function that allowed a UUID to be passed.   As part 
+     of this issue this function was created, it's implementation is as follows:
+	public static void LogUUID(String ee_message, UUID ee_id) {
+		String objString = (ee_id == null) ? "<null>" : ee_id.toString();
+
+		CorePlugin.out.println("LogUUID:  " + objString + " "
+				+ ee_message);
+
+	}
+
+    Additionally, a bug was fixed in Vm_c.java::addArgumentValue() that was
+    causing an NPE when a UUID that was not well-formed was passed.  
+    Additionally note that the function signature in the realized EE when 
+    passing a UUID is java.util.UUID, not java.lang.Object.  When passing a
+    UUID, this concreate type must be specified.
+      
+6.27 Differentiate CL_IC instances formalized to the same C_C.
+	The problem is that there may be  many CL_IC instances in a model that are 
+	assigned to the same component.  In SE and the debug view all these 
+	instances look they same (for example: VerifierConfigurationTests::cp::fc1).
+	Since these are all seperate instances of CL_IC, each instance has a 
+	realtionship with I_EXE across R2963 and so they each have a 
+	I_EXE.getEngineID() of the CL_IC instance in R4201 (I_EXE.getEngineNumber()
+	uses R2963/R2955).  
+	
+	In BPThread.getName() was modified to use this new operation to get the 
+	component number when there is more then one CL_IC formalized to the same 
+	component in the model.  It uses this number as part of the CL_IC name
+	displayed.  We previously did this same thing for the I_EXE, this has 
+	simply been	extended to handle this CL_IC situation.  When multiple CL_ICs 
+	are formalized to the same component the display is now:
+	<I_EXE.engineNumber>.<CL_IC.importedComponentNumber>  
+	
+	These vales come from the position of the instance in the relationship 
+	(R2963/R2955 for I_EXE and R4201 for CL_IC).
+	
+7. Unit Test
+------------
+7.1 See [3]
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/.externalToolBuilders/Core Builder.launch
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/arc/create_global_action.inc
+com.mentor.nucleus.bp.core/arc/create_selection_dialog_action.inc
+com.mentor.nucleus.bp.core/arc/function_body.inc
+com.mentor.nucleus.bp.core/icons/metadata/InstanceOfComponent.gif
+com.mentor.nucleus.bp.core/icons/metadata/InstanceOfImportedComponent.gif
+com.mentor.nucleus.bp.core/models/default.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Block/Block.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Body/Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Bridge Body/Bridge Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Derived Attribute Body/Derived Attribute Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Function Body/Function Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    If Stmt/If Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Operation Body/Operation Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Provided Operation Body/Provided Operation Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Provided Signal Body/Provided Signal Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Required Operation Body/Required Operation Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Required Signal Body/Required Signal Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    State Action Body/State Action Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Statement/Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Transition Action Body/Transition Action Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component/Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Component/Imported Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface Reference/Interface Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Port/Port.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Provision/Provision.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Requirement/Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Provided Executable Property/
+    Provided Executable Property.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Provided Operation/
+    Provided Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Provided Signal/
+    Provided Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Required Executable Property/
+    Required Executable Property.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Required Operation/
+    Required Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Required Signal/
+    Required Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Bridge/Bridge.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Domain/Domain.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity/External Entity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function/Function.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Subsystem/Subsystem.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event Statement/Create Event Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Event Specification Statement/Event Specification Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class in State/Class in State.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class Monitor/Class Monitor.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class State Machine Execution.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In Engine/Class In Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In State/Class In State.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class Monitor/Class Monitor.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Execution/Execution.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Execution Engine/Execution Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance/Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Pending Event/Pending Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack/Stack.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack Frame/Stack Frame.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Timer/Timer.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Value in Stack Frame/Value in Stack Frame.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Create/Create.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Create No Variable/Create No Variable.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Bridge Invocation/Bridge Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Interface Operation Invocation/
+    Interface Operation Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Return Stmt/Return Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Signal Invocation/Signal Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Runtime Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Array Value/Array Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Component Reference Value/Component Reference Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Runtime Value/Runtime Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Simple Core Value/Simple Core Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Simple Value/Simple Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Structured Value/Structured Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select/Select.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select From Instances/Select From Instances.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select From Instances Where/Select From Instances Where.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine/State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine State/State Machine State.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Transition/Transition.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Model Class/Model Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Operation/Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Array Element Reference/Array Element Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Attribute Value Reference/Attribute Value Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Bridge Value/Bridge Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Member Value Reference/Member Value Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Message Value/Message Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+com.mentor.nucleus.bp.core/sql/ooaofooa_hierarchy.pei.sql
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/Vm_c.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    InstanceList.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/dialogs/
+    ElementSelectionDialog.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/dialogs/
+    ElementSelectionFlatView.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/tree/
+    ModelCheckedTreeViewer.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/tree/
+    SpinnerBoxCellEditor.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/
+    BPClassLoader.java
+com.mentor.nucleus.bp.core/src/lib/LOG.java
+com.mentor.nucleus.bp.core/tools/create_release_functions.sh
+
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/license/
+    VerifierLicenseManager.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/
+    BPDebugModelPresentation.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/actions/
+    CreateBPBreakpointAction.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/actions/
+    ExecuteAction.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/actions/
+    MonitorAction.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/actions/
+    MonitorOffAction.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/launch/
+    BPDebugUtils.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/launch/
+    BPLaunchDelegate.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/launch/
+    ILaunchConfigConstants.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/launch/
+    LaunchShortcut.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/launch/
+    ModelSelectionTab.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/launch/
+    VerifiableElementComposite.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/locator/
+    BPSourcePathComputerDelegate.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    BPDebugTarget.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    BPThread.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    BPValue.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/
+    propertypages/InstanceFilterEditor.java
+com.mentor.nucleus.bp.debug.ui/generate.xml
+com.mentor.nucleus.bp.debug.ui/plugin.xml
+
+com.mentor.nucleus.bp.debug.ui.test/expected_results/debug_tree/
+    expected_tree_contents_cp.txt
+com.mentor.nucleus.bp.debug.ui.test/expected_results/debug_tree/
+    expected_tree_contents_importedcomponent.txt
+com.mentor.nucleus.bp.debug.ui.test/expected_results/debug_tree/
+    expected_tree_contents_system.txt
+com.mentor.nucleus.bp.debug.ui.test/expected_results/session_tree/
+    instance_view_test_tree.txt
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/test/
+    VerifierTest.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/test/
+    DebugUITestUtilities.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/test/
+    execute/VerifierExecuteActionTests.java
+
+com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/Cl_c.java
+
+com.mentor.nucleus.bp.ui.explorer/arc/create_mon_content_provider.inc
+com.mentor.nucleus.bp.ui.explorer/sql/InstUITree.pei.sql
+com.mentor.nucleus.bp.ui.explorer/sql/MonUITree.pei.sql
+com.mentor.nucleus.bp.ui.explorer/src/com/mentor/nucleus/bp/ui/explorer/
+    ExplorerPlugin.java
+
+com.mentor.nucleus.bp.ui.properties.test/arc/create_view_test.arc
+
+com.mentor.nucleus.bp.ui.session/arc/BuildTree.arc
+com.mentor.nucleus.bp.ui.session/sql/UITree.pei.sql
+com.mentor.nucleus.bp.ui.session/src/com/mentor/nucleus/bp/ui/session/
+    SessionExplorerTreeViewer.java
+com.mentor.nucleus.bp.ui.session/src/com/mentor/nucleus/bp/ui/session/adapters/
+    RootAdapter.java
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/
+    ActivityEditorInput.java
+
+com.mentor.nucleus.bp.ui.tree/arc/create_generic_adapters.inc
+com.mentor.nucleus.bp.ui.tree/arc/create_generic_content_provider.inc
+
+com.mentor.nucleus.bp.verifier.pkg/plugin.xml
+
+MC-Java/java.arc
+
+
+End
+---
+
+$Log: i3405.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.28  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.27.2.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.27  2008/10/24 03:25:56  rmulvey
+Job:3405
+Added the code changes and put in a reference to a new issue that was created to investigated the last "TODO" that was left
+in this note.
+
+Revision 1.26  2008/10/23 19:19:10  rmulvey
+Job:3405
+Added 6.27 to describe differentiating CL_IC instances formalized to the same C_C.
+
+Revision 1.25  2008/10/22 21:05:30  rmulvey
+Job:3405
+Added information about a couple of class loader fixes that were made in  this branch.
+
+Revision 1.24  2008/10/16 20:47:20  tlondon
+Job: 3405
+
+Update note to account for ExecuteAction changes.
+
+Revision 1.23  2008/10/16 15:10:08  kbrown
+Job:3405 3961
+Add info on the fix for 3961 being in the Review-i3405-03 branch.
+
+Revision 1.22  2008/10/16 00:15:56  kbrown
+Job:3405 3915
+Updated i3405.int with information on the quick fix provided for a parser NPE.
+
+Revision 1.21  2008/10/14 20:29:46  rmulvey
+Job:3405
+Added item 6.21 to point out that bug 3942 has been addressed in this i3405 branch.
+
+Revision 1.20  2008/10/14 19:37:12  tlondon
+Job: 3405
+
+Remove last remaining TODOs.
+
+Revision 1.19  2008/10/14 19:36:01  tlondon
+Job: 3405
+
+Add comment regarding breakpoint behavior fix.
+
+Revision 1.18  2008/10/14 19:01:40  rmulvey
+Job:3405
+Updated with the latest information including the break-out of the remaining tasks into separate issues.
+
+Revision 1.17  2008/10/13 15:39:55  rmulvey
+Job:3405
+Added an issue (6.13) with reproducible steps for a provision getting called more times then it
+should which leads to a stack underflow.
+
+Revision 1.16  2008/10/13 15:23:15  rmulvey
+Job:3405
+Added an issue for breakpoints not always being cleared.
+
+Revision 1.15  2008/10/10 15:51:54  rmulvey
+Job:3405
+Updated for blocking
+
+Revision 1.14  2008/10/09 18:49:05  rmulvey
+Job:3405
+Updated to account for bug 3898
+
+Revision 1.13  2008/10/08 16:50:38  kbrown
+Job:3405
+Updated to include info on system verifier licensing.
+
+Revision 1.12  2008/10/08 16:04:47  rmulvey
+Job:3405
+Updated
+
+Revision 1.11  2008/10/07 14:57:18  tlondon
+Job: 3405
+
+Add note about parser changes
+
+Revision 1.10  2008/10/07 14:19:17  rmulvey
+Job:3405
+Updated
+
+Revision 1.9  2008/10/03 18:11:25  rmulvey
+Job:3405
+Added information about the build server fix and the problem with the execute menus in ME
+reappearing.
+
+Revision 1.8  2008/10/03 18:03:35  tlondon
+Job: 3405
+
+Update note for spotlight fixes
+
+Revision 1.7  2008/10/02 21:49:18  rmulvey
+Job:3405
+Updated
+
+Revision 1.6  2008/10/01 16:30:33  tlondon
+Job: 3405
+
+Add section describing changes for supporting fully wired component verification, and non fully wired component verification.
+
+Revision 1.5  2008/10/01 11:56:05  rmulvey
+Job:3405
+Updated
+
+Revision 1.4  2008/09/26 13:56:46  rmulvey
+Job:3405
+Updated
+
+Revision 1.3  2008/09/25 15:00:24  rmulvey
+Job:3405
+Updated
+
+Revision 1.1  2008/09/19 00:22:45  rmulvey
+Job:3405
+Introduced

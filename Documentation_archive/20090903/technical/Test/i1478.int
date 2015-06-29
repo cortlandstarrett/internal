@@ -1,0 +1,173 @@
+========================================================================
+
+File:      $RCSfile: i1478.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:28:17 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Fixing a RenameTest Failure 
+
+Abstract
+--------
+This note describes the implementation for a fix for a test failure in 
+core.test.RenameTest.testRenameS_SYSWithConflict.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 1478
+[2] Bugzilla issue 1190
+
+Background
+----------
+[2] was promoted even though the test failure was evident.  This was done to 
+meet a release date. 
+
+Analysis
+--------
+One reason why the problem may occur is because a previous test in the suite, 
+ActionTest.testDeleteS_SYS(), creates a system named "test" and then immediately 
+tries to perform a delete-action on it, without first creating a corresponding 
+project for it in the workspace.  Since the delete-action for a system operates 
+on the system's project, rather than directly on the system, the delete does
+not actually occur, unless some previous test in the suite has created a
+"test" project of its own.  If this is not the case (such as when only
+the ActionTest and RenameTest tests are run from the suite), the leftover "test" 
+system from this test then survives in memory until 
+RenameTest.testRenameS_SYSWithConflict() runs, which takes any two systems in 
+memory and tries to rename one to the name of the other.  The "test" system
+is chosen as one of the two, and the rename is errantly allowed to occur
+since the rename action checks only for the existence of a like-named project
+in the workspace when determining whether to allow the rename.  Since no "test"
+project exists, the rename is allowed, and the test fails.
+
+There is some similar interaction that occurs between 
+RenameTest.testRenameS_SYSWithConflict() and one or more of the tests in 
+TigerNatureTest.  However, since TigerNatureTest is one of the longer-running
+test classes, it would be better to eliminate the interaction by simply
+moving it past RenameTest in the test suite running order, as the longer-running
+test classes of a suite should come at its end, anyway, to speed debugging of 
+the faster ones at the front.
+
+It would also be beneficial to allow any of the test classes up until RenameTest
+in the test suite to be able to be run on their own, for the purpose of quicker 
+and easier debugging.  
+
+Design
+------
+1.
+Changes are made to core.test.create_action_test.arc to modify the pertinent 
+delete and rename tests.
+
+1.1
+In the archetype for ActionTest.testDeleteS_SYS(), the test is changed to 
+create a "toDelete" project for deletion, rather than attempting to 
+delete a previously existing "test" project.  This is done to fix the bug
+described in the above analysis.
+
+1.2
+In the archetype for RenameTest, explicit mentions of the name of the main 
+system and project manipulated during its tests, "testRename1", are changed to 
+reference a static member variable holding that name.
+
+1.3
+In the archetype for testRenameS_SYSWithConflict(), the test is changed to 
+create an extra system in order to ensure there are two present even when the 
+rename tests are run on their own.
+
+1.4
+In the archetype for testRenameS_DOMWithConflict(), the test is changed to 
+create a second model in the system under test, in order to ensure there are 
+two present in that system even when the rename tests are run on their own.
+
+1.5
+In the archetype for testRenameS_DOMWithInterProjectConflict(), the test is 
+changed to create a model in the extra system mentioned above, to ensure its 
+presence when testing whether renaming a model in the main system to this 
+extra model's name is allowed.
+
+1.6
+In the archetype for RenameTest.getDomainSet(), each child of the main system 
+is checked to see if it is a domain-proxy, in which case it is replaced by its 
+domain, once loaded.  This is necessary because of the creation of the extra 
+models mentioned above.
+
+2.
+In core.test.CoreTestSuite, the I810_SlowDeletionTest and TigerNatureTest 
+classes are moved to after RenameTest in the suite's running order, 
+since they both take a long while to complete, and also to eliminate the 
+other interaction bug described in the above analysis.
+
+3.
+In core.test.I810_SlowDeletionTest, the name of the test project used for its
+tests is changed from "test" to "SlowDeletionTest", to prevent possible side 
+effects occurring with other core tests that create and manipulate a project 
+named "test".
+
+4.
+In both core.test.NumberingTest and the archetype for DisposeTest (which is 
+create_dispose_test.arc), a call is added at the tests' start to clear the 
+model-root they use.  This is to prevent leftover data from previous tests 
+from interfering with their operation, and also to verify that the tests may be 
+run on their own, without needing other tests to be run first.  
+
+Also, a block in each of these classes that creates a void or integer data type 
+is replaced with a call to the newly created 
+TestUtil.createMockDefaultDataTypes() method, which creates 
+void and integer data types for a given model-root, to be used with a given 
+domain. This is useful for tests like these that don't load a model, but 
+instead directly create all the model elements they manipulate.
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+The work for this issue involves only changes to existing tests, so no new 
+tests are needed.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core.test/arc/create_action_test.arc
+com.mentor.nucleus.bp.core.test/arc/create_dispose_test.arc
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    I810_SlowDeletionTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    NumberingTest.java
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/TestUtil.java
+
+End
+---
+
+$Log: i1478.int,v $
+Revision 1.1  2009/09/03 18:28:17  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:39  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.28.1  2008/12/31 16:10:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/01/17 16:47:04  jmather
+Job: 1478
+Addressed review comments.
+
+Revision 1.1  2006/01/16 19:31:03  jmather
+Job: 1478
+Introduced.

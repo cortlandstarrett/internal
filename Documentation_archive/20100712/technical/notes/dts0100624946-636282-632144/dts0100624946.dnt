@@ -1,0 +1,246 @@
+========================================================================
+
+File:      $RCSfile: dts0100624946.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Harmonize MC-3020 DocGen with Verifier DocGen
+
+1. Abstract
+-----------
+Verifier support of template-based code generation was recently added.  The
+Verifier approach differed slightly from the approach taken by MC-3020.  We
+now need to harmonize these two approaches so they both work using the same
+modeled T/template EE (external entity).
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100624946 - Harmonize model based docgen and model
+    compilers with Verifier support
+[2] ClearQuest DEI dts0100621356 - Template Support in Verifier
+[3] ClearQuest DEI dts0100531817 - Document Generation
+[4] <cvs>/.../notes/dts0100531817.dnt - Document Generation
+[5] <cvs>/model_compilers/mcmc/arlan/ - This project contains the template
+    engine source code.
+
+4. Background
+-------------
+We continue to move toward model-based model compilation.  DocGen is our
+first true, model-based model compiler.  It is a model that is a model
+translator.  The model itself contains a model of the target and all of the
+transformation logic to read the input model from the xtUML meta-model and
+populate a model of the target (Document).  It then renders the target using
+a template-based text emission strategy.
+
+5. Analysis
+-----------
+5.1.      T/template Differences
+5.1.1.    Verifier chose to simplify T/template and expose only a minimum set
+          of bridges to the view of the user.  This was both good and bad.
+5.1.1.1.  Verifier T/template
+          clear
+          emit
+          include
+          template
+5.1.1.2.  The T::template bridge is a nice feature in an interpreted code
+          environment like xtUML.  However, this bridge will be troublesome
+          to implement in compiled code environments.  It requires the
+          parsing and interpretation of strings and the mapping of string 
+          names to in-memory instances.
+5.1.2.    The MC-3020 rendition of the T/template EE follows the lead of the
+          BridgePoint archetype language (RSL).  It attempted to implement
+          every feature of that language.  This made it slightly easier for
+          an  engineer familiar with archetypes language to read and 
+          understand the model compiler.
+5.1.2.1.  MC-3020 T/template
+          b - buffer
+          c - capitalize (not yet implemented)
+          clear - clear the buffer
+          emit - emit buffer to named file
+          exit - ARCH_shutdown
+          include - read and include the file (#include)
+          l - fold to lower case (not yet implemented)
+          print - print to stdout
+          r - remove blanks
+          s - stringify (integer to ascii)
+          u - fold to upper case (not yet implemented)
+          u_ (not yet implemented)
+          underscore - convert blanks to underscores
+          xmlify - convert XML special characters to their & counterparts
+5.2.      Add the string processing bridges that are present in the MC-3020
+          T/template to the Verifier java implementation.
+5.3.      The updated DocGen should allow specifying the _source_ template
+          rather than the _compiled_ template.  In other words, the OAL
+          reference to the templates should end in .xml for the DocGen case.
+5.4.      template_engine.exe
+5.4.1.    The template engine may need to be updated.
+5.5.      The Verifier branch of bp.core and the branch of bp.core for this
+          issue will need to be carefully merged.
+5.6.      T::template
+          Remove this bridge from T/template.
+
+6. Design
+---------
+6.1 UML model:
+    Providing one external entity.
+    T: "template" with bridges
+          b - buffer
+          clear
+          emit
+          include
+          print - print to stdout
+    (included "String_procesing" bridges)
+          c - capitalize first word and remove blanks
+          l - fold to lower case 
+          r - remove blanks
+          s - stringify (integer to ascii)
+          u - fold to upper case 
+          u_ 
+          underscore - convert blanks to underscores
+	      xmlify - convert XML special characters to their & counterparts
+6.2   verifier implementation:
+6.2.1 T: EE
+      java class with string processing functionality.
+      It doesn't need to have access to the current StackFrame context.
+      Bridge operations will be mapped into java functions with the same
+      prototype.
+      java class with functions that has two extra functions: Process(),
+      getValue().  All functions, except clear(), should have access to
+      the current StackFrame context.  Bridge operations, except clear(),
+      will be mapped into java functions with the extra input argument
+      "the current StackFrame".
+6.3     MC-3020 implementation
+6.3.1   T: EE
+        C file with all functions implemented that access the current buffer.
+        C file with string processing functionality.
+6.3.1.1 T::include(file)
+        file:"t.*.xml"
+        should be converted into "t.*.h"
+        IN xtumlmc_build.pl, perl script, 
+        modifying function 
+        xtumlmc_cleanse_model$tempUUIDfile, ">$build_directory/$modelBeingTranslated" );
+        This function parse the input file and search for 
+        statement:              "INSERT INTO V_LST \n" 
+        followed by statement: "VALUES(*"
+        followed by statement: "'t.*.xml');" which will be replaced by "'t.*.h');"
+7. Design Comments
+------------------
+7.1.    Added some bug fixes to the MC discovered during development of
+        the SystemC MC.
+7.1.1.  TE_PARM was not getting populated fully.  It was being "stolen" by
+        subsequent references to TE_ABA.  The problem is that parameters are
+        shared on interfaces.  So, in the architecture MM, they get replicated,
+        because they also do (and may have different implementation names) in
+        the generated code.  To solve this, an additional TE_PARM is copied
+        for each action block anchor (TE_ABA) associated with interface
+        messages.
+7.1.2.  Removed some unneeded tests (if statements) in bridging.
+7.1.3.  Added a missing initializer for SDTs.
+7.1.4.  Defaulting now allows default data types found in the model.
+
+
+8. Work Required
+----------------
+Described in design section.
+
+9. Unit Test
+------------
+A new unit test will be required to exercise this functionality. 
+test1:
+- Get latest Meta-model ooaofooa.xtuml from head
+- Go to model_compilers/mccommon/bin/xtumlmc_build and build
+  exe from the perl code.
+- But xtumlmc_build.exe into 
+  <installation_directory>\eclipse_extensions\BridgePoint\eclipse\plugins\
+  com.mentor.nucleus.bp.mc.mc3020_3.0.3\mc3020\bin
+- Follow instructions in Readme.txt to get docgen.exe
+- Replace VSx_Dev<installation directory>\tools\docgen\doc_gen.exe 
+  with the generated one.
+- Create new xtuml project, for example a microwave model.
+- Right click in the project choose "create Documentation"
+- Check the generated document files.
+test2:
+- Get latest Meta-model ooaofooa.xtuml from head
+- Launch the verifier 
+- In session Explore under Function package "Verifier" 
+  execute "populateTestModel" 
+- Check doc.xml is generated
+test3:
+- New xtuml project is created. For example a microwave model.
+- Add External Entity T"template" to the model.
+- Add Corresponding bridge operations, the same as in ooaofooa.xtuml.
+- Calling T::EE bridges in the model.
+- add file T_bridge.c to the "gen" folder
+- Build the model and generate the code.
+- Run the output exe file. Test  the functionality T:: T bridges 
+  is executed  correctly 
+- Launch the verifier and Test the functionality of T bridges
+executed. 
+
+End
+---
+
+$Log: dts0100624946.dnt,v $
+Revision 1.2  2010/01/05 04:31:26  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.1  2009/12/08 21:58:25  cstarret
+job:dts0100624946 dts0100636282 dts0100632144
+promotion
+
+Revision 1.11  2009/12/07 20:36:02  etarek
+job:dts0100624946
+finalize changes
+
+Revision 1.10  2009/12/07 19:59:52  etarek
+job:dts0100624946
+.c instead of .h  modify unit test
+
+Revision 1.9  2009/12/03 16:01:22  etarek
+job:dts0100624946
+updating Unit test section
+
+Revision 1.8  2009/12/03 02:52:53  cstarret
+job:dts0100624946
+added notes for other bug fixes
+
+Revision 1.7  2009/12/02 14:31:57  etarek
+job:dts0100624946
+Unit test is added
+
+Revision 1.6  2009/12/01 19:10:52  etarek
+job:dts0100624946
+add design sections for the change in requirements
+
+Revision 1.5  2009/11/27 09:33:26  cstarret
+job:dts0100624946
+change in requirements to skip interpreted string templates
+
+Revision 1.4  2009/11/26 13:23:52  etarek
+job:dts0100624946
+added info about design
+
+Revision 1.3  2009/11/25 19:44:29  cstarret
+job:dts0100624946
+T::template discussion
+
+Revision 1.2  2009/11/25 15:45:01  cstarret
+job:dts0100624946
+added info about template_engine
+
+Revision 1.1  2009/11/25 14:50:12  cstarret
+job:dts0100624946
+Introducing draft design note.
+

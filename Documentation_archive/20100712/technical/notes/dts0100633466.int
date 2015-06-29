@@ -1,0 +1,170 @@
+========================================================================
+
+File:      $RCSfile: dts0100633466.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support UDTs with inst_ref prefix
+
+1. Abstract
+-----------
+This note describes the changes required to support UDTs that share the IRDT
+naming convention.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100633466
+
+4. Background
+-------------
+SAAB has designed their models such that some UDTs share the same naming
+convention that the BP IRDTs use.  They use this naming convention to special
+case the UDTs in their model compilers.  The parser currently assumes that
+anything with the inst_ref< prefix will be an IRDT.
+
+5. Design
+---------
+5.1 Traverse model rather than check name prefix for IRDT determination
+
+Currently the code simply checks the name of a DT, if it finds that it is
+prefixed with inst_ref< it treats the DT as an IRDT.  This is changed such that
+the subtype of the S_DT is checked, and only when it is a true IRDT will the
+parser treat it as such.
+
+The name checking still must be done for the following special data types:
+
+inst_ref<Mapping>
+inst_ref<Timer>
+inst_ref<Object> 
+inst_ref_set<Object>
+
+In addition to the above change, a check is added in data_types_compatible which
+returns false if both data types are not IRDTs or IRDT sets.  The tests allow
+compatibility between inst_ref<Object> and S_IRDTs.
+
+5.2 Support IRDT transient reassignment from returning bodies
+
+The parser reports errors in the following OAL:
+
+select any a from instances of A;
+select any a2 from instances of A;
+a2 = a.op();
+return a;
+
+Where a.op() returns an IRDT of KEY.
+
+The reason for this was due to the following traversal in Assignment_expr_end:
+
+select one r_obj related by rval->V_ISR[R801]->V_VAR[R809]->
+                                                       V_INS[R814]->O_OBJ[R819];
+
+The rval variable in this case is not of type V_ISR, instead it is V_TRV (in the
+case of an operation return).  Rather than traverse this part of the metamodel,
+the right O_OBJ is found by checking the S_DT associated with the rval variable.
+If the dt is of the type S_IRDT or of type inst_ref<Object> then it is allowed.
+
+The same check is added for the IRDT.isSet == true case, with an additional
+check to verify that the returned IRDT (from the operation/function) has isSet
+set to true.
+
+6. Implementation Comments
+--------------------------
+SAAB has reported a case where a StackOverflowError has been hit.  This occurs
+during upgrade of a model when BP is trying to setup element ordering for the
+first time.  The error is hit because there is somewhat of a recursion during
+the upgrade code execution.  The upgrade code should never cause any loading to
+occur, and as written the upgrade code is not the cause.  However, the upgrade
+code calls generated code that does indeed cause a load.  Here is an example of
+the OAL that is causing model loads:
+
+select any head from instances of O_TPARM
+                               where (selected.TParm_ID == GD::NULL_UNIQUE_ID())
+
+The loading infrastructure will load all non-loaded persistable components
+during this call.
+
+This call is simply used to create an empty variable for later processing.
+
+The fix is to change all locations that use this to:
+
+select any head related by self->O_TPARM[R117]
+                               where (selected.TParm_ID == GD::NULL_UNIQUE_ID())
+                               
+Listed below are the locations that require this change:
+
+Interface.initializeOrder()
+ExecutableProperty.initializeOrder();
+Operation.initializeOrder()
+ModelClass.initializeOrder()
+StateMachineEvent.initializeOrder()
+EnumerationDataType.initializeOrder()
+Function.initializeOrder()
+Bridge.initializeOrder()
+
+7. Unit Test
+------------
+_- Create a UDT with the name: inst_ref<UDT>
+_- Create a bridge operation which takes the above UDT as a parameter
+_- Set the bridge operation's return type to the above UDT
+_- Write OAL that checks that the param is not empty
+_R A parse error exists claiming the dt is not of type inst_ref<Object>
+_- Write OAL that assigns the parameter to a local variable
+_R There are no parser errors from the assignment
+_- Create an IRDT that will have the same name as the UDT
+_- Try to assign the local variable above again, but using the
+   IRDT
+_R A parse error exists claiming the types are incompatible
+_- Create two classes A and B
+_- Create an operation in each class
+_- Have A.op return self
+_- Have B.op use the following OAL
+
+select any a from instances of A;
+select any a2 from instances of A;
+a2 = a.op();
+return a;
+
+_R There are no parse errors
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+
+
+End
+---
+
+$Log: dts0100633466.int,v $
+Revision 1.4  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.3  2009/11/19 18:47:27  tlondon
+Job: dts0100633466
+
+Add section for upgrade code fixes.
+
+Revision 1.2  2009/11/12 20:35:33  tlondon
+Job: dts0100633466
+
+Add fix for IRDT transient reassignment.
+
+Revision 1.1  2009/11/12 18:48:46  tlondon
+Job: dts0100633466
+
+Introduce

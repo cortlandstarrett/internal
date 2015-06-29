@@ -1,0 +1,180 @@
+========================================================================
+
+File:      $RCSfile: i2028.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Create a tool that will facilitate the merging of long based models with UUID 
+based models.
+
+Abstract
+--------
+Issue 1554 converts the models to have UUID based identifiers. This introduces
+a general problem of upgrading version controlled repository across different
+parallel branches. This issue provides details of this problem and addresses it
+by providing a upgrade facility for automating certain areas of this process.
+
+History
+-------
+update i2028-050506-01.rvm
+update i2028-051006-01.rvm
+final i2028-051106-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 1554
+[2] Bugzilla Issue 2028
+[3] /Documentation/internal/technical/Architecture/uuid-i1554.dnt
+
+Background
+----------
+If two branches require a merge and the target branch contains a UUID based 
+model, the model in the source branch needs to be converted to UUID prior to 
+the merge. This conversion needs to retain the UUIDs of the model elements that 
+are common in both branches and already have been converted in the target 
+branch. Therefore a need of database arises, which maintains a map of long based 
+ids with allocated UUIDs. Together with this map, an automated upgrade mechanism 
+and well-defined process, error free merging is made possible. 
+
+This issue purely focuses on the upgrade and creation of map only. Another issue 
+will be created to design the manual procedure for assuring error free merging.
+
+Design
+------
+1. Create gen_id_convert_util.arc under io.mdl project that will create a class 
+named com.mentor.nucleus.bp.io.mdl.IDConversionUtil. Please note that this class 
+will create map entries for only those model elements which have an identifier 
+that are not referentials. Since the model is loaded and all relations are 
+hooked up by batchRelate operation, there is no need to keep values of 
+referential ids.
+
+1.1 Create a new class UUIDMap with a following structure.
+
+- public UUID getUUID(NonRootModelElement modelElement);
+- void createUUIDEntry(NonRootModelElement modelElement);
+- public String getModelRevision();
+- public void setModelRevision(String revision);  
+- public void load(InputStream in);
+- public void store(OutputStream out);
+
+1.2 The structure of IDConversionUtil class is as follows.
+
+1.2.1 Following two methods will convert the model by replacing the dummy UUIDs 
+with real UUIDs. A dummy UUID is the one whose least significant bits contains
+the value of old long based id with rest of the bits as zero [3; section 1.1.3].
+It uses an input map to retain the UUIDs for any model elements which are known 
+to be converted already. Moreover it creates a new map after the conversion. 
+This map includes the entries from old map and entries for newly converted ids. 
+These methods will extract the revision of the model from the description of the 
+domain.
+
+- public UUIDMap convertToUUID(Domain_c domain);
+- public UUIDMap convertToUUID(Domain_c domain, UUIDMap inputMap);
+
+1.2.2 Following different methods are generated that allow the inner working of 
+IDConversionUtil.
+       
+- private static String createKey(NonRootModelElement modelElement);
+  Above method will create a string key for a model element as following
+  ${class_name}.${attribute_name}.${long_id}
+  
+- UUID getId(NonRootModelElement modelElement);
+- void setId(NonRootModelElement modelElement, UUID id);
+- List<NonRootModelElement> getIdBasedChildren(NonRootModelElement parent);
+  Above method will return a list of model elements that are children of given 
+  parent as defined in file_io.pei.sql and has an identifier that is not 
+  referential.
+
+2. Create a popup extension point and contribution for type IFile. An action 
+class ConvertModel2UUIDAction.java is also created for this contribution in the
+package com.mentor.nucleus.bp.core.ui. This action will determine the input map 
+by looking for map file with the same name and location as the model file. The 
+import will also over-write the old map file with the new map. The map file 
+will use 'uuidmap' as its file extension.
+
+2.1 The import code will not convert the model into UUID format, however if the
+file is modified it will persist the dummy UUIDs.
+
+2.2 Remove recreateUniqueIds() methods from Ooaofooa and Ooaofgraphics and 
+java.arc. Creation of new UUIDs for model elements that do not have an entry 
+in the input map, is now part of IDConversionUtil.
+   
+Work Required
+-------------
+1.   Create gen_id_convert_util.arc archetype as defined in the design section.
+1.1  Create the class UUIDMap as specified in the design section.
+2.   Create the extension point and the action class as specified in the design 
+     section.
+2.1  Remove recreateUniqueIds() methods as specified in the design section.
+
+Unit Test
+---------
+_- Switch to resource navigator resource and select any model file.
+_- Right click the model file and select "Convert to UUID format" menu item.
+_R Verify that a map file is created with the same name and directory as the 
+   model file. 
+_R Verify that it has valid mapping entries.
+_- Replace the model file with a later revision of the (long based) model.
+_- Repeat the same process for converting the long based model into UUID format.
+_R Verify that map file is updated with newly added entries.
+_- Repeat above test for couple of models.
+
+End
+---
+
+$Log: i2028.dnt,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.16.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2006/05/24 20:29:24  babar
+Job:1554
+Addressed the obversations.
+
+Revision 1.7  2006/05/10 21:44:03  babar
+Job:2028
+Addressed the observations.
+
+Revision 1.6  2006/05/09 20:56:18  greg
+Job: 2028
+Revised the dnt as per review minutes by Campbell
+(for Babar)
+
+Revision 1.5  2006/05/05 16:45:58  babar
+Job:2028
+Removed invalid section.
+
+Revision 1.4  2006/05/05 16:23:14  babar
+Job:2028
+updated the section that refers to Nested branching.
+
+Revision 1.3  2006/05/05 12:40:19  babar
+Job:2028
+Added design of the map.
+
+Revision 1.2  2006/05/05 12:26:06  babar
+Job:2028
+Updated for a slight change.
+
+Revision 1.1  2006/05/05 12:11:45  babar
+Job:2028
+Captured an alternative approach for the merging process. After discussion with 
+Campbell, it will be updated for laydown the exact process and design of the 
+tool.

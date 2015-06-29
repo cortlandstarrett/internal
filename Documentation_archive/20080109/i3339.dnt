@@ -1,0 +1,197 @@
+========================================================================
+
+File:      $RCSfile: i3339.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Existing projects are not updated with the new export_builder
+
+
+1. Abstract
+-----------
+This note describes how we will make sure each MC-3020 project contains the
+proper builders.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 3339
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3339
+[2] Bugzilla item 2614
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2614
+
+4. Background
+-------------
+We recently added support for using BridgePoint's stream model export as the
+input to the model compiler [2].  This work involved adding a new incremental
+builder (called the "pre-builder") to MC-3020 projects.  This pre-builder is
+added automatically to each new MC-3020 project.  However, existing projects
+will need to have this builder added before code generation will work in BP
+1.5.3 and after.
+
+5. Analysis
+-----------
+5.1		We need to modify each xtUML Project's ".project" file.
+5.2		We want a solution that will prevent the "Build Project" from ever
+		failing.
+5.3		We do not want to silently dirty files in the user's workspace.
+
+6. Design
+---------
+6.1		The MC-3020 plugin implements IStartup.  The earlyStartup() function is
+		called by the Eclipse framework when eclipse starts.  Right now, all
+		this does is check the licenses and add the resource listener.
+6.1.1	This function can be extended to cause all the xtUML projects to be
+		updated.  The process will be:
+			- Iterate over each project in the workspace
+			- Check if the project has MC3020 Nature
+			-   If yes, check for the Model Compiler Pre-builder
+			-   If not present, pop up a dialog notifying the user that
+                the update is required.
+            - If the user chooses to proceed with the update, check each open
+              3020 project to make sure it has the correct builders. Add them
+              if they don't.
+6.1.2   The Yes/No dialog displayed when the update is required will have
+        the message:
+            Your workspace contains xtUML projects that need to be
+            updated.  BridgePoint requires the Model Compiler Pre-builder
+            to be added to each xtUML project.  Code generation will not
+            work until this update is performed.
+
+            Do you wish to perform this update now?"
+
+6.2     If the user chooses not to perform the update, MC-3020 builds will fail,
+        but we are allowing this route.  The user was warned by the update
+        message.
+
+6.3     The earlyStartup() will not update projects that are closed at eclipse
+        start time.  Therefore, we need to modify the resource listener to watch
+        for project opens and check the builder list when that happens.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+8.1		Add function call "verifyProjectBuilders()" to earlyStartup().
+8.1.1	verifyProjectBuilders() will implement the logic in 6.1.1.
+
+8.2     Modify the resource listener to check the builder list and prompt to
+        update a project as necessary when a project is opened.
+
+9. Unit Test
+------------
+9.1		Verify new projects have the builder
+		_- Create MicrowaveOven using the Welcome page quickstart
+		_- Open the MicrowaveOven project properties
+		_R The Model Compiler Pre-builder exists and is checked
+		_- Build the project
+		_R The project passes code generation and compile without error
+
+9.2		Verify projects are upgraded (continues from 9.1)
+		_- Clean the MicrowaveOven project
+		_- Create 3 new xtUML projects.  Use existing models dogs, bounce, and
+		   sudoku as import files
+		_- Formalize the dogs to a component
+        _- Switch to the EDGE Projects Perspective
+		_- Exit BP
+		_- Explore to the workspace on disk.  Open the dogs project's ".project"
+		   file, remove the stanza for the Model Compiler Pre-builder (export
+		   builder).  Remove the export builder from the sudoku project's
+		   ".project" file as well.
+		_- Start BP
+		_R When BP starts the user is prompted with a dialog indicating that
+           some projects require updating.
+        _- Click "No"
+        _- Build the dogs project
+        _- Code gen fails
+        _- Exit BP
+        _- Start BP
+        _R When BP starts the user is prompted with a dialog indicating that
+           some projects require updating.
+        _- Click "Yes"
+		_- Build the bounce project
+		_R The project passes code generation and compile without error
+		_- Build the dogs project
+		_R The project passes code generation and compile without error
+		_- Build the MicrowaveOven project
+		_R The project passes code generation and compile without error
+		_- Build the Sudoku project
+		_R The project passes code generation and compile without error
+        _- Exit BP
+        _- Start BP
+        _R No dialogs are presented indicating an update is required.
+
+9.3     Verify closed projects not updated (continues from 9.2)
+        _- Create a new xtUML project.  Use import file ex1.xtuml.
+        _- Close the new project
+        _- Exit BP
+        _- Explore to the workspace on disk.  Open the ex1 project's ".project"
+           file, remove the stanza for the Model Compiler Pre-builder (export
+           builder).
+        _- Start BP
+        _R When BP starts no dialogs are popped up to prompt the user
+        _- Exit BP
+        _R Explore to the workspace on disk.  Open the ex1 project's ".project"
+           file, verify the stanza for the Model Compiler Pre-builder (export
+           builder) does not exist.
+
+9.4     Verify opened projects are updated (continues from 9.3)
+        _- Start BP
+        _- Open the project
+        _R User is presented with a dialog indicating the newly opened project
+           requires update
+        _- Select "No"
+        _R Explore to the workspace on disk.  Open the ex1 project's ".project"
+           file, verify the stanza for the Model Compiler Pre-builder (export
+           builder) does not exist.
+        _- Close the project
+        _- Open the project
+        _R User is present with a dialog indicating the newly opened project
+           requires update
+        _- Select "Yes"
+        _- Build the ex1 project
+        _R The project passes code generation and compile without error
+
+
+End
+---
+
+$Log: i3339.dnt,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.3  2007/12/20 02:58:28  kbrown
+Job:3339
+Completed review minutes changes.
+
+Revision 1.2  2007/12/19 19:31:59  kbrown
+Job:3339
+Updated.
+
+Revision 1.1  2007/12/19 17:31:35  kbrown
+Job:3339
+Completed design note.
+

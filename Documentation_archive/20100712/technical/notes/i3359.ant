@@ -1,0 +1,159 @@
+========================================================================
+
+File:      $RCSfile: i3359.ant,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Use stream export to pre-process development models for MC-Java
+
+1. Abstract
+-----------
+This note captures requirements for the modification of the procedure currently 
+used to pre-process multi-file models for MC-Java.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3359
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3359
+[2] Bugzilla item 2614 (Update MC plugins to use stream model export)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2614
+[3] cvs://Documentation/internal/technical/archive/20080109/i2614.dnt
+[4] cvs://model_compilers/mccommon/bin/xtumlmc_build
+[5] cvs://MC-Java/ooa_schema.sql
+
+4. Background
+-------------
+Today our development models are pre-processed using a function in
+xtumlmc_build [4] named xtumlmc_cleanse_for_BridgePoint().  This function 
+performs 3 tasks:
+1) Convert multi-file model to single-file
+2) Replace UUIDs with longs
+3) Remove PEI data
+
+Step 3 is performed utilizing a list of parameters passed into the
+xtumlmc_cleanse_for_BridgePoint() function.  These parameters represent the
+names of the subsystems the caller wishes to strip from the model.
+
+The problem with this approach is that when changes are made to the meta-model
+the MC-Java schema has to be updated accordingly, and when this is done our
+development model instance data may not match the MC-Java schema.  This happens
+because our model upgrade mechanism imports the model and updates it in-memory
+but does not persist the changes until the model is touched.  A similar problem 
+in the MC-3020 model compiler has been alleviated by utilizing the
+BridgePoint stream export facility instead of xtumlmc_build [4] to create the
+single-file model [2].  
+
+
+5. Analysis
+-----------
+5.1 The pre-processing mechanism shall convert the file from multi-file to 
+    single-file format.
+5.1.1 When meta-model changes are made, they are reflected in the MC-Java 
+    schema [5].  When these changes are made to the MC-java schema, instance
+    data from the ooaofooa may no longer match until it is persisted. 
+    
+    The pre-processing mechanism will use the BridgePoint stream export facility
+    in the same way the MC-3020 ExportBuilder uses it [2] to produce a 
+    single-file model from the in-memory model to prevent having to force
+    persistence in this situation.
+    
+5.2 The pre-processing mechanism shall convert UUIDs to longs.
+5.3 The pre-processing mechanism shall strip OAL data from the model.
+    
+6. Work Required
+----------------
+6.1 Introduce a class in com.mentor.nucleus.bp.internal.tools that will perform
+    the pre-processing.  This class shall be named ModelExporter.
+6.1.1 This class will utilize the code in the MC-3020 ExportBuilder [2].
+6.1.2 Refactor the MC-3020 resource builder [2] so it too uses this new class.
+6.2 Modify the ModelExporter class to replace UUIDs with longs.
+6.3 Modify every BridgePoint ant build script that currently calls 
+    xtumlmc_cleanse_for_BridgePoint, to call a new ant target which utilizes
+    ModelExporter.
+6.4 Update the MC-Java schema [5]
+6.4.1 Replace all occurrences of "Dimensions INTEGER" with "Dimensions STRING"
+6.4.2 Replace all occurrences of "Return_Dimensions INTEGER" with 
+      "Return_Dimensions STRING"
+6.4.3 Modify S_SPARM making the Order attribute be last (after Dimensions).
+6.5 Modify xtumlmc_build [4] to no longer call ReplaceUUIDWithLong() when 
+    processing single-file models that come from the ExportBuilder.  Single-file 
+    models that do not come from the ExportBuilder [2] will still need to 
+    utilize ReplaceUUIDWithLong().
+    
+7. Acceptance Test
+------------------
+7.1 Verify that MC-Java builds BridgePoint without errors when ooaofooa instance 
+    data does not match the MC-Java schema.
+_- Use the R1_5_3 plugins
+_- clean all plugins (Project->Clean...)
+_- Touch the classes with Dimensions and Return Dimensions attributes.  They 
+   are:
+	Component::Interface Operation (C_IO)
+	Component::Property Parameter  (C_PP)
+	Domain::Bridge (S_BRG)      
+	Domain::Bridge Parameter (S_BPARM)
+	Domain::Function (S_SYNC)
+	Domain::Function Parameter R52 S_SPARM
+	Domain::Structure Member (S_MBR)      
+	State Machine:State Machine Event Data Item (SM_EVTDI)
+	Subsystem::Attribute (O_ATTR)
+	Subsystem::Operation (O_TFR)
+	Subsystem::Operation Parameter  (O_TPARM)
+	Value::Transient Var   (V_TRN)
+_- Build
+_- No build errors
+
+7.2 Make sure the refactoring of the MC-3020 plugin did not effect its operation
+    by running the unit tests that were utilized when the stream export feature
+    was added to MC-3020.  These tests are specified in [3, section 9].
+
+
+End
+---
+
+$Log: i3359.ant,v $
+Revision 1.7  2010/01/05 04:29:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.6  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.4.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2008/01/10 21:59:14  rmulvey
+Job:3359
+Fixed a typo
+
+Revision 1.4  2008/01/10 21:58:38  rmulvey
+Job:3359
+Fixed a typo
+
+Revision 1.3  2008/01/10 21:45:54  rmulvey
+Job:3359
+Added 6.5 to specifiy that xtumlmc_build can be modified to no longer call ReplaceUUIDWithLong when processing single-file models that
+come from the ExportBuilder, but it will still need to use for for single-file models that do not come from the ExportBuilder.
+
+Revision 1.2  2008/01/10 21:39:17  rmulvey
+Job:3359
+Added 6.5 to specifiy that xtumlmc_build can be modified to no longer call ReplaceUUIDWithLong when processing single-file models that
+come from the ExportBuilder, but it will still need to use for for single-file models that do not come from the ExportBuilder.
+
+Revision 1.1  2008/01/10 20:49:54  rmulvey
+Job:3359
+Introduced

@@ -1,0 +1,185 @@
+========================================================================
+
+File:      $RCSfile: dts0100591217-dts0100628917.int,v $
+Version:   $Revision: 1989 $
+Modified:  $Date: 2012-11-02 14:20:25 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support writable values in Verifier and allow instance creation from the
+Verifier UI
+
+1. Abstract
+-----------
+This note describes how writable variable values are enabled in Verifier and how
+the ability to instantiate classes from Session Explorer is added                  .
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100591217 - Support writable values in Verifier
+[2] ClearQuest DEI dts0100532307 - Request for ability to set default
+    initialization for class attributes.
+[3] ClearQuest DEI dts0100530239 - Support for Constants still not in place in
+    BridgePoint.
+[4] ClearQuest DEI dts0100628917 - Allow instance creation from the Verifier UI
+[5] ClearQuest DEI dts0100539291 - [BZ 3061] Request for Hexadecimal variable
+    support in Verifier.
+
+4. Background
+-------------
+It has been a goal for some time now to provide the user with the ability to
+influence the progress of execution rather than just observe it. This work
+enables this feature for simple values and enumerations. A request to allow an
+instance to be created manually from the Session Explorer is also addressed in
+this work.
+
+5. Design
+---------
+5.1 Enabling variable modification requires just three significant changes to
+the BPVariable class.
+
+5.1.1 BPVariable.supportsValueModification()
+This method previously always returned false, making Verifier variables read-
+only. This method is modified to check if the data type of the Variable in
+question is a simple value (integer, boolean, real or string) or an enumeration
+(the subtype of S_DT is an S_EDT instance). If either of these are true, the
+method now returns true, allowing modification in these cases.
+
+5.1.2 BPVariable.setValue()
+This method was previously empty since it was never called. It is now expanded
+to set the value to the passed string value. Since Verifier uses strings to hold
+all runtime values, the expression value is already in an appropriate format for
+assignment. The validation method[5.3 below] ensures that only valid strings can
+be assigned to the runtime.
+
+5.1.3 BPVariable.verifyValue()
+This method previously always returned false, although it would never previously
+have been called. It is now enhanced to determine the data type of the Variable
+being edited. This data type is then passed to the common value validation
+mechanism refactored by the work for[2]. Note that because of this, this work
+depends on being promoted at the same time or after the work for[2].
+
+5.1.4 BPVariable.getTypeForValue()
+This private convenience method is added to declutter the implementation of the
+validation implementation[5.3].
+
+5.2 Add ability to create an instance from the Session Explorer.
+
+5.2.1 Add Create Instance Action
+A standard Eclipse ActionDelegate class is created. Its run action simply
+creates an instance of Instance (I_INS), relates it to the correct class in
+engine instance (as found from the current selection) and calls the initialize()
+operation on the new instance to create all its attributes etc. This class also
+enables the menu entry and adds the standard Verifier instance icon to the menu
+when the selectionChanged() method is called.
+
+5.2.2 Changes to the debug.ui plugin file
+The file com.mentor.nucleus.bp.debug.ui/plugin.xml is modified to declare the
+New > Instance menu entry. It is added to the New menu for consistency with
+other BridgePoint creation actions. The menu is filtered to only appear when
+ClassInEngine_c instances are selected in the UI. This restricts its appearance
+to the Session Explorer since Model Explorer does not display instances of this
+class.
+
+6. Implementation Comments
+--------------------------
+6.1 Alternate radix support
+The Constants work added support for alternate radices, bases 2 and 16. This
+support is currently weak because Verifier internally uses integers without any
+extended data about presentation style[5]. The end result is that while
+alternate radix input is accepted, it is immediately converted to a base 10
+presentation.
+
+This work therefore increases the priority of the radix support issue[5] by
+providing partial support where previously there was none. A note is added to
+that issue to this effect.
+
+7. Unit Test
+------------
+7.1 Variable modification
+
+7.1.1 Allow Variable modification
+_- Using the test model introduced for [2], set a breakpoint at the first line
+   of each performTest() operation.
+_- Run each test (there are 6 test functions) and systematically modify the
+   attribute values incrementing by 1.
+_- Step over the OAL that evaluates the results
+_R Confirm that they show the expected failures with the new value.
+
+7.1.2 Reject illegal values
+_- Repeat the same test above, but provide illegal values such as including a
+   letter (excluding x and b) inside the number value.
+_R An error dialog is shown.
+
+7.1.3 Allow hexadecimal and binary data entry
+_- Repeat the test above[7.1.1], but enter numbers in hexadecimal and binary by
+   prefixing the entered values with "0x" and "0b" respectively.
+_R The numbers are converted to the decimal equivalent.
+
+7.1.4 Reject illegal hexadecimal and binary numbers
+_- Repeat the test above [7.1.3], but enter illegal hexadecimal and binary
+   numbers.
+_R An Eclipse standard error dialog is shown.
+
+Note: Due to an Eclipse bug, the error dialogs expected in [7.1.2] and [7.1.4]
+are actually shown twice on my system. JDT shows the same bug.
+
+7.2 Create Instance
+
+_- Start a Verifier session on any model that contains classes.
+_- Right click on a class in Model Explorer. Follow the New > menu entry.
+_R No new 'New' menu entries are seen
+_- Right click on a class in Session Explorer. Follow the New > menu entry.
+_R There is a new 'Instance' entry.
+_- Select the new entry
+_R The Session Explorer tree updates to show a new entry under the selected
+   class.
+_- Open up the instance.
+_R All attributes have been correctly initialized.
+_R Current state is set to the expected initial state.
+
+8. Code Changes
+---------------
+8.1 Variable modification
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    InputValueValidator.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui/
+    ConstantValueInputValidator.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui/
+    DefaultValueInputValidator.java
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPVariable.java
+
+com.mentor.nucleus.bp.ui.properties/src/com.mentor.nucleus.bp.ui.properties/
+    DefaultValuePropertyDescriptor.java
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+com.mentor.nucleus.bp.ui.properties/generate.xml
+
+8.2 Create Instance
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.actions/
+    NewInstanceAction.java
+com.mentor.nucleus.bp.debug.ui/plugin.xml
+
+End
+---
+
+$Log: dts0100591217-dts0100628917.int,v $
+Revision 1.2  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.1  2009/10/28 11:17:32  campbell
+Job: dts0100591217
+Ready for review.

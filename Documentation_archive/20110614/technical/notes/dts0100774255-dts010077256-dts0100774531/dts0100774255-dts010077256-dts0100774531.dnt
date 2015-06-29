@@ -1,0 +1,206 @@
+========================================================================
+
+File:      $RCSfile: dts0100774255-dts010077256-dts0100774531.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Problems executing GP models with Launch Verifier, bug in pasting a package that
+has an interface in it Import has some problems with the GPS model.
+
+1. Abstract
+-----------
+This note describes the fixes for a couple of issues identified during final
+preparation of the R3_2_5 release.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100774255 - Unable to execute functions in GP converted
+    MicrowaveOven
+[2] ClearQuest DEI dts0100774256 - Execute greyed out for class operations in
+    MicrowaveOven after migration to GPs
+[3] ClearQuest DEI dts0100774531 - There is a bug in pasting a package that has
+    an interface in it
+[4] ClearQuest DEI dts0100773873 - Unable to successfully import GPS Watch into
+    a generic package model and execute it
+[5] ClearQuest DEI dts0100770305 - Complete automated testing for copy/paste.
+[6] ClearQuest DEI dts0100773862 - Manually test import and execution of the
+    GPSWatch model in a Generic Package context.
+
+4. Background
+-------------
+The Launch Verifier menu entry was not working for components nested inside a
+generic package. Pasting interfaces inside a generic package did not work. The
+upgrade code had some defects exposed by the GPS Watch model.
+
+5. Analysis
+-----------
+5.1 Launch Verifier
+In the debug.ui.LaunchShortcut class, the method getSystemForSelectedElement(),
+has not been updated for generic packages. This is causing issues [1] and [2].
+
+5.2 Paste fixes
+5.2.1 Paste menu entry not available
+GraphicalElement_c instances are in the list that traverse the parent to find a
+package.  They will never find a Package as a parent so this case was returning
+false to the in generics tests.  This manifests itself as issue [3].
+
+5.2.2 Copied interfaces exist in multiple places
+Code in Package.pastePackage() to unhook from the old parents was removed
+because it was assumed they would be proxies.  In the SystemModel case this is
+not true.
+
+5.3 Component References not imported correctly
+These do not show properly on the canvas (showing as white rectangles), nor
+do they appear in the Model Explorer after import.
+
+6. Design
+---------
+6.1 Launch Verifier
+ A new 'else if' alternative for Package_c instances is added which gets the
+system instance across R1405 which is always available for generic packages.
+In addition, the two existing alternatives for Component_c and
+ComponentReference_c instances are extended to look for containment within a
+generic package and recursively call the method passing the referenced package
+or component.
+
+6.2 Paste fixes
+6.2.1 Paste menu entry not available
+Ignoring any element not from the Ooaofooa fixes this and allows paste to show
+properly.  The change is in core.ui.CutCopyAction.elementsInGenericPackaging().
+This comprises the addition of if(element.getModelRoot() instanceof Ooaofooa)
+before searching the parent hierarchy.
+
+6.2.2 Copied interfaces exist in multiple places
+To resolve the issue it is simply necessary to modify the pastePackage operation
+to unrelate from a system across R1405 and R1401 if they existed.  Then after
+selecting the new system, OAL is added to associate the package with that system
+across R1405.
+
+6.3 GPS Import problems[4]
+These are traced to a failure to handle Component References. Code is added in
+ImportHelper.upgradeComponentPackage() to check for component references, add
+Packageable Elements to them and associate them with their new generic package.
+
+7. Design Comments
+------------------
+7.1 Enumerated type
+Once GPS Watch was successfully upgraded after fixing 6.1 and 6.2, it was noted
+that there were new multiple parser interrupted errors. These were traced to a
+defect in the Enumerator_validate function. This function was attempting to
+select an enumerator based on its id. Selecting this way has the limitation
+that the search is limited to the current model root. The function is changed to
+select a Packageable Element based on the passed id. If no PE is found, we set
+isInGenericPackage to false, and duplicate the content of the function as has
+been the idiom.
+
+7.2 References to R4205
+This is a containment hierarchy association. It was therefore determined that
+all references to this should be restricted to specific package contexts. On
+searching two references were found to potentially occur in a generic package
+environment. These were in Component.isExecutingOrIsChildExecuting() and in
+ComponentReference.componentHasUnusableInterfaces().  In ImportHelper, the
+method, upgradeComponent() has a line added to unrelate component references
+across R4205 when they are associated with the containing component across
+R8003 and R8001.
+
+7.2.1 Component.isExecutingOrIsChildExecuting()
+In this case, the operation is split into generic and non generic processing and
+in the generic case, the traversal across R4205 is replaced with one that
+traverses the composite hierarchy through R8003 and R8001.
+
+7.2.2 ComponentReference.componentHasUnusableInterfaces()
+This case was found to be more difficult to resolve. The generic and non-
+generic cases had become intertwined to the point that it was difficult to
+assert that the required behavior was being shown in both cases. The processing
+was once again split, but this time the specific case processing was simplified
+by removing all references to isInGenericPackage and adjusting the logic
+accordingly. The generic case was completely rewritten to use visibility rules.
+
+7.3 ModelImportWizard
+This class already had an enhancement to persist system level data after an
+upgrade[5]. Unfortunately this job missed an alternate code path, so identical
+code is added to cover the other path.
+
+7.4 DebugUtils.getVerifiableElements()
+BPDebugUtils had a problem where verifiable elements were no longer being found.
+This was traced to the getVerifiableElements() method that did not handle the
+case where Component References were contained under the R8000/R8001 composite
+structure. A block of code similar to that handling other cases is added to
+handle this case.
+
+7.5 NPE in the graphical editor
+An NPE in the graphical editor is fixed so that EditParts with no parent do not
+attempt to cause a refresh.
+
+8. Work Required
+----------------
+Fully described in the design.
+
+9. Unit Test
+------------
+Manual tests
+9.1 Launch Verifier
+_- Convert MicrowaveOven to GP
+_- Create a new component in the package that contains the SS -> Package elements
+_- Cut all the MO packages
+_- Paste them into the new component diagram
+_- Right click on the new component in model explorer and select Launch Verifier
+_R Verifier launches the component and runs Microwave oven
+_- Execute 'Functions/DefineOven'
+_- Execute 'Functions/TestSequence1'
+_R The Microwave Oven model executes to completion.
+
+9.2 Paste package
+_- Create 2 packages at the system level (pkg1, pkg2)
+_- Open pkg2 and create a interface (if1)
+_- In if1 create an operation (op1)
+_- Copy pkg2 from ME
+_- Open pkg1 in a canvas editor and select paste
+_R The paste menu entry is available
+_- Select pkg1 in ME and select paste
+_R The paste menu entry is available
+_- Execute the paste
+_R A copy of Pkg2 exists under pkg1
+_- Open pkg1 in a canvas editor and inside it, open pkg2, then select if1 and
+   make sure "link with editor" is selected
+_R if1 under the copied pkg2 is selected in ME
+_- Delete if1
+_R if1 is deleted from under pkg2
+_R if1 under the pkg2 instance at the system level is still present
+
+9.3 Execute GPS Model
+Execute SMA QA test, dts0100773862[6]
+
+All existing JUnit tests must pass.
+
+End
+---
+
+$Log: dts0100774255-dts010077256-dts0100774531.dnt,v $
+Revision 1.4  2011/05/31 14:09:50  campbell
+Job: dts0100774255
+Address review obs.
+
+Revision 1.3  2011/05/30 21:08:57  campbell
+Job: dts0100774255
+Address pre-review comments.
+
+Revision 1.2  2011/05/30 20:35:48  campbell
+Job: dts0100774255
+Updated with all details ready for review.
+
+Revision 1.1  2011/05/29 21:07:22  campbell
+Job: dts0100774255
+Introduced.
+

@@ -1,0 +1,440 @@
+========================================================================
+
+File:      $RCSfile: uuid-i1554.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Use UUID standard for unique_id type
+
+Abstract
+--------
+This document describes the design of changes that are required to use UUID
+for the implementation of unique Id while maintaining backward compatibility
+with BridgePoint 6.1.
+
+History
+-------
+update uuid-i1554.dnt-040406-01.rvm
+update uuid-i1554.dnt-041006-01.rvm
+final  uuid-i1554.dnt-041306-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 1554
+[2] /Documentation/internal/technical/Architecture/uuid-i1554.ant
+[3] http://en.wikipedia.org/wiki/Birthday_paradox
+[4] [Leach-Salz variant] http://www.faqs.org/rfcs/rfc4122.html
+[5] /MC-Documentation/internal/process/templates/checklists/release_test.chk 
+    item #7.
+Design
+--------
+
+1.  Changes to Java code base for supporting UUIDs
+
+1.1 The IdAssigner class. 
+
+The IdAssigner class contained functions to create long based unique 
+identifiers. This class is modified to contain common logic for UUID and all 
+previous methods are removed. This class contains following static elements.
+
+1.1.1
+    public static final UUID NULL_UUID = new UUID(0, 0);
+	The value zero is used at various places for certain purpose. This constant
+	is created to replace the number zero with a zero initialized instance of 
+	java.util.UUID.
+
+1.1.2	
+    public static final UUID createUUID();
+    This method serves as single place for creating a selected type/version of 
+    UUID.
+	
+1.1.3
+    public static final Object createUUID(String);
+    This method is used to create instance of UUID from a string representation
+    of UUID or long based unique identifier. For long based uids it stores the
+    value into least significant long of UUID type. This leaves the most 
+    significant long with zero value. This helps identifying adaptor instance 
+    for long based uids using the method UUID.version() method as it returns 0.
+   
+1.1.4 
+    public static final boolean isUUID(String idString);
+    This method determines whether a given String is UUID or long based id. This
+    method is used in the import class for adapting to old long based unique id
+    while parsing old versioned models. Since we use standard string 
+    representation as specified in the RFC [4] we can safely use its formal 
+    definition for its identification. It therefore uses the length of the 
+    string representation and presence of '-' character at pre-defined indexes 
+    to determine the UUID type. 
+    
+1.2 Changes to MC-Java
+MC-Java/do_type.inc is modified to translate "unique_id" into "java.util.UUID".
+MC-Java/java.arc is modified to generate extra field and an accessor method for 
+unique_id based identifiers to store old values if the model element has been 
+converted from a long based unique id. These values are used to create old 
+formats with a goal to retain ids that were used to load the old format models. 
+For a situation where this old format value is not available such as creation 
+of new model element after import from a sql file, a 28 bit pseudo random value 
+is used.
+
+Any place where the value zero was used for a particular purpose, NULL_UUID 
+constant is used. For example on unrelate the referential id is set to zero, 
+which is later used to determine whether or not to return cached value of 
+referential id.
+
+1.3 Changes to Export/Import
+
+1.3.1 The following changes were made to the Import code.
+
+1.3.1.1   
+   IdAssigner.createUUID(String) is used instead of Long.parseLong(), which 
+   creates instance of UUID as specified under section 1.1.  
+   
+1.3.1.2
+   The import class maintains a boolean value to determine if the loaded
+   model is using long based unique id for backward compatibility and requires 
+   re-creation of true UUID using IdAssigner.createUUID() method or has been 
+   specifically set to recreate UUIDs such as creation of a domain using a 
+   template. In case if it does, it invokes setUniqueIds on all loaded instances 
+   to re-create UUIDs.
+   
+1.3.1.3
+   The code that detected and resolved id collision between domains is 
+   removed.
+
+1.3.2 No changes are required to the export since the method signature for 
+      obtaining the ids remains the same and the UUID class uses the standard 
+      toString() method for conversion of the UUID into string representation.
+
+1.3.3 For exporting into old formats, the accessor for the cached old value is 
+      used.
+
+1.4 Upgrading the java source base to support the Java 1.5 compiler.
+
+1.4.1
+    The following files are modified to prepend "v_" to variables, "p_" to 
+    parameters and "edi_" to event data items.
+
+
+/com.mentor.nucleus.bp.als/arc/validate_gen.arc
+/com.mentor.nucleus.bp.als.oal/sql/function_import.sql
+/com.mentor.nucleus.bp.core/arc/create_rename_action.inc
+/com.mentor.nucleus.bp.core/arc/function_body.inc
+/com.mentor.nucleus.bp.core/arc/page.inc
+/com.mentor.nucleus.bp.core/arc/wizard.arc
+Following two model files are modified only because of native code that it 
+contains referring to any of variables or parameters.
+/com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+/com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+/MC-Java/java.arc
+/MC-Java/statement.inc
+/MC-Java/value.inc
+
+2. Changes required in the generator for adding support of unique ids.
+
+There are three alternatives for adding support to the generator.  The 
+alternative identified in section 2.1 below will be used.  The alternatives in 
+other sections are explained here only for documentation purposes.
+
+2.1 Preprocess xtuml to avoid changes to the Model Compiler, Model Debugger, 
+    and Generator.
+
+2.1.1
+A new perl script is created that converts the UUID values into long based ids. 
+It is done in order to avoid the modifications in the generator and the 
+debugger. This script maintains a map for re-using the created long based 
+ids against UUIDs for which long based ids are already created. The unique-ness
+of the ids is ensured with in a single build-space.
+
+Since this script is required by all model compiler including MC-Java, a new 
+project named "GeneratorUtility" is created that will hold the perl script 
+and binary used to replace UUIDs with 32-bit ids.  The script/binary is named 
+as "ReplaceUUIDWithLong.pl/exe".
+
+2.1.2
+The ant scripts of following projects will be modified.
+- com.mentor.nucleus.bp.als
+- com.mentor.nucleus.bp.core
+- com.mentor.nucleus.bp.core.test
+- com.mentor.nucleus.bp.io.core
+- com.mentor.nucleus.bp.ui.canvas
+- com.mentor.nucleus.bp.ui.canvas.test
+- com.mentor.nucleus.bp.ui.explorer
+- com.mentor.nucleus.bp.ui.properties
+- com.mentor.nucleus.bp.ui.properties.test
+- com.mentor.nucleus.bp.ui.text
+- MC-Java build.xml
+
+The model compilers will also need to be modified to invoke this utility.
+
+2.2 Modify the generator
+
+2.2.1
+A new type is defined in /utility/include/u_typdef.hh as following
+
+    typedef struct {t_long id1; t_long id2; t_long id3; t_long id4;} t_uuid;  
+
+2.2.2
+The following method is added to class I_var thus using the already adapted 
+method for determining the type of I_var created.
+
+    virtual I_uuid_var*  get_uuid_var_ptr ();
+
+2.2.3
+The following public member is added to the I_unique_id_var class. 
+
+    /**
+     * This method shall contain parsing logic of the string representation of 
+     * long based uid. This logic was previously written in 
+     * GS_import::import_sql_statement. It also contains the logic of embedded 
+     * domain code into the id.
+     *
+     * Return TRUE if successful.
+    */
+    t_boolean  set_value (const Description& p_unique_id_str, 
+                                                     unsigned long domain_code);
+
+2.2.4 
+A new class I_uuid_var will be created to define the uuid type.  This class is 
+extended from I_var since I_var is the root class of all variable types. All of 
+its methods are similiar to the I_unique_id_var class, except two of the 
+following methods that are added.
+
+    /*
+     * The following method shall parse the standard uuid presentation and reset
+     * the value of m_uuid and m_uuid_str.
+     */
+    t_boolean      set_value (const Description& p_value_str);
+
+    /*
+     * The following method determines if the given string value represents a  
+     * valid UUID as per standard string representation of UUID defined in 
+     * RFC 4122.
+     */
+    static t_boolean is_str_uuid(const Description& p_value_str);
+
+2.2.5 Factory method
+The factory method of the class I_Attribute_Instance is modified by adding a 
+parameter in its signature. This parameter is required to determine type of 
+I_var that needs to be created by examining the string value of attribute.
+
+	static I_Attribute_Instance* create (mc_dbms_segment* p_seg_ptr,
+		t_core_data_type p_core_data_type,
+		t_user_data_type p_user_data_type,
+        int domain_code, const Description& p_attr_value_str);
+
+Similarly I_var::create_in_transient and I_var::create_in_persistent static 
+methods are modified by adding a parameter of type Description. These methods 
+uses I_uuid_var::is_str_uuid method to determine which of the I_uuid_var or 
+I_unique_id_var's instance to create.
+
+GS_import::import_sql_file is modified to adapt to the above changes.
+
+2.3 Use an alternative schema generation mechanism that requires no generator
+    modification.
+
+This method focuses on not modifying the generator at all. In this method the 
+the schema generator is modified to generate four integers for the unique_id 
+type.  To illustrate this, example schema statements before and after the change
+are shown below.
+
+2.3.1 Before the change, the 'CREATE TABLE' statement is generated as follows.
+
+CREATE TABLE S_SYS (
+	     Sys_ID	UNIQUE_ID,
+	     Name	STRING );
+	     
+2.3.2 After the change, the 'CREATE TABLE' statement will look like the
+      following:
+
+CREATE TABLE S_SYS (
+	     Sys_ID_uuid1	INTEGER,
+	     Sys_ID_uuid2	INTEGER,
+	     Sys_ID_uuid3	INTEGER,
+	     Sys_ID_uuid4	INTEGER	     
+	     Name	STRING );
+
+2.3.3 A similar conversion will be applied to the "CREATE ROP" statement.
+
+2.3.4
+The export module will be changed so that for each instance of 
+java.util.UUID, it will create four fields for unique_id thus adhering to the 
+INSERT statement in the generated schema. The import module on the other hand 
+will convert these fields into a single instance of java.util.UUID while 
+parsing the INSERT statement.  To illustrate this, consider following 
+statement in the xtuml model file.
+
+2.3.4.1
+INSERT INTO S_SYS VALUES (value_of_1st32bits, value_of_2nd32bits,
+                          value_of_3rd32bits, value_of_4rth32bits,
+                          'com.mentor.xyz');
+
+No change is required to the generator since it understands the INTEGER type
+and will use all of four "split values" as identifiers for relating the 
+instances.
+
+2.3.5
+While this scheme seems to avoid the changing of the generator, it will require 
+following additional changes.
+
+2.3.5.1
+  The schema generation process uses the model itself to generate the schema 
+  by importing the xtuml file against the classical metamodel schema. There is 
+  no problem when you consider any model other than ooaofooa for this step of 
+  generation process. However, consider the metamodel model itself. Recall that 
+  the ooaofooa xtuml is changed already to have four fields for each unique_id.
+  If we import the same xtuml file against the classical metamodel schema, 
+  the number of fields will mis-match from what is defined in classical 
+  metamodel. 
+  
+  This means that the ooa_schema needs to be pregenerated and set aside. Then 
+  this pregenerated file can be put into service when the other changes are 
+  complete. 
+
+2.3.5.2
+  The changes required to be made in the export and import will be of bigger a
+  magnitude when compared to first approach because it will bridge the UUID type 
+  and the four integer values representing the uuid.
+  
+2.3.5.3
+  The same kind of changes will be required for the model compilers (both 
+  MC-3020 and MC-2020).
+
+  This will require the archetypes to be modified to re-factor comparison 
+  statements to include four fields instead of one. However referring to an ID 
+  explicitly is poor practice in a model compiler, since one should always have 
+  associations to traverse. Adding the (presumably) missing associations to the 
+  metamodel would be a good alternative to comparing four fields in the 
+  archetypes.
+    
+3. Type/Version of UUID to use.
+
+Although the analysis note recommends using the type 1 UUID, the following 
+assumptions and probability figures were used to determine that using the 
+type 4 UUID is a better alternative. 
+
+   - The rate of creation is assumed at 10,000 licenses x 100,000 instances x 
+     10 models.
+   - Duplicate numbers from a random number generator suffer from the "Birthday 
+     Paradox" (see section 'Applications' [3]), so a duplicate can be expected 
+     after 2^(N/2), 2^50, 1,125,000,000,000,000 numbers.
+   - At the given rate, it would take 3,084 years (on average) before an 
+     identical UUID will result.
+   - Not all id collisions will cause errors.
+   
+Work Required
+-------------
+1.   Java changes
+1.1. Change IdAssigner class as specfied in the design section 1.1.
+1.2. Modify MC-Java as specified in the corresponding design section.
+1.3. Modify Import code as specified in section 1.3.1
+1.4. Modify the BP java source base to support 1.5 JDK as specified in section
+     1.4.
+1.5  Update the unit test code that is left incompatible with JDK 1.5
+
+2.   Create a GeneratorUtility project and the perl script as specified in 
+     section 2.1.1
+2.1  Modify model compiler projects to use the perl script.
+2.2  Modify generate script of projects that require to call the generator as 
+     per 2.1.2
+2.3  Update the new_start.chk file to add instructions to check out 
+     GeneratorUtility project.
+
+3.   Upgrade all the existing models in the repository except for the models 
+     that are used for testing purposes.
+
+Unit Test
+---------
+1.   _- Run all java unit test suites
+     _r All test pass.
+     
+2.   _- Run all MC test suites.
+     _r All test pass.
+     
+3.   _- Execute the check list item [5].
+     _- All results given in the check list are positive.  
+     Note: Please note that this is unit test check list for ModelDebugger.
+
+End
+---
+
+$Log: uuid-i1554.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.16  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.15.16.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.15  2006/05/24 20:55:11  babar
+Job:1554
+Addressed the obversations.
+
+Revision 1.14  2006/04/13 13:24:17  babar
+Job:1554
+Reworded a title as per Bob's observation.
+
+Revision 1.13  2006/04/13 11:48:36  babar
+Job:1554
+Added unit test section.
+
+Revision 1.12  2006/04/13 11:27:36  babar
+Job: 1554
+Partially addressing the observations. Unit Test section left out.
+
+Revision 1.11  2006/04/13 11:22:38  babar
+Job: 1554
+Updated the work required section after adding a newly adapted alternative.
+
+Revision 1.10  2006/04/12 21:23:42  babar
+Job: 1554
+Added the newly adopted strategy for adding support of uuid to generator and debugger.
+
+Revision 1.9  2006/04/10 13:14:17  araza
+Job:1554
+Removed extra details where it lays down signature of every method.
+
+Revision 1.8  2006/04/10 12:22:00  rmulvey
+Job:1554
+Corrected grammar and formatting.
+
+Revision 1.7  2006/04/10 11:38:06  araza
+Job:1554
+Minor changes to method signatures.
+
+Revision 1.6  2006/04/07 19:27:35  babar
+Job: 1554
+Minor changes.
+
+Revision 1.5  2006/04/07 19:20:02  babar
+Job: 1554
+Addressed the observations.
+
+Revision 1.4  2006/04/07 00:52:20  rmulvey
+Job:1554
+Made a few modifications to section 2.2 of the design section.
+
+Revision 1.3  2006/04/06 22:10:36  babar
+Job: 1554
+Intermediate check-in
+
+Revision 1.2  2006/04/06 13:22:43  babar
+Job: 1554
+Removed minor mistakes
+
+Revision 1.1  2006/04/05 21:58:03  babar
+Job: 1554
+Introduced.

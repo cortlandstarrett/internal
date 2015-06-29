@@ -1,0 +1,280 @@
+========================================================================
+
+File:      $RCSfile: i626.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Honor read only file property
+
+Abstract
+--------
+This note describes the design for honoring a file's read only property.
+
+History
+-------
+final - i626-092105-01.rvm
+
+Document References
+-------------------
+[1] Issue 626
+
+Background
+----------
+Currently, Model Builder allows for model changes to occur even when the model's
+disk file is set to read only.  This becomes an issue when dealing with 
+pessimistic revision control systems.
+
+Analysis
+--------
+The tool shall be changed to disable any action that allows for a model change
+when the underlying model resource is read only.
+
+Design
+------
+If a SystemModel_c instance is to be changed then the read only check shall be
+performed on the real file instead of on the IFolder instance.  This is due to
+the fact that eclipse does not honor the project folder's read only property.
+
+1. Disable editors in properties view
+
+If the underlying model resource is read only then all Property Source classes
+shall have a null cell editor returned from the corresponding Property
+Descriptor.  This will allow for the values to be viewed but not modified.  The
+one special case here is for the two cell editors that open Model Builder's
+Description Editor and Activity Editor.  Both editors allow viewing the
+contents, but will not allow modifications.
+
+2. Disable drawing tools in canvas toolbar
+
+If the underlying model resource is read only, all toolbar actions for an open
+diagram, except for the selection tool, shall be disabled.  The graphical
+elements on a diagram shall be selectable but not resizable or movable.
+
+3. Disable all context menu entries
+
+If the underlying model resource is read only, all context menu entries shall
+be disabled.  The two exceptions in this case are the Open and Open With
+entries.
+
+4. Disallow model changes in selection tool
+
+The Selection Tool state chart shall be modified to disallow any movement of
+any graphical element when a model is read only.
+
+5. Display export alternate location dialog
+
+See SRS 2.2.3 for rationale for this design.
+
+If a model is read only and a change does occur for some reason a dialog shall
+be displayed to the user.  The dialog shall explain that the model was read only
+and that a change occurred.  It shall warn the user that the model will be
+reloaded and the changes will be lost unless they export the model to a
+different location.  If they choose to export the model a FileDialog shall be
+created which will allow them to choose the export location.  The value they
+choose shall then be used to export the model.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+1. Disable editors in properties view
+
+Each generated Property Source class shall check to see if the model is
+read only, if true the class shall pass this to the constructor of the Property
+Descriptor.  Each Property Descriptor shall be modified to take a new boolean
+argument, readonly.  If this value is true then the Property Descriptor shall
+return a null cell editor.
+
+2. Disable drawing tools in canvas toolbar
+
+The toolbar population step shall check to see if the model is read only, if it
+is then each action added to the toolbar shall be disabled.
+
+3. Disable all context menu entries
+
+For each generated action that does not rely on the current selection, for
+example the Rename and Delete actions, the Can{action_name} function is modified
+to check if a model is read only.  If true the function shall return false.
+
+For each generated action that is dependent on a selection, the selectionChanged
+function is modified to check if a model is read only.  If true the action shall
+be disabled.
+
+4. Disallow model changes in selection tool
+
+A new bridge operation is added that shall run the modelIsReadOnly method from
+the EclipseOoaofooa class.  It takes one parameter which is the value of a
+graphical element's represents attribute.
+
+A new event is created, Mouse Moved over Non-Hotspot.  This event is generated
+to transition back into the Idle state from Checking for Hotspots.
+
+The Selection Tool state Checking for Hotspots is modified to call this bridge
+operation.  If the result is true, the mouse cursor shall not change and a
+Mouse Moved over Non-Hotspot event is generated.  This disables any symbol
+movement by hotspot.
+
+A new event is created, Mouse Press Cancelled.  This event is used to transition
+back to the Idle state when a model transaction is not allowed.
+
+The Checking Mouse Press state is modified to call the new bridge operation if a
+symbol is already selected.  If the result of the bridge call is true and the
+mouse press is not supposed to retain the selection the Mouse Press Cancelled
+event is generated which transitions back into the Idle state.  This prevents
+the initiation of symbol movement to occur.
+
+The Selecting Symbol state is modified to call the new bridge operation after
+toggling the selection.  If the result is true the new event is generated, which
+transitions back into the Idle state.  This prevents any symbol movement in the
+Selecting Symbol state.
+
+5. Display export alternate location dialog
+
+The dialog's are constructed in the EclipseOoaofooa class.  The method
+EclipseOoaofooa.persist() is renamed to persistFile.  A new persist method is
+written which shall check to see if the model is read only before actually
+persisting.  If the model is read only the dialogs are created and the model
+changes are exported to the user specified location.  After the user is given
+the chance to export the changes the model file on disk is reloaded.  If the
+model file is not read only the persistFile method is called.
+
+Unit Test
+---------
+All tests below shall be implemented using junit.
+
+Complete the following tests on a model that is read only.
+Repeat all tests on a model that is not read only (the results should be
+reversed)
+
+Properties View
+
+For each available property
+
+_- Create an instance and its associated PropertySource
+_- Call the createPropertyEditor
+_R The returned editor is null
+
+Canvas Editor
+
+Repeat each step below for each model diagram type
+
+_- Open the diagram
+_R All toolbar buttons are disabled except for (zoom and scale buttons and the
+selection tool)
+
+Context Menus
+
+_- Right click on the System in Model Explorer
+_R The Rename context menu entry is disabled
+_R The Delete context menu entry is disabled
+_- Right click on a domain
+_R The Rename context menu entry is disabled
+_R The Delete context menu entry is disabled
+_- Right click on a class
+_R The New > Attribute menu entry is disabled
+
+Selection Tool
+
+_- Open a domain diagram
+_- Left click on a subsystem
+_R The subsystem is selected
+_- Right click on a subsystem
+_R The context menu is displayed
+_- Double click on a subsystem
+_R The subsystem is opened
+_- Left click on a class shape
+_- Hover over the resize handles
+_R The tool icon does not change
+_- Left click on a handle and drag
+_R The shape is not resized
+_- Left click on the shape and drag
+_R The shape is not moved
+_- Left click on a class shape
+_- Hold control and left click on another class shape
+_R Both items become selected
+_- Left click on one of the shapes and drag
+_R The shapes do not move
+
+Export Dialog
+(This test has to be forced in junit as there is no manual way to make it work)
+
+_- Make a change to a read only model
+_R The error dialog is shown
+_R The error dialog has yes and no buttons
+_- Click No
+_R The original model is reloaded
+_- Make a change to a read only model
+_R The error dialog is shown
+_- Click Yes
+_R The export dialog is shown
+_- Select a location and hit open
+_R The model is exported to the given location
+_R The original model is reloaded
+_- Make a change to a read only model
+_R The error dialog is shown
+_- Click Yes
+_R The export dialog is shown
+_- Click Cancel
+_R The original model is reloaded
+
+Description Editor and Activity Editor
+
+_- Open a description editor
+_- Try to make any changes
+_R The changes are not allowed
+_- Open an activity editor
+_- Try to make any changes
+_R The changes are not allowed
+
+End
+---
+
+$Log: i626.dnt,v $
+Revision 1.1  2009/09/03 18:22:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.30.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/09/21 21:06:56  tlondon
+Job: 626
+
+Fixed according to review minutes
+
+Revision 1.4  2005/09/21 21:05:03  tlondon
+Job: 626
+
+Fixed according to review minutes
+
+Revision 1.3  2005/09/19 21:37:46  tlondon
+Job: 626
+
+Added the rest of the unit tests
+
+Revision 1.2  2005/09/19 18:45:21  tlondon
+Job: 626
+
+Added information about Mouse Press Cancelled in Checking Mouse Press state
+
+Revision 1.1  2005/09/19 18:21:48  tlondon
+Job: 626
+
+Initial
+
+

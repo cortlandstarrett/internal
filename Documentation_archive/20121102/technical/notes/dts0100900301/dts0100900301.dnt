@@ -1,0 +1,192 @@
+========================================================================
+
+File:      $RCSfile: dts0100900301.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Introduce first set of tree compare tests
+
+1. Abstract
+-----------
+This note describes the changes required to create and resolve any issues found
+for a set of new tests which test tree compare.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100900301
+
+4. Background
+-------------
+Recently tree based compare was added, however no automated tests were created.
+
+5. Requirements
+---------------
+5.1 Provide partial automated testing
+
+6. Analysis
+-----------
+Within the short amount of time as much testing as possible shall be automated.
+
+7. Design
+---------
+7.1 Add new tests
+
+A new test plugin is created, com.mentor.nucleus.bp.model.compare.test.  This
+plugin will hold all tests related to the new tree compare/merge behavior.
+
+An archetype is added which scans the entire ooaofooa and ooaofgraphics, then
+generates test method for each user modifiable attribute.  Each test method does
+the following:
+
+- Locates a pre-existing element
+- Modifies the attribute being tested
+- Compares the modified version with a previous version
+- Checks the tree differencer for the number of changes
+- Performs undo to restore the model to its default state
+
+This tests both that the attribute change shows a difference as well as tests
+that most modifiable elements are present in the compare tree.  The ones that
+are modifiable but not tested for presence currently are association changes.
+
+7.2 Issues resolved during testing
+
+7.2.1 Incorrect differences shown
+
+During testing it was noticed that classes which have attributes that are of
+type string and are part of the identifier are being treated as unequal when the
+string values are identical.  To resolve MC-Java/java.arc is modified to use the
+.equals java comparison method vs the == test.
+
+7.2.2 Disable old compare from the pull down menu
+
+With the introduction of tree based compare both the old and new compare
+approaches were left in place in the UI.  This leads to a belief of unsupported
+functionality as the old compare provided a structural compare (like the current
+tree compare does) that only showed the differences in a tree.  In this case
+each element could be double clicked and focus would be set on the element in
+the text compare area.  This does not work with the new functionality and
+therefore is removed.  To do this the structureMergeViewers and
+contentMergeViewers extension point definitions are removed from
+bp.compare/plugin.xml.
+
+7.2.3 Memory leak
+
+A memory leak was found during testing which was related to model root classes
+holding on to a map that contained a mapping between InstanceList objects and
+Class types.  To address this leak OoaofooaBase and OoaofgraphicsBase are
+modified to clear the map and nullify it on model root delete.
+
+Additionally a null pointer was found at the same time.  This NPE occured when
+closing a compare editor then immediately modifying a model.  The reason was
+that static elements from the ooaofgraphics were left referring to the already
+deleted model elements from the compare roots and those elements no longer had
+an associated model root.  To address this the OoaofooaBase and
+OoaofgraphicsBase classes are modified to add a new method that calls 
+batchUnrelate for all elements in the roots being disposed.
+
+7.2.4 Add support for Delegations and PackageElement.Visibility
+
+To support delegations in the compare tree a new entry for T_TNS and T_TPS is
+added to ooaofooa_hierarchy.pei.sql.  The TNS entry is to define the existence
+of a delegation in the tree.  The TPS entry specifies that delegations are
+children of an interface reference across R4013.  In addition a new attribute is
+added to delegation, Name.  This attribute is not user visible as its only used
+to locate a label for the compare tree, through the common get_name operation.
+The get_name operation is newly added as well as the getCachedName and
+setCachedName operations.  The get_name operation derives the name from the
+associated interface reference.  If the reference is not available then the
+cached value is determined by getCachedName.  This will return the last good
+known value.  The setCachedName method is called when a good value is
+determined.
+
+The io.core archetypes are modified to handle the case where a C_DG is imported
+from an older version.  This allows for passing an empty string in the old case
+to the new constructor.
+
+To support PackageElement.Visibility the ooaofooa_hierarchy model is modified as
+follows:
+
+CompTree.xtuml - Add two new associations to support the below elements
+External Data Link.xtuml - Added to support a case where data needs to be shown
+                           for an element that is not the owner
+External Attribute.xtuml - Added to support external attributes from an element
+                           that shall be shown for the local element
+
+The ooaofooa_hierarchy.pei.sql is modified to configure the above for all PE_PE
+subtypes.
+
+The PackageableElement.Visibility attribute's description is modified to specify
+the full name tagging for the UI as follows: Full_Name:Visibility
+
+7.2.5 Address infinite loop
+
+An infinite loop was found during testing in the ui.graphics layer support.  The
+GEF infrastructure does not handle an element having multiple parents well.  In
+this case the loop occurred while looking for traversable elements, where GEF
+scans the layers and checks each child then their parent again.  With our layer
+support an element can live in multiple parents.  To address the issue
+UserDefinedLayer in ui.graphics is modified such that its configured to be focus
+traversable.  This allows the parent to be considered, which prevents the child
+traversals from occurring. 
+
+7.2.6 Add Layer support to tree compare
+
+The Layer class is added to the ooaofgraphics_hierarchy.pei.sql file, as well as
+the GraphicalElementInLayer class.  Layers are specified as children of a Model,
+and GraphicalElementInLayer elements are specified as children of layers.  The
+Layer and GraphicalElementInLayer classes have the necessary get_name operations
+added so that they display in the compare trees properly.
+
+7.2.7 Allow State Machine Event to be resolvable by hash map lookup
+
+The State Machine Event class has three attributes that participate in the first
+identifier group.  They are SMevt_ID, SM_ID, SMspd_ID.  MC-Java is limited when
+generating hash map lookups for any element who has more than one attribute in
+the first identifier group.  This causes problems when assigning an event to a
+message in a package as the OAL expects the event will be in the same model
+root.  If that is not true the assignment will not work and the message will be
+considered orphaned.  The SMevt_ID is enough to guarantee uniqueness when
+identifying events.  Therefore the other two attributes are removed from the
+first identifier group and placed into the second group.  This allows for hash
+map lookups to occur.  This has fall out for any element that was associated
+with the State Machine Event class, where the other class is the formalizer.
+Each class will have changed to remove local referential attribute data.
+
+8. Design Comments
+------------------
+
+9. Work Required
+----------------
+Described in the design section.
+
+10. Unit Test
+------------
+See 7.1, fully automated.
+
+- Existing tests must pass
+
+End
+---
+
+$Log: dts0100900301.dnt,v $
+Revision 1.2  2012/07/05 18:28:04  tlondon
+Job: dts0100900301
+
+Add that existing tests must pass
+
+Revision 1.1  2012/07/05 14:15:14  tlondon
+Job: dts0100900301
+
+Add design note
+

@@ -1,0 +1,210 @@
+========================================================================
+
+File:      $RCSfile: dts0100641311-dts0100670560.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+BridgePoint uses logical comparisons incorrectly with date and timestamp 
+values.
+
+1. Abstract
+-----------
+This note describes the design for fixing BridgePoint's logical comparisons of
+date and timestamp values.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100641311.
+[2] ClearQuest DEI dts0100670560.
+[3] compareTo Method in java.lang.String 
+    http://java.sun.com/j2se/1.4.2/docs/api/java/lang/String.html#compareTo(java.lang.String)
+[4] currentTimeMillis() Method in java.lang.System
+    http://java.sun.com/j2se/1.4.2/docs/api/java/lang/System.html#currentTimeMillis()
+[5] getTimeInMillis Method in java.util.Calendar
+    http://java.sun.com/j2se/1.4.2/docs/api/java/util/Calendar.html#getTimeInMillis()
+
+4. Background
+-------------
+BridgePoint doesn't use the '<', '>', '<=' and '>=' comparison operators 
+correctly when comparing date typed values. The comparison currently uses
+an "ASCII" style, where 10 < 9, 14 < 4, etc. This occurs in all the necessary
+values for creating a date object.
+For timestamp values comparison, Bridgepoint uses the string representation 
+of the time value for the comparison.
+
+5. Analysis
+-----------
+BridgePoint executes the logical comparisons in 
+Value:Binary Operation:getBoolean(), where the parameters to be compared are of
+type 'instance'.
+
+A conversion function is applied to both 'instance' type parameters for 
+executing the comparison, if the comparison is between integer types the 
+conversion function is 'GD::instance_to_int(operand)', other conversion 
+functions are GD::instance_to_real(operand), GD::instance_to_string(operand) 
+and GD::instance_to_boolean(operand).
+
+For date and time values the conversion function used is instance_to_string(),
+so currently the comparison is done between the string representation of the 
+Date and Time Objects.
+
+String comparisons uses st1.compareTo(st2) which compares two strings 
+lexicographically [3].
+
+For numeric values, comparing as strings is logically correct when the two 
+numeric strings to be compared are of same length, i.e st1="11" > st2="02" is
+returned true by getBoolean(). 
+  
+While if the two numeric strings are not of the same length the comparison is 
+not logically correct for numeric values, i.e "11" < "2" is returned true by 
+getBoolean().
+ 
+5.1 Comparing Timestamp values
+Here the processed values are the result from System.currentTimeMillis() [4]
+which returns the difference, measured in milliseconds, between the current 
+time and midnight, January 1, 1970 UTC.
+System.currentTimeMillis() will return a 13 digit long decimal value starting 
+from 09/09/2001 03:47 AM. till about 285 years after this date, so if the 
+compared times are within this time range, the string comparison for time will 
+be correct, hence we can depend on string comparison between time values, as 
+the only way to create a timestamp value is by using System.currentTimeMillis()
+which returns the current time, this will fail only when the user manually 
+changes the system time to a time before 09/09/2001, or a time after about 285
+years after this date, then executes TIM::current_clock ().
+For that reason timestamps comparisons should be executed between the numeric
+values of times, not their string representation. 
+
+5.2 Comparing Date values
+Here we cannot simply use instance_to_String() on the operands and compare them
+as strings, As the string representation of the two date values are the same 
+except for the (year, month, day, hour, minute, second) fields. 
+And as both dates parameters (year, month, day,...) could have different lengths,
+comparing dates that way is not correct. 
+
+So, as a certain date may be considered as a point in time, we could represent
+this point as a "long" number using getTimeInMillis()[5] then do the comparison
+between numeric values.       
+
+6. Design
+---------
+6.1 GD::compare_dates()
+      A new bridge operation is to be added to the Graphics Domain EE, which 
+      compares between two date values, then returns an integer representing 
+      the comparison result (1=Equal, 2=Bigger than, 3=Smaller than).
+      
+6.2 GD::compare_times()
+      A new bridge operation is to be added to the Graphics Domain EE, which 
+      compares between two time values, then returns an integer representing 
+      the comparison result (1=Equal, 2=Bigger than, 3=Smaller than).      
+
+6.3 Value:Binary Operation:getBoolean()
+6.3.1 This function used to do date and time comparisons at the same context,
+      so separation between both kinds of comparisons is required.
+      For each "Logical operator" this function compares between the two 
+      parameters of the binary operation, then returns (true or false) based on
+      the comparison result and the current logical operator. 
+6.3.2 GD::compare_dates() should be used  each time it is required to do a date 
+      comparison, as the return value will represent the comparison result,
+      getBoolean() should check on the output from GD::compare_dates(), and 
+      based on the current logical operator it returns (true or false).  
+6.3.3 Same as 6.3.2 GD::compare_times() should be used each time it is required
+      to do a time comparison, getBoolean() should check on the output from 
+      GD::compare_times(), and based on the current logical operator it returns
+      (true or false).   
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+The work required is fully detailed in the design section.
+
+9. Unit Test
+------------
+9.1 Comparing two different date values, then comparing two equal date values.
+    This test should be added to the verifier Junit tests.
+     
+d1 = TIM::create_date(day:10,month:2,year:2009,second:9,minute:10,hour:10);
+d2 = TIM::create_date(day:10,month:2,year:2009,second:10,minute:10,hour:10); 
+d3 = TIM::create_date(day:10,month:2,year:2009,second:9,minute:10,hour:10);
+
+if(d1 > d2)
+	LOG::LogFailure(message:"Comparison failed");
+end if;
+if (d1 < d2)
+	LOG::LogSuccess(message:"Comparison succeed");
+end if; 
+if (d1 == d2)
+	LOG::LogFailure(message:"Comparison failed");
+end if;
+if (d1 <= d2)
+	LOG::LogSuccess(message:"Comparison succeed");
+end if;
+if (d1 >= d2)
+	LOG::LogFailure(message:"Comparison failed");
+end if;
+
+if(d1 > d3)
+	LOG::LogFailure(message:"Comparison failed");
+end if;
+if (d1 < d3)
+	LOG::LogFailure(message:"Comparison failed");
+end if; 
+if (d1 == d3)
+	LOG::LogSuccess(message:"Comparison succeed");
+end if;
+if (d1 <= d3)
+	LOG::LogSuccess(message:"Comparison succeed");
+end if;
+if (d1 >= d3)
+	LOG::LogSuccess(message:"Comparison succeed");
+end if;
+
+   
+9.2 Run existing unit tests.
+
+End
+---
+
+$Log: dts0100641311-dts0100670560.dnt,v $
+Revision 1.5  2010/03/01 11:09:43  ayoussef
+job: dts0100641311 0100670560
+Design notes after doing the modifications in the review minutes.
+
+Revision 1.4  2010/02/23 15:23:49  ayoussef
+job: dts0100641311 0100670560
+initial version of the design note for both issues-04
+
+Revision 1.3  2010/02/23 14:51:53  ayoussef
+job: dts0100641311 0100670560
+initial version of the design note for both issues-03
+
+Revision 1.2  2010/02/23 14:21:54  ayoussef
+job:dts0100641311
+job:dts0100670560
+initial version of the design note for both issues-02
+
+Revision 1.1  2010/02/23 12:35:41  ayoussef
+job:dts0100641311
+job:dts0100670560
+initial version of the design note for both issues
+
+Revision 1.2  2010/02/21 15:21:09  ayoussef
+job:dts0100641311
+initial version of the design note-2
+
+Revision 1.1  2010/02/21 15:07:27  ayoussef
+job:dts0100641311
+initial version of the design note
+

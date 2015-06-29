@@ -1,0 +1,392 @@
+========================================================================
+
+File:      $RCSfile: dts0100623034.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support model to text interface
+
+1. Abstract
+-----------
+This note describes the changes required to support emitting text from a
+Verifier runtime model.
+
+2. History
+----------
+  final - dts0100623034.rvm
+
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100623034 - Support model to text interface
+[2]  ClearQuest DEI dts0100621356 - Support Instance Reference passing
+[3]  ClearQuest DEI dts0100531817 - Possibility to generate documentation
+[4]  ClearQuest DEI dts0100608015 - Create unit tests for document generation
+                                                                         feature
+[5]  ClearQuest DEI dts0100624946 - Harmonize model based docgen and model
+                                                 compilers with Verifier support
+[6]  http://en.wikipedia.org/wiki/
+                                List_of_XML_and_HTML_character_entity_references
+[7]  ClearQuest DEI dts0100564041 - Scope of class key letters and relationship
+                                   numbers not to a domain when using components
+[8]  Bugzilla issue i1845 - Refactor the BPClassLoader to work with Eclipse 3.3
+[9]  http://www.cs.usfca.edu/~parrt/papers/mvc.templates.pdf - Enforcing Strict
+                                       Model/View Separation in Template Engines
+[10] BridgePoint UML Suite Help > Reference > RSL Reference > RSL Overview >
+                                                          Substitution Variables
+[11] Clearquest DEI dts0100605420 - BP Documentation maintenance aggregate issue
+[12] Clearquest DEI dts0100624469 - Port MC-Java to latest code generation
+                                                                      technology
+4. Background
+-------------
+One of the motivations for supporting instance reference passing[2] in Verifier
+is to allow debugging of model based model compiler and document generation[3].
+To complete this support, data held in a Verifier instance population must be
+output to a file. This note describes the addition of a realized java class that
+satisfies this requirement by integrating with the Verifier External Entity to
+realized java binding infrastructure.
+
+5. Analysis
+-----------
+5.1 Proposed Model to Text Interface
+The goal to provide an easy to use code generation interface is more difficult
+to achieve than at first appears. This is because a large amount of varied data
+must be transferred between the running model and the text buffer. This has
+traditionally been achieved by generator using substitution variables embedded
+within plain text that satisfies the fixed syntax requirements of the target
+downstream tool (be it a document formatting tool or a code compiler).
+
+This technique has gained widespread approval and acceptance from our users, so
+we must provide an analogous mechanism. We will do this by allowing the
+substitution process to happen _in_the_context_of_the_calling_modeled_OAL_. In
+other words, by adding a simple extension to the realized java interface, every
+variable in the execution context is passed to the realized java implementation.
+This allows the bridges that replace the old generator commands to remain as
+simple as the interface they replace while working within the standard Verifier
+calling mechanism. How this is achieved is described below[6.1, 6.2].
+
+5.2 'Template' External Entity
+The External Entity used by the published document generation and model based
+model compiler was examined. This External Entity (Template (Keyletter:T)) is
+substantially suitable for use by Verifier. However, there were several aspects
+of its design that were felt could be improved upon:
+
+- The Template class declared several bridges which exposed too much to the user
+  and made the interface appear rather complex.
+- The bridges were rather coupled to the 'C' based approach used by the existing
+  solutions.
+- The approach was rather different that the one in place for the existing
+  generator based mechanisms, making the transition to the new infrastructure
+  harder for the end user and adding unnecessary porting difficulties.
+
+Accordingly, it is proposed that the Template EE is redesigned so that it
+presents a much simpler interface to the user with improved continuity.
+
+The Template realized class will be shipped as a standard built in BridgePoint
+External Entity, having TIM and LOG as peers. Most users will therefore not need
+to provide any special java implementation of their own, greatly simplifying
+project set up for Verifier based code generation.
+
+5.2.1 Bridges
+The new Template EE provides only 4 bridges:
+
+- T::include(string:<template file path>) : void
+- T::template(string:<template>) : string
+- T::clear() : void
+- T::emit(string:<output file path>) : void
+
+5.2.1.1 include
+This bridge takes a string path to a template file usually but not necessarily
+provided somewhere in the users workspace. The file contains a mixture of fixed
+text and substitution variables that work in a manner analogous to the one an
+experienced user will be familiar with in generator. See [5.3] below for a
+detailed explanation of how this will work. Like generator, the text and
+substitution variable output is appended to a buffer ready for output by the
+'emit' bridge call[5.2.1.4].
+
+5.2.1.2 template
+This bridge takes a string which is treated like the contents of a template
+file. As such, the argument can contain fixed text and substitution variables.
+Unlike 'include' above, the processing result of this bridge call is not added
+to the output buffer. Instead it is returned as a string to the model execution
+context. This mechanism is sufficiently powerful that it could be used to almost
+completely remove the need to make any 'include' calls. However, that is not its
+intended purpose. Instead the purpose of this bridge is to form names that can
+then be used to populate intermediate transformation models and/or form paths
+that can be passed to the 'emit' bridge.
+
+5.2.1.3 clear
+This bridge works exactly like the clear command in generator. It clears the
+output buffer ready for new a translation pass.
+
+5.2.1.4 emit
+This bridge works exactly like the emit command in generator (_almost_, see
+below). It writes the current contents of the code generation buffer to the file
+specified in the argument. It should be noted that emit behavior is different
+than it is for generator. This is to minimize disruption to the docgen and model
+based model compiler work. Generator emit behavior automatically cleared the
+text buffer. This implementation requires an explicit T::clear() call if this
+behavior is required.
+
+5.3 Substitution Variables
+These will take the same form as they do in generator:
+
+  $<format letters>{<substitution variable spec>}
+  
+5.3.1 Format Letters
+The supported letters shall be: U, C, L, R, _ and X. These will have the same
+semantics as they have under generator[10], only X requires explanation. The X
+format letter instructs the Template class to prepare the string for inclusion
+in an xml element. As such, the characters '<', '>', '&' '"' and ''' are
+converted to their xml escaped equivalent[6] (e.g. '&' is converted to $amp;).
+
+Note that 'O' is not included for the first release, as it is not clear that
+Corba is still in use by our customers.
+
+As is the case for generator, these formatting letters may be provided in either
+upper or lower case form. Their meaning is the same in either case.
+
+5.3.2 Substitution Variable Specification
+This may take one of three forms;
+
+- Specify a transient variable value in scope at the time the bridge call
+  ('include' or 'template') was made (e.g. '$l{myPath}').
+- Specify an instance reference and attribute pair separated by a period ('.').
+- Specify an eclipse string variable value preceded by the keyword 'eclipse:'
+  (e.g. '$_{eclipse:workspace_loc}').
+
+As is the case for generator the entire string, from '$' to '}' inclusive, is
+replaced in the output by the value found from the specification. If no
+appropriate value is found, an error is logged and the empty string is output.
+
+5.4 Translation traversal and control logic
+Note that no attempt has been made to specify support for traversal or control
+logic inside the 'Template' External Entity or the templates it works with. This
+is deliberate and is intended to force the architect to separate out syntactic
+patterns into templates and transformation control into OAL in the model(s).
+This philosophy is extended from and compatible with the general approach by the
+document generation and MBMC work[9].
+
+6. Design
+---------
+6.1 Verifier changes
+Verifier is modified to allow the realized Template external entity java class
+access to the execution context in existence at the time the bridge call is
+made. This is done by passing the current Verifier stack frame instance to the
+realized java class.
+
+Since most bridge calls are going to be simple synchronous invocations of java
+functionality, we do not want to expose this additional parameter in every case.
+We achieve this by enhancing the Verifier java binding mechanism to look for an
+additional Method signature that is identical to the default pattern except that
+it accepts an additional StackFrame_c instance as its first argument.
+
+In this way, only advanced users, who know the significance of adding this
+argument need be exposed to it. This approach is generic and may be leveraged
+by any advanced user for purposes we have not yet necessarily conceived. One
+possibility is some kind of customized debugging add on, perhaps.
+
+6.2 Template class
+The realized Template java class leverages the changes made to Verifier and
+implements traversals from the passed StackFrame_c instance to find the set of
+variables in scope at the moment the bridge was invoked. It is then relatively
+straightforward to match a variable by name with the name (or names, see[5.3.2])
+found in a substitution variable. Once these names are resolved by the Template
+class, their values may be found with an additional traversal and the result
+emitted in place of the substitution variable. The realized template code 
+provides convenience functions to return the string value for a given name or
+names. The static methods:
+
+  String process(StackFrame_c frame, String input) and
+  String getValue(StackFrame_c frame, String varName, String optionalAttrName)
+
+are made public and hence callable by an advanced user. The user is thus 
+insulated from the complexities of finding a Variable with a given name.
+
+The method process() above takes a template in String form, substitutes all well
+formed substitution variables found and returns the result. getValue() simply
+returns the string value found for the passed Variable name (or Variable plus
+Attribute name).
+
+6.3 Future work
+6.3.1 No support for '$$' is currently provided. This would allow architects to
+generate templates, a known powerful technique we have recommended to our
+customers.
+
+6.3.2 No support for traditional Environment Variables
+
+6.3.3 Support special generator variables
+Providing support for variables such as info.unique_num would help our customers
+migrate their model compilers to the new infrastructure. Also parse for keyword
+support will likely be requested quite quickly.
+
+6.3.4 Support for UUIDs.
+For users that would like to use UUID values, output is already available.
+However, a feature analogous to info.unique__num could be useful, particularly
+if the sequence was made (perhaps optionally) repeatable. This would allow the
+generation of intermediate cached instance populations that could be textually
+compared more easily than they are today.
+
+6.3.5 Substitution variables in the emit path argument
+Generator expands substitution variables in an 'emit' path argument. This is not
+currently supported, because it can be done by pre-processing using a
+'T::template()' bridge call.
+
+6.4 Recommended harmonization changes
+It is recommended that the existing document generation and model based model
+compiler work be modified to harmonize with the mechanisms described above. For
+docgen, this means the following:
+
+- Remove 'single letter' bridge calls and replace with suitable calls and
+  arguments to the 'template' bridge.
+- Provide these bridge calls as hidden realized C functions to minimize the
+  cascade changes.
+- Change the hardcoded paths to reference the xml files, not the generated .h
+  files.
+- Remove duplicate "%" symbols and provide a build time mechanism to introduce
+  them instead.
+- Support the decoding of Eclipse string variables[5.3.2].
+
+The model based model compiler changes are likely to be analogous. An issue is
+raised to track this work[5].
+
+MC-Java should be ported to leverage this technology. An issue is raised to
+track this work[12].
+
+7. Design Comments
+------------------
+7.1 Component based EE access
+During testing of model to text functionality, it was noted that external entity
+access from a model formalized to a component was no longer functional. Further
+investigation showed that this was due to a fault analogous to a previously
+fixed issue[7]. The analogous fix is applied to External Entity resolution with
+this work.
+
+7.2 Realized External Entity 'overloading'
+During testing of model to text functionality, it was noticed that the Verifier
+java interface no longer supports loading classes that have the same name as
+one of the built in classes. Investigation shows that this has not worked since
+the reworking of BPClassLoader for Eclipse 3.3[8]. The reason is that the
+Eclipse support has been rewritten to leverage OSGi integration. This new infra-
+structure insists on looking for classes in the plugin bundles first, regardless
+of what the supplied class path is.
+
+This problem is fixed by adding some class loading capability back into
+BPClassLoader. In loadClass, the class name is inspected and if it matches the
+pattern "lib.*", it attempts to load the class directly from the users
+workspace. If it fails to load, or if the class name does not match the pattern,
+then the standard class loading behavior is followed.
+
+To support this, the path passed at creation time is now cached in BPClassLoader
+and when initialize() is called, the ClasspathManager instance (created by
+and accessible through the supertype) is leveraged to create classpath entries
+for each string path of the array passed in the constructor. Only paths of
+type "external:" are handled in this way, since this is what the BPClassLoader
+was originally designed to handle.
+
+Additionally, a HashMap caching Class instances keyed by their names is also
+privately held by BPClassLoader. This map is consulted and the class returned
+from the cache if it is present. This is necessary since it is illegal for a
+ClassLoader to instantiate a class more than once.
+
+8. Work Required
+----------------
+Fully described in the design section. Note that the user documentation needs to
+be updated to cover this new capability[11].
+
+9. Unit Test
+------------
+A new unit test will be required to exercise this functionality. Perhaps this
+can be combined with the docgen unit test[4].
+
+Until then the docgen/model based model compiler test model, is used. Find this
+in CVS:/com.mentor.nucleus.bp.core BRANCH Review-dts0100621356-MC-3020-HEAD
+
+_- Check out the project branch
+_- Run ooaofooa::Verifier::populateTestModel()
+_- Run ooaofooa::Docgen::docgen()
+_R No errors are reported
+_R A new file, gen/doc.xml is written
+_- Load the file into any xml reader
+_R doc.xml contains valid xml
+
+To test that the component based EE resolution is fixed, formalize the ooaofooa
+model to a component and rerun the test. It should still pass.
+
+To test that the Class Loading defect is fixed, follow the directions in:
+
+ Help > Help Contents > BridgePoint UML Suite Help > Reference >
+                              Using BridgePoint > Model Verifier Java Interface
+
+except check out bp.core/lib/T.java from the promotion branch into the test
+environment workspace. You will likely need to add:
+
+<classpathentry kind="lib" path="C:/MentorGraphics/
+                              BridgePoint3.0/eclipse_extensions/
+        BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.core_3.0.0/core.jar"/>
+
+(all on one line and adjusted for your environment) to the .classpath file.
+
+_- Delete the template() method and rebuild.
+_- Rerun the test.
+_R NoSuchMethod error reports are present in the error log.
+
+End
+---
+
+$Log: dts0100623034.dnt,v $
+Revision 1.12  2010/01/05 04:29:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.11  2009/10/09 14:47:17  campbell
+Job: dts0100623034
+Address review observation.
+
+Revision 1.10  2009/10/08 09:20:30  campbell
+Job: dts0100623034
+Address review issues.
+
+Revision 1.9  2009/10/07 15:35:33  campbell
+Job: dts0100623034
+Move test so that next test does not interfere with results.
+
+Revision 1.8  2009/10/07 15:23:36  campbell
+Job: dts0100623034
+Added manual tests for fixed defects found during prototyping.
+
+Revision 1.7  2009/10/07 15:13:42  campbell
+Job: dts0100623034
+Design comments added to cover defects found during prototyping.
+
+Revision 1.6  2009/10/07 13:30:10  campbell
+Job: dts0100623034
+Add manual test.
+
+Revision 1.5  2009/10/05 15:43:38  campbell
+Job: dts0100623034
+Cosmetic changes. Document use of convenience methods.
+
+Revision 1.4  2009/10/05 15:02:44  campbell
+Job: dts0100623034
+Add description of public user accessible convenience methods in the template class.
+
+Revision 1.3  2009/10/05 13:43:12  campbell
+Job: dts0100623034
+Add comments about info pseudo structure and parse for keyword features.
+
+Revision 1.2  2009/10/05 12:42:12  campbell
+Job: dts0100623034
+Cosmetic changes, clarified that emit does not clear the output buffer.
+
+Revision 1.1  2009/10/05 12:03:15  campbell
+Job: dts0100623034
+Introduced.
+

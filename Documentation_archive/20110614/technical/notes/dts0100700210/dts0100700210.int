@@ -1,0 +1,103 @@
+========================================================================
+
+File:      $RCSfile: dts0100700210.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Fix BridgePoint lock-up when a self-reference is used in OAL
+
+1. Abstract
+-----------
+This describes the fix to prevent the parser locking BP up when a reference of
+the same type is accessed in OAL.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100700210 - BridgePoint locks-up when a self-reference is
+    used in OAL.
+[2] ClearQuest DEI dts0100703003 - Support intra-component instance reference
+    passing for classes.
+[3] ClearQuest DEI dts0100650330 - Creating a structure type with a member of
+    the same type shouldn't be allowed.
+
+4. Background
+-------------
+This issue was reported internally. Reproduction: Create a new model class,
+'Test'. Add an attribute  'me'. Publish the class reference. Set Attribute type
+to inst_ref<Test>. Add an operation and write 'self.me.' in the operation body.
+As soon as the second period separator is typed, BridgePoint hangs.
+
+5. Design
+---------
+The fault lies within Member_access_loop11_end. The reason for the failure is
+that curVal, in the above function expects to hold the value for the currently
+being parsed member, so in foo.bar.zee, it should point to first bar and then
+zee (foo is the root value in each case and not a member as such). Now, curVal
+is currently found using the passed argument b2_current_inst_access_id. This
+does not change as the member access loop proceeds, always pointing at bar.
+Instead, curVal _should_ be found using the a4_loop_id_name parameter. When this
+change is made, curVal is advanced along the value chain correctly.
+
+The issue discusses a couple of related problems:
+- Instance reference testing is incomplete/missing. This is already being
+  addressed as part of another job[2].
+- There was a concern that Verifier would fail to execute the OAL after this
+  fix. In fact, Verifier initializes instance reference variables as empty, so
+  there is no risk there. For structured data types, also referred to in this
+  issue, Verifier does blow the java stack as predicted in the issue notes. This
+  unwanted behavior is already captured as an issue[3].
+
+Since the ancillary work is already either in progress or captured in other
+issues, this fix will be limited to the headline reported problem.
+
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+7.1. All parser unit tests must pass.
+
+7.2 Pending the creation of full automated tests as part of [2], a manual test
+shall be carried out as follows:
+
+_- Create a new xtUML project 
+_- Create a new domain 
+_- Create a new Subsystem 
+_- Create a new model class 'Test' 
+_- Add an attribute  'me' 
+_- Publish the class reference 
+_- Set Attribute type  to inst_ref<Test> 
+_- Add an operation 
+_- Write 'self.me.' in the operation body 
+_R After typing the second '.', BridgePoint responds normally.
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100700210
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+
+End
+---
+
+$Log: dts0100700210.int,v $
+Revision 1.2  2010/11/09 14:44:28  campbell
+Job: dts0100700210
+Address the review observation.
+
+Revision 1.1  2010/11/03 17:02:00  campbell
+Job: dts0100700210
+Introduced.

@@ -1,0 +1,437 @@
+========================================================================
+
+File:      $RCSfile: dts0100707836.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Under Generic Package if Class is under Component the class has Orphaned 
+Operations and attributes
+
+
+1. Abstract
+-----------
+When a class is created under a component the class KeyLetter doesn't
+get initialized and the Class doesn't have a class number.
+When creating new operation for this class it doesn't get 
+void as initial return dataType it get's "Orphaned" as a return dataType.
+When creating new attribute for this class it doesn't get 
+integer as initial dataType it get's "Orphaned" as a dataType.
+
+This issue has an alternative solution described in [4]
+The Explained solution in this note was Not taken.
+   
+2. History
+----------
+2.1 There was a Previous review for this issue and a major observation was
+    that the solution proposed was not valid in case of multilevel nested 
+    components [2].
+
+2.2 This issue was determined to be fixed the way that is explained in the 
+    Design and Design Comments sections. 
+    The feature of creating class under component is found to have many bugs.
+    So this feature is being removed for now and may be it will be returned 
+    later.   
+    The work done for this fix is in branch R3_1_5-HKA-dts0100707836.
+    
+2.3 An alternative solution for this issue is to remove the ability to create
+    class under component. This feature is found to have many bugs,
+    plus there will be a lot to be done in the parser to allow  the references 
+    to operations and analogous changes to the state machine editor to look for
+    signals to assign to CSM's via new traversals.
+    This solution will remove the need for the explained fix.
+    This solution is described in the implementation note [4].    
+     
+        
+ 
+
+ 3. Document References
+----------------------
+[1] ClearQuest DEI dts0100707836
+[2] /Documentation/internal/review_minutes/R3_1_5/dts0100707836.rvm 
+[3] /Documentation/internal/review_minutes/R3_1_5/dts0100707836-01.rvm 
+[4] /Documentation/internal/technical/notes/dts0100707836/dts0100707836.int
+
+
+4. Background
+-------------
+[11:33:33 AM] Campbell McCausland: 
+IMO, I think the correct fix for this issue is to disable classes under 
+components for the first release.
+My reasoning is:
+      - You can always put classes in packages and get normal functionality.
+      - We could fix all the various issues that classes under components are
+        likely to have, but then we have to make big work on the parser to 
+        allow references to operations and we would have to make analogous 
+        changes to the state machine editor to look for signals to assign to 
+        CSM's via new traversals.
+        all this to satisfy the 'click counters' who may not even get to 
+        experiment with this until we are at release 2 of GP support.
+[11:36:55 AM] Campbell McCausland: thoughts?
+[11:37:06 AM] Bob: This decision would not effect the 
+              import tool, right?  Since there are not classes in components now.
+[11:37:10 AM] Campbell McCausland: Correct.
+[11:37:15 AM] Bob: I like it...
+
+
+5. Analysis
+-----------
+5.1 When A class is created under a component.  In the function newClass()
+    it creates an instance of modeClass and a PackageableElement 
+    then relates them together across R8001.
+    Then relates the component that holds the class to the PackageableElement 
+    across R8003.
+    The class doesn't get related to a package.
+    
+5.2 The Created Class under Component doesn't have initial key letters or class 
+    number because in the function that initializes the model class it searches 
+    for Package related to the packageableElement that represents the modelClass 
+    to get the  number range of it. 
+    But since the class is created under Component it doesn't have a package 
+    related to it.
+
+5.3 The Created Class under Component have "Orphaned" initial dataTypes related 
+    to the operations or attributes created for it.  The problem exists in the 
+    initialization functions for Operation_c and Attribute_c.  
+    The initialization function searches for systemModel
+    instance that's related to the package that contains the class.
+    The Class is related to it's root component not to a package 
+    so the systemModel instance can't be reached from a null package. 
+
+5.4 When creating Class under Component and creating instance/class 
+    state machine for this class . then creating an event in this machine
+    and try to assign event to a transition in this machine the "Assign Event"
+    dialog Box shows with an empty dropDownList for the events.
+    The events inside the state machine couldn't be resolved. 
+    The reason of this failure is that the state machine instances are resolved
+    using the root package of the modelClass. In case when the root of the 
+    modelClass is a component then the function should resolve the stateMachine
+    instances related to that component. 
+           
+ 
+6. Design
+---------
+6.1 In the Class Componenet_c a new function is added, to return the id of the 
+     Root package for Component.
+     This function uses the previously existing function getRootcomponentId()
+     Then gets the package related to that root component and returns it's ID.
+
+6.2 In the function initialize() in ModelClass in the genericPackage behavior 
+    part it selects one package related to the PackageableElement 
+    that represents the ModelClass and if that package is not empty 
+    it gets the Number Range of it to set the appropriate Number for the class.
+    
+    In the Else block where the package is empty,  the function first tries to 
+    select another package using the instance of packageableElements that are 
+    related to the component across R8003 and then reach for the package 
+    containing them. But this get's a null package because the elements are 
+    not related to a package they are related to a component 
+  
+6.2.1 So the function behavior at this point should be modified to get the 
+      package that's related to the root Component for the Classes.
+      This Package is selected using the id returned by the function 
+      getRootPackageId() of the component. 
+      Then use that package instance to get the Number range instead of using 
+      the Empty package instance. 
+        
+    
+6.3 In the Function initialize() in Operation in the genericPackage behavior 
+    part. The function gets a SystemModel instance using the package related 
+    to the PackageableElement that represents the ModelClass having this 
+    operation.  Since the Class is not related to a package the SystemModel
+    instance can't be resolved. 
+    
+6.3.1 So the function behavior should be modified so that if resolving 
+      SystemModel instance failed. Try to get it using the package instance 
+      that's selected using the id returned by the function 
+       getRootPackageId() of the component related to the model class instance. 
+
+
+6.4 In the function initialize() in Attribute, it is the same as (6.3) 
+    
+
+6.5 In the function 
+    in ooaofooa > Functions >
+        Context Menu Entry Functions > SM_TXN_GenericPackageAssignEvent()
+     the code is modified to get the state machine instances related to the root
+     component of the modelClass if the root package is empty.
+
+
+7. Design Comments
+------------------
+The Following Design is implemented in branch: 
+Branch name: R3_1_5-HKA-dts0100707836 (Branch) 
+
+
+7.1 new operation added to the Component class "C_C"
+    Operation Name : getRootPackageId
+    Operation Description : 
+    Instance Based Indicator : 1
+    Action Semantics Field : 
+>    select any component from instances of C_C where selected.Id == self
+                                                         .getRootComponentId();
+>	 if not_empty component
+>	 		select one pkg related by   component->PE_PE[R8001]->EP_PKG[R8000];
+>	 		if not_empty pkg
+>	 		   return pkg.Package_ID;
+>	 		end if;
+>	 end if;
+>	    return GD::NULL_UNIQUE_ID();		
+    Successful Parse Indicator : 1
+    Return Array Dimensions : 
+    Return Type : unique_id
+
+
+
+7.2 In the function initialize() in ModelClass 
+
+Before :
+...
+...
+ if (isInGenericPackage)
+   if (not_empty package)
+  // we're in a package, get the classes in the package and set the class number
+     select many classes related by package->PE_PE[R8000]->O_OBJ[R8001];
+     if ( package.Num_Rng == 0 )
+       self.Numb = 1;
+     else
+       self.Numb = package.Num_Rng;
+     end if;
+   else
+     select many classes related by component->PE_PE[R8003]->O_OBJ[R8001];
+     select any classPkg related by component->PE_PE[R8003]->EP_PKG[R8000];
+     if ( package.Num_Rng == 0 )
+       self.Numb = 1;
+     else
+       self.Numb = package.Num_Rng;
+     end if;
+   end if;
+   
+...
+...
+
+After :
+....
+....
+if (isInGenericPackage)
+   if (not_empty package)
+  // we're in a package, get the classes in the package and set the class number
+     select many classes related by package->PE_PE[R8000]->O_OBJ[R8001];
+     if ( package.Num_Rng == 0 )
+       self.Numb = 1;
+     else
+       self.Numb = package.Num_Rng;
+     end if;
+   else
+     select many classes related by component->PE_PE[R8003]->O_OBJ[R8001];
+>     select  any classPkg from instances of EP_PKG where selected.Package_ID
+                                                == component.getRootPackageId();
+>    if ( classPkg.Num_Rng == 0 )
+       self.Numb = 1;
+     else
+>      self.Numb = classPkg.Num_Rng;
+     end if;
+   end if;
+...
+...
+
+
+
+7.3 In the function initialize() in Operation  
+
+Before :
+...
+ // Owning Class is in a package . . . 
+   select one system related by self->O_OBJ[R115]->PE_PE[R8001]->
+                                  EP_PKG[R8000]->S_SYS[R1405];
+   if not_empty system
+     select any def_dt related by system->SLD_SDINP[R4402]->S_DT[R4401]
+                                                  where selected.Name == "void";
+   else
+...
+
+After :
+
+ // Owning Class is in a package . . . 
+   select one system related by self->O_OBJ[R115]->PE_PE[R8001]->
+                                                    EP_PKG[R8000]->S_SYS[R1405];
+   if empty system
+   // Owning Class is in a Component . . . 
+>   select one component related by self->O_OBJ[R115]->PE_PE[R8001]->C_C[R8003];
+>     if not_empty component
+> 	   select any pkg from instances of EP_PKG where selected.Package_ID
+                                                 ==component.getRootPackageId(); 
+> 	   select one system related by  pkg->S_SYS[R1405];
+> 	 end if; 
+>   end if;
+   
+   if not_empty system
+     select any def_dt related by system->SLD_SDINP[R4402]->S_DT[R4401]
+                                                  where selected.Name == "void";
+
+
+
+7.4 In the function initialize() in Attribute  
+
+Before: 
+...
+ // Owning Class is in a package . . .
+   select one system related by self->O_OBJ[R102]->PE_PE[R8001]->
+                                                    EP_PKG[R8000]->S_SYS[R1405];
+   if not_empty system
+     select any intdt related by system->SLD_SDINP[R4402]->S_DT[R4401]
+                                               where selected.Name == "integer";
+   else
+...
+
+After:
+...
+// Owning Class is in a package . . .
+   select one system related by self->O_OBJ[R102]->PE_PE[R8001]->
+                                                    EP_PKG[R8000]->S_SYS[R1405];
+> if empty system
+     // Owning Class is in a component . . .
+>  select one component related by  self->O_OBJ[R102]->PE_PE[R8001]->C_C[R8003];
+>     if not_empty component
+>	   select any pkg from instances of EP_PKG where selected.Package_ID 
+                                                ==component.getRootPackageId(); 
+>	   select one system related by  pkg->S_SYS[R1405];
+>	 end if;                                                
+>  end if; 
+                                                                                 
+   if not_empty system
+     select any intdt related by system->SLD_SDINP[R4402]->S_DT[R4401]
+                                               where selected.Name == "integer";
+   else
+...
+
+
+7.5 In the Function   
+    in ooaofooa > Functions >
+        Context Menu Entry Functions > SM_TXN_GenericPackageAssignEvent()
+    
+Before :
+......
+.....
+...
+if (empty package)
+   select one package related by packageableElem->C_C[R8003]->PE_PE[R8001]->EP_PKG[R8001];
+ end if;  
+ 
+ select many machines related by package->PE_PE[R8000]->O_OBJ[R8001]->
+													 SM_ISM[R518]->SM_SM[R517];
+ if (isClassStateMachine)
+   select many machines related by package->PE_PE[R8000]->O_OBJ[R8001]->
+													 SM_ASM[R519]->SM_SM[R517];
+ end if;
+.......
+.....
+...
+
+
+After :
+...
+..
+if (empty package)
+   select one package related by packageableElem->C_C[R8003]->PE_PE[R8001]->EP_PKG[R8001];
+ end if;  
+ 
+ select many machines related by package->PE_PE[R8000]->O_OBJ[R8001]->
+													 SM_ISM[R518]->SM_SM[R517];
+ if (isClassStateMachine)
+   select many machines related by package->PE_PE[R8000]->O_OBJ[R8001]->
+													 SM_ASM[R519]->SM_SM[R517];
+ end if;
+ 
+ 
+>if (empty package)
+>   select one comp related by packageableElem->C_C[R8003];
+>   select many machines related by comp->PE_PE[R8003]->O_OBJ[R8001]->
+													 SM_ISM[R518]->SM_SM[R517];
+ 
+>	if (isClassStateMachine)
+>	  select many machines related by comp->PE_PE[R8003]->O_OBJ[R8001]->
+													 SM_ASM[R519]->SM_SM[R517];
+>	end if;
+> end if;  
+ 
+..
+...
+
+8. Work Required
+----------------
+8.1 Stated in the Design Section 
+8.2 Create and automated TestSuite that covers the Behavior of Creating 
+    model class instances under nested Components
+
+9. Unit Test
+------------
+9.1 Manual Tests
+
+9.1.1
+	_- Create new project 
+	_- Create New generic Package "PKG" 
+	_- Create New Component "Comp" 
+	_- Create New Class "class" 
+	R- Class has initial KEYLetter "KEY" and Class Number "1"
+	_- Create NewOperation 
+	R- The operation has initial return value "void" 
+	_- Create NewAttribute 
+	R- The Attribute has initial type value "integer" 
+    
+    _- Create New Class "classTwo" 
+	R- Class has initial KEYLetter "KEY" and Class Number "2"
+	_- Create NewOperation 
+	R- The operation has initial return value "void" 
+	_- Create NewAttribute 
+	R- The Attribute has initial type value "integer" 
+	
+	
+	_- Create New Component "Comp_Comp" under Component "Comp" 
+	_- Create New Class "class" under Component "Comp_Comp"
+	R- Class has initial KEYLetter "KEY" and Class Number "1"
+	_- Create NewOperation 
+	R- The operation has initial return value "void" 
+	_- Create NewAttribute 
+	R- The Attribute has initial type value "integer" 
+    
+    _- Create New Class "classTwo" under Component "Comp_Comp"
+	R- Class has initial KEYLetter "KEY" and Class Number "2"
+	_- Create NewOperation 
+	R- The operation has initial return value "void" 
+	_- Create NewAttribute 
+	R- The Attribute has initial type value "integer" 
+	
+
+9.2 Run all JUnit Tests
+
+End
+---
+
+$Log: dts0100707836.dnt,v $
+Revision 1.4  2010/08/19 14:45:28  hkhaled
+job:dts0100707836
+modifications to dnt to  state clearly that the explained solution was not taken
+
+Revision 1.3  2010/08/19 13:55:47  hkhaled
+job:dts0100707836
+modifications to dnt to  propose the alternative solution of removing the ability of
+creating model class under component
+
+and the implementation note for this solution
+
+Revision 1.2  2010/08/04 13:00:21  hkhaled
+job:dts0100707836
+modifications to dnt to cover the added function getRootPackageId()
+
+Revision 1.1  2010/07/29 08:55:42  hkhaled
+job:dts0100707836
+committing a dnt for issue of orphaned class operations and attributes for classes under component
+

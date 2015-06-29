@@ -1,0 +1,134 @@
+========================================================================
+
+File:      $RCSfile: dts0100802307.int,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Infinite loop during parse with bad parameter name references
+
+1. Abstract
+-----------
+This note describes a fix for a parser hang that was introduced by changes 
+associated with getGlobal() [2].   This CQ issue calls out multiple problems 
+that made this issue very difficult to isolate, but this note and the change 
+made shall only resolve the parser hang.  Another issue [3] is raised to handle 
+the remaining tasks.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100802307
+[2] ClearQuest DEI dts0100775231
+    Modify MC-Java to use getGlobal() in select where statements that use 
+    referential ids
+[3] ClearQuest DEI dts0100803407
+    Follow-up work for misc. issues observed while tracking down parser hang
+
+4. Background
+-------------
+This issue is present in the field, but actually manages to operate 
+correctly only because the correct previous parameter happens to be 
+found first in Invocation_parameters_loop4_end where the Actual Parameter 
+ordering is set up. The correct one is found because it uses the old 
+serial lookup method through the instance extent. This finds the first 
+instance that matches with the given id. This happens to be the correct one. 
+In HEAD (BP3.3.3) however, the lookup is now done using getGlobal() which 
+uses the instance extent hashMap to find the instance.
+
+While investigating this issue, several problems were found that need further
+investigation.  These issues are captured with a follow-up issue [3].
+
+5. Design
+---------
+5.1 The logic in Invocation_parameters_loop4_end that makes sure that different 
+    instances are always hooked up is modified to compare a3_ruleid_name with 
+    b4_expr4_id, instead of b2_expr2_id before relating them.
+
+6. Implementation Comments
+--------------------------
+none
+
+7. Unit Test
+------------
+7.1 This is a manual test that assures the parser hang is no longer present 
+    after this fix.
+    
+_- Start a HEAD debug session with a clean workspace
+_- Import a copy of core and add a function to the OAL Validation Functions 
+   package
+_- Add the following parameters to the function:
+  - a1_rule_token : unique_id
+  - b1_bridge_or_transform_invocation1_id : unique_id
+  - a2_upper_rule_id : unique_id
+_- Paste the following OAL into the function body:
+
+// validate parameters
+
+select any brv from instances of V_BRV
+  where selected.Value_ID == param.b1_bridge_or_transform_invocation1_id;
+if ( not_empty brv )
+return ::Bridge_statement_end( a1_rule_token: param.a1_rule_token,
+    a2_upper_rule_id: param.a2_upper_rule_id,
+    a3_rule_begin_id: param.a3_rule_begin_id,
+    a4_rule_id: param.a4_rule_id,
+    b1_local_variable1_id:OS::NULL_UNIQUE_ID(),
+    b2_attribute_access2_id:OS::NULL_UNIQUE_ID(),
+    b3_param_data_access3_id: OS::NULL_UNIQUE_ID(),
+    b4_bridge_invocation4_id: OS::NULL_UNIQUE_ID(),
+    b5_bridge_invocation5_id: param.b1_bridge_or_transform_invocation1_id );
+else
+select any trv from instances of V_TRV
+    where selected.Value_ID == param.b1_bridge_or_transform_invocation1_id;
+if ( not_empty trv )
+  return ::Implicit_ib_transform_statement_end( a1_rule_token: param.a1_rule_token,
+      a2_upper_rule_id: param.a2_upper_rule_id,
+      a3_rule_begin_id:  param.a3_rule_begin_id,
+      a4_rule_id: param.a4_rule_id,
+      b1_transform_ib_invocation1_id: param.b1_bridge_or_transform_invocation1_id );
+end if;
+end if;
+
+return param.a4_rule_id;
+
+_R The parser DOES NOT enter an infinite while loop.
+   NOTE: Before the change, the CPU was pegged at this point and the tool was 
+         in an infinite loop in Invocation_parameters_end at the 
+         "transformed equivalent" of line 84 in the OAL.
+    
+8. Code Changes
+---------------
+Branch name: Review-dts0100802307
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+
+
+End
+---
+
+$Log: dts0100802307.int,v $
+Revision 1.4  2011/09/28 19:03:16  rmulvey
+job:dts0100802307
+Updated based on  review observations
+
+Revision 1.3  2011/09/28 18:16:30  rmulvey
+job:dts0100802307
+Updated note
+
+Revision 1.2  2011/09/28 13:32:06  rmulvey
+job:dts0100802307
+Updated note
+
+Revision 1.1  2011/09/28 02:00:42  rmulvey
+job:dts0100802307
+Introduced

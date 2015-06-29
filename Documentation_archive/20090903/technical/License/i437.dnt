@@ -1,0 +1,704 @@
+========================================================================
+
+File:      $RCSfile: i437.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:26:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+License Management System for BridgePoint 7.0
+
+Abstract
+--------
+
+This document describes issues that need to be addressed regarding adding
+and configuring license management to the BridgePoint 7.0 release.
+
+History
+-------
+
+Document References
+-------------------
+
+[1]  Analysis Note
+     Documentation/internal/technical/License/i437.ant
+
+[2]  Nucleus EDGE Platform Requirements
+     http://svr-alm-eng-04/repos/edge/documentation/specifications
+     /nucleus_edge_framework.doc
+
+[3]  Nucleus Product Wizard
+     //phoenix/software_archive/Edge/plugins/product.gen_1.0.0.zip
+     
+[4]  Nucleus Product plugin
+     //phoenix/software_archive/Edge/plugins/product_1.0.2.zip
+    
+[5]  PC Licensing System (Windows version of the MGLS license server
+     application)
+     http://devnet.wv.mentorg.com/assets/licensing/lspc/release/2004_328/
+     Lic2004_328.zip
+
+[6]  Latest Windows mgc.pkginfo file
+     http://people.wv.mentorg.com/user/rls/scs/mgls_tools/mgls_rgy.ixn/
+     lib/mgc.pkginfo
+
+[7]  License Change Request Template
+     http://devnet.wv.mentorg.com/release/forms/Licchg.html
+    
+[8]  ClearQuest Defect Reporting System
+     http://devnet.wv.mentorg.com/env/change_mgmt/access.html
+
+[9]  Internal Authcode Request Form
+     http://mentorweb/WWOPS/WOF/RLT/rlstools/license.cfm
+    
+[10] 'expect' tool
+     phoenix://software_archive/expect/berkeley/expect-5.21r1b1-setup.exe
+
+[11] gen_import and gen_file automated test files
+     Razor:bp:test/bp7.0/generator/gen_test.tar.gz
+     
+[12] Tool for testing license queuing
+     phoenix://software_archive/key_holder/windows/bin/key_holder.exe
+    
+Background
+----------
+
+The Model Builder must be modified to use the Mentor Graphics Licensing System.
+The Model Debugger and the Generator must be modified to use the Mentor Graphics
+Licensing System instead of Elan.
+
+Analysis
+--------
+
+Please see analysis note [1].
+
+Design
+------
+
+i437.1 (LICN-1 as it applies to the Model Builder)
+     Modify the BridgePoint 7.0 Model Builder to implement the Mentor Graphics
+     Licensing System via the EDGE framework.
+         
+    .1.1 (LICN-2, LICN-5 as it applies to the Model Builder, LICN-9)
+     Modify bp.core/arc/create_core_plugin.inc to register the Model Builder as
+     an extension of the Nucleus product plugin licensing extension point. 
+
+    .1.1.1
+     Set the 'name' attribute of the 'product' element.
+ 
+    .1.1.2 
+     Set the 'productFile' attribute of the 'product' element.
+
+    .1.1.3
+    As described in the Nucleus Products Requirements [2] run the Nucleus
+    Product Wizard to create the .nucleusproduct file that will contain the
+    Exact Access information.
+    
+    .1.2 (LICN-14, LICN-15) 
+     Using the sample code from the EDGE Requirements document modify bp.core
+     /arc/create_core_plugin_class.arc such that in the core plugin class there
+     is a check for a valid license in the getDefault() method.
+     
+    .1.3 Modify new-start.chk to include procedures for setting up licensing.
+
+    .1.4 Specify installation of license servers in Tucson and Lahore.
+    
+    .1.5 Obtain the necessary licenses for Tucson and Lahore.
+
+i437.2 (LICN-1 as it applies to the Model Debugger)
+     Modify the BridgePoint Model Debugger to implement the Mentor Graphics
+     Licensing System.
+         
+    .2.1 (LICN-3)
+     Modify the Model Debugger license classes to implement the MGLS interface
+     in place of the Elan interface.
+     Modify the Model Debugger license functionality contained in the LM_license
+     class and in standalone functions contained in the ptc_license.cpp source
+     file.  
+    
+    .2.1.1 (LICN-16)
+    The modifications shall be done such that the Model Debugger checks for a
+    valid license each time it starts.
+    This is how the existing functionality works.  No major changes will be
+    needed to meet this particular requirement.
+    
+    .2.1.2 (LICN-5 as it applies to the Model Debugger)
+    The Model Debugger shall use the MGLS API calls that support Exact Access.
+    The licensing API calls to be used shall be the Exact Access versions.
+    The Exact Access calls require a build date parameter as well as a license
+    identifier.  The names of the Exact Access calls end with a 'v'.  For
+    example, the Exact Access version of core_Mheap_alloc is named
+    core_Mheap_allocv.
+          
+    .2.1.3 (LICN-10)
+    The asynchronous communications necessary to obtain a license shall be done
+    in such a way that the application may proceed as soon as possible after
+    obtaining a valid license. 
+    The function bp_lm_connect shall be modified in such a way as to determine
+    that a license is available and if so, to request one.  The function
+    bp_obtain_license shall be modified to check to see if the license request
+    was honored.  If it was, bp_obtain_license shall immediately return
+    BP_LIC_OK.      
+
+    .2.1.4 (LICN-11)
+    In some situations it is possible that a call to MGLS to validate a license
+    will return an 'in queue' message instead of a 'license valid' message. In
+    those cases there shall be a loop implemented in bp_obtain_license to
+    recheck the request at 1 second intervals.  If the request has resolved
+    valid bp_obtain_license shall immediately return BP_LIC_OK.  If after 4
+    seconds it has not resolved BP_LIC_ERR shall be returned.  
+   
+    .2.1.5 (LICN-16)
+    The behavior when a Model Debugger fails to obtain a license shall be
+    identical to the previous release of the Model Debugger.
+    That behavior is to display a single error message dialog box.  In order to
+    suppress the default error message dialog box generated by the licensing
+    API, the function bp_lm_connect shall be modified in such a way as to first
+    check for a valid license before actually requesting one.  If a valid
+    license is not available bp_lm_connect shall return MGLS_ERR immediately. 
+    The existing Model Debugger error dialog box is executed from the main
+    function.  The main function shall be modified so that the dialog box
+    displays Accelerated Technology contact information in place of Project
+    Technology contact information.
+         
+i437.3 (LICN-1 as it applies to the Generator)
+    Modify the BridgePoint Generator to implement the Mentor Graphics Licensing
+    System.
+
+    .3.1 (LICN-4)
+    Modify the BridgePoint license classes to implement the MGLS interface
+    in place of the Elan interface.
+    Modify the BridgePoint license functionality contained in the LM_license
+    class in u_licens.cc and in standalone functions contained in u_bplic.c.
+
+    .3.1.1 gen_file '-e' option
+    The modifications shall be done such that gen_file continues to accept
+    the '-e' command line option.  It shall treat it as a no-op.
+    Meeting this requirement is quite simple.  Any feature code passed in to
+    gen_file as a '-e' option is passed to LM_license::obtain_license as the
+    parameter 'p_default_feature'.  This parameter shall no longer be used by
+    LM_license::obtain_license.  The 'usage' message shall be updated to say
+    that '-e' is for backwards compatibility and that the value is ignored.
+     
+    .3.1.2 (LICN-18)
+    The modifications shall be done such that gen_file checks for a valid
+    license each time it starts.
+    This is how the existing functionality works.  No major changes will be
+    needed to meet this particular requirement.
+
+    .3.1.3 (LICN-5 as it applies to the Generator)
+    The gen_file application shall use the MGLS API calls that support Exact
+    Access.
+    Implementing Exact Access in the Generator shall be similar to how it will
+    done in the Model Debugger in paragraph 'Design i437 2.1.2'.  However there
+    must be one difference because the function core_Mheap_allocv is not a part
+    of the Solaris version of MGLS.  In the Solaris version of gen_file the
+    function core_Mheap_alloc shall be used instead.
+     
+    .3.1.4 (LICN-12)
+    The asynchronous communications necessary to obtain a license shall be done
+    in such a way that the application may proceed as soon as possible after
+    obtaining a valid license. 
+    The function bp_lm_connect shall be modified in such a way as to determine
+    that a license is available and if so, to request one.  The function
+    bp_obtain_license shall be modified to check to see if the license request
+    was honored.  If it was, bp_obtain_license shall immediately return
+    BP_LIC_OK.      
+    
+    .3.1.5 (LICN-13)  
+    In some situations it is possible that a call to MGLS to validate a license
+    will return an 'in queue' message instead of a 'license valid' message.
+    In those situations gen_file shall pause and occasionally poll MGLS while
+    waiting for the message to resolve to 'license valid'.  gen_file shall pause
+    for no longer than 4 seconds.  After 4 seconds gen_file shall proceed as if
+    the license query has failed.
+
+    .3.1.6 (LICN-17)
+    The behavior when gen_file fails to obtain a license shall be identical to
+    the previous release of gen_file.
+    That behavior is to display a text error message to the console.  In order
+    to suppress the default error message dialog box generated by the licensing
+    API, the function bp_lm_connect shall be modified in such a way as to first
+    check for a valid license before actually requesting one.  If a valid
+    license is not available bp_lm_connect shall return MGLS_ERR immediately. 
+
+i437.4
+     Obtain license names. (LICN-6, as qualified by LICN-7 and LICN-8) 
+
+    .4.1
+     Complete a License Change Request Template [7] to request the license names
+     listed in paragraph LICN-5.
+         
+    .4.2
+     Submit the license change request by creating a ClearQuest [8] defect
+     report.
+
+
+Design Comments
+---------------
+
+1) Subsequent to the approval of the analysis [1] of this project the Nucleus
+EDGE Platform Requirements document [2] was updated.  The requirements for
+registering a nucleusProduct extension were changed.  The design of i437.1.1 was
+modified to reflect those changes.
+
+2) The Edge Platform Requirements document contains sample code showing the
+recommended way to check for a valid license.  This code will be added to the
+CorePlugin getDefault method.
+
+3) Because a large portion of the work related to modifying the Generator is
+related to doing a complete build from Razor, modifying gen_import and gen_file
+to accept any file names for input and output files (Bugzilla 727) will be done
+in this project.
+
+4) The work to obtain license names (i437.4) was done soon after the analysis
+was completed.  The new license names and identifiers are:
+
+Atomics:
+2882 : xtumlbld
+2884 : xtumldbg
+2883 : xtumlgnrt
+2886 : xtumlmc2020
+2885 : xtumlmc3020
+
+Composites:
+5015 : bridgepntc_c
+    2882 : xtumlbld
+    2884 : xtumldbg
+    2883 : xtumlgnrt
+    2885 : xtumlmc3020
+
+5016 : bridgepntcpp_c
+    2882 : xtumlbld
+    2884 : xtumldbg
+    2883 : xtumlgnrt
+    2886 : xtumlmc2020
+
+5017 : bridgepntuv_c
+    2882 : xtumlbld
+    2884 : xtumldbg
+ 
+Work Required
+-------------
+i437.1 Modify the BridgePoint 7.0 Model Builder to implement the Mentor Graphics
+     Licensing System via the EDGE framework.
+         
+    .1.1 Modify bp.core/arc/create_core_plugin.inc to register the Model Builder
+     as an extension of the Nucleus product plugin licensing extension point.
+     As per design comment (1) the elements and attributes of the extension have
+     changed. 
+
+    .1.1.1 Set the name attribute of the product element to be "Nucleus
+    BridgePoint Model Builder"
+ 
+    .1.1.2 Set the productFile attribute of the product element to
+     "../com.projtech.bp.pkg/.nucleusproduct"
+
+    .1.1.3 Install the Nucleus Product Wizard plugin [3].
+    
+    .1.1.4 Install the Nucleus Product plugin [4].
+    
+    .1.1.5 As described in the Nucleus Products Requirements [2] run the Nucleus
+    Product Wizard to create the .nucleusproduct file that will contain the
+    Exact Access information.
+    The product identifier for the Model Builder is 2882.  The build date shall
+    be "Feb 04 2005".  The check box 'The product license should be checked out
+    for the session' shall be checked.
+    
+    .1.2 Using the sample code from the EDGE Requirements document modify
+    bp.core /arc/create_core_plugin_class.arc such that in the core plugin class
+    there is a check for a valid license in the getDefault() method.
+    
+    .1.3 Modify new-start.chk to include procedures for setting up licensing.
+    Modify new-start.chk to include such things as installing MGLS, and setting
+    up the needed environment variables.
+
+    .1.4 Specify installation of license servers in Tucson and Lahore.
+    
+    .1.5 Obtain licenses for Tucson and Lahore.
+    Licenses shall be made available in such a way as to honor the ObjectStore
+    licensing agreement.    
+    
+i437.2 Modify the BridgePoint Model Debugger to implement the Mentor Graphics
+    Licensing System.
+         
+    .2.1 Modify the Model Debugger license classes to implement the MGLS
+    interface in place of the Elan interface.
+
+    .2.1.1 The Model Builder checks for a valid license each time it
+    starts.
+    As described in the design, this is how the existing functionality works.
+    No major changes needed.
+    
+    .2.1.2 Use the MGLS API calls that support Exact Access.
+    As described in the Design section, use the API calls that support Exact
+    Access.
+    
+    .2.1.3 Implement the asynchronous communication behavior as described in
+    the second half of paragraph 'Design i437 2.1.3'.
+
+    .2.1.3.1 Modify bp_lm_connect
+    Call core_Mheap_set to set the value of MGLS_ATTR_MULTI_QUEUE to 1.  This
+    configures the Windows version of MGLS to use asynchronous licensing.
+    Call core_Mheap_allocv to request a license.
+    
+    .2.1.3.2 Modify bp_obtain_license
+    After the return from bp_lm_connect, call core_Mheap_stat to determine if
+    the license request was honored.
+
+    .2.1.4 Implement the queuing behavior described in paragraph 'Design
+    i437 2.1.4'.
+    Queuing behavior shall be added to bp_obtain_license, immediately after the
+    call to bp_lm_connect.
+    
+    .2.1.5 Implement the license failure behavior as described in paragraph
+    'Design i437.2.1.5'.
+    
+    .2.1.5.1 Modify bp_lm_connect
+    Before calling core_Mheap allocv, call core_Mheap_validv to determine if
+    a valid license is available.  If one is not, return MGLS_ERR immediately so
+    that MGLS does not display its default error dialog box.
+    
+    .2.1.5.1 Modify the error dialog box in the main function
+    Replace the PT contact information with the ATI contact information.
+    
+    .2.1.6 Modify the MSVC project file bp_md.dsp.  It must use the MGLS header
+    and library files instead of the Elan files. 
+    
+    .2.1.7 Modify the LM_license class and standalone functions in
+    ptc_license.cc.
+    
+    .2.1.7.1 Include mgls_client.h in place of u_elm.hh.
+
+    .2.1.7.2 Include windows.h.  This is needed in order to include the Sleep()
+    function, to be used to implement queuing behavior.  (The standard function
+    sleep() is obsolete in Windows.)  Precede the include with a #define of
+    WINDOWS_LEAN_AND_MEAN to avoid including unneeded definitions.
+    
+    .2.1.7.3 Remove qsettings.h.  Was used for host lookup, which is no longer
+    needed.
+    
+    .2.1.7.4 Change declaration of the exception handler function
+    bp_beat_exception to match the parameters of the MGLS function.  Change the
+    declaration of bp_lm_connect to return 'long' instead of 'int'.
+    
+    .2.1.7.5 Remove the no longer needed '#define's LM_NAME and CUR_VER_NAME.
+    Change the value of MAX_LICENSES_HELD from 5 to 1.
+    
+    .2.1.7.6 Modify the bp_obtain_license function.
+    
+    .2.1.7.6.1 Remove the no longer needed host lookup code.
+    
+    .2.1.7.6.2 Simplify the feature lookup code. (In MGLS the client simply
+    sends its application id and build date, it is up to the server to serve the
+    appropriate license.)
+    
+    .2.1.7.6.3 Remove all the no longer needed code that makes a connection to
+    an Elan server.
+    
+    .2.1.7.7 Modify the bp_release_license function to replace the Elan API
+    calls with the appropriate MGLS calls.  
+    
+    .2.1.7.8 Modify the bp_lm_connect function.
+    
+    .2.1.7.8.1 Replace the code needed for an Elan connection with the code
+    needed to make an MGLS connection.  
+    
+    .2.1.7.8.1.1 As described in paragraph .2.1.2 use the API calls that support
+    Exact Access.
+    
+    .2.1.7.8.2 To preserve the present Model Debugger license failure behavior,
+    modify bp_lm_connect as described in paragraph 'Design i437 2.1.5'.
+
+i437.3 Modify the BridgePoint Generator to implement the Mentor Graphics
+    Licensing System.
+
+    .3.1 Modify the LM_license class to implement the MGLS interface in place of
+    the Elan interface.
+    
+    .3.1.1 gen_file '-e' option.
+    Implement the '-e' option as described in the Design section.
+    
+    .3.1.2 gen_file shall check for a valid license each time it start.
+    As described in the design, no major changes are needed.
+    
+    .3.1.3 gen_file shall use the MGLS calls that support Exact Access
+    Implement Exact Access as described in the Design section.
+    Surround the call to core_Mheap_validv with #ifdef _WIN32.  The #else
+    condition shall be to call core_Mheap_valid instead.
+    
+    .3.1.4 Asynchronous communications to obtain a license shall return as soon
+    as possible after obtaining a license.
+    Implement asynchronous communications as described in the Design section.
+    
+    .3.1.5 License queuing.
+    The function bp_obtain_license shall be modified to implement queuing as
+    described in the Design section.
+    
+    .3.1.6 The behavior when gen_file fails to obtain a license shall be
+    identical to the previous release.
+    Implement the behavior in bp_lm_connect as described in the Design section.
+    
+    .3.1.7 Other needed changes.
+    
+    .3.1.7.1 Include mgls_client.h in place of u_elm.hh.
+
+    .3.1.7.2 Include windows.h.
+    This is needed to include the Sleep() function that will be used to
+    implement queuing behavior.  (The standard function sleep() is
+    obsolete in Windows.)  Precede the include with a #define of
+    WINDOWS_LEAN_AND_MEAN to avoid including unneeded definitions.
+    
+    .3.1.7.3  Change declaration of the exception handler function.
+    Change bp_beat_exception to match the parameters of a MGLS exception handler
+    function.
+    
+    .3.1.7.4  Change the declaration of bp_lm_connect to return 'long' instead
+    of 'int'.
+    An MGLS connection returns a long instead of an int.
+    
+    .3.1.7.5 Remove some no longer needed '#define's.
+    Remove LM_NAME and CUR_VER_NAME.
+
+    .3.1.7.6 Change the value of MAX_LICENSES_HELD from 5 to 1.
+    Because in MGLS it is up to the server to decide what license feature to
+    serve, the client only needs to hold 1 license.
+    
+    .3.1.8 Modify the bp_obtain_license function.
+    
+    .3.1.8.1 Remove the no longer needed host lookup code.
+    
+    .3.1.8.2 Simplify the feature lookup code.
+    In MGLS the client simply sends its application id and build date, it is up
+    to the server to serve the appropriate license.
+    
+    .3.1.8.3 Remove all the no longer needed code that makes a connection to
+    an Elan server.
+    
+    .3.1.8.4 Modify the bp_release_license function.
+    Replace the Elan API calls with the appropriate MGLS calls.  
+    
+    .3.1.9 Modify the bp_lm_connect function.
+    
+    .3.1.9.1 Replace the code needed for an Elan connection with the code
+    needed to make an MGLS connection.  
+    
+    .3.1.9.2 Use the API calls that support Exact Access.  
+    
+    .3.1.9.3 Preserve the present gen_file license failure behavior,
+    modify bp_lm_connect as described in paragraph 'Design i437 3.1.6'.
+    
+    .3.2 Update 'usage'
+         
+    .3.3 Modify the header files
+    Modify the utility license header files.  The major portion will be to
+    remove Elan specific entries from the bp_lic_parms and add in MGLS specific
+    ones.
+    
+    .3.4 Modify the build scripts.
+    They must use the MGLS header and library files instead of the Elan files. 
+    
+i437.4 Obtain License Names
+     As per Design Comment (4) the work needed to obtain license codes was
+     completed soon after the analysis was approved.
+
+i437.5 Modify gen_import and gen_file to accept any file names for input and
+       output
+
+    .5.1 Remove the test for .gen files from gen_import.
+    
+    .5.2 Remove the test for .sql files from gen_import.
+    
+    .5.3 Remove the test for .gen files from gen_file.
+    
+    .5.4 Remove the test for .arc files from gen_file.
+    
+Unit Test
+---------
+
+Pre-Test Setup:
+1)  Obtain the Windows version of the MGLS license server [5].
+2)  Install the Windows version of the MGLS license server.
+3)  Obtain and install the latest version of the Windows mgc.pkginfo file [6].
+4)  Obtain a Windows BridgePoint 7.0 license file [9] containing a
+    single instance of each atomic license listed in Design Comment (4).
+    Note: Because of the limited supply of xtumlgnrt licenses, only the initial
+    tester shall obtain MGLS-based generator licenses.  All subsequent testers
+    shall use the license server installed on 'azt-pcoltrin-lt'.
+5)  Configure the license server and install the license file.
+    Run the LMTOOLS utility installed as part of step 2 above.
+    Select the 'Service/License File' tab, select the 'Configuration using
+    Services' radio button.
+    Select the 'System Settings' tab to find the server information needed on
+    the license request form.
+    After the license file is obtained, run LMTOOLS, select the 'Config Services'
+    tab, enter appropriate values for 'Path to lmgrd.exe file', 'Path to the
+    license file', and 'Path to the debug log file'.  Select the 'Use Services'
+    radio button.
+    Note: You may need to edit the SERVER line of license file changing hostname
+    to 'this_host' in order to successfully start the license server.
+6)  Install the 'expect' tool [10].  
+7)  Setup the following environment variables:
+    MGLS_DLL - The value shall be the location of the mgls.dll, obtained as part
+    of step 1 above.
+    MGLS_LICENSE_FILE - The value shall be the location of the license file
+    containing the licenses obtained and configured as per step 4 above.  A
+    typical value for this variable could be '1700@azt-pcoltrin-lt'.  This would
+    instruct MGLS to look for a license server on port 1700 of a computer named
+    'azt-pcoltrin-lt'.    
+    MGLS_PKGINFO_FILE - The value shall be the location of the package info file
+    obtained as per step 3 above.
+    PATH - Add the path to the 'expect' executable.
+8)  Install BridgePoint 6.1
+9)  Replace the BridgePoint 6.1 Model Debugger, gen_import and gen_file
+    executables with the BridgePoint 7.0 versions.
+10) Extract the generator test files from Razor [11] and unpack them so that the
+    top level 'script' directory is inside the 'BridgePoint 6.1' directory.  In
+    other words, at the same level as the 'bin', 'log_dir', and 'win32'
+    directories. 
+11) If not installed already, install the Nucleus Product plugin [4].
+12) Copy the key_holder executable [12] onto the test computer.
+13) Check to see if there is an MGLS license server running on avocet.
+    - log into avocet as 'build'
+    - Execute 'ps -fade | grep build'
+    - If a license server is running the grep will return a line containing
+      'mgcld'.  For example:
+       ----
+         build  9433  9432  0 16:42:20 ?        0:00 mgcld -T avocet 9.5 4
+          -c /opt/phoenix/mgclm/exports.v7-1_0-3-1_engr-ss6/mgc_hom
+       ----
+    - If a license server is running, execute the script './stop_mgclm'.
+      It will echo to the console simple instructions on how to run the
+      interactive process that stops the license server.  Follow the
+      instructions to stop the license server.
+    Note: To restart the license server on avocet after testing is completed:
+    - log into avocet as 'build'
+    - Execute the script 'start_mgclm'
+        
+Model Builder Tests:
+- Start the MGLS lmtools program.
+- In lmtools, select the 'Start/Stop/Reread' tab and press the 'Start Server'
+  button to start the MGLS license server.
+- Start the Model Builder.
+R The Model Builder starts.
+- From the menu bar select Help | License Information...
+R The Edge License Information dialog box shall popup
+R The 'Nucleus BridgePoint Model Builder' shall be listed in a black font.
+R The 'status' shall contain a positive number corresponding to the number of
+  days remaining on the Model Builder license key.
+- Create a new Model Builder project
+R A new project can be created.
+- Stop the Model Builder
+- Open a command prompt shell.
+- Execute the key_holder to obtain and hold a Model Builder license:
+   key_holder -key 2882 -date "Feb 04 2005"
+- From the menu bar select Help | License Information...
+R The 'Nucleus BridgePoint Model Builder' shall be listed in a red font.
+R The 'status' shall contain the text 'License request for feature failed'.
+- Stop the Model Builder   
+- Stop the MGLS license server
+- Start the Model Builder
+- From the menu bar select Help | License Information...
+R The 'Nucleus BridgePoint Model Builder' shall be listed in a red font.
+R The 'status' shall contain the text 'License request for feature failed'.
+
+Model Debugger Tests:
+- Start the MGLS lmtools program.
+- In lmtools, select the 'Start/Stop/Reread' tab and press the 'Start Server'
+  button to start the MGLS license server.
+- Start the Model Debugger.
+R The Model Debugger starts.
+- In lmtools, select the 'ServerStatus' tab and press the 'Perform Status
+  Equiry' button.  Examine the results of the enquiry.
+R An xtumldbg license has been assigned to the user running the Model Debugger.
+- Stop the Model Debugger.
+- Open a command prompt shell.
+- Execute the key_holder to obtain and hold a Model Debugger license:
+   key_holder -key 2884 -date "Feb 04 2005"
+- Start a Model Debugger
+R After 4 seconds the Model Debugger license failure dialog pops up.
+R The license failure dialog box contains the correct contact information.
+- Press the OK button in the dialog box.
+R The Model Debugger stops.
+- Press any key in the command prompt shell running the key_holder in order to
+  release the license key.
+- In lmtools, select the 'Start/Stop/Reread' tab and press the 'Stop Server'
+  button to stop the MGLS license server.
+- Start the Model Debugger
+R After approximately 20 seconds the license failure dialog box pops up.
+- Press the OK button in the dialog box.
+R The Model Debugger stops.
+
+Generator Tests:
+- Start the MGLS lmtools program.
+- In lmtools, select the 'ServerStatus' tab and press the 'Perform Status
+  Equiry' button.  Examine the results of the enquiry to assure that the License
+  Server is not running.
+- Open an MKS korn shell.
+- Set the default directory to <path to BridgePoint 6.1>/BridgePoint 6.1/script.
+- Execute 'expect testgen.exp' to execute the automated generator tests.
+R All tests report 'Success'.
+- Examine the <path to BridgePoint 6.1>/BridgePoint 6.1/log_dir/pt_gen_file.log
+  to assure that during the queued license test that gen_file reported that it
+  queued 4 seconds for a license.
+R The license queued log messages are present in the pt_gen_file.log.
+
+End
+---
+
+$Log: i437.dnt,v $
+Revision 1.1  2009/09/03 18:26:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:25  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.42.1  2008/12/31 16:10:34  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2005/03/25 00:12:11  pablo
+Job: 437
+Add instructions on how to check for and if
+neccessary stop a license server on avocet.
+Also clarify generator license policy.
+Update possible values of MGLS_LICENSE_FILE
+
+Revision 1.6  2005/03/17 16:05:55  pablo
+Job: 437
+Addressed review observations.
+Removed one duplicate entry in the Work
+Required section
+
+Revision 1.5  2005/03/17 00:10:54  pablo
+Job: 437
+incremental checkin, addressed some
+observations.
+
+Revision 1.4  2005/03/15 22:58:12  pablo
+Job: 437
+Correct spelling errors.
+
+Revision 1.3  2005/03/15 22:23:56  pablo
+Job: 437
+Incremental checkin
+Unit tests added
+
+Revision 1.2  2005/03/10 22:39:45  pablo
+Job: 437
+Interim checkin.  Design is set.   Starting on
+Unit test section.
+
+Revision 1.1  2005/03/03 00:21:59  pablo
+Job: 437
+incremental checkin
+

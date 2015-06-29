@@ -1,0 +1,409 @@
+========================================================================
+
+File:      $RCSfile: i343.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Delete should be disabled for some items in the tree
+
+Abstract
+--------
+This document describes the design to disable actions (rename, delete) of 
+certain meta model elements as shown in the tree. 
+
+History
+-------
+ - i3434-123104-01.rvm (Final)
+
+Document References
+-------------------
+[1] Bugzilla Issue # 343.
+[2] Documentation/internal/technical/Object_Contribution/object_contribution.dnt
+[3] Documentation/internal/technical/Object_Contribution/i384.dnt
+
+Background
+----------
+See Bugzilla Issue # 343 [1].
+
+Analysis
+--------
+- i343.1 Disable Delete actions for special cases
+  (Referring to Main Comment and Comment # 03 in Bugzilla [1])
+Certain meta model entities created in a user model and shown in the Model 
+Explorer, have specific characteristics due to which they can not be deleted.
+These are:
+- Pre defined Data Types (i.e. date, inst_ref<Timer>, timestamp)
+- Attributes that are:
+  - Referential Attributes
+  - Attribute current_state associated with a State Machine.
+- Root Data Type Package
+Delete operation for 'Core data types' is already disabled, and hence requires 
+no work.
+
+- i343.2  Disable Rename actions for special cases
+  (Referring to Comment # 01 and Comment # 10 in Bugzilla [1])
+  It is also required Rename functionality should also be disabled for all of 
+the above mentioned cases for delete. Referential Attributes can only be 
+renamed if the value of 'Referred to Mode' attribute is set to 'Referred To 
+Local'.
+
+- i343.3  Add read-only adornments to the Icons
+  (Referring to Comment # 02 in Bugzilla [1])
+It is also required to add adornments in Model Explorer on icons of such 
+elements that can not be renamed, to show them as read-only.
+
+- i343.4 Add new filter entries for New > State Chart(s) menu entries
+  (Referring to Comment # 06 and Comment # 11 in Bugzilla[1])
+It is also required to filter the 'New > Instance State Chart' and 'New > Class 
+State Chart Entries' if the class already has the corresponding model entities.
+No general policy is currently being established as suggested in Comment # 11 
+in Bugzilla[1].
+
+Design
+------
+- i343.1 Disable delete in context menu
+  For all the elements suggested in the analysis section an operation  'boolean 
+canDelete()' is added in the respective meta model classes. 
+Since Delete is a global action [2], this operation shall be called (if it 
+exists for a Model Class) from the generated instanceof checks in 
+"can${action_name}()" method.
+
+- i343.1.1  Add canDelete() operations.
+Following operations are added to ooaofooa.mdl.
+. Attribute_c::canDelete()
+  if (self.Name == "current_state")
+    select one dt related by self->S_DT[R114];
+    if (dt.Name == "state<State_Model>")
+      select one ism related by self->O_OBJ[R102]->SM_ISM[R518];
+      if (not_empty ism)
+        /*Now check if there are other attributes with same name & dt, if there 
+        are any let this be deleteable and renamebale*/
+        select many attrs related by self->O_OBJ[R102]->O_ATTR[R102] where selected.Name == "current_state";
+        if (cardinality attrs > 1)
+          exist = false;
+          for each attr in attrs
+            select one adt related by attr->S_DT[R114];
+            if (dt.Name == "state<State_Model>" and self != attr)
+              exist = true;
+            end if;
+          end for;
+          return exist;
+        else
+          return false;
+        end if;
+      end if;
+    end if;
+  else   
+    select one refAttr related by self->O_RATTR[R106];
+    if (not_empty refAttr)
+       return false;
+    end if;
+  end if;
+  return true;
+
+. UserDataType_c::canDelete()
+  return (self.Gen_Type == 0);
+  
+. DatatypePackage_c::canDelete()
+  select many dps related by self->S_DPIP[R37]->S_DPK[R38];
+  if (not_empty dps)
+    for each dp in dps
+      if (not dp.canDelete())
+        return false;
+	  end if;
+	end for;
+  else
+    //checking for core data types
+    select any coredt related by self->S_DT[R39]->S_CDT[R17];
+    if (not_empty coredt)
+      return false;
+    end if;
+    //checking for pre-defined user data types	
+    select many userdts related by self->S_DT[R39]->S_UDT[R17];
+    if (not_empty userdts)
+      for each udt in userdts
+        if (not udt.canDelete())
+          return false;
+        end if;
+      end for;
+    end if;	
+  end if;
+  return true;
+  
+- i343.1.2  Modify global action class.
+  Modify the code in the "can${action_name}()" method generated by 
+bp.core/arc/create_global_action.inc archetype file. canDelete() method should 
+be called for the currently selected object in the instanceof checks.
+
+- i343.2  Disable Rename actions for special case
+  For all the elements suggested in the analysis section an operation  'boolean 
+canRename()' is added in the respective meta model classes. 
+
+- i343.2.1  Add canRename() operations.
+Following operations are added to ooaofooa.mdl.
+. Attribute_c::canRename()
+  if (self.Name == "current_state")
+    select one dt related by self->S_DT[R114];
+    if (dt.Name == "state<State_Model>")
+      select one ism related by self->O_OBJ[R102]->SM_ISM[R518];
+      if (not_empty ism)
+        /*Now check if there are other attributes with same name & dt, if there 
+        are any let this be deleteable and renamebale*/
+        select many attrs related by self->O_OBJ[R102]->O_ATTR[R102] where selected.Name == "current_state";
+        if (cardinality attrs > 1)
+          exist = false;
+          for each attr in attrs
+            select one adt related by attr->S_DT[R114];
+            if (dt.Name == "state<State_Model>" and self != attr)
+              exist = true;
+            end if;
+          end for;
+          return exist;
+        else
+          return false;
+        end if;
+      end if;
+    end if;
+  else  
+    select one refAttr related by self->O_RATTR[R106];
+    if (not_empty refAttr)
+      if (refAttr.Ref_Mode != 0)
+         return false;
+      end if;
+    end if;
+  end if;
+  return true;
+
+. UserDataType_c::canRename()
+  return (self.Gen_Type == 0);
+  
+. DatatypePackage_c::canRename()
+  if (self.Name == "Datatypes")
+    select many otherdps related by self->S_DOM[R40]->S_DPK[R40];
+    if (cardinality otherdps > 1)
+      //If there are more then one Datatype packages with name "Datatypes"
+      //we need make only that one read-only that which can not be deleted.
+      return self.canDelete();
+    end if;
+    select one dpip related by self->S_DPIP[R38];
+    if (empty dpip)
+      return false;
+    end if;
+  end if;
+  return true;
+
+- i343.2.2  Modify create_rename_action.inc
+  Modify the code in the "can${action_name}()" method generated in 
+bp.core/arc/create_rename_action.inc. canRename() method should be called for
+the currently selected object (if it exists for that object).
+
+- i343.3  Add read-only adornment to icons
+  In case a model element is found to be read-only, its corresponding image 
+will have special adornment (a lock on top left corner) to depict it’s 
+read-only nature. 
+Eclipse provides org.eclipse.ui.decorators extension point to implement 
+decorations on objects in a view. The extension point is added to 
+com.projtech.bp.ui.explorer/plugin.xml file. 
+A new class ModelLabelDecorator that implements ILightweightLabelDecorator is 
+added in package com.projtech.bp.ui.explorer. The class implements 
+decorate(Object element, IDecoration decoration) method, which calls canRename() 
+method dynamically for 'element'. In case canRename() returns false, it calls
+decoration.addOverlay(ImageDescriptor overlay, int quadrant) method to add lock 
+image as 'overlay' on the TOP_LEFT 'quadrant'.
+An image "lock.gif" shall be created and placed in com.projtech.bp.core/icons
+folder.
+
+- i343.4  Add new filter entries for New > State Chart(s) menu entries
+  Add two new entries of MEF for New Instance State Chart and New Class State
+Chart in the bp.core/sql/context_menu.pei.sql file. Also add actionFilter() 
+operation in the O_OBJ class:
+. ModelClass_c::actionFilter(string name, string value)
+  if (param.name == "can")
+    if (param.value == "instanceStateChart")
+      select one ism related by self->SM_ISM[R518];
+      return empty ism;
+    elif (param.value == "classStateChart")
+      select one asm related by self->SM_ASM[R519];
+      return empty asm;
+    end if;	
+  end if;
+  return false;
+  
+Work Required
+-------------
+- i343.1  Disable delete in context menu
+- i343.1.1  Add canDelete() operations 
+  Add the listed operations in the bp.core/mdl/ooaofooa.mdl and 
+bp.core/mdl/ooaofooa.bak models.
+
+- i343.1.2  Modify global action class.
+  Modify the create_global_action.inc file as described in the design section.
+
+- i343.2  Disable rename in context menu
+- i343.2.1  Add canRename() operations
+  Add the listed operations in the bp.core/mdl/ooaofooa.mdl and 
+bp.core/mdl/ooaofooa.bak models.
+
+- i343.2.2  Modify create_rename_action.inc
+  Modify the create_rename_action.inc file as described in the design section.
+
+- i343.3  Add read-only adornment to icons
+  Add new class ModelLabelDecorator.java in com.projtech.bp.ui.explorer package.
+Also create lock.gif and place it in the bp.core/icons folder.
+  Also add the ModelLabelDecorator.java in com.projtech.bp.ui.explorer/
+generate.xml file's clean_java and format_java targets.
+
+- i343.4  Add new filter entries for New > State Chart(s) menu entries
+  Make changes to Model Class in the bp.core/ooaofooa.mdl and bp.core/
+ooaofooa.bak as suggested in the design section, and also add required MEF 
+entries in bp.core/sql/context_menu.pei.sql file.
+
+Unit Test
+---------
+_- Load tiger and import model bp.core.test/mdl/testCanRenameDelete.mdl.
+
+- i343-UT.1  Test for checking disabled/enabled Delete menu entries
+  _- Right click on a Pre-defined user data type (e.g. date)
+  _R The Delete menu entry is disabled
+  
+  _- Right click on the user defined data type named "test"
+  _R The Delete menu entry is enabled.
+  
+  _- Right click on the referential attribute named "id" in a 'Class D'
+  _R The Delete menu entry is disabled
+  
+  _- Right click on any other attribute (which is not referential nor an 
+     instance state chart variable)
+  _R The Delete menu entry is enabled.
+  
+  _- Right click on attribute named 'current_state', associated with a state 
+     chart and having datatype 'state<Sate_Model>'
+  _R The Delete menu entry is disabled.
+  
+  _- Right click on the attribute with name current_state and datatype 'string'
+  _R The Delete menu entry is enabled.
+  _  Now change datatype for the selected current_state attribute to 
+     'state<State_Model>'
+  _R The Delete menu entry is enabled for both current_state attributes.   
+     
+  _- Right click on a datatype package named 'Datatypes'.
+  _R The Delete menu entry is disabled.
+  
+  _- Right click on the datatype package named 'NewDatatypePackage'.
+  _R The Delete menu entry is enabled.
+
+
+- i343-UT.2  Test for checking disabled/enabled Delete menu entries
+  _- Right click on a Pre-defined user data type (e.g. date)
+  _R The Rename menu entry is disabled
+  
+  _- Right click on the user defined data type named "test"
+  _R The Rename menu entry is enabled.
+  
+  _- Right click on attribute named 'current_state', associated with a state 
+     chart and having datatype 'state<Sate_Model>' in 'Class D'
+  _R The Rename menu entry is disabled.
+  
+  _- Right click on the attribute with name current_state and datatype 'string'
+     in 'Class D'.
+  _R The Rename menu entry is enabled.
+  _  Now change datatype for the selected current_state attribute to 
+     'state<State_Model>'
+  _R The Rename menu entry is enabled for both current_state attributes.   
+     
+  _- Right click on a datatype package named 'Datatypes'.
+  _R The Rename menu entry is disabled.
+  
+  _- Right click on the datatype package named 'NewDatatypePackage'.
+  _R The Rename menu entry is enabled.
+  
+  _- Right click on the attribute 'id' in 'Class D'
+  _R The Rename menu entry is disabled.
+  
+  _- Right click on the attribute 'renamedRefId' in 'Class D'
+  _R The Rename menu entry is enabled.  
+
+
+- i343-UT.3  Test for checking read-only adornment to icons
+  _- Click on Domain in Explorer Tree to expand it.
+  _R The data type package named 'Datatypes' has an icon with a lock.
+  
+  _- Expand the root data type package named 'Datatypes'
+  _R The pre-defined user data types have icons with a lock.
+  
+  _- Expand tree for any Model Class 'Class D'
+  _R The top attribute 'current_state' has an icon with a lock.
+  _R All referential attributes having their 'Referred to Mode' set to 'Referred 
+     To Attribute' show icon with a lock.
+
+
+- i343-UT.4  Test for checking disabled State Chart actions
+  _- Add a new Class in the Model and name it as "checkStateChart"
+  _R A new class is added.
+  
+  _- Add new Instance State Chart using New > Instance Statechart menu
+  _R An Instance State Chart is added.
+  
+  _- Right click on the class, Open New Menu
+  _R Instance Statechart menu entry is unavaialable.
+  
+  _- Add new Class State Chart using New > Class Statechart menu
+  _R A Class State Chart is added.
+  
+  _- Right click on the class, Open New Menu
+  _R Class Statechart menu entry is unavailable.
+  
+End
+---
+
+$Log: i343.dnt,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.58.1  2008/12/31 16:10:26  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2005/01/05 09:46:35  siddique
+Job:343
+Review observations addressed.
+
+Revision 1.6  2004/12/30 16:00:18  siddique
+Job:343
+Pre-review observations addressed.
+
+Revision 1.5  2004/12/29 17:44:24  siddique
+Job:343
+Added section to add attribute in S_DPK
+
+Revision 1.4  2004/12/29 16:10:23  siddique
+Job:343
+Fixed some typos.
+
+Revision 1.3  2004/12/29 15:50:47  siddique
+Job:343
+Added new section for rename, also added section about changes in
+context_menu.mdl. Updated Unit tests.
+
+Revision 1.2  2004/12/28 11:50:57  siddique
+Job:343
+Added description for enablement section
+
+Revision 1.1  2004/12/27 13:55:09  siddique
+Job:343
+Introduced.
+

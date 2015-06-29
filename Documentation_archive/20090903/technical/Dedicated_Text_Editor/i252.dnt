@@ -1,0 +1,209 @@
+========================================================================
+
+File:      $RCSfile: i252.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:29 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Design Note
+Remove error annotation bad behavior
+
+Abstract
+--------
+
+This note describes the changes to the Activity editor to make 
+error annotations and markers behave more like the Java editor.
+
+History
+-------
+
+update i252-063004-01.rvm
+final  i252-070104-01.rvm
+
+Document References
+-------------------
+Issue 252
+
+Background
+----------
+
+The Activity editor reparses the entire activity each time the
+data in the editor is changed.  Before the parse is started,
+all error annotations and markers are removed from the editor.
+
+This behavior causes consistency problems between the task list and
+the state of the activity.  For example, the task list may be empty,
+but an activity has parse errors.
+
+Design
+------
+
+The activity editor is changed to behave like the Java editor.
+After a parse completes, the following processing occurs:
+
+- If a file marker exists for an error, nothing is done.
+- If a file marker exists without a corresponding error,
+   the marker is grayed out.
+- If an error exists without a file marker, a temporary annotation
+   is added for the error.
+   
+When the Save operation is performed on the editor, the following 
+processing occurs:
+
+- All grayed out file markers are deleted
+- All temporary annotations are converted into file markers.
+
+When a Revert operation is performed, the editor data is reparsed, 
+which will have the following results:
+
+- All existing file markers remain.
+- All grayed out file markers are un-grayed out.
+- All temporary annotations are deleted.
+
+These changes occur naturally as part of the reparse forced 
+by the revert operation.
+
+i252.1 Don't automatically delete markers
+
+The Activity Editor deletes all annotations and markers before
+starting a parse.  This behavior is changed to not delete anything
+before starting a parse.  The ActivityAnnotationModel class
+manages the creation and deletion of annotations and markers
+with out any need for help from other classes.   
+
+i252.2  Add ability to draw gray markers
+
+The operation ActivityMarkerAnnotation.getImage() is added.
+The operation determines which image (normal or grayed) is
+to be used for the marker, and sends that image to the supertype's 
+implementation of this function.
+  
+A file marker is gray or not depending on the value of the isRelevant
+data member.  Thus, valid errors are relevant, and errors that no longer
+apply are not relevant.
+
+The operations markNotRelevant() and markRelevant() are added to the 
+ActivityMarkerAnnotation class.  They are used by other classes to 
+indicate when to gray the icon.  The class is changed so that only these
+operations affect the relevance data.  Previously, it was coupled to
+if there was an annotation at the same position as the marker.
+
+i252.3  Change parser post processing
+
+The infrastructure for doing the work is mostly present in the
+ActivityAnnotationModel class.  We just need to make a few changes to
+enable the infrastructure to work for us.
+
+i252.3.1  Remember previous markers and mark non-relevant ones
+
+The data members fPreviouslyShadowed and fCurrentlyShadowed are renamed
+to fPreviouslyExistingMarkers and fCurrentlyExistingMarkers to better
+reflect what they contain.  When post processing of the parse is started,
+the fPreviouslyExistingMarkers array is filled with all currently 
+existing markers.  All these markers are marked as relevant. During post 
+processing, any markers that are still valid are moved from the 
+fPreviouslyExistingMarkers list to the fCurrentlyExistingMarkers list.  
+After post-processing, any markers left in fPreviouslyExistingMarkers 
+are marked as not relevant, thus causing them to be grayed out.
+
+i252.3.2  Delete non-relevant markers on save.
+
+The function ActivityAnnotationModel.updateMarkers is implemented to
+override the supertype implementation.  This implementation finds all
+nonRelevant markers and removes them.  It then invokes the supertype's
+implementation of updateMarkers. 
+
+An alternative implementation would be to add an extension point for 
+'markerUpdaters', that would indicate that nonRelevant markers should be 
+deleted.  This new class would then be loaded by the supertype's 
+implementation of updateMarkers().  The overriding of the supertype's 
+implementation was seen as the simpler solution, as the markerUpdater
+has to find the instance of ActivityAnnotationModel in order to 
+determine the relevance of the marker.  This lookup is not possible.
+
+i252.4  Make markers persistent
+
+As currently implemented, markers do not persist between Tiger 
+application invocations.  The rationale for this is that since the 
+models are always loaded each time Tiger is started, there's no way to 
+ensure consistency between the markers and the currently loaded model.
+This reasoning is voided by the fact that users will be loading the 
+same model, and would like the markers to persist.  The markers are 
+changed to be persistent.
+
+Work Required
+-------------
+
+i252.1 Don't automatically delete markers
+
+The function ActivityEditor.documentAboutToBeChanged() is 
+changed to only kill the currently running parse thread.
+
+The function ActivityAnnotationModel.removeAllErrorAnnotations()
+was only called by this function.  It is now dead code and is removed.
+
+i252.2  Add ability to draw gray markers
+
+The operations are added to ActivityMarkerAnnotation.java.  There
+is a set of constants added to the class for the various types of
+icons that can be drawn.  A new data member, fImageType,  captures 
+the current image being drawn.  A hash map is also added to cache
+the grayed images.
+
+i252.3  Change parser post processing
+
+i252.3.1  Remember previous markers and mark non-relevant ones
+
+The changes are made to ActivityAnnotationModel.java.  Note that
+the code to transfer markers from the previous to current lists is
+already implemented. The function removeMarkerOverlays is renamed to
+removeIrrelevantMarkers.
+
+i252.3.2  Delete non-relevant markers on save.
+
+The operation is added to ActivityAnnotationModel.java.
+
+i252.4  Make markers persistent
+
+The change is made to ActivityProblem.java.
+
+End
+---
+
+$Log: i252.dnt,v $
+Revision 1.1  2009/09/03 18:24:29  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.160.1  2008/12/31 16:10:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/07/01 20:43:36  greg
+Job: 252
+Add history after final review
+
+Revision 1.3  2004/06/30 21:21:49  greg
+Job: 252
+Ready for review
+
+Revision 1.2  2004/06/30 19:37:18  greg
+Job: 252
+Make review changes
+
+Revision 1.1  2004/06/29 20:18:28  greg
+Job: 252
+Inital introduction
+
+

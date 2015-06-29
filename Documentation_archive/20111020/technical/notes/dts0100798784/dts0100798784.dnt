@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile: dts0100798784.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Enable textual merge
+
+1. Abstract
+-----------
+This note describes the design to allow textual based merging within the current
+compare functionality.
+
+Additionally the note describes a few fixes for search.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100798784 - xtUML Search returning inconsistent results
+[2] \\wv.wv.mentorg.com\dfs\bridgepoint\field_data\dts0100769602
+[3] dts0100580448 Introduce Model Merge support
+
+4. Background
+-------------
+Currently the only means of merging changes to models is by disabling the xtUML
+compare functionality and using the text based comparison and merge provided by
+eclipse.
+
+[2] is a document provided by a customer.  This issue does not fully resolve the
+problems stated as it is believed that they would rather have something more
+model based, as we are doing in [3].  This work does however provide means for
+merging without leaving the xtUML compare window.
+
+5. Analysis
+-----------
+5.1 Enable text based merging within compare functionality
+
+Recently eclipse has enabled a menu that allows switching between custom compare
+windows and the standard textual compare window.  This allows us to present
+textual compare to our users without effort.  However, as we have not provided
+any merge support yet, the merge capability has been disabled by us.  This
+carries over to the text based comparison window as well.
+
+The code shall be modified such that the merge actions are enabled within the
+textual based compare window.
+
+Additionally, the xtUML compare window needs to refresh when merge changes have
+been saved in the textual compare window.
+
+6. Design
+---------
+6.1 Enable text based merging within compare functionality
+
+We currently set the compare configuration such that the left and right sides
+are not writable.  These settings are removed.  During the initialization of the
+xtUML compare viewer the configuration is set to non-writable, while the super
+class creates the UI buttons.  This prevents the copy buttons from being
+created.  After this initialization the configuration is again changed back to
+being writable.  One additional change is required, the super class
+setEditable() method is overridden to do nothing.  This prevents typing directly
+into the xtUML compare window.
+
+6.2 Prevent incompatible input from being set in eclipse text compare viewer
+ 
+When using the action to switch between the custom compare and textual compare
+the input from the old viewer is passed on to the new viewer.  With our
+structural compare viewer you can double click an element and focus on just that
+change.  This changes the input to something that is not supported by the
+textual compare.  The code is changed to maintain the original file input and
+use that to pass along.  Additionally double clicking in the structural view
+passes the same unsupported input type if currently using the textual based
+compare.  The code that handles the double click event is overridden to only
+pass the new input if the current viewer is an xtUML compare viewer.
+
+6.3 Refresh on merge changes
+
+A new compare input listener is added, which refreshes the currently loaded
+model by removing the cache from ModelCacheManager.  This allows the future
+calls that get the text or structural tree to reload the model data based on the
+latest file content.
+
+During reloads of the model data it was noticed that incorrect elements were
+being associated during batchRelate.  The problem was that we were searching all
+roots during batchRelate when loading for comparison.  The compare loading
+should never look outside of the single file.  The importers are modified to
+take an argument which will tell batchRelate whether or not to search all model
+roots.  In the compare case this will be false.
+
+6.4 Allow ModelElementFileFacade in selection
+
+At some point we have prevented treating the ModelElementFileFacade elements as
+files.  This has prevented some team menus from not showing, like Show
+History....  The problem is that we keep a selection of NonRootModelElements and
+one of the actual selected elements (not adapted).  We were returning the
+adapted version to eclipse based code, which means the ModelElementFileFacade
+was never being returned as part of the selection and therefore the element
+could never be adapted to a file.  The code in Selection is modified to return
+the non-adapted list of elements in the getSelection() call.  BridgePoint code
+always uses the adapted list.
+
+6.2 Resolve search issues
+
+The issue states that the problem is when performing a search that is identical
+to one that was previously performed, then nothing occurs.  The reason for this
+is that we were caching and reusing existing queries (the eclipse class).
+Eclipse will not add an existing query to the QueryManager, which will prevent
+the search results from ever being displayed.  Eclipse expects reuse of queries
+to be done within the search result view, not in the new search window.
+
+The code that looked for existing queries and reused them if found is removed.  
+Instead the code now creates a new query every time.
+
+6.2.1 Fix problems found during testing
+
+A few problems were found during testing.  One of which was when something other
+than a file or a NonRootModelElement was selected.  This caused exceptions in
+our code as we expect one or the other.  The code is modified so that when
+something unexpected is selected we default to the BridgePoint selection.
+
+Another problem found was causing intermittent test failures.  In
+Search_c.Locatecontentresults() we were resetting the matcher only if the last
+pattern or the last contents were different.  There are some cases where these
+can be identical, however the matcher would need to be reset.  Rather than base
+the resetting on these tests the code is changed so that at the end of the
+current pattern testing we explicitly clear the match data.  This is done after
+the while loop in the Action Language Engine.processQuery() and Description
+Engine.processQuery() operations. 
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design.
+
+9. Unit Test
+------------
+9.1 Compare
+
+Note these tests are manual as the code will soon be replaced by a re-write of
+the compare functionality.
+
+_- Invoke xtUML compare such that there are differences present
+_R The compare window is opened
+_- Double click an item in the structural window
+_R The data for that item is all that is shown in the compare windows
+_- Select the pull down menu in the compare window and select Text Compare
+_R The file text is shown in both the left and right windows
+_R The file text differences are shown
+_- Double click an item in the structural tree
+_R Nothing occurs
+_R The file contents are still displayed
+_- Merge the changes
+_R There are no differences
+_- Switch back to the xtUML compare
+_R There are no differences
+_R The structural window shows no differences
+
+9.2 ModelElementFileFacade
+
+_- Right click on a ModelElementFileFacade (duplicated element in Model
+   Explorer)
+_R The Team > Show History... menu item is present
+
+9.3 Search
+
+Note this test is automated in SearchTests.java
+
+_- Select Microwave Oven (system level)
+_- Search
+_- Options:
+    Text: tube
+    Action Language
+    Description
+    Selected Resources
+_R 47 matches
+_- Select Microwave Oven (system level)
+_- Search for "watt"  (same options as above)
+_R 19 matches 
+_- Search for "tube" again (same options as before)
+_R 47 matches
+
+End
+---
+
+$Log: dts0100798784.dnt,v $
+Revision 1.2  2011/09/28 19:27:25  tlondon
+Job: dts0100798784
+Address review minutes
+
+Revision 1.1  2011/09/28 17:24:29  tlondon
+Job: dts0100798784
+Add design note
+

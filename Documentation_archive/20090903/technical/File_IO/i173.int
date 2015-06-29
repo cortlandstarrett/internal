@@ -1,0 +1,342 @@
+========================================================================
+
+File:      $RCSfile: i173.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Add export sql file
+
+Abstract
+--------
+This note describes adding the export SQL file wizard.
+
+History
+-------
+
+update i173-032404-01.rvm
+final  i173-032504-01.rvm
+
+Document References
+-------------------
+Issue 173
+
+Background
+----------
+
+The export SQL wizard was removed from M1, because its appearance
+was confusing.  The wizard is changed for only exporting BP 6.1 
+compatible SQL for the loaded domain.
+
+Design
+------
+
+i173.1  Add export BridgePoint SQL Wizard
+
+The entry for the BridgePoint SQL export wizard extension point
+is added to the plugin file.
+
+i173.2  Add graphics option
+
+A checkbox is added to the export page to support the exporting
+(or not) of graphical information for the domain.
+
+i173.2.1  Add checkbox
+
+The data member fExportGraphicsCheckbox of type Button is added
+to the BPSQLExportPage class.  The check box has the label
+"Export graphics".  The check box is placed below the 'Overwrite 
+existing files without warning' checkbox.  The value of the
+checkbox is persisted, just like the overwrite check box.
+The method getExportGraphics() is added to return the state
+of the check box.
+
+i173.2.2  Only export graphics if requested
+
+i173.2.2.1 The data member m_export_graphics (boolean) is added to
+the ExportBPSql class. A parameter is added to the 
+constructor to initialize the data member.  The data member
+is checked by all export routines before any graphics are output.
+
+i173.2.2.2 The constructor invocation in the BPSQLExportWizard class has 
+the new parameter added to it.
+
+i173.3  Remove resource panes and buttons
+
+The resource panes and buttons below them in a typical Eclipse
+export page are not appropriate for exporting the domain in
+BridgePoint SQL format.  They are removed.
+
+The resource panes and buttons are created by the 
+WizardExportResourcesPage class, which is the base class for 
+BPSQLExportPage.  They are created by, respectively, 
+createResourcesGroup() and createButtonsGroup().  Unfortunately,
+these functions are declared final in the base class.  The function
+that calls them, createControl(), is not declared final.  We
+therefore implement createControl() in BPSQLExportPage, essentially
+copying the implementation from WizardExportResourcesPage, and
+removing the createResourcesGroup() and createButtonsGroup()
+invocations.
+
+Work Required
+-------------
+
+i173.1  Add export BridgePoint SQL
+
+The change is made to plugin.xml.
+
+i173.2  Add graphics option
+
+i173.2.1  Add checkbox
+
+The change is made to BPSQLExportPage.java.
+
+i173.2.2  Only export graphics if requested
+
+i173.2.2.1 The changes are made to gen_export_java.arc.
+i173.2.2.2 The changes are made to BPSQLExportWizard.java.
+
+i173.3  Remove resource panes and buttons
+
+The change is made to BPSQLExportPage.java.
+
+Implementation Comments
+-----------------------
+
+- All methods in ExportBPSql.java were changed to non-static.
+This allowed all the methods to use the m_fh data member, instead
+of passing the file handle as a parameter.
+
+- The ExportBPSql.java class was changed to be public, so that
+it can be accessed by the unit test code.
+
+- generate.xml was changed to create the generation database
+separately from generating either the import or export code.
+
+- The ImportBPSql.java class data members m_success and m_errorMessage
+were changed to be public, so that they can be accessed by the unit test code.
+
+- The ImportBPSql.java function countAndValidateInsertStatements() was
+changed to set the m_errorMessage properly if there was a file exception.
+
+- The expected results for export were different from what BridgePoint exports.
+The differences were found to be due to differences in the meta-model between Tiger
+and BridgePoint.  The ooaofooa.bak model had the following changes made:
+
+	1- R507 changed to use object id 1
+	2- In SM_LEVT, SMspd_ID was removed from the primary identifier
+	3- SM_CRTXN had object id 2 removed.
+	4- SM_NETXN had object id 2 removed.
+	5- SM_TXN had object id 2 removed.
+	6- R503 was changed to use SM_STATE object id 1
+	7- Due to item 6, classes SM_SEME, SM_EIGN, SM_CH, and SM_NSTXN
+	     attributes were re-arranged to match previous model
+	8- R528 and imported R_REL class were removed.
+	9- R521 was changed to biconditional (* - 0,1)
+
+These changes were made in BridgePoint as a result of issues
+2751, 2752, 2812, 2822, and 2836.
+
+- The ooaofooa changes resulted in needing to delete the EC instance
+for the no longer existing SM_PEVT.Rel_ID attribute from file_io.pei.sql.
+
+- The dialog title is 'Export SQL', while the export page has the full
+'Export BridgePoint 6.1 SQL' for a title.  This provides less redundancy
+in the interface, similar to 'JAR Export'.
+
+- The IOTest.fileContentsCompare() method is written to ignore differences
+in the line terminator character (lf vs. cr/lf).
+
+
+Unit Test
+---------
+
+--- Test new checkbox persistence
+
+- Start Tiger app
+- Select Export...
+- Select BridgePoint SQL
+R Export graphics checkbox is present and unchecked
+- Check 'Export graphics'
+- Cancel export
+- Select Export...
+- Select BridgePoint SQL
+R Export graphics checkbox is present and checked
+R Overwrite checkbox status is unchanged
+- Uncheck 'Export graphics'
+- Cancel export
+- Select Export...
+- Select BridgePoint SQL
+R Export graphics checkbox is present and unchecked
+R Overwrite checkbox status is unchanged
+
+- Create an automated unit test in com.projtech.bp.io.sql.test/src/IOTest.java
+  The test has the following test cases:
+  
+  testImportOdmsFNF   
+     - try to import the non-existent file mdl/odms.xxx
+     R Correct error message is returned
+  testImportOdmsAccessError 
+     - try to import the directory mdl
+     R Correct error message is returned
+  testImportSyntaxError
+     - try to import the file mdl/bad.sql, which contains a syntax error
+     R Correct error message is returned
+  testImportMultDomainError()
+     - try to import the file mdl/bad2.sql, which contains multiple domains
+     R Correct error message is returned
+  testImportOdms 
+     - import mdl/odms.sql
+     R File is imported
+     R The ILogger output matches what's in expected_results/odms.imp
+  testExportOdmsWithGraphicsFNF
+     - try to export to the non-existent file bad_dir/odms.xxx
+     R Correct error message is returned
+  testExportOdmsWithGraphicsAccessError
+     - try to export to the directory actual_results
+     R Correct error message is returned
+  testExportOdmsWithGraphics
+     - export actual_results/odms.sql with graphics
+     R The ILogger output matches what's in expected_results/odms.exp
+     R The contents of actual_results/odms.sql matches expected_results/odms.sql
+  testExportOdmsWithoutGraphics
+     - export actual_results/odms_ng.sql without graphics
+     R The ILogger output matches what's in expected_results/odms_ng.exp
+     R The contents of actual_results/odms_ng.sql matches expected_results/odms_ng.sql
+  
+- Execute JUnit com.projtech.bp.io.sql.test/src/IOTest.java
+R All tests pass
+
+- Copy com.projtech.bp.io.sql.test/mdl/odms.sql to runtime-workspace
+- Select Import...
+- Select BridgePoint SQL
+- Select odms.sql
+- Select 'Finish'
+R Model loads
+- Select Export...
+- Select BridgePoint SQL
+- Set output file name to 'test1.sql'
+- Check 'Export graphics'
+- Select 'Finish'
+- Compare test1.sql with com.projtech.bp.io.sql.test/expected_results/odms.sql
+R There are no differences
+- Select Export...
+- Select BridgePoint SQL
+- Set output file name to 'test1.sql'
+- Uncheck 'Export graphics'
+- Select 'Finish'
+- Compare test1.sql with com.projtech.bp.io.sql.test/expected_results/odms_ng.sql
+R There are no differences
+
+Code Changes
+------------
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version: 1.24  Final version: 1.25
+
+com.projtech.bp.io.sql/arc/gen_export_java.arc
+Initial version: 1.6   Final version: 1.8
+
+com.projtech.bp.io.sql/arc/gen_import_java.arc
+Initial version: 1.9   Final version: 1.11
+
+com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/BPSQLExportPage.java
+Initial version: 1.6   Final version: 1.8
+
+com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/BPSQLExportWizard.java
+Initial version: 1.4   Final version: 1.6
+
+com.projtech.bp.io.sql/sql/file_io.pei.sql
+Initial version: 1.4   Final version: 1.5
+
+com.projtech.bp.io.sql/generate.xml
+Initial version: 1.1   Final version: 1.3
+
+com.projtech.bp.io.sql/plugin.xml
+Initial version: 1.7   Final version: 1.8
+
+com.projtech.bp.io.sql.test/expected_results/odms.exp
+Introduced version: 1.2
+
+com.projtech.bp.io.sql.test/expected_results/odms.imp
+Introduced version: 1.2
+
+com.projtech.bp.io.sql.test/expected_results/odms.sql
+Introduced version: 1.2
+
+com.projtech.bp.io.sql.test/expected_results/odms_ng.exp
+Introduced version: 1.2
+
+com.projtech.bp.io.sql.test/expected_results/odms_ng.sql
+Introduced version: 1.2
+
+com.projtech.bp.io.sql.test/mdl/bad.sql
+Introduced version: 1.1
+
+com.projtech.bp.io.sql.test/mdl/bad2.sql
+Introduced version: 1.1
+
+com.projtech.bp.io.sql.test/mdl/odms.sql
+Introduced version: 1.2
+
+com.projtech.bp.io.sql.test/src/CanvasLogger.java
+Introduced version: 1.1
+
+com.projtech.bp.io.sql.test/src/CoreLogger.java
+Introduced version: 1.1
+
+com.projtech.bp.io.sql.test/src/IOTest.java
+Introduced version: 1.4
+
+com.projtech.bp.io.sql.test/.classpath
+Introduced version: 1.1
+
+com.projtech.bp.io.sql.test/.cvsignore
+Introduced version: 1.2
+
+com.projtech.bp.io.sql.test/.project
+Introduced version: 1.1
+
+com.projtech.bp.io.sql.test/Test_Readme.txt
+Introduced version: 1.1
+
+End
+---
+
+$Log: i173.int,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.166.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/03/26 23:09:08  greg
+Job: 173
+Made review changes
+
+Revision 1.3  2004/03/25 01:32:16  greg
+Job: 173
+Add history, bad.sql, bad2.sql files
+
+Revision 1.2  2004/03/24 22:53:52  greg
+Job: 173
+Made review changes
+
+Revision 1.1  2004/03/23 23:57:08  greg
+Job: 173
+Initial introduction
+

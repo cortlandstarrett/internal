@@ -1,0 +1,203 @@
+========================================================================
+
+File:      $RCSfile: i434.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:22 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Moving to Eclipse 3.0
+
+Abstract
+--------
+This note describes the design for modifying the Tiger codebase
+to enable it to properly run under Eclipse 3.0.
+
+Document References
+-------------------
+[1] [Eclipse 3.0 Help]/Platform Plug-in Developer Guide/
+	Eclipse 3.0 Plug-in Migration Guide/Adopting 3.0 Mechanisms and API
+[2] [Eclipse 3.0 Help]/Platform Plug-in Developer Guide/
+	Reference/Extension Points Reference/org.eclipse.ui.editorActions
+[3] [Eclipse 3.0 Help]/Platform Plug-in Developer Guide/
+	Reference/Extension Points Reference/org.eclipse.ui.commands
+[4] [Eclipse 3.0 Help]/Platform Plug-in Developer Guide/
+	Eclipse 3.0 Plug-in Migration Guide/Incompatibilities
+[5] Eclipse newsgroup posting:
+	http://dev.eclipse.org/mhonarc/lists/platform-ui-dev/msg01138.html	
+
+Background
+----------
+While offering many other productivity benefits, a main strength of 
+Eclipse 3.0 over its predecessors is that it allows time-consuming
+tasks (most importantly, builds) to be run in a background thread, 
+thus freeing up the IDE's GUI for other work.  Getting Tiger running
+under the newer environment would allow us to leverage this benefit, as 
+well as bring Tiger in line with a similar migration by the Edge product.
+
+Analysis
+--------
+The goal is to get Tiger running under Eclipse 3.0 with the same functionality 
+as is present under 2.1.  The proper operation of all existing Tiger unit 
+tests will be used to verify the functional equivalence of the product 
+under the two environments.  
+
+Importantly, it is expected that the changes made during completion of 
+this issue will render parts of the Tiger codebase incompatible with 
+Eclipse 2.1.  Backwards-compatibility with 2.1 is not a requirement.
+
+Design
+------
+i434.1
+The Eclipse 3.0 API compatibility layer is employed to help minimize the
+the changes that need to be made to the Tiger codebase.  Informal tests have
+indicated no perceptible slowdown is caused by doing so.  Getting off the 
+compatibility layer in the future may provide a performance enhancement,
+as suggested by [1].
+
+i434.2
+Modifications are made to the Tiger codebase to resolve the remaining 
+incompatibilities not covered by the compatibility layer.
+
+i434.2.1
+Under Eclipse 3.0, annotations no longer automatically support providing
+their own presentation to the user.  Therefore, in bp.ui.text.annotation, 
+ActivityMarkerAnnotation is made to implement IAnnotationPresentation in 
+order to provide this presentation.  ActivityProblemAnnotation faces the 
+same issue, but is left alone since it currently provides no presentation,
+anyway.  Also, ActivityAnnotationAccess is made to extend 
+DefaultMarkerAnnotationAccess to provide it with an implementation for 
+IAnnotationAccessExtension, which is necessary for ActivityMarkerAnnotations 
+to get drawn by the Eclipse UI code.   
+
+i434.2.2
+Under Eclipse 3.0, for a reason for which I have not yet found documentation,
+a <command> tag in a plugin.xml file (which exists to specify a keyboard 
+shortcut for an action) must have an action handler submitted for it to the 
+workbench.  The handler relates the command to the action, and without it,
+the shortcut will not activate the action.  The handler submission must be done
+in addition to calling setActionDefinitionId on the associated action.  These 
+modifications are made to CanvasEditorActionContributor in bp.ui.canvas.
+
+i434.2.2.1
+The CanvasZoom*Action classes are removed from bp.ui.canvas, as are 
+the corresponding action definitions in the project's plugin.xml.  The method
+of specifying actions that these entities embody is more appropriate for actions 
+being contributed to other plugins, as stated in [2].  The affected actions 
+are now, as they were already, concisely specified in 
+CanvasEditorActionContributor.
+
+i434.2.2.2
+The <command> tag parameter names in the plugin.xml are updated to reflect 
+new Eclipse 3.0 standards, as described in [3].
+
+i434.2.3
+In bp.compare.contentmergeviewer, a call to Utilities.readString is modified
+in class ModelContentViewer to accomodate a signature change in that method.
+
+i434.2.4
+In bp.ui.text.test.activity.ActivityEditorInteraction, a call to 
+IWorkbenchPage.openEditor is modified to accomodate an Eclipse 3.0 API change
+described in [4].
+
+i434.2.5
+In bp.ui.text.test.activity.ActivityEditorInteraction, a reference to 
+TaskList is replaced with a reference to TaskView, its apparent Eclipse 3.0 
+replacement as alluded to in [5].
+
+i434.3
+Modifications are made to the Tiger codebase to resolve incompatibilities 
+between the J2SE 5 libraries and those of J2SE 1.4.  J2SE 5 is not necessary
+for running Eclipse 3.0, and none of its language extensions are to be employed.
+However, testing Tiger under this new Java edition provides valuable 
+feedback about any possible future move to it.  
+
+i434.3.1
+In method Reportparseerror of class bp.als.oal.Err_c, String.replaceFirst
+is sometimes called with a null replacement string, which is disallowed under 
+J2SE 5.  A check is added to this method to prevent this.
+
+i434.4
+Support is added to bp.ui.canvas.CanvasTest for writing out the actual 
+and expected drawing command results to separate text files when there 
+are discrepencies between the two sets.  This allows a diff tool to be 
+used to compare them quickly.
+
+i434.5
+The .classpath file of each project is updated to remove references to 
+Eclipse 2.x.x plug-ins.  Also, the plugin.xml file of each 
+project is updated to reference the compatibility layer plug-in.  
+Both of these tasks are performed using the "PDE Tools"/"Migrate to 3.0..." 
+project context-menu command.
+
+i434.6
+The "compile" target (when there is one) in the generate.xml file for each 
+project is modified to change the references to Eclipse 2.x.x plug-ins to 
+point to the corresponding 3.0.x versions. 
+
+i434.7
+The instructions in the Tiger test plug-ins that describe how to run the tests 
+are updated to note that those plug-ins must be run/debugged using 
+"JUnit Plug-in Test" configurations, rather than those of the 
+"Run-time Workbench" variety.  
+
+i434.8
+Eclipse 3.0's version of UITestApplication, the program responsible for 
+performing automated plug-in testing, no longer provides support for logging
+results to an output file.  This support is therefore reintroduced by 
+providing an implementation of org.eclipse.jdt.junit.ITestRunListener
+called TestResultLogger which performs the logging.  Since this class will be 
+used by all Tiger test plug-ins, TestResultLogger will be placed in a new 
+bp.test plugin.  
+
+Unit Test
+---------
+_- Run all unit tests for all projects
+_R All unit tests run without error.
+
+End
+---
+
+$Log: i434.dnt,v $
+Revision 1.1  2009/09/03 18:22:22  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:12:59  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.88.1  2008/12/31 16:10:02  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/12/08 16:23:10  jmather
+Job: 434
+Addressed review comments.
+
+Revision 1.1  2004/12/08 15:49:20  jmather
+Job: 434
+Moved to here from bp.core/doc/internal/techinical.
+
+Revision 1.3  2004/12/01 18:03:54  jmather
+Job: 434
+Ready for review.
+
+Revision 1.2  2004/11/30 22:23:25  jmather
+Job: 434
+Rough draft, 2nd version.
+
+Revision 1.1  2004/11/29 21:51:49  jmather
+Job: 434
+Introduced, not ready for review.
+
+
+
+

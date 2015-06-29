@@ -1,0 +1,192 @@
+========================================================================
+
+File:      $RCSfile: i337.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Select Subtype and Associative lines individually
+
+Abstract
+--------
+Current canvas behavior selects a complete connector structure when it is
+clicked on. This note documents the changes needed to select individual parts of
+a connector.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 337
+
+Background
+----------
+Currently clicking on any part of a supertype/subtype association selects
+the whole connector. Similarly clicking on any part of an associative
+association selects the whole association, associative link included. 
+
+Analysis
+--------
+The current behavior prevents several features being supported that are
+necessary for self hosting. These are:
+
+- Remove an associative class from an association without deleting the
+  associative class itself.
+- Modify the cardinality of an associative link.
+- Remove a subtype without deleting the subtype class.
+- Add or remove waypoints from an associative or subtype line.
+
+The OAL in the Graphics Domain shall be reworked to introduce the required
+behavior.
+
+Design
+------
+i337.1   Remove extra OAL in Connector.isSelected
+         This code checks to see if any part of an association is selected and
+         returns true if it is. Removing this allows different parts of the
+         association to be selected.
+i337.2   Remove extra OAL in Connector.isOver
+         This code checks to see if any part of an association is under the
+         passed co-ordinates and returns true if it is. Removing this allows
+         different parts of the association to be detected as under the co-
+         ordinates individually.
+i337.3   Once the OAL above is removed, moving the end of a supertype connector
+         no longer drags its subtype connectors along with it. This is because
+         the for each loop in the Model state 'Waiting to Move Hotspot' only
+         considers selected segments when initializing segment flexing.
+        
+         Removing the isSelected test results in all connectors under a
+         particular hotspot being picked up. However, this also has the
+         undesirable effect of making it possible to get into an irreversible
+         situation where two different connector's waypoints are exactly
+         congruent. If this situation occurs, then the user cannot separate the
+         waypoints, because all lines with waypoints under the hotspot are
+         picked up whether they were selected or not.
+         
+         Instead, the selected test is left in place, and extra OAL is added to
+         'Segment In Flex'.initialize to seek out connectors that are connected
+         at the end and create segment in flex instances for them too if they
+         will not be visited by the for each loop in the calling state mentioned
+         above. There are two categories of connector that need to be flexed in
+         this way; connectors which have other connectors attached to their ends
+         and connectors which are connected to the end of another connector. In
+         either case, all connectors in the group must be moved. Connectors
+         connected to the start of another connector are not checked for because
+         they cannot happen in normal BridgePoint diagrams. If this situation
+         changes with the addition of new diagrams, this operation
+         ('Segment In Flex'.initialise) will have to be revisited.
+         
+         Because there are two categories of connector which must have their
+         ends moved in this way, the additional segment in flex setup OAL is
+         abstracted into a common operation; Connector.initializeEndFlex.
+
+Unit Test
+---------
+The canvas unit tests require the following additional tests:-
+
+_- Load the ODMS test model
+_- Click on a supertype connector
+_R The supertype connector is highlighted
+_R The subtype connectors are not highlighted
+_- Mouse down over the whitespace end of the supertype connector and drag the
+   mouse.
+_R All attached connectors move
+_- Click on a subtype connector
+_R The supbtype connector is highlighted
+_R The other subtype connectors are not highlighted
+_R The supertype connector is not highlighted
+_- Mouse down over the whitespace end of the subtype connector and drag the
+   mouse.
+_R All attached connectors move
+
+_- Click on an associative connector line.
+_R The associative connector line is highlighted
+_R The main association line is not highlighted
+_- Click on the main association line.
+_R The main association line is highlighted
+_R The associative connector line is not highlighted
+
+In addition, all previous tests which selected any supertype or associative
+connector will require results to be regenerated, since the appearance of the
+diagram after these actions is now altered.
+
+_- Run com.projtech.bp.ui.canvas.test
+_R The unit test runs without error.
+
+Code Changes
+------------
+comprojtech.bp.ui.canvas/mdl/ooaofgraphics.bak
+Initial:            Final:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_101/
+                                                                  1048578-5
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_101/
+                                                                  1048578-5.jpg
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_102/
+                                                                  1048578-5
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_102/
+                                                                  1048578-5.jpg
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_103/
+                                                                  1048578-5
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_103/
+                                                                  1048578-5.jpg
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_104/
+                                                                  1048578-5
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_104/
+                                                                  1048578-5.jpg
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_105/
+                                                                  1048578-5
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_105/
+                                                                  1048578-5.jpg
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_106/
+                                                                  1048578-5
+Introduced:
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_106/
+                                                                  1048578-5.jpg
+Introduced:
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                   CanvasEditorInteraction.java
+Initial:            Final:
+
+End
+---
+
+$Log: i337.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.152.1  2008/12/31 16:10:07  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/09/13 15:31:07  campbell
+Job: 337
+Corrected typo and added missing file change.
+
+Revision 1.1  2004/09/11 00:23:16  campbell
+Job: 337
+Introduced.
+

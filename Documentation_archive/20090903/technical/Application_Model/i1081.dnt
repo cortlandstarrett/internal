@@ -1,0 +1,155 @@
+========================================================================
+
+File:      $RCSfile: i1081.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:18 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Set referential attribute data type correctly
+
+Abstract
+--------
+This note describes changes to set a referential attribute's data type 
+correctly, and remove dependencies on the data type where possible.
+
+History
+-------
+
+final i1081-071105-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 1081
+[2] Documentation/external/bulletins/7.0.3/i1081.dfb
+
+Background
+----------
+The data type for referential attributes is set incorrectly.  See i1081.dfb [2]
+for details.
+
+Analysis
+--------
+
+The referential attribute data type should be set to same_as<Base_Attribute>.
+
+The import routines are changed to correct the data type if it is incorrect.
+
+All internal archetypes are changed to not depend on the name of the data type 
+of a referential attribute being "same_as<Base_Attribute>".
+
+Design
+------
+
+1. Set data type correctly
+
+Referential attributes are created in the operation 
+Model Class.newReferentialAttribute() by creating a normal attribute and then
+invoking Attribute.migrateBaseToReferential().  The data type of the referential
+attribute was set in newReferentialAttribute().  This code is removed, and the
+code to correctly set the data type is placed in the new operation 
+Referential Attribute.setDatatype():
+
+  select one attr related by self->O_ATTR[R106];
+  select one dt related by attr->S_DT[R114];
+  if ( not_empty dt )
+    if ( dt.Name == "same_as<Base_Attribute>" )
+      return;
+    else
+      unrelate attr from dt across R114;
+    end if;
+  end if;
+  select any ref_attr_dt from instances of S_DT
+     where selected.Name == "same_as<Base_Attribute>";
+  relate attr to ref_attr_dt across R114;
+
+This operation is then invoked from Attribute.migrateBaseToReferential, assuring
+that the referential attribute has the correct data type from the moment it 
+exists.
+
+2. Add fix to import routines
+
+After a model has been imported, the setDatatype() operation is invoked on 
+all Referential Attribute instances.  This processing is placed just after the
+Model Class.addIdentifiers() processing.  The change is made to 
+io.core/arc/gen_import_java.inc.
+
+3. Change internal archetypes to not depend on data type name
+
+There are several places in archetypes where the code to determine if an 
+attribute is referential tests if the attribute's data type name is equal to 
+"same_as<Base_Attribute>".   These places are all changed to navigate from the
+Attribute instance to the Referential Attribute instance via association R106.
+
+The changes are made in the following archetypes:
+
+com.mentor.nucleus.bp.compare/arc/create_properties_file.inc (1 place)
+com.mentor.nucleus.bp.compare.test/arc/create_classes_with_attributes.inc (1 place)
+com.mentor.nucleus.bp.compare.test/arc/CreatePEITestFiles.arc (1 place)
+com.mentor.nucleus.bp.compare.test/arc/createtree.arc (1 place)
+com.mentor.nucleus.bp.core/arc/create_object_inspector.inc (1 place)
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc (2 places)
+com.mentor.nucleus.bp.ui.properties.test/arc/create_view_test.arc (1 place)
+MC-Java/java.arc (3 places)
+
+Note that one of the changes in BuildPropertySource.arc is to change the
+generated code (as opposed to in archetype code as elsewhere) to test for the 
+Referential Attribute subtype rather than the data type name.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+
+All work is described in the Design section.
+
+Unit Test
+---------
+
+- The core unit test gen_Formalize_tests.arc is changed to generate code to 
+check the type of the referential attributes after each relationship is 
+formalized.
+
+- The tests testAddToIdentifierReferencedSimple, 
+testAddToIdentifierReferencedAssoc and testAddToIdentifierReferencedInher in
+the AttributeMenuItemTest class are changed to check that the referential 
+attribute added by changing the identifier has the correct data type.
+
+- All tests execute without error
+
+End
+---
+
+$Log: i1081.dnt,v $
+Revision 1.1  2009/09/03 18:21:18  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.30.1  2008/12/31 16:10:17  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/07/12 18:27:06  greg
+Job: 1081
+Update history
+
+Revision 1.2  2005/07/12 18:25:38  greg
+Job: 1081
+Addressed observations
+
+Revision 1.1  2005/07/08 20:09:35  greg
+Job: 1081
+Introduce
+

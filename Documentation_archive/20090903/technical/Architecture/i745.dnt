@@ -1,0 +1,150 @@
+========================================================================
+
+File:      $RCSfile: i745.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Slow Parser performance
+
+Abstract
+--------
+This document describes the changes made to the model compiler to improve the
+performance of the parser.
+
+History
+-------
+  final - i745-033105-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 745
+[2] Documentation/internal/technical/Architecture/i597.dnt
+
+Background
+----------
+This issue deals with the performance of the parser and requires some design 
+improvements to make it more efficient. Considering the approaching R1 date,
+this issue considers some quick fixes to the oal translation code to improve the
+parser performance. 
+
+Analysis
+--------
+i745.1  Parser Performance
+
+The Oal_validate class is used by the parser to do semantic checking. This class 
+also creates instances of objects in the action language subsystems of ooaofooa.
+After the creation/deletion of such objects, model change events are sent which 
+are not used by any other plug-in. If firing of the model change events caused 
+by objects in action language subsystems is not done, the performance of the 
+parser will improve.
+
+Design
+------
+i745.1  Parser Performance
+
+i745.1.1  Correct Usage of Notify_Changes parse keyword
+
+The 'Notify_Changes' parse keyword is present in the descriptions of all the 
+subsystems related to the action language and have a value 'false'. The function
+'notifies_changes' in arch_utils.inc is updated to add the check for O_OBJ key 
+letter as well. This method shall now return false for all objects that lie in 
+a subsystem having the 'Notify_Changes:false' parse keyword set.
+
+i745.1.2  Add checks to relate and unrelate function generation
+
+The archetype referring.inc is modified to invoke the notifies_changes() 
+function with the local object and key letter "O_OBJ". The model change events 
+are only fired if this function returns true.
+
+i745.1.3. Add checks to create and delete instance statements translation
+
+The functions gen_create_instance_statement and gen_delete_instance_statement 
+in the archetype statement.inc are modified to fire model change events only 
+when the created or deleted instances lie in a subsystem having the 
+'Notify_Changes:true' parse keyword set.
+
+i745.1.4  Update ooa_schema to correct cardinalities as per Issue 597
+
+Few changes are brought in from the Review-i597 branch. The reason to bring in 
+the changes is to correctly access a V_INT instance to get the object to be 
+deleted in case of delete instance statement translation. 
+Issue 597 [2], changes certain cardinalities and also adds extra variables in 
+the ooa_schema.sql file. As a result fragment.inc is also updated. For details 
+of the changes refer to i597.dnt [2].
+
+i745.1.5  Enable fire events for root package only
+
+It is also required that the model change events are fired only for the 
+root package. The parameter in translate_all_oal() function call in java.arc is 
+updated with this check.
+Also the method finalize() is also removed, as it is not needed.
+
+Work Required
+-------------
+i745.1  
+i745.1.1     Update MC-Java/arch_utils.inc as specified in the design section.
+                 
+i745.1.2     Update MC-Java/referring.inc as specified in the design section.
+
+i745.1.3     Update MC-Java/statement.inc as specified in the design section.
+
+i745.1.4     Update MC-Java/ooa_schema.sql and MC-Java/fragment.inc by bringing 
+             in changes from Review-i597 branch, as specified in the design 
+             section.
+             
+i745.1.5     Update MC-Java/java.arc as specified in the design section.
+             
+Unit Test
+---------
+As part of evaluating the parser performance, an automated unit test shall 
+be written, and run on the HEAD and this Issue Branch separately. This test 
+shall report the parsing times on both revisions, which can than be compared.
+
+A manual test shall be as follows:
+_- Run tiger using the HEAD branch and Load ex1.mdl
+_- Run 'Parse All Activities'.
+_- Note down the time taken by the parser.
+
+_- Repeat the test on the Review-i745 branch.
+
+_- Compare the timings
+_R The time taken by HEAD is more than the time taken by the Review-i745.
+
+End
+---
+
+$Log: i745.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.38.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/04/01 04:40:47  siddique
+Job:745
+Review observations addressed.
+
+Revision 1.2  2005/03/31 13:30:41  siddique
+Job:745
+Updated. few typos fixed.
+
+Revision 1.1  2005/03/31 13:06:59  siddique
+Job:745
+Introduced.
+
+

@@ -1,0 +1,377 @@
+========================================================================
+
+File:      $RCSfile: i845-1.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+Tiger Project Design Note
+Package-level CM - Sub Issue 1: Multi level Import and Export Facility
+
+Abstract
+--------
+This document describes the analysis and design details for providing multi 
+level import and export facility.
+
+History
+-------
+  final - i845-072105-01.rvm
+ 
+Document References
+-------------------
+[1] Bugzilla Issue 845
+[2] Documentation/internal/technical/Persistence/i845.tnt
+[3] Documentation/internal/technical/Persistence/i845.ant
+
+Background
+----------
+The issue 845 has been divided into several sub issues to be taken 
+independently due to its complexity and the amount of work required. This part 
+is required to provide the basic multi level import and export facility without 
+disturbing the current complete model based functionality.
+
+Analysis
+--------
+Following work shall be done as part of this sub-issue:
+
+i845-1.1  Identify each configurable component's boundary
+
+The complete set of configurable MEs shall be defined by the SRS document. For 
+this issue the following model elements are marked to be separately 
+configurable:
+. System Model
+. Domain
+. Data Type Package
+. Function Package
+. External Entity Package
+. Subsystem
+. Model Class
+. Instance State Machine
+. Class State Machine
+
+These MEs must be marked at generation time so that any changes could be made 
+easily.
+
+i845-1.2  Identify cross component references
+
+Several model elements are referred over associations that may span across two 
+different configurable components. It is required under this issue to identify 
+such associations and the associated model elements.
+It is not required, under this issue, to cache the cross component references
+in a component. 
+
+i845-1.3  Generate code for multi-level import and export
+
+Using the already written infrastructure of Import and Export, multi-level 
+import and export support shall be provided. Under this sub-issue it is 
+required to generate code for each configurable component and use automated unit 
+tests to check their functionality. The deliverable under this sub issue shall 
+not deliver any functionality that user will be able to use.
+
+The current behavior of unary model persistence will not be changed. Moreover
+import and export written under this sub issue will still be using the single 
+model root approach.
+
+It is also required to add appropriate generalization to the ModelRoot class 
+hierarchy so that it can later (i.e. under later sub issues) be updated to add
+support of ComponentRoot.
+
+Design
+------
+
+i845-1.1  Specify configurable elements 
+
+The model io.core/mdl/file_io.xtuml is modified as follows:
+
+- Add an attribute 'componentRoot' of type Boolean in 'Export Order' class. 
+- Add a class 'Cross Component Link'. This class has two associations with the 
+class ‘Export Ordering’ (EO). The associations specify the ‘from’ and ‘to’ 
+objects of the cross link. The class also stores the association number across 
+which the cross link is made.
+
+The value of attribute 'componentRoot' is set to true for the EO entries in 
+io.mdl/sql/file_io.pei.sql representing the Model Elements that serve as the 
+root of the separately configurable components (listed in Analysis section 
+i845-1.1).
+  
+Write an archetype to provide a set of EOs that constitutes a configurable 
+component. A configurable component must not have any references to an element 
+that lies in another configurable component.
+
+i845-1.2  Identify cross component links
+
+For the purposes of this discussion, a navigated cross component link is 
+defined as one which is referenced anywhere in the source code of Tiger. Since
+there is no programmatic way to find out all the navigated cross component 
+references, it is decided to consider _all_ cross component references for 
+caching.
+
+Also it is found that it is possible that one model element in a component is 
+related to another model element which falls in the same type of component that 
+may be configured separately. An example of that is a User Data Type associated 
+with Core Data Type, where each of them may or may not exist in two different 
+Data Type Packages. Such cross links are referred to as 
+'Conditional cross links'. 
+All other cross component references are regarded as Unconditional cross links, 
+for example An Operation configured under Model Class component has a return 
+type which is always configured separately in Data Type Package component. 
+
+The conditional cross links can only be identified at the runtime. So the 
+export code may verify existence of such cross links and write their caches, 
+if needed. This approach incurs three types of performance overheads: during 
+export, import and at runtime when all data is loaded. Of all these the last 
+one is most important as the others are masked by the smaller component size in 
+R_1_1.
+
+An archetype is written to output component trees and their cross components, 
+based on which the above findings are drawn.
+
+Since the current issue does not add caching support, no work is required under
+this design section. The above text is recorded as per findings under this 
+issue.
+
+i845-1.3  Generalize io.mdl and io.core plug-ins 
+
+It is required to use the new archetypes and the modifications in 
+file_io.pei.sql file (as specified under design section i845-1.1 and i845-1.2) 
+with the code available in the io.core and io.mdl plug-ins in order to generate 
+import/export code for each configurable component.
+
+The component type shall be determined by reading the .xtuml file header.
+
+Both the gen_export_java.inc and gen_import_java.inc in io.core/arc folder are
+required to be generalized and all hard coded references/checks to domain as 
+root element shall be removed.
+
+i845-1.4  Create PersistenceManager class to support loading of the model from 
+          the individual components
+
+A class PersistenceManager is created to manage all the persistence related 
+code. This would involve removing all the persistence related code from the 
+ModelRoot class and the classes in its hierarchy.
+
+The basic functionalities that this class provides are:
+- Keeping a hierarchy of the configurable components.
+- Keeping track of all the constituent model elements of a configurable 
+  component along with the root item of the component.
+- Calling the appropriate export and import methods for a given root model 
+  element of a component. This will be used by the ModelRoot’s persist() and 
+  loadInstance() method.
+
+The class PersistenceManager shall maintain a tree for the hierarchy of the 
+configurable components. Each node in the tree represents the root of a 
+configurable component. A class Component shall be created and will serve as
+a tree node. It shall have the following fields and methods:
+
+  private ModelElement rootElement
+  private IPath path
+  private Component parent
+  private Component[] children
+  private String componentType
+  - Specifies the type of component, which is the Name of the component's root 
+    Model Class (e.g. "Domain", "InstanceStateMachine"). This type shall be used
+    to perform UI related tasks such as icon selection in the model explorer.  
+  
+  Component(ModelElement node, Component parent, String componentName, 
+               String componentType)                 
+  Component(IPath path, Component parent, String name)
+  - Creates a node by setting the reference of the parent.
+  
+  Component getParent()
+  Component[] getChildren()
+  addChild(Component)
+  - Add the given node in the children of the node.
+  
+  ModelElement getRootElement()
+  IPath getPath()
+  String getType()
+  
+The class PersistenceManager provides the following methods:
+
+. boolean initialize()
+  This method shall read all the xtUML projects in the workspace and populate 
+  the Component tree.
+
+. Component getComponentInfo(ModelElement element)  
+  Component getComponentInfo(IPath filePath)  
+  This method shall return an instance of Component for the given model 
+  element or the path.
+  
+. IPath getComponentPath(ModelElement element)
+  This method shall use the internal tree to give the relative resource path for 
+  the 'element'.
+  
+. boolean persist(ModelRoot modelRoot)
+  This method shall persist the component with the given ModelRoot.
+
+. boolean loadComponent(IPath path, ModelRoot modelRoot)
+  Imports the file given at the location 'path' in the given model root. 
+  
+. String createModelRootId(ModelElement modelElement) 
+  Using the hierarchy this method creates a unique model root id based on the 
+  physical resource path.
+  
+The class PersistenceManager also provides a resource change listener, which 
+shall update its Component tree in case a resource has changed.
+  
+i845-1.4.1  Update ModelRoot to provide support of import and export of 
+            individual components independently
+
+The following methods/classes in the ModelRoot hierarchy classes can be 
+generalized for the root (parent) model element of a configurable component: 
+
+i845-1.4.1.1  Update OoaofooaBase
+-  createModelRootId(String systemName, String domainName, boolean addExtension)
+-  getProjectNameFromModelRootId(String id)
+-  getDomainFileNameFromModelRootId(String id)
+-  isLoaded()
+-  updateId()
+
+-  class SystemModelChangeListener
+-  class ModelChangeListener
+   These two listeners can also be generalized to react to the changes in the 
+   parent component and the root model element of the current component, 
+   respectively.
+
+i845-1.4.1.2  Update EclipseOoaofooa
+
+- getResourcePathFromModelRootId(String id)
+- createModelRootId(IProject project, String domainName, boolean addExtension)
+- getResourcePath()
+- modelIsReadOnly()
+
+- class ResourceChangeListener
+
+- loadInstanceFromFile(IFile)
+- persist()
+  This method shall now use the respective methods in the PersistenceManager to 
+  perform its persistence.
+
+i845-1.4.1.3  Update ModelRoot
+
+Add the following methods in this class:
+- ModelElement getComponentRoot()
+- void setComponentRoot(ModelElement rootElement)
+
+i845-1.4.1.4  Update CorePlugin to provide PersistenceManager
+
+Add method 'PersistenceManager getPersistenceManager()' to 
+bp.core\CorePlugin.java class to return the singleton PersistenceManager 
+instance.
+
+Also call 'initialize()' method during the CorePlugin's initialization.
+
+i845-1.5  Upgrade/Migration Support
+
+It is also decided under this issue, that the system must self upgrade itself to 
+new model format automatically when an old file format is found. 
+
+Also this work will temporarily write .xtuml-mf extension as well as old format
+.xtuml file
+
+Work Required
+-------------
+
+i845-1.1           Update file_io.xtuml model and file_io.pei.sql as specified 
+                   in the design section. 
+                   Also write function ‘children_of_component’ in an archetype 
+                   ‘generate_configurable_components.inc’
+
+i845-1.2           No work required under this design section.
+
+i845-1.3           Update the io.core and io.mdl plugins as mentioned in the 
+                   design section.
+
+i845-1.4           Create class PersistenceManager as specified in the design 
+                   section and place it in *.bp.core.common package.
+                   Update ModelRoot.java, OoaofooaBase.java and 
+                   EclipseOoaofooa.java as specified in the design section.
+                   Also update create_core_plugin_class.inc 
+
+i845-1.5           The findings recorded under the design section are not part 
+                   of work required under this issue. They shall be taken up by
+                   later sub issues of i845 and must be true by the time of 
+                   completion of i845.
+Unit Test
+---------
+
+i845-1.UT.1
+The following unit test shall be run with _all_ models:
+_- Load model
+_- Touch the model such that it is written in the new format.
+_- Import all the configurable components in one model root.
+_- Compare the two models.
+_R No differences are found   
+   
+i845-1.UT.2
+
+These tests, test the generalization performed under the ModelRoot hierarchy:
+
+_- Load a component in a ModelRoot
+_- Rename the physical resource
+_R The root element of the component is renamed as well.
+_R The model root Ids of the component and all the children components are 
+   updated.
+
+_- Rename the component root model element's name
+_R The associated physical resource is updated.
+_R The model root Ids of the component and all the children components are 
+   updated.
+
+End
+---
+
+$Log: i845-1.dnt,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.30.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2005/07/22 13:09:20  siddique
+Job:845
+Review observations addressed.
+
+Revision 1.7  2005/07/21 13:06:51  siddique
+Job:845
+Updated all sections. Removed the cross links validation part. Added
+persistence manager design. Updated unit tests sections.
+
+Revision 1.6  2005/07/18 13:36:44  siddique
+Job:845
+Updated. Corrected few sections.
+
+Revision 1.5  2005/07/18 10:14:01  siddique
+Job:845
+Added the design details of PersistenceManager class.
+
+Revision 1.4  2005/07/16 11:34:37  siddique
+Job:845
+Minor updates.
+
+Revision 1.3  2005/07/15 13:09:16  siddique
+Job:845
+Added work required section as well.
+Still an incremental checkin.
+
+Revision 1.2  2005/07/15 10:52:01  siddique
+Job:845
+Incremental checkin.
+
+Revision 1.1  2005/07/14 13:01:47  siddique
+Job:845
+Initial draft
+
+

@@ -1,0 +1,277 @@
+========================================================================
+
+File:      $RCSfile: dts0100638163.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support CDT
+
+
+1. Abstract
+-----------
+This note describes the change to support CDT integration into BridgePoint.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100638163
+[2] ClearQuest DEI dts0100634900 - Enable model compilation under Linux
+[3] <CVS>\Documentation\internal\technical\notes\dts0100638163\
+      introducing-new-modules.chk
+[4] CDT Dev FAQ - How do I add CDT Nature and Managed Build to an existing 
+	project?
+	http://cdt-devel-faq.wikidot.com/#toc27
+[5] CDT FAQ - I installed MinGW toolchain on my PC but Eclipse won't find it.
+	http://wiki.eclipse.org/CDT/User/FAQ#I_installed_MinGW_toolchain_on_my_PC_but_Eclipse_won.27t_find_it.	
+[6] ClearQuest DEI dts0100795435
+	Upgrade BridgePoint/EDGE projects to BridgePoint/CDT projects
+[7] ClearQuest DEI dts0100796485
+    Add template projects
+[8] ClearQuest DEI dts0100605420
+    BP Documentation maintenance aggregate issue
+[9] Scanner Configuration Usability Enhancements FDS
+    ftp://ftp.ulakbim.gov.tr/eclipse/eclipseMirror/tools/cdt/docs/specs/
+      Design_Specs/Scanner/scanner_config_fds.pdf
+      
+4. Background
+-------------
+Since EDGE is eventually going away, we want to use CDT as our primary target
+code builder.  We want to do this on Windows, and we want to add support for 
+model compilation on Linux [2].  CDT will enable this.
+
+5. Analysis
+-----------
+
+5.1 BridgePoint integration with C IDEs
+BridgePoint has the ability to build the code generated from Model Compilers
+(e.g. mc-3020) and it does this by adding the corresponding natures/builders 
+from the C IDE (previously EDGE, and now CDT). This will make BridgePoint 
+projects also CDT projects, and will allow the user to use all CDT features, 
+including changing the tools settings, and building the projects.
+
+5.2 Adding CDT Natures/Builders.
+There are multiple ways to add CDT project Nature and Builders:
+
+5.2.1 Extend CDT Common Project Wizard
+	Simply Extend the class org.eclipse.cdt.ui.wizards.CDTCommonProjectWizard
+	and implement few methods. The base class of the wizard will handle
+	most of the requirements and will create the initial CDT project settings. 
+	Many Vendors/Tools already use this approach, e.g. for branding or minor 
+	changes in the UI, like the Fortran Tooling Project.
+	 
+	
+5.2.1.1 Advantages
+	Very simple and quick implementation, and the New Project Wizard will have 
+	the same look and feel of CDT project, which can be helpful for people 
+	familiar with CDT, and at the same time the Wizard will have all of the 
+	features supported by CDT New Project Wizard, like the ability to add new 
+	wizard pages, get custom configuration, use templates for examples/demos.
+	
+5.2.1.2 Disadvantages
+	The main disadvantage of this approach is the dependency of the New Project
+	Wizard on CDT, also by using this approach we are losing the flexibility 
+	in designing the New Project Wizard.
+
+5.2.2 Create CDT project programmatically
+  	As in [4]
+
+5.2.2.1 Advantages:
+	More flexibility in the implementation, UI, and behavior
+	Also we can remove the dependency of NPW on CDT, and we can add CDT nature 
+	conditionally (when needed, or when CDT is installed only).  	
+
+5.2.2.2 Disadvantages:
+	Harder to maintain, and we will loose the features that CDT gives for free, 
+	like templates. 	
+
+5.3 Upgrading old projects. 
+	Old BridgePoint projects created with BP/EDGE shall be upgraded to BP/CDT.
+5.3.1 The upgrade process can be done manually, i.e. the user will do explicit 
+	action to start the upgrade, or automatically, i.e. whenever the tool 
+	detects	old project format it will prompt the user to upgrade, and it will
+	store his decision. 
+5.3.2 CDT provide "Convert Wizard" that can add CDT nature to any project, 
+	so we can build on this
+5.3.3 The upgrade wizard will be handled in separate issue [6].		
+
+5.4 EDGE removal
+5.4.1  Since EDGE will be removed from the BridgePoint installation as part of
+       this work, there will be no confusion for the user regarding menu choices
+       for New xtUML Project.  There will only be one xtUML Project option for
+       CDT.
+
+6. Design
+---------
+6.1  New plugin - com.mentor.nucleus.bp.cdt
+The approach discussed in 5.2.1 is used for the time being due its simplicity 
+and the approach discussed in 5.2.2 will be considered along with a new common 
+"New Project Wizard" for multiple modeling tools in the Envisage IDE.
+
+6.1.1 Create a new class for BridgePoint New Project Wizard that extend the 
+	class org.eclipse.cdt.ui.wizards.CDTCommonProjectWizard
+6.1.2 In the constructor, pass the new Title and Description for the NPW.
+6.1.3 Override the method  
+	IProject continueCreation(IProject prj)
+	and add any BridgePoint specific code there, like adding BrdigePoint
+	natures, and creating the initial system. Also the C or CPP Project Nature 
+	shall be added in this method.
+6.1.4 Override the method getNatures(), and return the project natures that was
+	added in 6.1.3
+6.1.5 Builders Order
+	The order of the builders is very important, as BridgePoint builders shall 
+	run before CDT builders, so some code shall be added to fix the builders 
+	order.
+6.1.5.1 Override the method boolean setCreated() and copy the implementation of 
+	the base class, and call the code that changes the builder order before
+	returning from the function.
+6.1.6 Removing CDT examples from BridgePoint NPW
+	a new Class that extends org.eclipse.cdt.ui.wizards.CDTMainWizardPage shall
+	be created, and the method "List filterItems(List items)" shall be overriden
+	to filter the elements that appear in the NPW, e.g. Hellow World example, 
+	New static library project, and the New dynamic library project shall be
+	removed from BridgePoint NPW.
+6.1.6.1  A follow-on issue [7] is added to provide some BridgePoint-specific
+         template projects. 
+	 
+
+6.2 Locating MinGW in CDT
+	CDT has an algorithm to search for MinGW installation [5]. 
+		---- SNIP
+		> 1. Look at the mingw directory in the platform install directory. 
+		>	CDT distributions like Wascana may distribute MinGW like that.
+		> 2. Try the directory above the install dir (another possible 
+		> distribution). 
+		> ...
+		> .
+		---- END SNIP --
+		
+	MinGW will be moved in the install base on the build server from 
+	C:/BridgePoint_e3.5/BridgePointDeliverables/tools/mingw_5.1.3 to
+	C:/BridgePoint_e3.5/BridgePointDeliverables/MinGW .
+	
+	Update the post-install and pre-uninstall scripts to reflect this change.
+	
+  
+6.3  Put new plugin into CVS and integrate it into the nightly build.  A number
+     of changes are required for this:  
+6.3.1  Add CDT to build server eclipse 3.5 build base.  The CDT is already 
+       installed on the server.  We will back up the build base to 
+       \\wv\dfs\bridgepoint\backups\eclipse3.5.2_withCDT_backup_build_server so
+       it is available for recovery purposes if needed.
+6.3.2  Add the new CDT integration plugin to the BridgePoint model builder 
+       feature (com.mentor.nucleus.bp.bld.pkg-feature).  This controls the 
+       encapsulation of the plugin inside the BridgePoint eclipse hierarchy and
+       is used by the build server to know it must build the plugin.
+6.3.3  Add a generate.xml to the plugin for build server to use for build
+       settings.
+6.3.4  The BridgePoint process has a checklist of actions to take when adding a 
+       new plugin to the product.  Execute this and store it at [3].
+6.3.5  In order to support ongoing development of the plugin by other users, we
+       will add the CDT to VSx_Dev.
+       
+6.4  Add information about upgrading a project from EDGE to CDT in the release
+     notes.  This will be covered in a separate issue [8].    
+    
+6.5  Remove EDGE from standard BP install
+6.5.1  Back up the install base containing EDGE to 
+       \\wv\dfs\bridgepoint\backups\BridgePoint_e3.5_install_base_w_EDGE_and_CDT.zip
+6.5.2  Remove EDGE/ folder under 
+       C:\BridgePoint_e3.5\BridgePointDeliverables\eclipse_extensions
+6.5.3  Remove link file for EDGE extension from 
+       C:\BridgePoint_e3.5\BridgePointDeliverables\extras\links
+6.5.4  Update post-install and pre-uninstall batch scripts to scrub references 
+       to EDGE.
+ 
+7. Design Comments
+------------------
+7.1  Scanner Configuration Builder
+7.1.1  CDT projects by default include two builders: "CDT Builder" and "Scanner
+       Configuration Builder".  Here is a snippet from [9] regarding what the
+       Scanner Configuration Builder is and does:
+         "Generally, build configuration consists of several configuration items
+          i.e. preprocessor options, path and symbol information, optimization, 
+          debugging and warning options, etc. In a standard make project build 
+          configuration is defined in makefiles. The minimal information 
+          required by the IDE tool to enable proper indexer functionality and
+          ultimately, features like search, content assist, etc, is path and 
+          symbol information. To help enable search features for the standard 
+          make scenario, we introduce the notion of scanner configuration. A 
+          scanner configuration is simply a set of path and symbol information. 
+          It is required for proper IDE functionality, but it does not affect 
+          standard make build system (which is fully defined by the makefiles)."
+7.1.2  Since this builder is needed for the IDE to provide the richest function-
+       ality, we will leave it in place.
+       
+8. Work Required
+----------------
+8.1 Described in 6
+8.2 Update BridgePoint examples (Microwave Oven, and GPS) to BridgePoint/CDT 
+	projects	
+
+9. Unit Test
+------------
+9.1 Verify proper build and packaging of the plugin in the nightly build 
+     installer.
+     
+9.2 New BridgePoint project
+	_- Launch the new BridgePoint/CDT NPW
+	R- Verify that MinGW appears in the List of tool chains on Windows
+	_- Type the project name, and hit Finish
+	_- Right click on the project and select properties
+	_- Select the Builders page
+	R- Verify the below builders exist, and builders are in the correct order.
+		- XMI 2.1 Export
+		- Model Compiler Pre-Build
+		- MC-3020 Model Compiler
+		- CDT Builder
+		- Scanner Configuration Builder 
+	_- Build the project
+	R- Verify that building the empty project is successful, and the generated
+		C code is compiled, and the executable is created.
+		
+
+9.3 BridgePoint Examples
+     -_ Import BridgePoint Example
+     _- Verify the builders as in 9.2
+     _- Build the project and verify that the build is successful
+     _- Run the executable, and verify the functionality.
+     
+End
+---
+
+$Log: dts0100638163.dnt,v $
+Revision 1.6  2011/09/02 20:12:08  kbrown
+job:dts0100638163
+Complete review min changes to DNT.
+
+Revision 1.5  2011/08/26 19:53:05  aragab
+job:dts0100638163
+Fix few minor issues that was raised during the review meeting
+
+Revision 1.4  2011/08/25 19:22:27  aragab
+job:dts0100638163
+Add a new section to discuss upgrading old projects
+
+Revision 1.3  2011/08/24 23:36:37  aragab
+job:dts0100638163
+Updated design note for BridgePoint/CDT NewProjectWizard based on initial feedback
+
+Revision 1.2  2011/08/22 18:37:20  aragab
+job:dts0100638163
+Initial design note for BridgePoint/CDT NewProjectWizard
+
+Revision 1.1  2011/08/08 16:16:50  kbrown
+job:dts0100638163
+Started DNT.
+

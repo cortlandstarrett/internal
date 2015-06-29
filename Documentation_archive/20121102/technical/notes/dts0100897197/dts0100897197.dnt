@@ -1,0 +1,194 @@
+========================================================================
+
+File:      $RCSfile: dts0100897197.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Using a derived attribute as an actual value in a -select...where...- clause 
+makes Verifier fail
+
+
+1. Abstract
+-----------
+Saab has raised an SR stating that using a derived attribute (a.k.a math-
+ematically dependent attribute / MDA) as an actual value in a 
+"select...where..." clause makes Verifier fail.  This note describes the changes
+made to address this problem.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100897197
+[2] ClearQuest DEI dts0100908283 - Handle complex actions in select where
+        clauses
+
+4. Background
+-------------
+This issue came out of a on-site trip in February 2012.  The customer provided 
+the description of the problem and a sample model.
+
+5. Requirements
+---------------
+5.1  The Verifier crash must be resolved either by fixing the crash itself or 
+     by updating the parser to disallow the problem syntax.
+     
+6. Analysis
+-----------
+6.1  There are really two related problem cases that were initially tied to this
+     issue.  Both are specified by the customer as making the Verifier crash.  
+     The first is called out in the headline: using a derived attribute inside the where
+     condition of a "select ... where ..." statement. The second involves 
+     passing a derived attribute as a parameter.   
+6.1.1  The customer-provided model only demonstrates the problem happening when
+       using a derived base attribute inside of a "select ... where" statement.
+6.1.2  As part of the investigation and analysis of the issue, the test model 
+       was expanded to test using a MDA as a parameter to a function.  In the
+       HEAD (8/9/12) version of BridgePoint, the functionality did not present a
+       problem as reported.  Martin Nilsson (the Saab engineer who created the
+       SR) reported on 8/20/12 that he is unable to reproduce this part of the 
+       problem with BridgePoint 3.5.0.
+6.1.3  Thus, the rest of this note deals with only the "select ... where" 
+       problem.
+              
+6.2  After a discussion with the engineering team, it was decided that the fix
+     to make Verifier be able to handle stack flow control changes in where
+     clauses was too time consuming to fit in the schedule for the Delphinus
+     release.
+6.2.1  The approach for the Delphinus release is to update the parser to dis-
+       allow the problem cases.
+6.2.2  [2] is raised to capture the desire to enhance the verifier to handle
+       the ideal functionality.
+       
+6.3  The parser change needs to disallow any syntax that would cause a flow-of-
+     control change in the verifier execution inside of a where clause.  This 
+     includes not only MDAs, but also operations, messages, functions, and
+     bridges.
+6.3.1  Only things that cause a new stack frame to be created need to be dis-
+       allowed.  For example, array length or additions of literal integers are 
+       legal syntax.
+            
+7. Design
+---------
+7.1  Options. There are various places the parser could be updated.
+7.1.1  The first option is to add checks in each of the specific validation 
+       functions such as Function_function_validate or 
+       Bridge_invocation_validate.
+7.1.2  Another option is to add a check higher up in the syntax traversal.
+       A common place that would cover all of the various cases.  Here we would
+       inspect the value subtype and report a parse error if it matched one of
+       the types to be disallowed.
+7.1.3  The second option (7.1.2) is the one chosen.  This option isolates the 
+       parser change to one location rather than interspersing the new check 
+       throughout various places in the parser.  This increases clarity and 
+       makes removing the check later an easier task.
+       
+8. Design Comments
+------------------
+None.
+
+9. Work Required
+----------------
+9.1  bp.core/ooaofooa/Functions/OAL Validation Functions/Rval_validate
+9.1.1  This is the "common" location chosen to add the necessary checks.
+9.1.2  The current implementation just returns the current rule ID.  Expand the
+       function to first get the current scope and the block being parsed.  If
+       the block flag "InWhereSpec" (an already existing flag) is true, then we 
+       get the Value instance currently being parsed using the known facts that
+       it is attached to the block across R826 and its ID is passed in as a
+       parameter.  The following OAL does the trick:  
+       
+       select any val related by block->V_VAL[R826] where 
+           ( selected.Value_ID == param.a4_rule_ref_id );
+       
+       At this point we know the parser is parsing inside a where spec and we 
+       have the value instance being parsed in hand.  Next we check if the Value
+       instance is a supertype for a Function Value, Operation Value, Message
+       Value, Bridge Value, or Attribute Value Reference that is tied to an 
+       attribute that is a Derived Base Attribute.  If it is, then we report a 
+       parse error with a message appropriate to the subtype.  For example:
+         "Operation calls are not allowed inside a where condition."
+         "Accessing a derived base attribute value is not allowed inside a where
+          condition."
+
+9.2  The metamodel OAL makes extensive use of operations inside where specs.
+     Most notably a hook for checking for null IDs.
+     
+     A xtUML search for "where .*selected\..*\(" returns 128 matches.  The meta-
+     model OAL uses bridge operations in where clauses frequently, as in:
+
+        select any element from instances of KEY where 
+           (selected.ID == GD::NULL_UNIQUE_ID());
+9.2.1  Create a new preference in the BridgePoint preference store named 
+       "bridgepoint_prefs_allow_operations_in_where".  The default value is
+       false.
+9.2.2  The checks in Rval_validate (see 9.1) are not done when this preference
+       is set to true.
+9.2.3  The preference is exposed on the UI in the "BridgePoint > Action
+       Language" preferences page.
+9.2.4  The preference text is: Allow operations inside where clauses of select statements
+9.2.5  The preference tooltip is:
+           Verifier does not support using derived attributes, operations, 
+           functions, messages or bridges inside the where clause of a select
+           statement. Enabling this option silences the parser error that is
+           raised when this syntax is encountered.           
+                     
+10. Unit Test
+------------
+10.1  Expand the automated JUnit tests to exercise the new checks.  Test each
+      of the calls as part of an equality test in the where spec as well as
+      alone in the where spec using a call the returns a boolean.  The OAL test
+      will check for the expected parse error messages.
+10.2  Verify existing parser tests do not fail unexpectedly.
+10.3  Verify tests exist (or create them if they do not) that test use cases 
+      in a where spec that are still valid (e.g. a class attribute access, array
+      length test, etc.)
+10.4  Verify that MC-Java correctly builds the metamodel using the proper 
+      application of the preference to turn these new syntax checks off.
+
+10.5  Manual Test 
+  _- Set the new preference to "on"/allow
+  _- Edit an activity that would normally show a parse error
+  _- No parse error is shown
+  _- Restart BridgePoint
+  _- Edit the action again, no parse error is shown (still)
+  _- Look at the preference, make sure it is still "on"/allow
+
+10.6  Manual Test 
+  _- Set the new preference to "off"/disallow
+  _- Edit an activity that would normally show a parse error
+  _- Parse error is shown
+  _- Restart BridgePoint
+  _- Edit the action again, parse error is shown (still)
+  _- Look at the preference, make sure it is still "off"/disallow
+        
+End
+---
+
+$Log: dts0100897197.dnt,v $
+Revision 1.4  2012/08/20 18:50:02  kbrown
+job:dts0100897197
+Add tests for preference persistence
+
+Revision 1.3  2012/08/20 18:22:08  kbrown
+job:dts0100897197
+Completed DNT updates.
+
+Revision 1.2  2012/08/20 14:05:22  kbrown
+job:dts0100897197
+Updated based on major review observations.
+
+Revision 1.1  2012/08/14 20:45:41  kbrown
+job:dts0100897197
+First pass at design note.
+

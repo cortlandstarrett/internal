@@ -1,0 +1,156 @@
+========================================================================
+
+File:      $RCSfile: dts0100909525.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Update Model Compilers to account for R18 change
+
+
+1. Abstract
+-----------
+The OOA of OOA metamodel has changed.  R18 is moved from between S_UDT & S_CDT
+to S_UDT & S_DT.  The model compilers must be updated to account for this
+change.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100909525
+
+4. Background
+-------------
+The move is to support user-defined types (UDTs) being based on other UDTs 
+instead of having to be directly based on core types.
+
+5. Requirements
+---------------
+5.1  The model compiler must produce valid code modeled elements that use UDTs
+     based on UDTs.
+5.2  The changes to support this must not break existing models.
+
+6. Work Required
+----------------
+6.1  Add a new function that recursively decends a UDT-based-on-UDT hierarchy
+     until the base S_DT instance is found.  Return that instance.
+6.1.1  The function will be:
+
+.//============================================================================
+.// Recursively locate the datatype at the base of the UDT type definition 
+.// chain. Traverses up through UDTs based on UDTs until we find the underlying
+.// S_DT instance.
+.//============================================================================
+.function GetBaseTypeForUDT
+  .param inst_ref s_udt
+  .select one baseType related by s_udt->S_DT[R18];
+  .assign result = baseType
+  .select one udt related by baseType->S_UDT[R17];
+  .if( not_empty udt )
+    .invoke btype = GetBaseTypeForUDT( udt )
+    .assign result = btype.result
+  .end if
+  .assign attr_result = result
+.end function
+
+6.2  Locate all places where R18 is currently traversed.  Use the new 
+     GetBaseTypeForUDT function instead of the existing traversal.
+6.2.1  Five places use R18:
+  q.datatype.arc::GetAttributeCodeGenType (1 place)
+  q.mc_metamodel.populate.arc::MC_metamodel_populate (2 places)
+  q.smt.generate.arc::q_smt_return (2 places)
+
+6.3  Updated the schema to change the ROP on R18 from:
+
+     CREATE ROP REF_ID R18   FROM MC S_UDT   (CDT_DT_ID)
+              TO 1  S_CDT   (DT_ID);
+              
+     to:
+     
+     CREATE ROP REF_ID R18  FROM MC S_UDT   (CDT_DT_ID)
+              TO 1  S_DT   (DT_ID);
+              
+7. Implementation Comments
+--------------------------
+7.1  In q.names.arc::GetAssociativeUnlinkMethodName, there was a missing change
+     that left the door open for invalid access of a te_class instance.  The
+     needed change was fairly recently applied to the companion function
+     GetAssociativeLinkMethodName.  The necessary safety checks are added to
+     the Unlink function with this work.
+
+8. Unit Test
+------------
+8.1  Test existing models:
+  Setup: put the new schema and source archetypes into the test environment.
+  
+  _- Create GPS Watch from Welcome
+  _- Update the project's Model Compiler.launch and .project changing all
+     "c.binary" occurances to "c.source" and "-l3b" to "-l3s"
+  _- Build it
+  _R No code gen errors
+  _R No code compilation errors
+  _- Create MicrowaveOven from Welcome
+  _- Update the project's Model Compiler.launch and .project changing all
+     "c.binary" occurances to "c.source" and "-l3b" to "-l3s"
+  _- Build it
+  _R No code gen errors
+  _R No code compilation errors
+  
+8.2  Test new functionality
+  NOTE: This test uses a modified version of the MicrowaveOven sample project.
+  The new version adds 6 UDTs.  Three of them for a chain of one UDT based on 
+  another, based on another, based on integer.  The same scenario is used for
+  a chain ending at core type real.  The test model adds two class attributes,
+  they are set to the UDT at the top of each chain.  It also adds domain
+  functions with params and return values of the two topmost UDTs.  Lastly, the
+  test model adds markings for the precision of the two top-level types,
+  specifying the integer as a "long int" and the real as a double.  
+  
+  Manual:
+  _- Remove any existing MicrowaveOven project in the workspace.
+  _- Import the test MicrowaveOven project from \\wv\dfs\bridgepoint\test_data\dts0100909525\Modified_MO.zip
+  _- Build the project
+  _R No code gen errors
+  _R No code compilation errors
+  _- Open MicrowaveOven_MO_B_class.h
+  _R Class attribute a_int_udt_attr is a long int, a_real_udt_attr is a double
+  _- Open MicrowaveOven.c
+  _R Function MicrowaveOven_int_udt_test has return value, parameter, and
+     internal variables that are all "long int"
+  _R Function MicrowaveOven_real_udt_test has return value, parameter, and
+     internal variables that are all "double"
+  
+9. Code Changes
+---------------
+Branch name: c909525
+
+(Branched at mc/)
+mc/arc/q.datatype.arc
+mc/arc/q.mc_metamodel.populate.arc
+mc/arc/q.names.arc
+mc/arc/q.smt.generate.arc
+
+(Branched down at sql/)
+model_compilers/mc3020/schema/sql/xtumlmc_schema.sql
+
+End
+---
+
+$Log: dts0100909525.int,v $
+Revision 1.2  2012/09/21 01:44:58  kbrown
+job:dts0100909525
+Adding more details.  Updating test.
+
+Revision 1.1  2012/09/20 21:12:19  kbrown
+job:dts0100909525
+Completed INT.

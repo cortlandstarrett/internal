@@ -1,0 +1,336 @@
+========================================================================
+
+File:      $RCSfile: i1626.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Provide System Event Queue
+
+Abstract
+--------
+This note describes the approach taken for the System Event Queue view. 
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 1626
+[2] Analysis note: Documentation/internal/technical/Model_Explorer-Outline_View/
+                                    various source analysis and design documents
+[3] \\svr-azt-fil-01\software_archive\SRS_MV.doc
+[4] Bugzilla issue 1635
+
+Background
+----------
+The Verifier SRS[3] calls for a view that can show the events queued for the
+entire system. We do not currently have such a view. This note addresses this
+need.
+
+Analysis
+--------
+The requirement is detailed in SRS presentation requirements 63 through 69.
+
+The requirement was slightly modified as a result of a meeting between EA, McC
+and JRW May 15 2006, where the Debug View appearance and ergonomics were
+discussed.
+
+The conclusion of the meeting was that the Debug View needs to have the
+appearance previously specified for the Events View. Consequently the
+requirements for the two views shall be exchanged; the Debug View shall show a
+system level event view and the Events view shall show events organized by
+instance. If time is short, the requirement for the Events View shall be
+dropped. This task shall henceforth address the mainline issue of making the
+Debug View ergonomics work well.
+
+The requirement for this work is that the Debug View look as below. Note that
+in common with Eclipse and Nucleus debugger practice, the Stack frame entries
+grow upward, with each successive frame being added at the top of the tree
+(directly under the entry for the Model). The new event queue entries, by
+contrast, are added at the bottom of the tree (i.e. directly above the entry for
+the next Model in the simulation).
+
++ O Launch
+  + M ODMS
+    - S Top Stack Frame
+    - S Stack Frame
+    - S Stack Frame
+    - E Robot Move Complete (from Robot at 12:01:25.137623) (being dispatched)
+    - E Disk In Drive (from Drive at 12:01:25.954301)
+    - E Mount Disk (from QP_disk_mount_request at 12:01:26.014772)
+    - E Port Unlocked (from PIO_port_unlocked at 12:03:26.877643)
+    - E Gripper Open (from PIO_gripper_opened at 12:03:27.218462)
+  + M PIO
+  + M QP
+  + M Test
+
+Legend: M = Model icon, S = Stack Frame icon, E = Pending Event icon
+
+The above example shows an event, 'Robot Move Complete' in the process of being
+dispatched. In the example, new stack frames would appear above the frame
+labeled 'Top Stack Frame' and a new event would appear below 'Gripper Open'. The
+tree grows in two directions like this to give the user the visual cue that they
+are dealing with two different buffer mechanisms; the Stack, a Last In First Out
+(LIFO) structure, and the Event Queue, a First In First Out (FIFO) structure.
+
+Event data items are shown in the Variables view, as are any local variables
+created during the execution represented by a Stack Frame.
+
+If the user manually launches a Function or Operation, or if a remote domain
+calls a function, then the invocation and stack frames shall be shown above the
+event queue. An invocation shall have a different icon to distinguish it from an
+event:
+
++ O Launch
+  + M ODMS
+    - S Top Stack Frame
+    - S Stack Frame
+    - F QP_disk_mount_request
+    - E Port Unlocked
+    - E Gripper Open
+  + M PIO
+  + M QP
+  + M Test
+
+Legend: As above, plus F = Function Invocation icon
+
+As for events, argument values for a queued function shall be shown in the
+Variables view.
+
+The Models in the debug view shall be those the user chose to launch the
+simulation with, either by multiple selection and choosing 'Debug...' or in the
+Launch Configuration Dialog (LCD).
+
+The display needs to be accurate with respect to which event will be processed
+next. The order of event display shall therefore be:
+
+- events to self
+- inter instance events
+- delayed events
+
+On the face of it, this requirement is quite simple. However, the current design
+for Verifier does not lend itself to this work in several ways:
+
+1. Events are currently enqueued against an instance. There is no current easy
+   way to obtain a system level view of the events in the system.
+2. The 'Move Up/Down' behavior (SRS-72P-32) needs to work differently for the
+   system event view than it does for the Instance based queues.
+3. The code generation solution for model explorer is still not sufficiently
+   flexible that we can generate code for multiple plugins with it.
+
+Making a truly system wide event queue was considered but rejected because of
+the infrastructure demands of keeping all Pending Event instances in a single
+instance extent. A single instance extent is necessary because otherwise the
+instance extents need to be concatenated and the events sorted in order of event
+delivery/scheduled delivery time. There is no infrastructure for this sorting
+behavior, and there are concerns about its performance.
+
+Instead, the Event View shall be shown as a tree with Domains at the roots.
+Thus, each domain can be thought of as an analogy to the thread behavior in
+regular debuggers. In regular debuggers, most threads are left running and only
+the thread of interest is stopped and stepped. This will be mirrored in
+Verifier, only one domain at a time shall be stepped. Since the behavior of each
+domain is decoupled from its neighbors, it is acceptable to keep the system
+event queue partitioned in this way. Of course, as for a regular debugger,
+breakpoints may be set and hit in more than one domain to debug inter-domain
+issues.
+
+Work Required
+-------------
+1. The model shall be modified to address shortcomings 1 and 2 above.
+
+   1.1 Address analysis observation 1 by providing new associations (three)
+       between Pending Event instances and the Execution Engine. These
+       associations shall each be managed by a separate link class. There shall
+       be one association for the self event queue, one for the regular event
+       queue and one for timers. Each link class shall have a reflexive
+       association that shall maintain system event queue order.
+
+       The current instance based event dispatching policy is certain to make
+       event dequeue look strange to the user of a system wide event queue view.
+       To guarantee that the displayed event order will exactly match the
+       Execution Engine behavior, the Instance.poll() operation shall be
+       replaced by a takeEvent(Event_ID) operation, and the next event shall be
+       found across the new associations and its ID passed to the new operation.
+       
+       Firing an event shall add it to both sets of associations forming the
+       instance and domain event queues. Setting a timer shall add the event to
+       the delayed event system queue. Changing the remaining time on a timer
+       shall adjust a timer's position in the timer queue as required based on
+       the new time.
+       
+   1.2 Address observation 2 by pointing the Debug View tree at Pending Events
+       (already done[4]) and point the Event View at the link class instance.
+       The two Views can then show different behavior as required and different
+       queue types can have different behaviors.
+       
+       The different queue types show different Move Up/Down behavior as
+       follows:
+       
+       - A delayed event cannot be moved at all, moving a delayed event is
+         achieved by changing the timeout value.
+
+       In the Debug View, when an event is moved up or down, it is moved 
+       within the context of all events in the system. However, in the Session 
+       Explorer, events are partitioned by instance (timed or regular / self)
+       and so an event movement must be made in the context of only the events
+       to the same instance. 
+       
+       The detailed policy for moving an event up in the queue shall
+       therefore be as follows:
+       
+       - In the Session Explorer, the event is placed immediately in front of
+         the next higher event to the same instance, as found across R908 or
+         R939 as required. If the event is at the top of the regular queue, the
+         event shall be moved into the self queue; however, If the event is at
+         the top of the self queue, the move up feature shall be greyed out, 
+         preventing movement. The event order is also changed in the system 
+         event queue by locating the event that has just been demoted and 
+         placing the promoted event immediately in front of it. This shall be 
+         done to the appropriate associations introduced in 1.1 above.
+       
+       - In the Debug View, the event is placed immediately in front of the
+         next higher event as found across the appropriate reflexive association
+         proposed in 1.1 above. Only if the demoted event is also the same one
+         as is found across R908 or R939 is the event order specified by those
+         associations changed.
+       
+       The detailed policy for moving an event down in the queue shall
+       therefore be as follows:
+       
+       - In the Session Explorer, the event is placed immediately behind the
+         next lower event of the same instance, as found across R908 or R939 as
+         required. If the event is at the bottom of the self queue, the event 
+         shall be moved into the regular queue; however, If the event is at 
+         the bottom of the regular queue, the move down feature shall be greyed
+         out, preventing movement. The event order is also changed in the system
+         event queue by locating the event that has just been promoted and 
+         placing the demoted event immediately behind it. This shall be done to 
+         the appropriate associations introduced in 1.1 above.
+       
+       - In the Debug View, the event is placed immediately behind the
+         next lower event as found across the appropriate reflexive association
+         proposed in 1.1 above. Only if the promoted event is also the same one
+         as is found across R908 or R939 is the event order specified by those
+         associations changed.
+
+       Note that after the proposed modifications, R908 and R939 affect display
+       order only. Execution order is defined only by the order of events as
+       specified  across the three new associations introduced by the work above
+       [1.1].
+
+       Example: Move E4 up three times from the Debug View
+       
+       System Event Queue (as seen in the Debug View)
+
+        Start         1           2           3
+       E1 -> I1    E1 -> I1    E1 -> I1    E4 -> I1
+       E2 -> I2    E2 -> I2    E4 -> I1    E1 -> I1
+       E3 -> I1    E4 -> I1    E2 -> I2    E2 -> I2
+       E4 -> I1    E3 -> I1    E3 -> I1    E3 -> I1
+       
+       Instance event queue (for I1 as seen in Session Explorer)
+       
+          E1          E1          E1          E4
+          E3          E4          E4          E1
+          E4          E3          E3          E3
+       
+       Note that after the second move, the Instance event queue view did not
+       change. This is because the second move only requires to be performed on
+       the system event queue (i.e. the order as seen in the Debug View), not
+       the instance event queue (as seen in the Session Explorer).
+       
+2. Modify the tree adaptor generator to work across multiple projects
+   (Jeremy Robinson - BZ 2164)
+
+   Using a navigation from System Model to Execution Engine to the new link
+   class introduced above, and specifying the reflexive association for
+   ordering, the standard tree adaptor generator will meet the event order
+   requirement specified in the analysis section above, and at the same time
+   support the different Move up/Down menu behavior identified in 1.2 above.
+   Only CME entries are needed to get this functionality working.
+   
+   However, we need to make changes to the archetypes so that multiple tree
+   based views can generate adapters in their own plugins. In this way we will
+   have only one body of archetype based code to maintain for all views.
+
+Acceptance Test
+---------------
+
+End
+---
+
+$Log: i1626.ant,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.14  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.13.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.13  2006/07/07 17:02:04  campbell
+Job: 1626
+Added an example.
+
+Revision 1.12  2006/07/07 16:43:52  campbell
+Job: 1626
+Reworked the Work Required section to clarify accurately what needs to be done.
+
+Revision 1.11  2006/06/29 20:32:50  tphan
+Job: 1626
+Removed two moveup / move down restrictions, elaborated more on the move up / move down behavior, and added a note about Jeremy working on the tree adaptor (BZ 2164).
+
+Revision 1.10  2006/05/31 20:29:57  campbell
+Job: 1626
+Changed debug view tree to conform with the default Eclipse debug model.
+
+Revision 1.9  2006/05/26 23:55:26  campbell
+Job: 1626
+Backed out invocation delay requirement.
+
+Revision 1.8  2006/05/26 23:54:14  campbell
+Job: 1626
+Added constraint on when externally invoked actions may be executed.
+
+Revision 1.7  2006/05/26 23:45:12  campbell
+Job: 1626
+Added more explanation of the way the trees grow.
+
+Revision 1.6  2006/05/26 23:41:29  campbell
+Job: 1626
+Made more explicit the way in which the Debug trees grow.
+
+Revision 1.5  2006/05/26 17:07:22  campbell
+Job: 1626
+Documented changed requirements and required appearance of Debug View.
+
+Revision 1.4  2006/05/12 23:19:48  campbell
+Job: 1626
+Upate.
+
+Revision 1.3  2006/05/12 21:01:33  campbell
+Job: 1626
+Upate.
+
+Revision 1.2  2006/05/12 17:32:14  campbell
+Job: 1626
+Upate.
+
+Revision 1.1  2006/05/12 16:36:51  campbell
+Job: 1626
+Introduced.
+

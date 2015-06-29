@@ -1,0 +1,173 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support param keyword in state actions
+
+1. Abstract
+-----------
+This note describes the design for making the 'param' and 'rcvd_evt' keywords
+synonymous in state actions.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2772
+    Parser allows param keyword in place of rcvd_evt in state action, crashes
+                                                            editor and Verifier.
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2772
+[2] Bugzilla item 3435
+    Incorrect instance population created for references to signal parameters.
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3435
+[3] Bugzilla item 3208     Relax same data rule
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3208
+[4] Bugzilla item 491      mealy state models - actions on transitions
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=491
+
+4. Background
+-------------
+The keyword 'param' has traditionally been used to access passed argument values
+to synchronously called BridgePoint artifacts. With the introduction of Relaxed
+Same Data[3], many tool labels and references were changed from 'Event Data
+Items' to 'Event Parameters'. This note addresses the changes necessary to carry
+this change over into the action language in a backward compatible manner.
+
+5. Analysis
+-----------
+- Refer to headline BZ item.
+
+In state machine activities only, 'rcvd_evt' and 'param' shall become
+synonymous. In other activities, 'rcvd_evt' shall remain an illegal reserved
+word. In addition to harmonizing state model presentation with the rest of the
+tool, this change allows a seamless combination of references to events and
+signals. In the state machine architecture, signal parameters need to be
+referenced using the same syntax as event parameters if events and signals are
+to be mixed on transitions into the same state. By allowing the 'rcvd_evt'
+keyword to remain, the tool remains backwards compatible with old designs, and
+by allowing signal parameter values to be accessed using 'rcvd_evt' new signal
+triggered transitions may be added to old models without forcing a re-write of
+the OAL.
+
+The same change is required for Transition actions[4].
+
+Recent changes to relax the same data rule also appear to have broken the parser
+behavior in the context of creating OAL subsystem instances for references to
+signal parameters[2]. This issue will address these at the same time.
+
+6. Design
+---------
+6.1 OAL grammar
+Since 'rcvd_evt.<param_name>' and 'param.<param_name>' differ only by the
+leading keywords, and because we still wish to disallow 'rcvd_evt' references
+outside of state actions, there are no changes needed to the OAL grammar.
+Instead the validation operations for a 'param' reference are extended so that
+in a state or transition action context, validation is delegated to the
+validation operation previously called only for 'rcvd_evt'.
+
+6.2 ::param_validate
+In the top of this operation, the current action (ACT_ACT) is used to traverse
+to a state or a transition action. If either is successful, control is
+immediately passed to the validation operation for rcvd_evt and the resulting
+value_id returned to the caller.
+
+6.3 ::event_root validate
+6.3.1 This operation previously did not need to return anything. However,
+      'param_validate' expects to return a value_id to its caller, so this
+      operation is slightly modified to accomplish this. This causes two minor
+      cascade changes in the 'member_root*validate' operations, see below.
+6.3.2 Unlike 'rcvd_evt', the param keyword is syntactically valid on both sides
+      of an assignment statement (valid for the case of reference arguments).
+      The parser will thus match the syntax for param as the root of an l-value.
+      In the context of a state machine activity, an l-value param reference is
+      always illegal, so we extend ::event_root_validate to check the
+      value.isLvalue attribute and provide an error if it is true.
+6.3.3 References to signal data were not being properly parsed[2]. The body of
+      ::event_root_validate is also substantially reworked to handle signal
+      argument values correctly.
+6.3.4 Regardless of whether the referred to parameter is owned by an event or a
+      signal, the initial parsed value has a subtype of Parameter Value (V_PVL)
+      if the 'param' keyword is used, and Event Data Value (V_EDV) if the
+      'rcvd_evt' keyword was used. ::event_root_validate discovers what the
+      reference is actually to and type migrates the value accordingly. For
+      state machines, we need all Value parameter references to be V_EDV
+      instances, so all Values with V_PVL subtypes are migrated to V_EDV types.
+      
+6.4 ::member_access_*_end
+These two functions are updated to discard the return value of the operation,
+::event_root_validate().
+
+6.5 Value subsystem changes
+With the change proposed at 6.3.4, all V_PVL subtypes are migrated to V_EDV
+instances. This gives us the challenge that V_EDV instances need to be able to
+be hooked up to either SM_EVTDI instances (as now), or C_PP instances (when a
+signal is assigned to a transition and references are made to its arguments).
+To support this, V_EPR will be removed as a link class and R834 will be redrawn
+to it V_EDV 1 --- * V_EPR. V_EPR then has two new *-1 associations; one to
+SM_EVTDI and one to C_PP. All existing OAL are adjusted for fallout changes, and
+::event_root_validate relates C_PP instances to the V_EPR instance as required.
+V_EDV, SM_EVTDI and C_PP disposes all have OAL updated to unrelate these new
+associations.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+The work required is fully detailed in the design section.
+
+9. Unit Test
+------------
+9.1 Existing tests
+The JUnit class EventTest contains tests that exercise this part of the parser.
+No significant changes were made to the way the 'rcvd_evt' keyword is verified.
+Consequently existing tests are not affected, except for some erroneous test
+data supplied to the last few tests which were exposed by the new handling.
+
+9.2 New tests
+All tests in the same test class which refer to 'rcvd_evt' are duplicated and
+the input action text changed to refer to 'param' instead. The change to handle
+references to event parameters as l-values caused the parser to change behavior
+from the default 'unexpected token' error message to a new error message
+introduced by this work; 'Event parameters cannot be assigned.'. This is much
+more informative and is thus an improvement over the previous 'unexpected token'
+parser behavior. In places, the improved error handling results in fewer
+residual OAL instances after a syntax error. This requires the copied expected
+result counts to be changed.
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:19  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.3  2008/03/19 01:46:10  campbell
+Job: 2772
+Commit of work in progress.
+
+Revision 1.2  2008/03/18 19:25:27  campbell
+Job: 2772
+Fix substitution assignment
+

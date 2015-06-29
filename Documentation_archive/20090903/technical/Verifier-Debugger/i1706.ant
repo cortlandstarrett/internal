@@ -1,0 +1,175 @@
+========================================================================
+
+File:      $RCSfile: i1706.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Expression Evaluator
+
+Abstract
+--------
+This note describes the requirements for an expression evaluator
+in the Verifier.
+
+History
+-------
+
+update  i1706-022806-01.rvm
+final i1706-031606-01.rvm
+
+Document References
+-------------------
+Bugzilla issue 1706
+
+Background
+----------
+In order to support watch points, the ability to evaluate an 
+arbitrary expression is needed.  Conditional breakpoints need this 
+functionality as well.
+
+Analysis
+--------
+
+This note describes the expression evaluator itself, the design
+of the user interface that uses the evaluator is a separate design.
+
+1. Add parser API for parsing expressions
+
+The OAL parser as it exists only parses an entire activity.  
+The parser itself has a rule for parsing expressions (the name of
+the rule being expr).  No changes to the parser itself should
+be necessary in order to parse expressions.  We only need to
+invoke the expr rule on the string that represents the expression
+to be evaluated.   The OAL class instances created by the 
+parse need to be associated with a Block instance to provide context.
+The Block instance can be derived from the stack frame instance passed in by 
+the caller of the expression evaulator.  The result of the parse is a Value 
+(V_VAL) instance.  The client can then use Value.getValue() to evaluate the
+expression. The client is responsible for explicitly requesting a 
+reparsing of the expression, due to either a stack frame change, or a model
+change.  If there is a parse error, the error is passed back to the client.
+The evaluation of the expression is synchronous.
+
+Work Required
+-------------
+
+1. Add API to parser
+
+The class ExprParser is created.  The class extends the OalParser class.
+The class encapsulates the processing needed to parse an expression (supplied 
+as a string) with a given context (i.e., Stack Frame).  It has the following
+public interface:
+
+	static public ExprParser parseExpression(String expr, StackFrame_c sf) 
+       Parse expr in the context of sf.  Returns an instance of ExprParser
+       containing the parse results.
+       
+	public String result() - The error message from the parse. 
+	   A successful parse will return the empty string
+	   
+	public Value_c value() - The (top-level) instance of Value_c created by 
+       a parse. It will return null if the parse failed.
+
+    public void dispose() - Delete instance and all associated data
+    
+The client is responsible for calling dispose() on the ExprParser instance
+returned by parseExpression().
+
+Acceptance Test
+---------------
+
+Test that expressions are parsed as specified (either the correct value
+is returned, or the appropriate error message) in the following 
+scenarios:
+
+- "1" 
+
+- "color::orange"  where color::orange is a legal enumeration
+
+- "x" where x is a local variable in scope
+
+- "x" where x is a local variable not in scope
+
+- "a.x" where a is an inst_ref<obj> and x is an attribute of obj
+
+- "a.x" where a is not in scope
+
+- "a.op()" where a is an inst_ref<obj> and op is an operation of obj
+
+- "a.op()" where a is not in scope
+
+- "X::op()" where op is an operation of class X
+
+- "E::brg()" where brg is a bridge operation of external entity E
+
+- "::func()" where func is a function 
+
+- "rcvd_evt.z" where z is an event data item
+
+- "rcvd_evt.z" where z is an event data item not in scope
+
+- "param.z" where z is a parameter
+
+- "param.z" where z is a parameter not in scope
+
+- Repeat the above tests that could take parameters (function, operation, 
+bridge) with parameters passed that are all the other expression types 
+(constants, local variables, attribute values, operations, bridges, functions,
+parameter values, and event data items).  For example, using the 
+instance-based operation op1 for an inst_ref<object> variable named a:
+
+	"a.op1(i: 1)" 
+	"a.op1(i: x)" 
+	"a.op1(i: a.i)" 
+	"a.op1(i: a.retInt())" 
+	"a.op1(i: T::retInt())" 
+	"a.op1(i: ::retInt())" 
+	"a.op1(i: rcvd_evt.i)" 
+	"a.op1(i: param.i)" 
+
+- Repeat the above tests using the above r-values in binary expressions, for
+example  "a.x > 0"
+
+- Test that parse errors are returned properly
+
+End
+---
+
+$Log: i1706.ant,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.24.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2006/03/16 20:43:39  greg
+Job: 1706
+Update after review
+
+Revision 1.3  2006/03/01 16:19:45  greg
+Job: 1706
+Addressed observations
+
+Revision 1.2  2006/02/27 15:38:54  greg
+Job: 1706
+Ready for review
+
+Revision 1.1  2006/02/22 20:20:28  greg
+Job: 1706
+Introduce
+

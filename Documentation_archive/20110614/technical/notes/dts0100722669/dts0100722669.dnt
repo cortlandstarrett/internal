@@ -1,0 +1,150 @@
+========================================================================
+
+File:      $RCSfile: dts0100722669.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Core data types absent in data type chooser for structured data type members
+
+
+1. Abstract
+-----------
+After formalizing a component to a domain, it is not possible to change the data 
+type of a structure member using the properties view or the Set Type chooser 
+window.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100722669 - Core data types absent in data type chooser 
+	for structured data type members
+
+4. Background
+-------------
+ When a component is formalized to a domain, all Core Data Types that were
+inside the domain are suppressed.  The different kinds of variables associated
+with these domain Core DataTypes are unbound and re-associated with the 
+corresponding data type at the System level.
+
+5. Analysis
+-----------
+5.1   When formalizing a component to a domain, it is not possible to assign 
+	a different data type to the structure members using Set Type window or 
+	Properties view.
+	
+	This behavior is present for Structured Members that are created before 
+	the formalization or after it. When the user tries to change the Structured 
+	Member type, he gets empty data type combo list in Properties view or blank 
+	table in the Set Type window.
+
+5.2 Before formalization, the data types available to be assigned to 
+    structure members are determined by the Domain that contains this member. 
+    After the formalization, these data types are System Level core data types, 
+    the custom created data types in the System Level DataType package, and 
+    the custom created data types under the component.
+
+	Currently, the traversal S_MBR --> S_DT[R45] --> S_DOM[R14] is used to get
+	domain instances that will be used to filter the acceptable data types to be
+	assigned to structured members. This traversal can be found in 
+	StructureMember::Isallowedtype(String).
+
+	What causes the reported bug is that during the formalization process all
+	associations between the Structured Members and their domain Core Data type 
+	are broken and then	re-associated with the System Level Core DataTypes. 
+	Since the CDT has no domain associated with it through R14, it finds no 
+	domain to validate the possible data types to be assigned to the 
+	Structured Member, and this results in the empty data type list 
+	and the blank table.
+	
+	However, if the structured member was assigned to custom data type e.g. 
+	another SDT  before the formalization the SDT does not unbind with the 
+	Domain during the process, and the query for available data types will be 
+	able to get the Domain instance and all System Level CDTs. Custom data 
+	types created under System Level and under the component will be 
+	presented in the data type list in Properties view and in Set Type 
+	window table. Once the user changes the type to one of the System Level
+	data types, the problem returns.
+
+5.3   The query for all available data types for Structured Member that is used
+	in the Properties view also uses the wrong traversal S_MBR --> S_DT[R45] 
+	--> S_DOM[R14]. This query exists in bp.ui.properties.StructureMemberS_
+	MBRPropertySource. getPropertyDescriptors()  
+	
+5.4 The User DataType and Constants are checked, and they are working properly. 
+	  
+6. Design
+---------
+6.1	  Replace the traversal S_MBR --> S_DT[R45] --> S_DOM[R14]   with  
+	S_MBR -->S_SDT[R44] --> S_DT[R17] --> S_DOM[R14] in com.mentor.nucleus.
+	bp.ui.properties.StructureMemberS_MBRPropertySource.getPropertyDescriptors() 
+
+6.2	  Replace the traversal S_MBR --> S_DT[R45] --> S_DOM[R14]   with  
+	S_MBR -->S_SDT[R44] --> S_DT[R17] --> S_DOM[R14] in StructureMember::
+	Isallowedtype(String) operation. 
+
+
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is outlined in the design section.
+
+9. Unit Test
+------------
+9.1 
+_- Create new project
+_- Create new 'sys_sdt' Structured Data Type in System Level DataType package
+_- Create new 'sys_udt' User Data Type in System Level DataType package
+_- Create new domain
+_- Create new 'dom_udt' User DataType in domain datatype package
+_- Create new 'dom_sdt' Structured DataType in domain datatype package
+_- Add structured member to 'dom_sdt'.
+_- Check the datatypes available to be assigned to the structured member using 
+   Properties view and Set Type window
+_R The system level datatype 'sys_sdt' and 'sys_udt' should not be available
+   Domain data types 'dom_udt', 'dom_sdt' and all Core Data Types should be 
+_R Properties view and Set Type datatypes list must match.  
+_- Create new component and formalize it to the previous created domain
+_- Check the datatypes available to be assigned to the structured member using 
+   Properties view and Set Type window
+_R The system level datatype ('sys_sdt' ,'sys_udt'), domain data types ('dom_udt
+   , 'dom_sdt'), and all core data types should be available
+_- Add new structured member to 'dom_sdt' and repeat the previous step
+_- Add new SDT under the component, add structured member to it, then repeat 
+   the previous step
+ 
+
+End
+---
+
+$Log: dts0100722669.dnt,v $
+Revision 1.4  2011/03/08 18:57:26  nmohamad
+job:dts0100722669
+Addressing review minutes
+
+Revision 1.3  2011/03/08 18:12:38  nmohamad
+job:dts0100722669
+Address Keith feedback
+
+Revision 1.2  2011/03/02 14:43:46  rmulvey
+job:dts0100722669
+Pre-review grammar changes.
+
+Revision 1.1  2011/03/01 15:01:35  nmohamad
+job:dts0100722669
+Creating
+

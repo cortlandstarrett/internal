@@ -1,0 +1,149 @@
+========================================================================
+
+File:      $RCSfile: dts0100757684.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+OAL parser error when SDT parameter accessed incorrectly in action
+
+
+1. Abstract
+-----------
+When the user misspells the name of an interface operation parameter, 
+an internal parser error is triggered. This issue is to fix that.
+   
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100757684 - OAL parser error when SDT parameter accessed 
+	incorrectly in action
+
+4. Background
+-------------
+None.
+
+5. Analysis
+-----------
+5.1 When parsing any kind of activity, the tool searches for parameter 
+    names related with the current context activity.  It tries to match one of 
+    them with the parameter name entered by the user. If one matches, validation 
+    continues.  If not, then a parser error message is displayed to the user 
+    telling him that there is NOT parameter with this name related to the 
+    current activity.
+	
+	What causes this internal parser error is an  NPE during parameter name 
+	validation. When the validation failed to get  parameter related
+	to the activity with this name and tried to form the error message, it used
+	the wrong activity instance. It always use the requiredSignal
+	regardless whether it was requiredOperation,providedSignal or 
+	providedOperation.
+	
+
+6. Design
+---------
+6.1 Change the requiredSignal instance outside the RequiredSignal if block
+	to appropriate instance ( requiredOperation, providedSignal and 
+	providedOperation) based on the if condition block.
+	This change need to go in param_root_value_validate in OAL Validation 
+	Utility Functions.   
+	
+	For instance : 
+Before : 
+      elif(not_empty providedOperation)
+	  ...
+	  ...
+          ERR::reportParseError(msg: 
+            "Parameter ->%s<- is not associated with provided operation ->" +
+                            requiredSignal.Name + "<-", token: param.a2_token );
+        
+After : 
+      elif(not_empty providedOperation)
+	  ...
+	  ...
+          ERR::reportParseError(msg: 
+            "Parameter ->%s<- is not associated with provided operation ->" +
+                            providedOperation.Name + "<-", token: param.a2_token );
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is fully outlined in the design section.
+
+9. Unit Test
+------------
+9.1 Implement automated parser test in als.oal.test project for property 
+    parameter access. The test should cover these cases 
+    - Bad spelling for required interface operation parameter
+    - Bad spelling for required interface signal parameter
+    - Bad spelling for provided interface operation parameter
+    - Bad spelling for provided interface signal parameter
+    - Correct spelling for required interface operation parameter
+    - Correct spelling for required interface signal parameter
+    - Correct spelling for provided interface operation parameter
+    - Correct spelling for provided interface signal parameter
+    
+An implementation example for two of the above cases    
+    - Bad spelling for provided interface operation parameter
+    - Correct spelling for provided interface operation parameter
+_- Create xtUML moddel
+_- Create new Component Package
+_- Create new component "com"
+_- Create new interface package
+_- Create new interface "int"
+_- Add new interface operation "testOp"
+_- Add new parameter to the previous operation, name it "data"
+_- Back to the component diagram, draw provided interface for "com"
+_- Write this code in the com::Port1::int::testOp 
+   number = param.data;
+_R  no parser error
+_- replace the code with 
+   number = param.DATA;
+_R Parser error 
+   Parameter ->DATA<- is not associated with provided operation ->testOp<-
+   unexpected token: null
+   expecting Semicolon, found 'null' 
+
+Repeat these steps for required signal, required operation and provided signal.
+
+End
+---
+
+$Log: dts0100757684.dnt,v $
+Revision 1.6  2011/04/05 11:54:06  nmohamad
+job:dts0100757684
+Addressing review minutes
+
+Revision 1.5  2011/04/04 16:22:31  nmohamad
+job:dts0100757684
+Addressing Bob feedback
+
+Revision 1.4  2011/04/04 16:11:17  nmohamad
+job:dts0100757684
+Add test steps
+
+Revision 1.3  2011/04/04 15:48:06  nmohamad
+job:dts0100757684
+Addressing feedbacks
+
+Revision 1.2  2011/04/04 14:50:28  nmohamad
+job:dts0100757684
+- Change the problem reason in analysis section
+
+Revision 1.1  2011/03/31 17:39:16  nmohamad
+job:dts0100757684
+Create
+

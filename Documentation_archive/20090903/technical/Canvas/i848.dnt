@@ -1,0 +1,399 @@
+========================================================================
+
+File:      $RCSfile: i848.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:57 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Supporting Generalized Connector Interconnectivity in the Canvas
+
+Abstract
+--------
+This note describes the design for supporting in a generalized fashion the
+connection of connectors to one another in the canvas.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 848
+[2] UML 2.0 Diagram Interchange Specification - 
+	http://www.omg.org/cgi-bin/doc?ptc/2003-09-01
+[3] Bugzilla Issues 954, 538
+
+Background
+----------
+The analysis note describes this issue's task more expansively
+as a full integration of the UML 2.0 Diagram Interchange metamodel [2] 
+(hereafter referred to as "the DIM") into the Tiger graphics metamodel.  
+However, it was decided afterwards to limit this issue's scope to the 
+enabling of general connector interconnectivity using the relevant
+elements of the DIM, and to break out the other aspects of DIM integration 
+into separate issues [3].
+
+Design
+------
+1.
+The DIM is added as a subsystem in ooaofgraphics.  Only a small subset of 
+the classes and relationships in the DIM are leveraged for this work, however.  
+Certain classes in the Graphical Data subsystem of ooaofgraphics are 
+referentially related to their functional counterparts in the DIM; see the 
+Graphical Data class diagram for details.  For attributes that duplicate data 
+between a class in Graphical Data and one from the DIM, the attribute in 
+the former is removed.
+
+One important modification made to the DIM for the purposes of this issue is 
+that Diagram is changed to not be a subclass of GraphNode, as this relationship 
+would greatly complicate the persistence of models given the cycles it would
+create in the graphics domain's network of related classes.  However, this 
+relationship will have to be reinstated later if and when nested diagram support
+becomes a requirement.
+
+1.1
+The following operations, state actions, and Java methods are reconciled with 
+the migration of attributes (some of which change type from integer to real)
+from Graphical Data to DIM classes, as well as with the existence of the new 
+referential relationships between the classes of the two subsystems:
+
+Model 
+	getMinX, getMaxX, getMinY, getMaxY, zoomTo, initialize, dispose
+Shape 
+	draw, isOverNW, isOverNE, isOverSW, isOverSE, isOver, move, isInside,
+	moveConnectors, moveVertex, getIntersect, dispose, moveToDefaultPosition
+Connector
+	draw, drawText, isOver, moveStart, isInside, isEndSelected, 
+	isStartSelected, endsOnWS, getEndUnder, getVertexUnder, getStartX,
+	getStartY, getEndX, getEndY, moveVertex, getXDeltaForCropTo, 
+	getYDeltaForCropTo, dispose, reverseSense, move 
+Line Segment
+	isOverStart, isOverEnd, moveStart, moveEnd, isOver, intersectsWith, 
+	updateEnd, getIntersect
+Connector Text
+	isOver
+Model Specification
+	elementCreated		
+Element In Resize
+	finish	
+Shape Tool
+	Creating Element
+Selection Tool 
+	Moving Hotspot
+Connector Tool
+	finalize, detmMouseUpValidity, trackMouseWithSegmentEnd,
+	Determining Mouse Down Location Suitability, Creating First Segment,
+	Creating Subsequent Segment
+WhiteSpace Terminal 
+	criteriaMet
+Shape Terminal 
+	criteriaMet
+Connector Terminal 
+	criteriaMet
+CanvasEditor
+	createPartControl, dispose, handlePrint, handleResize, hookListeners,
+	scrollHorizontally, scrollVertically, zoomAll, zoomIn, zoomOut, zoomSel
+Gr_c
+	Getcontext, Scrollby	
+ImportDataTypeHandler (defined in gen_dt_import_java.arc)
+	relateAllNewDatatypes
+ImportEESql	
+	relateAllNewEEs	
+ImportFunctionSql
+	relateAllNewFunctions	
+	
+[in unit tests:]
+
+CanvasEditorInteraction
+	many different tests
+CanvasEditorReloadContentsTest
+	testEditorUpdatesOnReload
+CanvasTest
+	drawDiagram
+CanvasTestUtilities
+	getShapeCenter, getShapeSECorner, getConnectorCenter, getSegmentCenter,
+	convertToMouseCoor
+ConnectorTest
+	performR5Test, test_moveAssocLine, test_moveAssocLineToEnd	
+gen_delete_test.arc	
+	genTestCode
+gen_Formalize_tests.arc	
+	formalize_test
+AssignRemoveEvents
+	many different tests
+AttributeMenuItemTest	
+	testFormalizeAfterMoveDown, testFormalizeAfterMoveUp
+SubtypeSupertypeFormalizeTest
+	testDeleteSubtypeConnectorOneSubtype	
+TigerNatureTest
+	getConnectorString, getGraphicalElementString
+		
+1.2
+Graphical Data's R3 and R4 relationships, which signify the graphical elements 
+at which a connector begins and ends, are removed, and substituted for their 
+use are the DIM GraphConnector's at which a DIM GraphEdge (corresponding to a 
+Graphical Data connector) starts and ends.  A GraphConnector can lie on any 
+part of a shape or connector.
+
+1.3
+Since some of the migrated attributes have their data-type changed from integer 
+to real, code is added in various places to generate an (int) cast when a real 
+is supplied for an integer parameter, as Java requires such a cast for a 
+conversion from a float to an int, which represents a possible loss of 
+precision.
+
+1.3.1
+In function gen_parameter_list of MC-Java's arch_utils.inc, code is added to
+generate an (int) cast when a real is supplied for an integer parameter.
+
+1.3.2
+In function get_context_for_statement of MC-Java's arch_utils.inc, code is 
+added for the function to also report the context's return type, so that callers
+to the function may determine if a real return value is being assigned to an 
+integer variable.
+
+1.3.3
+In the *_transform_instance_* functions of MC-Java's fragment.inc, object
+key-letter information is added that previously was missing from the Operation
+Invocation insert statement that is generated.  This is necessary for 
+determining an operation's return type when only an instance of an invocation 
+of it is in possession.
+
+1.3.4
+In function rval_binary_op of MC-Java's fragment.inc, a check to determine
+whether the right operand is a real is modified to look at the core type of the 
+operand's data type.  
+
+1.3.5
+Functions of MC-Java's fragment.inc which generate Variable instances 
+are modified to populate a new data-type field (named DT_ID, which is
+added in MC-Java's ooa_schema.sql file) of that class with 
+the correct value.  This supports determining if the variable is of integer
+type when an assignment (possibly of a real) is occurring.
+
+1.3.6
+Functions gen_asgn_trans_statement and gen_asgn_attr_statement of MC-Java's 
+statement.inc are modified to cast the assigned value to an int when the value 
+is a real and the assignee is of type integer.  Also, function 
+gen_return_statement is modified to cast the returned value to an int when the 
+value is a real and the return type of the enclosing body is integer.
+
+2.
+Positional data for the endpoints of line segments belonging to connectors
+is now stored in DIM Waypoint instances, rather than in each segment, 
+such that the join-position of two connected segments is no longer duplicated 
+across both segments.  
+
+The Segment in Flex class is renamed to Waypoint in Move, with the entity 
+being directly manipulated now considered to be the waypoint, rather than
+the adjoining segments.  The following operations and state actions are 
+modified to reconcile with this change in strategy:
+
+Model
+	dispose
+Connector
+	move, initializeEndFlex->initializeEndWaypointInMove
+Line Segment
+	dispose
+Selection Tool 
+	Moving Hotspot, Waiting To Move Hotspot, Saving Symbol Resize
+
+3.
+In MC-Java, a new file ooa_schema_7_1.sql is introduced, which holds the 
+combined schema of ooaofooa and ooaofgraphics under the new 7.1-version 
+metamodel.  As expected, the changes between this file and the old 
+ooa_schema.sql stem only from the graphics domain.  
+
+3.1
+MC-Java's schema_gen.arc is modified so that the core data type name of a 
+user data type is emitted for an attribute.  It is also modified such that 
+attributes are emitted in their user-specified order.
+
+4.
+Function gen_transform_statement of MC-Java's statement.inc, as well as 
+function gen_transform_value of MC-Java's value.inc, are modified to examine the 
+operation being called to determine whether the call should be a static one.  
+The previous lack of this check appears to be a simple oversight.
+
+5.
+bp.io.core's gen_import_java.inc is modified to correctly import the
+graphics elements of BridgePoint version 6.1 and 7.0 models into the new 
+version 7.1 graphics metamodel.
+
+5.1
+Function generate_params is modified to generate the parameters in the order 
+specified by the follows-precedes reflexive relationship between the 
+corresponding table columns.  The previous disregard for this relationship
+was causing inconsistency of parameter ordering with respect to model file 
+formats of different BridgePoint versions.
+
+5.2 
+The version number present in an .xtuml model file is now used to determine 
+whether to use the standard, generated model-import code (for version 7.1 
+files), or special, hand-written import code (for version 7.0 files), the 
+latter of which is virtually the same code that is used automatically for 
+version 6.1 SQL imports. 
+
+5.2.1
+A rawParams parameter is added to CoreImport's processStatement(), so that 
+implementors of that method may also have the raw SQL data at their disposal 
+when necessary, as it is for the hand-written code that assists with the
+import of pre-version-7.1 model files.  sql_insert.g is modified to populate
+this parameter with the raw SQL data.  The ImportDataTypeHandler class
+specified in gen_dt_import_java.arc, as an extension of CoreImport, is changed 
+to accept the new parameter in its processStatement().
+
+5.2.2
+CoreImport's expectedVersion() method is changed to be 
+isExpectedVersion(String actualVersion) to allow (in the case of .xtuml 
+imports) both 7.0- and 7.1-version model files to be imported.  The 
+overrides of this method in ImportEESql and ImportFunctionSql are modified 
+accordingly.
+
+5.2.3
+CoreImport's doLoadSql() method is modified to call a new method 
+readVersionNumber() near its start.  This ensures that the version number is 
+read from the file before the import is performed, since 
+countAndValidateInsertStatements() (the other place where the version number
+is read) is not always called prior to import.
+
+5.3
+CoreImport's doLoadSql() method is modified to call clearDatabase on the
+model-root which is the target of the import, even if the domain instance 
+is no longer associated with the model-root, as can happen when a project is 
+closed and its corresponding system is disposed.
+
+5.4
+For version 6.1 SQL imports, explicit calls to batchRelateAll() are added
+to gen_import_java.inc's finishLoad() for all graphics classes that did not 
+exist before the 7.1 model data format.
+
+6. 
+bp.io.core's gen_export_java.inc is modified to correctly translate version 7.1
+models into the BridgePoint 6.1 SQL format on export, when called upon to do so. 
+Also, the version number written when exporting a model to 7.1-format is 
+changed to be "7.1".
+
+6.1
+The lines in io.mdl's file_io.pei.sql that define a traversal of the 
+ooaofgraphics class network (for the purpose of model persistence) 
+are modified to include in that traversal the DIM classes that are employed by 
+the work done for this issue.
+
+7.
+A large number of unused imports were removed from the I686ClearDatabaseTest
+class, specified in canvas.test/gen_testClearDatabaseClass.arc.
+
+8.
+canvas.test.CanvasTest.doTestDiagram() is modified to always write out the 
+expected and actual results files when the two differ.  However, they are now
+written to the test workspace, rather than the development workspace, so
+that they no longer are annoyingly displayed with a CVS "changed" marker in the 
+latter. 
+
+9.
+The internal.io.sql.test models ee_exp_g.sql, err_ee_w_graphics.sql, and 
+os_ee_w_graphics.sql are all modified to include (in each case) a slight 
+increase in a Model instance model_id value.  This is because the Model class 
+now has two identifiers, a model_id and a diagramId, the latter being added 
+because Model is now a subclass of Diagram.  Thus, in the 
+non-persistence-oriented Model_c constructor (i.e. the shorter of the two 
+constructors the class contains), uniqueID() is called twice, thus slightly 
+altering the ID's of the instances of that class.
+
+10. 
+Almost all models under the io.mdl.test expected_results and models folders are
+re-saved using the modified plug-ins developed for this issue.  This is
+because the actual results file for each test is written out in the new 7.1 
+format, so the expected results file's format must match.
+
+10.1
+A utility program ConvertModels is introduced into io.mdl.test which will 
+convert all 6.1 SQL model files within in a folder into version 7.1 
+model files.  This program automates the model conversions performed 
+above, and might be modified to perform similar tasks in the future.
+
+10.2
+properties.test's testProp.xtuml model is also re-saved in 7.1 format
+in order for the properties tests to execute successfully.  However, at the
+time this was actually done, I did not record the reason why.  
+
+11.
+The expected results for canvas.test's OOAofOOATest.testOOAofOOADomainChart
+are modified, as a one-pixel discrepency in the height of a class's 
+rectangle (resulting from changes made for this issue) causes an attribute's
+label to be drawn within the rectangle, whereas before it would not.  
+
+12.
+A logError() method is added to io.core's CorePlugin class.  The method
+is simply a wrapper for the like-named method in bp.core's CorePlugin class, 
+to avoid clients having to fully qualify the class name with each call to the 
+method.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+No work is required beyond that outlined in the Design section.
+
+Unit Test
+---------
+Since a later issue for implementing sequence diagrams will exercise and test
+the connector interconnectivity introduced here in a manner suited
+to its own purposes, it is felt that no new unit tests are needed at this time.   
+The continued operation of existing tests that manipulate association links,   
+which indirectly utilize the new DIM-supported connectivity functionality,
+will be regarded as proof of the new functionality's correctness.
+
+End
+---
+
+$Log: i848.dnt,v $
+Revision 1.1  2009/09/03 18:18:57  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.30.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2005/07/11 16:29:07  jmather
+Job: 848
+Addressed review comments.
+
+Revision 1.6  2005/06/28 16:05:22  jmather
+Job: 848
+Added a couple of design notes.
+
+Revision 1.5  2005/06/25 00:39:13  jmather
+Job: 848
+Ready for review.
+
+Revision 1.4  2005/06/24 22:27:42  jmather
+Job: 848
+Complete first draft.
+
+Revision 1.3  2005/06/24 19:54:01  jmather
+Job: 848
+More progress.
+
+Revision 1.2  2005/06/24 18:44:17  jmather
+Job: 848
+More progress.
+
+Revision 1.1  2005/06/23 19:28:39  jmather
+Job: 848
+A start.
+

@@ -1,0 +1,172 @@
+========================================================================
+
+File:      $RCSfile: dts0100743263.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+TIM::timer_reset_time() Doesn't Work
+
+
+1. Abstract
+-----------
+Ericsson DUCI has reported that the bridge TIM::timer_reset_time() does not 
+work in Model Verifier.  The timer still fires at the originally set interval
+from when the timer is created.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100743263
+[2] Documentation_archive/20090903/technical/Verifier-Debugger/1702.[d|i]nt
+      Model Verifier:  Timer Support
+[3] Documentation_archive/20100712/technical/notes/dts0100652640-654624*
+      652640: Maintain ordered timers in verifier according to the time left
+      654624: Modify the verifier timers to be based on expiration time rather 
+              than the time left
+
+4. Background
+-------------
+The verifier timer implementation was created in [2] and updated significantly 
+in [3] (to handle simulated time and timer "jitter").  The tool provides an 
+implementation of the TIM EE so that OAL written in BridgePoint can run in Model
+Verifier and in generated code without modification.
+
+5. Analysis
+-----------
+5.1  Timers, obviously, have a wait interval specified before they fire.  This
+     interval is used to calculate the actual expiration timestamp.
+5.1.1  In the verifier implementation, the wait interval is stored inside the 
+       timer in the m_delay attribute.  The expiration is stored in the 
+       m_expiration attribute.  A flag in the timer class is used to note
+       whether the timer is a recurring timer or not.
+5.1.2  In the model compiler, the wait interval used to calculate and store the 
+       expiration time in the expiration attribute of the timer struct.  The mc
+       combines the flag and the wait interval into a single struct attribute 
+       named recurrence.  If the value of this attribute is 0, then the timer is
+       not a recurring timer.  If it is non-zero, then the value is the interval
+       of the recurrence.
+
+5.2 timer_add_time() and timer_reset_time() modify timers already in the system
+5.2.1  In the model compiler, timer_add_time(interval) retrieves the timer and 
+       adds the given interval to the timers existing expiration time.  
+       timer_reset_time(interval) rebases the the existing timer, overwriting 
+       the current expiration with a new expiration time of the current time
+       plus the given interval.  Neither of these functions modifies the wait 
+       interval of a recurring timer.
+       
+6. Design
+--------
+6.1  The current implementation of the timer_add_time() and timer_reset_time()
+     functions in the Verifier is where the issue lies.
+6.1.1  In several places, the code uses an "instanceof Timer_c" check as a gate
+       to enter processing.  While this is useful, an additional check is added 
+       to make sure the timer is in the timer list before processing it.  This
+       check guarantees that the return value coming from the function matches
+       what the TIM descriptions specify.  Namely, that if the timer is or is 
+       not in the list will dictate what the return value is.  The modified
+       functions are: timer_cancel(), timer_remaining_time(), timer_add_time(),
+       and timer_reset_time()  
+6.1.2  timer_add_time(): Currently, timer_add_time(interval) correctly sets 
+       the timer expiration to "existing expiration + interval".  However, it 
+       also incorrectly and unnecessarily updates the recurrence delay value 
+       to "new expiration - current time".
+         
+     public static boolean timer_add_time(Object timer_inst, int microseconds) {
+-        if (timer_inst instanceof Timer_c) {
++        if ((timer_inst instanceof Timer_c) && timersList.contains(timer_inst)) {
+            Timer_c timer = (Timer_c) timer_inst;
+            removeTimer(timer);
+            long newExpiration = 0;
+            newExpiration = timer.getExpiration() + microseconds;
+            timer.setExpiration(newExpiration);
+ -           timer.setDelay((int)(newExpiration - getCurrentTime()));
+            insertTimer(timer);
+            return true; // succesfully added time
+        }
+        return false;
+    }
+         
+6.1.3  timer_reset_time(): Currently, timer_reset_time(interval) simply up-
+       dates the recurrence delay value to "interval" and does nothing with
+       the expiration timestamp.  The fix is to have timer_reset_time(interval) 
+       update the timer expiration to "current timer + interval" like the model 
+       compiler implementation. The modification of the recurrence delay is 
+       removed as well.
+  
+    public static boolean timer_reset_time(Object timer_inst, int microseconds) {
+-        if (timer_inst instanceof Timer_c) {
++        if ((timer_inst instanceof Timer_c) && timersList.contains(timer_inst)) {
+            Timer_c timer = (Timer_c) timer_inst;
+            removeTimer(timer);
+-            timer.setDelay(microseconds);
++            timer.setExpiration(Util_c.Addinttolong(microseconds, getCurrentTime()));
+            timer.setRunning(true);
+            insertTimer(timer);
+            return true; // successfully reset
+        }
+        return false;
+    }
+    
+7. Implementation Comments
+--------------------------
+None.
+
+8. Unit Test
+------------
+8.1  Existing verifier JUnit must pass.
+
+8.2  Manual Test:
+       - Import the test model attached to [1]
+       - Create a Model Verifier Launch Configuration for SB2 that logs
+         execution activity and does not use simulated time.
+       - Launch the Model verifier using this configuration
+       - Navigate in Session Explorer to "SB2 > SB2 > SB2 > Test Functions"
+       - Execute TC1
+       R The model will run without ceasing. Let it run at least 20 seconds.
+       - Stop the execution
+       - Create a Model Verifier Launch Configuration for SB2 that logs
+         execution activity and uses simulated time.
+       - Launch the Model verifier using this configuration
+       - Navigate in Session Explorer to "SB2 > SB2 > SB2 > Test Functions"
+       - Execute TC1
+       R The model will run without ceasing. Let it run at least 20 seconds.
+       
+       
+9. Code Changes
+---------------
+Branch name: R3_2_3-SKB-dts0100743263 (branched at bp.core/src)
+
+com.mentor.nucleus.bp.core/src/lib/TIM.java
+
+
+
+End
+---
+
+$Log: dts0100743263.int,v $
+Revision 1.4  2011/01/14 19:55:13  kbrown
+job:dts0100743263
+Small tweak to only run verifier Junit.  There's no way this can have effect on other tests.
+
+Revision 1.3  2011/01/14 19:35:37  kbrown
+job:dts0100743263
+Additional updates.
+
+Revision 1.2  2011/01/14 15:51:10  kbrown
+job:dts0100743263
+Review updates.
+
+Revision 1.1  2011/01/14 15:35:14  kbrown
+job:dts0100743263
+INT for fix.

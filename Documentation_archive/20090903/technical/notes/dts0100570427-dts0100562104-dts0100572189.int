@@ -1,0 +1,1308 @@
+========================================================================
+
+File:      $RCSfile: dts0100570427-dts0100562104-dts0100572189.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Export and MC export omit transition actions
+
+
+1. Abstract
+-----------
+This note describes how emitting OAL instances for transition actions was added.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest item dts0100570427
+  http://dtsweb.wv.mentorg.com/cqweb/main?command=GetPrintableEntity&entityDefName=Defect&entityId=34122004&tabName=All&print=yes&rmsessionid=0cbe650e-096b-4a61-a60d-932262b09da1
+[2] ClearQuest item dts0100562104 (Transient dimensions are not persisted)
+  http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=5c02a44a-c175-4770-9d39-932262b09da1
+[3] ClearQuest item dts0100572189 (Stop persisting OAL instance data in mode files)
+  http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=5c02a44a-c175-4770-9d39-932262b09da1
+[4] <cvs>Documentation/internal/technical/Persistence/i1699.dnt
+   Design note for the removal of OAL persistence.
+[5] Persist action language
+ http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1699
+[6] OAL persistence paraent bug
+ http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2055
+[7] "Cloverdale": new generator/MC
+ http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1021
+[8] ClearQuest item dts0100573340
+ Prevent export of a model with errors when OAL Export is selected
+ http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&entityDefName=Defect&entityID=dts0100573340
+[9] ClearQuest item dts0100573488
+The testInstanceViewingAndNavigation() in debug.ui is failing
+http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=ce319df9-b519-44d5-9532-932262af9da0
+
+    
+4. Background
+-------------
+When MC-3020 development needed to implement actions on transitions, it was
+found that the necessary OAL instances were not present in the file.
+
+5. Analysis
+-----------
+Model output is controlled by a pre-existing instance file in the persistence
+plugin, com.mentor.nucleus.bp.io.mdl. The file is located at sql/stream.pei.sql.
+On examination of the file, it appeared that the necessary instances to support
+transition action oal were present, but they passed through a duplicate action
+home entry. While this did not cause any build time errors, the necessary code
+was not being emitted to cause the Transition Action Body and its child elements
+to be written.
+
+6. Design
+---------
+6.1 Stream Export Changes
+The instance set is changed so that a single action home reference is used and
+all sub-types are correctly handled in one place ('+' means added, '-' means
+removed and '~' means modified).
+
+  INSERT INTO EO VALUES ('3.6.2.1', '3.6.2.1.1', '', 'Action Home',
+                                                          513, 'one', 'first' );
+  INSERT INTO EO VALUES ('3.6.2.1.1', '3.6.2.1.1.1', '', 'Action',
+                                                          514, 'one', 'first' );
+~ INSERT INTO EO VALUES ('3.6.2.1.1.1', '15', '3.6.2.1.1.2','State Action Body',
+                           691, 'one', 'first', false, false, '', false, true );
++ INSERT INTO EO VALUES ('3.6.2.1.1.2',   '15', '', 'Transition Action Body',
+                           688, 'one', 'first', false, false, '', false, true );
+
+  INSERT INTO EO VALUES ( '3.7.1', '', '3.7.2', 'No Event Transition',
+                                                          507, 'one', 'first' );
+  INSERT INTO EO VALUES ( '3.7.2', '', '3.7.3', 'New State Transition',
+                                                          507, 'one', 'first' );
+  INSERT INTO EO VALUES ( '3.7.3', '', '3.7.4', 'Creation Transition',
+                                                          507, 'one', 'first' );
+~ INSERT INTO EO VALUES ( '3.7.4', '3.6.2.1', '', 'Transition Action Home',
+                                                          530, 'one', 'first' );
+- INSERT INTO EO VALUES ( '3.6.2.1', '3.6.2.1.1', '', 'Action Home',
+                                                          513, 'one', 'first' );
+- INSERT INTO EO VALUES ( '3.6.2.1.1', '3.6.2.1.1.1', '', 'Action',
+                                                          514, 'one', 'first' );
+- INSERT INTO EO VALUES ( '3.6.2.1.1.2',   '15', '', 'Transition Action Body',
+                           688, 'one', 'first', false, false, '', false, true );
+
+The third attribute in the State Action Body line was modified from empty '' to
+link in the new added Transition Action Body element.
+The second attribute value in the Transition Action Home line '~' was modified
+from '3.7.4.1' to refer to the existing Action Home value in the first line,
+instead of the deleted duplicate tree.
+
+6.2 Update "Cleaning" Targets
+During development it was discovered that the "Project > Clean..." command did
+not remove the generated ExportModelStream.java and ImportModelStream.java
+files.  The generate.xml file was updated in the clean_export.java and
+clean_import.java targets to remove the aforementioned files.
+
+7. Implementation Comments
+--------------------------
+7.1 Issue dts0100562104 [2] has also been addressed in this branch.
+This issue describes the problem that transient instances do not have dimension
+data persisted.  The problem is that the file_io.pei.sql and stream.pei.sql
+files did not persist the S_DIM instance(s) across R844 and R849.  These
+persistence "paths" were added to these pei files.
+
+Note that the issue described how V_TRN.dimensions did not have a value.  This
+is not a bug, it is expected.  V_TRN.dimensions was deprecated when fixed-length
+arrays were introduced.  The V_TRN.dimensions field was left in-place simply for 
+consistency/orthagonality with the places in the meta-model that have dimensions.
+All other places in the Meta-model do use this field.  It the place where the 
+user enters the dimension string.  V_TRN is different because the user never
+enters a dimension string for a transient.  A transient get its dimensions
+based on the rvalue that it is assigned from.  As part of this issue 
+the V_TRN.Dimensions description shall be modified to include this information.
+
+7.2 Issue dts0100572189 [3] has also been addressed in this branch.
+This issue calls-out the fact that we do not need to persist OAL instance data
+in the model files any more, and by not persisting the OAL instance data in the 
+model files the size of the files we manipulate shrinks and the generated
+persistence code is simplified.  This leads to better performance and removes
+what has been an error cluster.
+
+7.2.1 History
+OAL instance data was persisted into the model files beginning in BP version 
+1.4.5 [5]. This was done as a step toward the goal of a moving away from the 
+generator and toward a completely self-hosted tool (modeled action language and 
+modeled model compiler). After taking this initial step of persisting the 
+action language other BP development took precedence, and other features were 
+introduced. These features have moved the tool forward to a point where 
+persistence of the OAL data in the model files is no longer necessary. The 
+primary features that have done this are copy/paste and the introduction of a 
+Model Compiler prebuilder. Copy/paste introduced a second persistence mechanism 
+(stream-based export), and the MC prebuilder uses this stream-based export. 
+Additionally, and of primary concern, is the tools performance has degraded 
+since the introduction of persisted OAL instances. Removing the OAL instance 
+persistence allows smaller files to be persisted and simplifies the generated 
+code resulting in performance improvements.
+
+
+7.2.2 Implementation of removal of persisted OAL instance data
+The design note used to add  this OAL instance data [4] was utilized to remove 
+it.  This was a change to file_io.pei.sql (stream.pei.sql was not modified).
+The OAL persistence works the same way it did previously through the stream 
+export (copy/paste, model export, MC compiler prebuilder), the instances are
+simply no longer loaded or persisted from the model files.  As user modify 
+action language and the model files are persisted, the PEI will no longer
+be persisted to the files. 
+
+Removal of the OAL persistence data is simply a  matter of "cutting-out" 
+persistence at the OAL persistence entry point in the Body subsystem.  These 
+entry points were at R684, R685, R686, R687, R688, R691, R693, R695, R696, and  
+R697.  After that was done, several sections of the file_io.pei.sql were removed
+(they were no longer used).  The sections removed were where the Body, Event, 
+and Value subsystems were being persisted.
+
+7.2.2.1 Modifications to export code
+Modified the export code to account for the fact that OAL instance types no 
+longer have PMCs.   There is a test generated in every export_* function that 
+checks to make sure that the in-memory instances match the persisted instances 
+and the problem is, because we have 2 different mechanisms there are not always
+PMCs for the in-memory instances.  Specifically, with this issues change OAL
+instances no longer have PMCs.  To fix this error check, a new parameter was 
+added to the export_* functions (boolean isPersistable), and it is used to 
+determine if the PMC test should occur or not.  When we encounter an OAL root 
+element we recursively stop checking for PMCs so that the OAL instance data is 
+not checked.
+      
+7.2.2.2 Modifications to the Export Wizard
+Modified the export wizard to do a parse-all before exporting when the OAL
+Export preference is selected by the user.  Additionally, progress dialogs were
+added to make it clear progress is being made and what stage of the export we
+are in.  There are 3 main stages: 
+1) loading (import)
+This is done to assure the model is fully loaded before export.
+2) Parse All
+This is done only if the "Export OAL" preference is selected
+3) Export Data
+
+Note that the loading of the model is more time consuming now then in the 
+prior version because with this change to remove the persisted OAL lazy loading 
+is now working properly so the load during export may be longer.
+ 
+7.2.2.2 Change ACT_ACT > ACT_BLK persistence path
+Since we are now using the parsed data to persist instance data during model
+export we can once again use R612 as the persistence path for the stream
+export instead of R601.  In fact we must do this because it is was is populated
+during parse-all.   R601 is now only used by the verifier.
+
+7.3 Force a "Load and Persist" of the models in bp.core including ooaofooa
+In order to remove the OAL from our development models and thus get the 
+benefit of the OAL instance removal all models under bp.core having been
+modified using the "Load and Persist" utility to force the model to be
+loaded and written out.  This means essentially every file in ooaofooa has
+been modified and the OAL instance data has been removed.
+ 
+I ran a command to see the total size of all *.xtuml files under 
+bp.core/models/ooaofooa before and after the stripping of persisted OAL.  
+Here is the result.  
+Before: 41062460
+After:     9749793
+
+Here is the command I used:  
+find . -name "*.xtuml" -exec ls -l {} \; | cut -d ' ' -f 5 | cat sizes.txt | awk 'BEGIN { tot=0 } { tot+=$1 } END { print tot }'
+
+7.4 Force a "Load and Persist" of the ooaofgraphics in ui.canvas
+Like 7.3 above this results in all the model files being marked dirty.
+
+7.5 Note that model export is now performing a parse-all prior to export as 
+noted in 7.2.2.2 above.  However, when there are parse errors in the model,
+we are still allowing the export.  A separate issue is raised to 
+address this [8].
+
+7.6 A test failure was introduced that we are going to address separately [9] 
+[8:57:40 PM] Bob: Gents, Keith has pointed out to me that he hit one remaining 
+error in tests.  It is in debug.ui testInstanceViewingAndNavigation().  There is 
+1 classes instance data that is missing.  I can not explain this...    I 
+suspected the move from persistence on R601 to R612 (which is the way we did it 
+before persisted OAL) may have had something to do with it, but looking at 
+Body.initialize(), which is used by the verifier during launch I do not see the 
+problem.
+[8:57:58 PM] Bob: I am going to need Campbell to look at this.
+[8:58:26 PM] Bob: I suggest you go ahead and promote so Campbell can do this 
+from head.
+[8:59:12 PM] Cortland Starrett: I support that.  Make a clear note of it in the 
+issue.
+
+8. Unit Test
+------------
+8.1 Verify that ACT_TAB instances are exported
+- Ensure export OAL preference is checked Window > Preferences > BridgePoint >
+  Model Export > Export OAL.
+- Select a model with OAL in a transition action.
+- Use Export > Other > BridgePoint Model
+- Choose a suitable file location and Finish.
+R The resulting file contains ACT_TAB instances.
+
+All other existing unit tests pass.
+
+9. Code Changes
+---------------
+Changes are in branch R2_1_2-CDM-dts0100570427
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Transient Var/Transient Var.xtuml
+
+com.mentor.nucleus.bp.io.core/arc/export_functions.inc
+com.mentor.nucleus.bp.io.core/arc/gen_export_java.inc
+
+com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl.wizards/
+    ModelExportWizard.java
+com.mentor.nucleus.bp.io.mdl/arc/gen_stream_export.arc
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql
+com.mentor.nucleus.bp.io.mdl/generate.xml
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/testOAL1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/watch_export.xtuml
+
+
+Following are the modifications made by the "Load and Persist" utility.
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Context Item/Context Item.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Context Menu Entry/Context Menu Entry.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Custom Field Label/Custom Field Label.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Field/Field.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Menu Entry Filter/Menu Entry Filter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Step/Step.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Workflow/Workflow.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Context Menu/Context Menu.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/OOA/
+    Block/Block.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/OOA/
+    Client Class/Client Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/OOA/
+    Client Function/Client Function.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/OOA/
+    Statement/Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/OOA/
+    OOA.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/context_menu/
+    context_menu.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/Datatypes/
+    Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Accept Event/Accept Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Accept Event Action/Accept Event Action.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Accept Time Event Action/Accept Time Event Action.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Action Node/Action Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity/Activity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity Diagram Action/Activity Diagram Action.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity Edge/Activity Edge.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity Final Node/Activity Final Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity In Activity/Activity In Activity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity Node/Activity Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity Partition/Activity Partition.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Control Node/Control Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Decision Merge Node/Decision Merge Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Flow Final Node/Flow Final Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Fork Join Node/Fork Join Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Initial Node/Initial Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Object Node/Object Node.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Send Signal/Send Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Association/Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Associated One Side/Class As Associated One Side.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Associated Other Side/
+    Class As Associated Other Side.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Derived One Side/Class As Derived One Side.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Derived Other Side/Class As Derived Other Side.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Link/Class As Link.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Simple Formalizer/Class As Simple Formalizer.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Simple Participant/Class As Simple Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Subtype/Class As Subtype.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class As Supertype/Class As Supertype.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Class In Association/Class In Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Derived Association/Derived Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Linked Association/Linked Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Referred To Class in Assoc/Referred To Class in Assoc.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Referring Class In Assoc/Referring Class In Assoc.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Simple Association/Simple Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Subtype Supertype Association/
+    Subtype Supertype Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Block/Block.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Body/Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Body in Component/Body in Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Break/Break.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Bridge Body/Bridge Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Continue/Continue.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Control/Control.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Derived Attribute Body/Derived Attribute Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    ElseIf Stmt/ElseIf Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Else Stmt/Else Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    For Stmt/For Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Function Body/Function Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    If Stmt/If Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Operation Body/Operation Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Provided Operation Body/Provided Operation Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Provided Signal Body/Provided Signal Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Required Operation Body/Required Operation Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Required Signal Body/Required Signal Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    State Action Body/State Action Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Statement/Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Transition Action Body/Transition Action Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    While Stmt/While Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Breakpoint/Breakpoint/Breakpoint.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Breakpoint/Condition/Condition.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Breakpoint/Event Breakpoint/Event Breakpoint.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Breakpoint/OAL Breakpoint/OAL Breakpoint.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Breakpoint/State Breakpoint/State Breakpoint.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Breakpoint/Breakpoint.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Communication/Communication.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Communication in Communication/
+    Communication in Communication.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Communication Link/Communication Link.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Message in Communication/Message in Communication.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Participant in Communication/
+    Participant in Communication.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Communication.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/Access Path/Access Path.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/Communication Path/Communication Path.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/EE to SM Comm Path/EE to SM Comm Path.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/EE to SM Event Comm/EE to SM Event Comm.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to EE Access Path/SM to EE Access Path.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to EE Comm Path/SM to EE Comm Path.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to EE Data Item Access/
+    SM to EE Data Item Access.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to EE Event Comm/SM to EE Event Comm.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to OBJ Access Path/SM to OBJ Access Path.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to OBJ Attribute Access/
+    SM to OBJ Attribute Access.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to SM Comm Path/SM to SM Comm Path.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/SM to SM Event Comm/SM to SM Event Comm.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication And Access/Communication And Access.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component/Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Component/Imported Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Provision/Imported Provision.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Provision In Satisfaction/
+    Imported Provision In Satisfaction.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Reference/Imported Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Requirement/Imported Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Component Library.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Nesting/Component in Component/
+    Component in Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Nesting/Domain As Component/Domain As Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Nesting/Component Nesting.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Packaging/Component Package/Component Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Packaging/Component Package in Package/
+    Component Package in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Packaging/Component Packaging.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Delegation/Delegation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Executable Property/Executable Property.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface/Interface.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface Operation/Interface Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface Reference/Interface Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface Reference In Delegation/
+    Interface Reference In Delegation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface Signal/Interface Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Port/Port.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Property Parameter/Property Parameter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Provision/Provision.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Requirement/Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Satisfaction/Satisfaction.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Provided Executable Property/
+    Provided Executable Property.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Provided Operation/
+    Provided Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Provided Signal/
+    Provided Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Required Executable Property/
+    Required Executable Property.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Required Operation/
+    Required Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Required Signal/
+    Required Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/
+    Signal Provisions and Requirements.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Bridge/Bridge.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Bridge Parameter/Bridge Parameter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Core Data Type/Core Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type/Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type in Package/Data Type in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Datatype In Suppression/Datatype In Suppression.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type Package/Data Type Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type Package in Package/Data Type Package in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Dimensions/Dimensions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Domain/Domain.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    EE Package in Package/EE Package in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Enumeration Data Type/Enumeration Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Enumerator/Enumerator.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity/External Entity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity Data Item/External Entity Data Item.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity Event/External Entity Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity Event Data/External Entity Event Data.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity Event Data Item/External Entity Event Data Item.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity in Model/External Entity in Model.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity in Package/External Entity in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    External Entity Package/External Entity Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function/Function.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function in Package/Function in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function Package/Function Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function Package in Package/Function Package in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function Parameter/Function Parameter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Instance Reference Data Type/Instance Reference Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Package Linking/External Entity Package in Domain/
+    External Entity Package in Domain.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Package Linking/Function Package in Domain/Function Package in Domain.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Package Linking/Package Linking.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Structured Data Type/Structured Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Structure Member/Structure Member.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Subsystem/Subsystem.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Subsystem in Domain/Subsystem in Domain.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Subsystem in Subsystem/Subsystem in Subsystem.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    System Model/System Model.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    User Data Type/User Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Domain.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Package/Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Package In Package/Package In Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Specification Package/Specification Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Element Packaging.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event Statement/Create Event Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event to Class/Create Event to Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event to Creator/Create Event to Creator.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event to External Entity/Create Event to External Entity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event to Instance/Create Event to Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create SM Event Statement/Create SM Event Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Event Specification Statement/Event Specification Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate/Generate.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate Event Statement/Generate Event Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate Preexisting Event/Generate Preexisting Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate SM Event Statement/Generate SM Event Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate to Class/Generate to Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate to Creator/Generate to Creator.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate to External Entity/Generate to External Entity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/Context Menu Entry Functions/Context Menu Entry Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Attribute Value/Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Block in Stack Frame/Block in Stack Frame.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In Engine/Class In Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In State/Class In State.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class Monitor/Class Monitor.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class State Machine Execution.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Data Item Value/Data Item Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Event Queue Entry/Event Queue Entry.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Execution Engine/Execution Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance/Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Link/Link.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Link Participation/Link Participation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Monitor/Monitor.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Pending Event/Pending Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Self Queue Entry/Self Queue Entry.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack/Stack.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack Frame/Stack Frame.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Timer/Timer.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Value in Stack Frame/Value in Stack Frame.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Assign to Member/Assign to Member.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Create/Create.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Create No Variable/Create No Variable.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Delete/Delete.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Instance Access.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Actor Participant/Actor Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Class Instance Participant/Class Instance Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Class Participant/Class Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Class Participant Attribute/Class Participant Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Component Participant/Component Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/External Entity Participant/External Entity Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Formal Attribute/Formal Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Formal Attribute Value/Formal Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Function Package Participant/Function Package Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Informal Attribute/Informal Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Informal Attribute Value/Informal Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Instance Attribute Value/Instance Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Interaction Participant/Interaction Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Lifespan/Lifespan.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Time Span/Time Span.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Timing Mark/Timing Mark.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Use Case Participant/Use Case Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Interaction.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interface Package/Interface Package/Interface Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interface Package/Interface Package in Interface Package/
+    Interface Package in Interface Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interface Package/Interface Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Bridge Invocation/Bridge Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Function Invocation/Function Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Interface Operation Invocation/
+    Interface Operation Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Operation Invocation/Operation Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Return Stmt/Return Stmt.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Signal Invocation/Signal Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Instance in Reference/Instance in Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Instance in Where Clause/Instance in Where Clause.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Local/Local.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Local Reference/Local Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Local Selected Reference/Local Selected Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Local Value/Local Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Local.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Asynchronous Message/Asynchronous Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Bridge Argument/Bridge Argument.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Bridge Message/Bridge Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Event Argument/Event Argument.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Event Message/Event Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Function Argument/Function Argument.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Function Message/Function Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Informal Argument/Informal Argument.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Informal Asynchronous Message/Informal Asynchronous Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Informal Synchronous Message/Informal Synchronous Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Message/Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Message Argument/Message Argument.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Operation Argument/Operation Argument.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Operation Message/Operation Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Return Message/Return Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Synchronous Message/Synchronous Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Message.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Delegation In Component/
+    Delegation In Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Satisfaction In Component/
+    Satisfaction In Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Satisfaction In Component Package/
+    Satisfaction In Component Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Persistence Associations.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Relate/Relate.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Relate Using/Relate Using.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Unrelate/Unrelate.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Unrelate Using/Unrelate Using.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Relate And Unrelate.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Array Value/Array Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Component Reference Value/Component Reference Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Runtime Value/Runtime Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Simple Core Value/Simple Core Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Simple Value/Simple Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Structured Value/Structured Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Value In Array/Value In Array.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Value In Structure/Value In Structure.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Runtime Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Chain Link/Chain Link.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select/Select.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select From Instances/Select From Instances.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select From Instances Where/Select From Instances Where.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select Related By/Select Related By.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select Related Where/Select Related Where.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Selection.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Sequence/
+    Sequence/Sequence.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Sequence/
+    Sequence in Sequence/Sequence in Sequence.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Sequence/
+    Sequence.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Action/Action.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Action Home/Action Home.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Cant Happen/Cant Happen.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Class State Machine/Class State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Creation Transition/Creation Transition.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Event Ignored/Event Ignored.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Event Supplemental Data/Event Supplemental Data.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Instance State Machine/Instance State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Local Event/Local Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Mealy Action Home/Mealy Action Home.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Mealy State Machine/Mealy State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Moore Action Home/Moore Action Home.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Moore State Machine/Moore State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/New State Transition/New State Transition.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/No Event Transition/No Event Transition.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Non Local Event/Non Local Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Polymorphic Event/Polymorphic Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/SEM Event/SEM Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Signal Event/Signal Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Event Matrix Entry/State Event Matrix Entry.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine/State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine Event/State Machine Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine Event Data Item/
+    State Machine Event Data Item.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine State/State Machine State.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Supplemental Data Items/Supplemental Data Items.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Transition/Transition.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Transition Action Home/Transition Action Home.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Attribute/Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Attribute Reference in Class/Attribute Reference in Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Base Attribute/Base Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Class Identifier/Class Identifier.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Class Identifier Attribute/Class Identifier Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Derived Base Attribute/Derived Base Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Imported Class/Imported Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Model Class/Model Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/New Base Attribute/New Base Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Operation/Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Operation Parameter/Operation Parameter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Referential Attribute/Referential Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Referential Attribute Visited Recorder/
+    Referential Attribute Visited Recorder.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Referred To Identifier Attribute/
+    Referred To Identifier Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Subsystem.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    System Level Datatypes/System Datatype in Package/
+    System Datatype in Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    System Level Datatypes/System Datatype Package/System Datatype Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    System Level Datatypes/System Level Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Binary Association/Binary Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Extend/Extend.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Generalization/Generalization.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Include/Include.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Participant in Use Case/Participant in Use Case.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Use Case Association/Use Case Association.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Use Case Diagram/Use Case Diagram.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Use Case in Use Case/Use Case in Use Case.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Use Case.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Actual Parameter/Actual Parameter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Array Element Reference/Array Element Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Array Length Value/Array Length Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Attribute Value Reference/Attribute Value Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Binary Operation/Binary Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Bridge Value/Bridge Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Event Datum Value/Event Datum Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Event Parameter Reference/Event Parameter Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Function Value/Function Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Handle/Instance Handle.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Reference/Instance Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Set/Instance Set.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Set Reference/Instance Set Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Literal Boolean/Literal Boolean.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Literal Enumerator/Literal Enumerator.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Literal Integer/Literal Integer.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Literal Real/Literal Real.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Literal String/Literal String.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Member Value Reference/Member Value Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Message Value/Message Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Operation Value/Operation Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Parameter Value/Parameter Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Selected Reference/Selected Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Transient Value Reference/Transient Value Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Transient Var/Transient Var.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Unary Operation/Unary Operation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Variable/Variable.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Variable Location/Variable Location.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Wiring/
+    Automatic Wiring/Automatic Wiring.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Wiring/
+    Wiring.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    ooaofooa.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/
+    ooaofooa_hierarchy/CompTree/Alternate Child/Alternate Child.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/
+    ooaofooa_hierarchy/CompTree/Tree_Node_Specification/
+    Tree_Node_Specification.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/
+    ooaofooa_hierarchy/CompTree/Tree_Parenthood_Specification/
+    Tree_Parenthood_Specification.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/
+    ooaofooa_hierarchy/CompTree/CompTree.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/
+    ooaofooa_hierarchy/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/
+    ooaofooa_hierarchy/ooaofooa_hierarchy.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/
+    com.mentor.nucleus.bp.core.xtuml
+
+com.mentor.nucleus.bp.core.test/expected_results/ModifyNonFullyLoadedModel_1/
+	ModifyNonFullyLoadedModel_1-shape_deletion_transaction.exp
+
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Connector Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Connector Tool/Connector Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Model Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Model Tool/Model Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Scroll Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Scroll Tool/Scroll Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Selection Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Selection Tool/Selection Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Shape Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Shape Tool/Shape Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Tool Activation Policy/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Tool Activation Policy/
+    Tool Activation Policy.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Functions/Functions.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Anchor On Segment/Anchor On Segment.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Auto Reconciliation Specification/
+    Auto Reconciliation Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Client Class Dependency/
+    Client Class Dependency.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Connector/Connector.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Containing Shape/Containing Shape.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Element in Model Specification/
+    Element in Model Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Element In Move/Element In Move.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Element In Resize/Element In Resize.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Element In Suppression/
+    Element In Suppression.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Element Specification/
+    Element Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Floating Text/Floating Text.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Graphical Element/Graphical Element.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Line Segment/Line Segment.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Model/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Model/Model.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Model Specification/Model Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/NonContaining Shape/NonContaining Shape.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Shape/Shape.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Text In Move/Text In Move.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Waypoint In Move/Waypoint In Move.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/Connector Specification/
+    Connector Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/Connector Terminal/
+    Connector Terminal.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/Containing Shape Specification/
+    Containing Shape Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/NonContaining Shape Specification/
+    NonContaining Shape Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/Shape Specification/
+    Shape Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/Shape Terminal/Shape Terminal.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/Terminal Specification/
+    Terminal Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Terminal Specifications/WhiteSpace Terminal/
+    WhiteSpace Terminal.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/CoreSemanticModelBridge/
+    CoreSemanticModelBridge.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Diagram/Diagram.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/DiagramElement/
+    DiagramElement.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/DiagramLink/DiagramLink.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Element/Element.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Ellipse/Ellipse.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/GraphConnector/
+    GraphConnector.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/GraphEdge/GraphEdge.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/GraphElement/GraphElement.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/GraphicPrimitive/
+    GraphicPrimitive.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/GraphNode/GraphNode.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Image/Image.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/LeafElement/LeafElement.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Point/Point.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/PolyLine/PolyLine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Property/Property.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Reference/Reference.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/SemanticModelBridge/
+    SemanticModelBridge.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/SimpleSemanticModelElement/
+    SimpleSemanticModelElement.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/TextElement/TextElement.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Waypoint/Waypoint.xtuml
+
+
+End
+---
+
+$Log: dts0100570427-dts0100562104-dts0100572189.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/03/22 01:19:47  rmulvey
+Job:dts0100572189
+Updated to account for ClearQuest item dts0100573488 being entered about
+the testInstanceViewingAndNavigation() unit test in debug.ui is failing and the fact
+we will go ahead and promote now knowing this needs to be resolved.
+
+Revision 1.8  2009/03/21 06:14:14  rmulvey
+Job:dts0100572189
+Updated a bad document reference
+
+Revision 1.7  2009/03/21 00:42:52  rmulvey
+Job:dts0100572189
+Updated the expected test result log for the testDeleteClassWithReferringImportClass test to account for the fact that bp.canvas/ooaofgraphics (the model used by this test) was persisted using the Load and Persist utility to remove all persisted OAL from the model files.
+
+Revision 1.6  2009/03/20 14:10:59  rmulvey
+Job:dts0100572189
+Updated the note to account for the use of the "Load and Persist" utility on the ooaofgraphics and to report the size diff before and after stripping OAL instance data from ooaofooa.
+
+Revision 1.5  2009/03/20 07:12:06  rmulvey
+Job:dts0100572189
+Updated to account for the use of the "Load and Persist" utility on the bp.core models.
+
+Revision 1.4  2009/03/20 05:10:29  rmulvey
+Job:dts0100572189
+Updated
+
+Revision 1.3  2009/03/20 02:53:50  rmulvey
+Job:dts0100572189
+Updated
+
+Revision 1.2  2009/03/18 04:40:51  rmulvey
+Job:dts0100570427 dts0100562104 dts0100572189
+Updated to account for review observations.
+
+Revision 1.1  2009/03/17 15:07:44  rmulvey
+Job:dts0100570427 dts0100562104 dts0100572189
+Updated the note to account for 2 other persistence changes being added to this
+branch. The issue added are:
+
+Revision 1.2  2009/03/09 13:23:04  kbrown
+job:dts0100570427
+Updated to include changes to generate.xml to fix cleaning targets.
+
+Revision 1.1  2009/03/09 11:54:33  campbell
+Job: dts0100570427
+Introduced.

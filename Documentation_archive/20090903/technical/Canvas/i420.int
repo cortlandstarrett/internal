@@ -1,0 +1,195 @@
+========================================================================
+
+File:      $RCSfile: i420.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Replacing Model and OOA Type literals with an Enumeration
+
+Abstract
+--------
+This note describes the implementation for removing model and ooa type literals
+from the Canvas model and from the canvas plugin code.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 420
+[2] Bugzilla issue 384
+
+Background
+----------
+Currently there are literal values spread thoughout the OAL and used in  
+ui.canvas/plugin.xml. The enumerator values for Model_Type are in the
+defaultFor.modelType attribute. The enumerator values for OOA_Type are in the
+symbol.elemType attribute.  Note that the current values of these constants are
+also documented in the attribute descriptions for Model Specification.Model_Type
+and Element Specification.OOA_Type in the ooa of graphics[2].
+   
+Implementation Comments
+-----------------------
+i420.0
+Parse keyword "Value:" is used for each enumerator.  The integer that follows 
+the colon is the value assigned to the enumerator. 
+
+i420.1
+Changes are made mainly in enums.inc.  Previously, enums.inc defined an 
+"uninitialized enum" and assigned it to -1.  Then, the enumerators were obtained 
+and each one was assigned a value that was an increment of the previous one,
+starting from 0.  enums.inc is changed so that the keyword Value is parsed to
+obtain the value from the ooaofgraphics model and assigned to the enumerator.
+Basically, the enumerator name is first obtained. A check is made to see if the 
+name is an empty string.  If not, then we proceed to obtain the value using
+enum.Descrip:Value, followed by a STRING_TO_INTEGER.  The STRING_TO_INTEGER
+function returns a 0 if the result of the enum.Descrip:Value call is 
+non-numeric.  So, we can use that to handle non-numeric values. However, if the 
+value of the enumerator itself happens to be 0, then we need to be careful not 
+to report that as a non-numeric error.  So, a check is made to see if the result 
+of the call enum.Descrip:Value is the string "0", and if it is, then we assign 0 
+to the enumerator.  If it is not the string "0", then a non-numeric error 
+message is reported.
+
+Also, note that a counter is first initialized to 0.  This counter is updated to
+the value of the enumerator's value each time a valid colored value exists.  If, 
+a colored value does not exist for a particular enumerator, this counter is
+incremented by 1 and is assigned to that enumerator.  Since the counter is first
+incremented and then assigned to the enumerator if neccessary, in the case
+that no colored value exists for any of the enumerators, the value assigned to
+each enumerator is an increment of the previous one, starting from 1.
+
+i420.2
+The split function is used with the argument "\\." on the the variable that 
+holds the path to the enumerator to store the individual units of the path in an
+array.  The \\ is an escape sequence.  The last item represents the enumerator 
+name, and the whole path minus the last item represents the path to the 
+enumeration class name.  A for loop along with a string.concat is used to 
+assemble all the items (minus the last part) to form the enumeration class name.  
+The reflection interface is used to obtain the value of the enumerator by doing 
+a Class.forName followed by a Class.getField method. 
+
+To test if the values are loaded correctly, a new test method called 
+test_CanvasPlugin() was defined in io.canvas.test/SymbolTest.java.  The details
+of this test can be found in i420.dnt, under the Unit Tests section.
+
+
+i420.3
+Throughout ooaofgraphics, literal values referring to OOAType and ModelType were 
+replaced by the enumerators.  All literal values in hand-written code referring
+to OOAType and ModelType are replaced by the enumerators.  In order to replace
+the literal values with the enumerators in generated code, changes had to be 
+made in the archetype files that generated the code which contained the literal
+values.
+
+In MC-Java/referring.inc, there is a section of code that deals with the method
+"unrelatedAcrossR$xxx."  An if-statement checks if the type of a variable used
+in that section of code is a string or not.  If not, it passes in 0 as a an 
+argument to a method.  Due to this, various method calls with literal values 
+referring to OOAType and ModelType are found in the generated code.  Examples 
+are setOoa_type (0) and setModel_type(0).  An if-statement is added to check if 
+the generated method call refers to OOAType or ModelType and if yes, the 
+argument 0 is replaced by Ooatype_c.None or Modeltype_c.None, so that the 
+generated code, for instance, would look like setOoa_type (Ooatype_c.None).
+
+In io.core/arc/gen_export_java.inc, under the GD instances section, the code
+selected.getModel_type() was assigned to a literal value that refers to 
+ModelType.  The literal value is replaced by the ModelType enumerator:
+Modeltype_c.${gd.modelId}.  To complement this change, the integers in the 
+modelID field of INSERT INTO GD VALUES in file_io.pei.sql were replaced by the 
+ModelType enumerator names. The modelID type was changed to string in 
+ooaofgraphics.
+
+In io.core/arc/gen_import_java.inc, there were literal values referring to
+OOAType. These were hardcoded, and therefore there was no need to make any 
+changes to any table or the model.  Only the hardcoded instances were replaced 
+by the OOAType enumerators.  
+
+
+The changes for not participating made in referring.inc are obsoleted by the
+work for i384[2]. These changes are therefore removed from the code changes list
+below.
+
+The changes to the Canvas domain exposed the fact that schema_gen.arc in MC-Java
+did not attempt to handle enumerations. These defaulted to STRING, causing
+schemas generated afterwards to throw errors when used. Thus, schema_gen.arc was
+updated to set an enumeration to an INTEGER type.
+
+
+Unit and Scenario Tests
+-----------------------
+See i420.dnt, Unit Tests section.
+
+Code Changes
+------------
+branch used: M6-SV-i420, Review-i420-01 and Review-i420-02
+
+bp.ui.canvas/mdl/ooaofgraphics.bak	
+bp.ui.canvas/mdl/ooaofgraphics.mdl
+bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasPlugin.java
+bp.ui.canvas/src/com/projtech/bp/ui/canvas/Cl_c.java
+bp.ui.canvas/plugin.xml
+		
+bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/SymbolTest.java
+
+MC-Java/enums.inc
+MC-Java/schema_gen.arc
+
+bp.io.core/arc/gen_export_java.inc
+bp.io.core/arc/gen_import_java.inc
+bp.io.core/mdl/file_io.bak
+bp.io.core/mdl/file_io.mdl
+
+bp.io.mdl/sql/file_io.pei.sql
+
+bp.io.sql/sql/file_io.pei.sql
+	
+bp.internal.io.sql/src/com/projtech/bp/internal/io/sql/ExportEESql.java	
+bp.internal.io.sql/src/com/projtech/bp/internal/io/sql/ImportEESql.java	
+bp.internal.io.sql/src/com/projtech/bp/internal/io/sql/ImportFunctionSql.java
+bp.internal.io.sql/arc/gen_dt_import_java.arc
+
+End
+---
+
+$Log: i420.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.62.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/12/28 02:09:01  campbell
+Job: 420
+Corrected more typos.
+
+Revision 1.4  2004/12/28 01:54:02  campbell
+Job: 420
+Corrected typos and added late breaking changes.
+
+Revision 1.3  2004/12/21 17:34:26  svenkat
+Job: 420
+Modified Code Changes section
+
+Revision 1.2  2004/12/15 15:44:26  svenkat
+Job: 420
+Fixed typo
+
+Revision 1.1  2004/12/14 21:31:11  svenkat
+Job: 420
+First implementation note

@@ -1,0 +1,333 @@
+========================================================================
+
+File:      $RCSfile: dts0100531817.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Document Generation Tool (DocGen)
+
+
+1. Abstract
+-----------
+This note describes the design for a new automatic document generation system
+inside the BridgePoint tool.  This new feature will generate documentation for
+user models.
+
+2. History
+----------
+dts0100531817-01.rvm
+
+3. Document References
+----------------------
+[1] ClearQuest DEI 0100531817
+[2] <CVS>/com.mentor.nucleus.bp.io.image
+[3] template_engine.exe is built from source in <CVS>/model_compilers/mcmc/arlan
+[4] <CVS>/com.mentor.nucleus.bp.core branch MC-3020-HEAD
+[5] OSS Request 735, DocBook
+    http://chopper/oss/oss_request_form.php?requestID=735&
+[6] OSS Request 736, DocBook XSL Stylesheets
+    http://chopper/oss/oss_request_form.php?requestID=736&
+[7] OSS Request 737, libxslt
+    http://chopper/oss/oss_request_form.php?requestID=737&
+[8] OSS Request 738, libxml2
+    http://chopper/oss/oss_request_form.php?requestID=738&
+[9] OSS Request 739, libiconv
+    http://chopper/oss/oss_request_form.php?requestID=739&
+[10] OSS Request 740, zlib
+     http://chopper/oss/oss_request_form.php?requestID=740&
+[11] DEI dts0100603237 - Integrate BP DocGen with Eclipse help system
+[12] DEI dts0100603248 - Ability to modify templates used in document generator
+[13] Mentor standard stylesheet - <CVS>/com.mentor.nucleus.bp.doc/techpub.css
+[14] Image Sizing in DocBook.
+     http://www.sagehill.net/docbookxsl/ImageSizing.html
+[15] DEI dts0100607797 - Document generation cross referencing
+
+4. Background
+-------------
+4.1  Improved document generation is an oft-requested feature.  The BridgePoint
+     tool needs to provide a simpler and more flexible way to generate model
+     documentation.
+
+4.2  A prototype of a tool to grab the canvas images from a model [2] has
+     already been created.  This tool can be used and extended for this project.
+
+4.3  Staffan Kjellberg created a prototype document generator using archetype
+     language.  It may provide useful input for this new feature.
+
+5. Analysis
+-----------
+5.1  John Wolfe provided the following input regarding requirements for DocGen:
+5.1.1  One-button document generation to HTML
+5.1.2  Contents include everything:  all diagrams, all descriptions, etc.
+5.1.3  Resulting document should be dumped into /doc at the root of the
+       project
+5.1.4  Must require nothing more than a [Component|System] Designer license
+5.1.5  Must not put model compilation in user’s face
+
+5.2  DocGen will output to a single HTML file.
+
+5.3  Images
+5.3.1  Images should be scaled to fit inside the width of a printed page.
+5.3.2  Canvas screenshot images will have transparent background
+5.3.3  Canvas screenshot images will be saved in PNG format
+5.3.3.1  Comparison of file size of
+         External Entities-External Entity Package Diagram:
+             PNG: 36KB
+             JPG: 98KB
+5.3.3.2  Comparison of file size of
+         SHModeCtlAlg-Instance State Machine:
+             PNG: 164KB
+             JPG: 251KB
+5.3.4  BridgePoint will provide a preference for the user to choose where to
+       store the generated documentation.  The default location is the
+       "/doc" folder in the project for the XML and HTML output, and
+       "/doc/images" for canvas screenshots and supporting icons.
+
+5.4  Feedback
+5.4.1  DocGen will output messages to the console window as it creates the
+       documentation.
+5.4.2  DocGen will open the HTML document it creates as the last step of docu-
+       ment generation. We will use the eclipse mechanism to open the html, so
+       the file will be displayed with whatever browser the user has configured
+       eclipse to use.
+
+5.5  Generated documentation shall be internally cross-referenced
+
+6. Design
+---------
+6.1  Architecture
+6.1.1  Cort has a branch of the OOAofOOA in bp.core [4] for the model compiler.
+       This version of the metamodel has all the OOA elements, but has the
+       action language removed.
+6.1.1.1  The compiled version of this model has the ability to load
+         instance data from a customer model file.
+6.1.2  A function package named DocGen will be added to this stripped down ver-
+       sion of the metamodel.
+6.1.2.1  This package will contain domain functions to traverse the loaded
+         customer model and output the required documentation.
+6.1.3  A new subsystem named Document will be added to this version of the meta-
+       model.
+6.1.4  Templates will be created for the various pieces to output.
+6.1.4.1  These templates will provide a clear means to alter a given piece of
+         output if that is desired.
+6.1.4.2  The templates output to DocBook format XML.  This allows us to
+         use DocBook translation tools to quickly and easily retarget the
+         documentation output to various forms such as HTML, RTF, PDF, etc.
+6.1.4.3  The templates are translated from XML format to C using
+         template_engine.exe [4].  In C form, the XML is changed into external
+         entity calls to the T (Template) EE for writing to the output buffer.
+6.1.4.4  The C format of the templates is saved as a header file so it can be
+         included (essentially inlined) into the target code.
+6.1.4.5  The DocBook templates are of the form t.<element>.xml.  The C templates
+         are of the form t.<element>.h.  For example: t.paragraph.xml is trans-
+         lated to t.paragraph.h.
+6.1.5  The flow is:
+         - DocGen is launched via CME [§ 6.9.1.1]
+         - The DocGen java code in the CME action runs the Model Compiler pre-
+           builder
+         - The java code then calls
+             xtumlmc_build.exe xtumlmc_cleanse_model <model file>
+         - Pass the stripped down model file to the docgen exe
+         - Store the doc.xml output in the specified output folder
+         - Run xsltproc to convert doc.xml into doc.html
+         - Display doc.html
+
+6.2  DocBook
+6.2.1  Investigate and requisition tools for DocBook translation, specifically
+       xsltproc for Windows.
+6.2.2  Get Legal approval for all new OSS and third-party tools. See [5], [6],
+       [7], [8], [9], [10]
+6.2.3  The docbook utilities and support files will be stored in the
+       "<BP Install Dir>/tools/docgen/docbook" folder.
+
+6.3  Templates
+6.3.1  Create DocBook templates for all the required elements.
+6.3.2  The templates are converted to C form using template_engine.exe.  It
+       converts the XML into T bridge calls.
+
+6.4  Metamodel updates
+6.4.1  DocGen
+6.4.1.2  docGenMain - the top-level function that controls the document gen-
+         eration process.
+6.4.1.3  printDomain, printSubsystem, printFunctionPackage, etc. - the general
+         strategy for these functions is to print the abstract/description if
+         one exists, display a "screenshot" of the canvas diagram, then list the
+         contained elements, grouping them in tables.
+6.4.2  Document
+6.4.2.1  The Document subsystem models the information that is to be gathered
+         and output into the DocBook templates.
+6.4.2.2  The DocGen functions create and populate instances of elements in the
+         Document SS.  The OAL is careful to use the key letters of the element
+         in lower case form as the name of the created instance.  For example:
+
+             create object instance doc_sec of DOC_SEC;
+
+         This allows the templates to expect a specific name for the information
+         they are working with.
+6.4.2.3  The Document subsystem has classes:
+            - document (DOC_DOC)
+            - section (DOC_SEC)
+            - paragraph (DOC_PAR)
+            - address (DOC_ADDR)
+            - date (DOC_DATE)
+            - header (DOC_HEAD)
+            - footer (DOC_FOOT)
+            - figure (DOC_FIG)
+            - link (DOC_LINK)
+            - table (DOC_TBL)
+            - image (DOC_IMG)
+6.4.2.4  The DocBook XML header that will be output must have a path to the DTD
+         to use.  This DTD will be stored under the BridgePoint directory the
+         user chose during the installation process.  There are several ways
+         the docgen executable can get the location of the DTD:
+           - Via a command line parameter that is the path to the DTD
+           - Via an environment variable that is set in BridgePointLauncher.bat
+           - Self discover launch location and locate the path to the DTD as a
+             known path traversal from the EXE location
+
+6.5  Image Handling
+6.5.1  The image grabber tool [§ 4.2] requires the following changes:
+6.5.1.2  The tool needs to prepend images with the subsystems they are in.
+         Right now EE images for a project with multiple domains are
+         overwriting each other.
+6.5.1.3  Image grabber doesn't get the system model package diagram, fix.
+6.5.1.4  There are missnamed files.  For instance,
+         SeatHeaterControlAlgorithm-Domain Package Diagram.jpg and
+         SHCtlAlg-Component Diagram.jpg are flipped, they contain the image that
+         should be in the other.
+6.5.2  There is a standard set of images (mostly icons for BP elements) that
+       must be copied to the document images folder when the user chooses to
+       generate documentation.
+6.5.2.1  These images are copied from the "<BP Plugins Dir>/
+		com.mentor.nuclueus.bp.core_<version>/images/metadata" folder
+6.5.3  Image scaling will be handled by the CSS.  To keep a graphic for
+       printed output at its natural size unless it is too large to fit the
+       available width, in which case shrink it to fit, use scalefit="1",
+       width="100%" attributes. [14].
+
+6.6  Installation Concerns
+6.6.1  xsltproc requires the path to be modified to point at the support
+       libraries.  We will update BridgePointLauncher.bat to add this support
+       to the overridden environment variables.
+
+6.7  Stylesheets
+6.7.1  We will ship with a stylesheet that formats the HTML output nicely.  This
+       sytlesheet will be based upon Mentor's techpub.css [13].
+6.7.2  The stylesheet(s) need to be copied to the same dir as the output images
+       and HTML at document generation time.
+
+6.8  DocGen Operation
+6.8.1  The document generator is a compiled application that runs like a model-
+       based model compiler.
+6.8.2  The domain function docGenMain is tagged as an initialization function.
+       It controls the flow of the document generation action.
+6.8.3  The general flow of document generation is:
+         - System
+         - System datatypes
+         - Component packages
+           - Components
+             - Datatypes
+             - External Entity packages
+             - Function packages
+             - Subsystems
+         - Interface packages
+           - Interfaces
+         - Unformalized domains
+             - Datatypes
+             - External Entity packages
+             - Function packages
+             - Subsystems
+
+6.9  User Interface
+6.9.1  We could start the document generation a number of ways: context menu
+       entry in model explorer, listener job, external tool builder, or
+       push button in the BridgePoint toolbar.
+6.9.1.1  We will implement a context menu entry on System elements in Model
+         Explorer named "Create documentation"
+6.9.1.2  The CME "Create all images" that is currently exposed by the image
+         grabber plugin will be disabled
+
+6.10  Build server
+6.10.1  Add com.mentor.nucleus.bp.io.image plugin to the
+        bp.bld.pkg-feature/feature.xml
+6.10.2  Add com.mentor.nucleus.bp.docgen plugin to the
+        bp.bld.pkg-feature/feature.xml
+6.10.3  Add both new plugins to the tagging scripts.
+
+6.11  Future Enhancements
+6.11.1  Some additional features and enhancements were identified during the
+       analysis and initial design.  See [11], [12], and [15].
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is specified in the design section.
+
+9. Unit Test
+------------
+9.1  Test 1
+       _- Create the Microwave Oven sample project
+       _- Right-click on the MicrowaveOven project in Model Explorer
+       _R The "Create documentation" CME is available
+       _- Choose "Create documentation" CME
+       _R Processing information is output to the console
+       _R The generated HTML documentation is opened
+       _R Verify it is correct
+
+9.2  Test 2
+       _- Create the GPS sample project
+       _- Right-click on the GPS project in Model Explorer
+       _R The "Create documentation" CME is available
+       _- Choose "Create documentation" CME
+       _R Processing information is output to the console
+       _R The generated HTML documentation is opened
+       _R Verify it is correct
+
+9.3  Test 3 - a manual test
+       _- Create the SeatHeater project using the demo model from SVN
+       _- Right-click on the SeatHeater project in Model Explorer
+       _R The "Create documentation" CME is available
+       _- Choose "Create documentation" CME
+       _R Processing information is output to the console
+       _R The generated HTML documentation is opened
+       _R Verify it is correct
+
+End
+---
+
+$Log: dts0100531817.dnt,v $
+Revision 1.6  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.5  2009/08/14 16:22:39  kbrown
+job:dts0100531817
+Committing updates from DNT review.
+
+Revision 1.4  2009/07/31 14:04:47  kbrown
+job: dts0100531817
+Minor updates.
+
+Revision 1.3  2009/07/27 17:55:06  kbrown
+job:dts0100531817
+Updated to address review issues.
+
+Revision 1.2  2009/07/24 18:33:25  kbrown
+job:dts0100531817
+updated design note.
+
+Revision 1.1  2009/07/24 16:08:03  kbrown
+job:dts0100531817
+Mostly complete design note.
+

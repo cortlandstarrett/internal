@@ -1,0 +1,127 @@
+========================================================================
+
+File:      $RCSfile: i216.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Fixing more inappropriate associative connector snap behavior.
+
+Abstract
+--------
+Issue 216 documents a fault that appears to cause an associative
+connector to be cropped to a shape. This note describes the changes
+required to fix this problem.
+
+History
+-------
+final - i216-051404-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 216.
+
+Background
+----------
+As documented in the issue, this is not the real problem. In fact,
+the connector is snapping back to its last known good position,
+which was attached to the end of its target line. Unfortunately,
+it's target line is no longer there, so it looks like a truncation.
+
+Design
+------
+The problem exists because it is possible to pick up two waypoint
+sets at the same time. In many cases, this is desirable (in the case
+where the waypoint is in the middle of a connector, both segments
+must move). However, if an associative connector connects to its
+target line very close to an end of the target line, it is possible
+to pick up both the associative and target lines.
+
+When dropped, the associative line attempts to find an intersection
+with its target. When it cannot, it snaps back to its starting point,
+giving the illusion of having been truncated.
+
+The fix is to prevent an associative end point from being picked up
+with its target line end. This is achieved by reorganizing the
+algorithm in the state action Model::Waiting To Move Hotspot.
+
+The algorithm is changed so that it iterates over connectors in an
+outer loop instead of just iterating over all segments. This allows
+us to break from the loop after the first connector is found.
+
+Further, we check for connectors ending on connectors first, so that
+associatives dropped on end points can be picked up and moved. If
+this is not done, then it would be possible to get an associative
+connector permanently stuck to the end waypoint of its target
+connector.
+
+Implementation Notes
+--------------------
+The first proposed algorithm for detecting assciatives and selecting
+just the associative end was difficult to read and to prove it's
+correctness. A second version was developed that more clearly
+distinguished the case of the associative. This was introduced as
+the final solution at revision 1.26 of the ooaofgraphics.
+
+Unit Test
+---------
+_- Pick up an associative connector at the association end.
+_- Drag it so that it is close to the end of its connector
+   line, but not crossing it.
+_- Drop the connector end.
+_R The connector snaps to the end point of the line.
+_- Click over the end waypoint handle and drag.
+_R Only the associative part of the connector is moved.
+_- Move the end of a supertype connector
+_R The subtype lines move with the supertype end.
+_- Run the Canvas Unit Tests
+R- All tests pass.
+
+Code Changes
+------------
+com.projtech.bp.ui.canvas/mdl/ooaofgraphics.bak
+Initial: 1.21         Final: 1.27
+
+End
+---
+
+$Log: i216.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.164.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/05/18 22:19:49  greg
+Job: 216
+Update revision number
+
+Revision 1.4  2004/05/18 00:56:43  campbell
+Job: 216
+Changed Associative detection code in Model.Waiting To Move Hotspot.
+
+Revision 1.3  2004/05/14 20:20:49  campbell
+Job: 216
+Updated revision number.
+
+Revision 1.2  2004/05/14 18:35:14  campbell
+Job: 216
+Added extra unit test.
+
+Revision 1.1  2004/05/13 17:34:38  campbell
+Job: 216
+Introduced.

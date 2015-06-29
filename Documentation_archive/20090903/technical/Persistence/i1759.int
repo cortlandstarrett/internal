@@ -1,0 +1,337 @@
+========================================================================
+
+File:      $RCSfile: i1759.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Refactor Resource Listeners for PLCM
+
+Abstract
+--------
+The purpose of modifying resource listener is not to reflect changes from
+outside of the tool. The rename or delete through resource navigator will only
+dispose the model explorer's element and resource added through resource 
+navigator or CVS will add element if element is consistent.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 1759 
+[2] <CVS>Documentation/internal/technical/Persistence/i845-PLCM_1_0.ant
+    The analysis note that drives this issue.
+[3] <CVS>Documentation/internal/technical/internal/Persistence/i1759.dnt
+[4] <CVS>Documentation/internal/plan/R1_1_0/Pkg CM Test Matrix.txt
+
+Background
+----------
+See the Background section in [3].
+
+Design
+------
+See the Design section in [3].
+
+Implementation Note
+-------------------
+- Component Resource Listener Updated.
+Component resource listener is updated in the following way.
+1. Resource Added.
+If resource added through resource navigator or CVS, then if it found the 
+component then will reload it, otherwise add it after checking the consistency  
+of the component. if resource is of type project then it will add the root 
+component only.
+
+2. Resource Renamed.
+If resource rename through resource navigator, then it will find the component 
+and dispose it. if it do not found any component then it will check the 
+consistency of the component and add it(in case of rename back).
+
+3. Resource Deleted.
+If resource delete through resource navigator, then it will find the component 
+and dispose it. 
+
+4. Resource Modified.
+If resource modify through resource navigator or CVS, then if it found the 
+component then will reload it.
+
+- PersistableModelComponent Updated.
+Add the consistency method to check the consistency of the component while 
+creating or loading component and will throw exception if it found invalid 
+component.
+
+- UiUtil Updated.
+Add the UiUtil.refresh method to refresh the model explorer after adding or 
+modifying the component file. this method is dynamically invoke explorer's 
+refresh method from core plugin to refresh the model explorer.
+Add the static method getExplorerTreeViewer by updating create_explorer_view.inc
+file in explorer plugin.
+
+- Compare Test Updated.
+a. Previously, compare test contain the invalid model that internal name and file
+name didn't match, it is used to compare the same models, that is updated to
+valid model. 
+b. Model files is compared instead of comparing the component file after loading 
+the component.
+
+- Invalid resource listener tests removed from Core.
+RenameInvolvingResourceTest.java contain the invalid scenarios, following are 
+the tests those are removed.
+
+a. testModelFileRenameCausesDomainNameChange() 
+b. testModelFileFolderRenameCausesDomainNameChange() 
+c. testProjectFolderRenameCausesSystemNameChange() 
+d. testProjectFileRenameCausesSystemNameChange() 
+
+- CanvasModelListener.java Updated.
+modelElementDeleted method is updated, the special case added to remove the
+instance state machine. 
+GraphicsUtil.getOoaType method added to identifying the
+type of model element.
+
+- Create_modeladapter_java.arc modified.
+modify the resolveModelElement method to call refresh if tree is not locked.
+
+- Update the delete and rename through resource navigator tests.
+update the delete and rename through resource navigator tests of MDL to the name
+policy. the expected result files also updated.
+
+- Modify the CodeChangesScraper Plugin.
+It was used to copy synchronized changes into clipboard and helpful to paste 
+these changed files path into “code change section” of our required 
+implementation note. The problem is whenever the path is too lengthy to take 
+more then two lines under the print margin then it can't placed that path into 
+three lines and the path goes beyond the print margin because it didn't support
+more than two line path paste. Now, it is modified to support path that have to
+placed in three lines.
+
+- move COMPARE_MODEL_ROOT_NAME from compare to core.
+COMPARE_MODEL_ROOT_NAME is moved to core because it is used in Core also, 
+While creating proxy, it is restricted to do not use the default model root 
+whenever the model root is compare model root. java.arc is also modified with 
+respect to this.
+
+Unit Test
+---------
+
+- Rename Through Resource Navigator
+the rename through resource navigator will dispose the model element from model 
+explorer and canvas editor. after rename the component file will be rename back
+to restore the changes from resource navigator. only rename system model through 
+resource navigator will not dispose the model explorer elements.
+
+- Delete Through Resource Navigator
+the delete through resource navigator will dispose the model element from model 
+explorer and canvas editor. the model directory will not be deleted in case of
+component file delete.
+
+Sequence of Rename Tests from resource navigator.
+
+_- Open the required Component's editors (within the component boundary).
+_R Editors opened.
+_- Rename the require Component file from resource navigator.
+_R Model Explorer items of given component will be deleted.
+_R Only Component's file is renamed (folder will not rename).
+_R Canvas Editor reflect the Dangling Element on editor.
+_R All opened editors closed except the base editor that contain the shape of 
+   component.
+_- Rename back the given component file.
+_R Model Explorer items of given componenet will be displayed.
+_R Component file is renamed back.
+_R Canvas Editor refelect the right Element on editor.
+
+Sequence of Delete Tests from resource navigator.
+
+_- Open the required Component's editors (within the component boundary).
+_R Editors opened.
+_- Delete the require Component file from resource navigator.
+_R Model Explorer items of given component will be deleted.
+_R Component file is deleted.
+_R Canvas Editor reflect the Dangling Element on editor.
+
+All unit tests specified in [4] from resource navigator should pass.
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.compare/src/com/mentor/nucleus/bp/compare/
+    ComparePlugin.java
+com.mentor.nucleus.bp.compare/src/com/mentor/nucleus/bp/compare/
+    ModelCacheManager.java
+
+com.mentor.nucleus.bp.compare.test/models/com.mentor.nucleus.bp.compare.test/
+    sameModel_two/sameModel_two.xtuml
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/CompareSQLFilesTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/plcm/
+    CompareTest.java
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    NonRootModelElement.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    PersistableModelComponent.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    PersistenceManager.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/UIUtil.java
+
+com.mentor.nucleus.bp.core.test/arc/create_context_menu_tests.arc
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    RenameInvolvingResourceTest.java
+
+com.mentor.nucleus.bp.internal.tools/src/PTCodeFormatterTask.java
+com.mentor.nucleus.bp.internal.tools/src/com/mentor/nucleus/bp/internal/tools/
+    ToolsPlugin.java
+com.mentor.nucleus.bp.internal.tools/src/com/mentor/nucleus/bp/internal/tools/
+    process/CodeChangesScraper.java
+com.mentor.nucleus.bp.internal.tools/.classpath
+com.mentor.nucleus.bp.internal.tools/.cvsignore
+com.mentor.nucleus.bp.internal.tools/.project
+com.mentor.nucleus.bp.internal.tools/build.properties
+com.mentor.nucleus.bp.internal.tools/plugin.xml
+
+com.mentor.nucleus.bp.io.core/.antlr-eclipse
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteDTPInPkg_ThruRN_CanvasFocused/1-100
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteDTPInPkg_ThruRN_CanvasFocused/1-100.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteDTPInPkg_ThruRN_DescriptionFocused/1-100
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteDTPInPkg_ThruRN_DescriptionFocused/1-100.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteEEP_ThruRN_ActivityFocused/1-1
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteEEP_ThruRN_ActivityFocused/1-1.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteEEP_ThruRN_CanvasFocused/1-1
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteEEP_ThruRN_CanvasFocused/1-1.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteEEP_ThruRN_DescriptionFocused/1-1
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteEEP_ThruRN_DescriptionFocused/1-1.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteMclass_ThruRN_ActivityFocused/1-5
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteMclass_ThruRN_ActivityFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteMclass_ThruRN_CanvasFocused/1-5
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteMclass_ThruRN_CanvasFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteMclass_ThruRN_DescriptionFocused/2-5
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteMclass_ThruRN_DescriptionFocused/2-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSS_ThruRN_CanvasFocused/1-1
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSS_ThruRN_CanvasFocused/1-1.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSS_ThruRN_DescriptionFocused/1-1
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSS_ThruRN_DescriptionFocused/1-1.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSSInSS_ThruRN_CanvasFocused/1-5
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSSInSS_ThruRN_CanvasFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSSinSS_ThruRN_DescriptionFocused/1-5
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testDeleteSSinSS_ThruRN_DescriptionFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameDatatypePackageInPkg_ThruRN_CanvasFocused/1-100
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameDatatypePackageInPkg_ThruRN_CanvasFocused/1-100.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameEEPinPkg_ThruRN_CanvasFocused/1-102
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameEEPinPkg_ThruRN_CanvasFocused/1-102.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/testRenameModelClass_ThruCE/
+    1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameModelClass_ThruME_CanvasFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameModelClass_ThruRN_CanvasFocused/1-5
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameModelClass_ThruRN_CanvasFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameSubSystem_ThruRN_CanvasFocused/1-1
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameSubSystem_ThruRN_CanvasFocused/1-1.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameSubSystemInSubsys_ThruCE/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameSubSystemInSubsys_ThruME_CanvasFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameSubSystemInSubsys_ThruRN_CanvasFocused/1-5
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    testRenameSubSystemInSubsys_ThruRN_CanvasFocused/1-5.jpg
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    DeleteTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    ModifyRelationTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMBaseTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMDeleteTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMRenameTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    RenameTest.java
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasModelListener.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/util/
+    GraphicsUtil.java
+
+com.mentor.nucleus.bp.ui.explorer/arc/create_explorer_view.inc
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+
+com.mentor.nucleus.bp.ui.text/arc/create_modeladapter_java.arc
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    DocumentProvider.java
+
+MC-Java/java.arc
+
+End
+---
+
+$Log: i1759.int,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/06/30 13:55:26  satta
+job:1759
+move COMPARE_MODEL_ROOT_NAME from compare to core.
+
+Revision 1.2  2006/06/28 10:27:32  satta
+job:1759
+issue 2223 (code change scraper) changes added.
+
+Revision 1.1  2006/06/28 06:26:38  satta
+job:1759
+Implementation note introduced.
+

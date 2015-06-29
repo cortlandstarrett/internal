@@ -1,0 +1,688 @@
+========================================================================
+
+File:      $RCSfile: persistence-i561.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Model Persistence Phase I
+
+Abstract
+--------
+The models created by the user must persist on disk between runs of the tool.
+Phase I capability refers to the ability to store a domain model in a single
+monolithic file. Phase II capability shall add model storage over multiple
+files. This analysis note specifies how the former, Phase I capability will be
+achieved.
+
+History
+-------
+ initial   - persistence-i561-011905-01.rvm.txt
+
+Document References
+-------------------
+[1] Documentation/internal/technical/persistence.ant
+[2] Documentation/internal/technical/Undo_Redo_Revert-i473.ant
+[3] Bugzilla issue i175
+[4] The Java Developers Guide to Eclipse, Shavor et al., Addison-Wesley
+                                                       2003, ISBN 0-321-15964-0
+[5] Documentation/internal/technical/Persistence/i392.ant
+[6] Bugzilla issue 561
+[7] Bugzilla issue 659
+
+The persistence references above[1,5] are provided for context and historical
+purposes only. The work described in the original document[1] investigated the
+continued use of an object oriented persistence mechanism. This approach has at
+this time been dropped in favor of a simpler, explicit save file based
+mechanism[5].
+
+Analysis
+--------
+Creation of a new BridgePoint project
+A BridgePoint project shall be presented to the user as an xtUML project. This
+is defined as a package that has an xtUML nature.
+
+Here is what the Navigator View of the Resource perspective looks like with two
+xtUML projects, and two others:
+
+[] + xtUML Project One    
+[] + xtUML Project Two    
+[] + Some Java Project
+[] + Some C++ Project
+
+When the core plugin is started, Tiger shall visit all of the projects of the
+workspace to see which ones have an xtUML nature.  There shall be a one to one
+correspondence between xtUML projects in the Model Explorer View and Resource
+Navigator projects labeled with the xtUML nature. An xtUML project will be shown
+in Model Explorer in the same way a java project appears in the Package
+Explorer. The icon shall be the same as is shown for a project in the Resource
+Navigator, with a small green BridgePoint triangle adornment on the upper right
+hand corner. The same green triangle shall be added as an adornment in the
+Resource Navigator to all projects with an xtUML nature (this last requirement
+shall be met using Eclipse infrastructure, not by creating a new icon).
+
+Continuing with the example above, the Model Explorer view shall look like this:
+
+[] + xtUML Project One    
+[] + xtUML Project Two    
+  
+the word 'Project' is part of Eclipse terminology. A project is essentially a
+BridgePoint system, which can be comprised of one or more modeled and non-
+modeled domains.
+
+A new xtUML project shall be created in one of several ways:
+1.	By selecting New->Project then selecting "xtUML > xtUML Project"
+    from the new project wizard tree.
+2.	By selecting New->Other and selecting "xtUML > xtUML Project"
+    from the wizard tree.
+
+The additions above shall appear everywhere the 'New' menu entry currently
+shows (e.g. the main File menu, the Resource Navigator, Package explorer and
+Model Explorer views). Where the list of possible new projects is restricted by
+the current perspective, this shall be honored by this work (in other words, the
+requirements here shall be implemented using Eclipse standard plugin
+extensions).
+
+The new project wizard shall allow specification of the project name. This shall
+also be the name of the workspace folder where the project data is to be stored.
+The wizard shall create the model folder and shall install the xtUML nature on
+the project. No domains shall be added to the project by default, this shall be
+done by the New Domain wizard (see below). Space separated project names shall
+be permitted.
+
+Closing and reopening an xtUML project
+Close and Open project shall be available from the Model Explorer menu as well
+as in the standard place from the Resource Navigator. Closing an xtUML project
+shall close all open diagrams associated with the project and close the Model
+Explorer tree associated with the closed project. A closed project shall be
+shown with the standard Eclipse closed project icon in the tree. Re-opening a
+project shall restore the regular project icon and enable opening of the
+project's tree in the Model Explorer. All standard Eclipse functionality
+associated with project opening and closing, such as removal and restoration of
+project Problems, shall be honored.
+
+Working sets
+These shall not be addressed as part of this work. An issue is raised to track
+the addition of this feature[7].
+
+New, Open, Save, and Close
+
+File System Structural Overview
+A domain shall be stored in a single file under the BP project in a subdirectory
+called models, in a file named for the domain with the extension .model.  Naming
+our files with an extension other than .sql allows us to use model diff on them,
+and textual diff on .sql files, which from this milestone on, only contain
+“Create Table” or “Insert” statements for PEI's.    
+
+Here is what the Navigator View looks like for four domain files, given the
+default Team preference setting:
+
+[] - xtUML Project One [phoenix.azt.mentorg.com]
+   -  models/
+          myDomain1.model      1.2 (ASCII -kkv)
+          myDomain2.model      1.1 (ASCII -kkv)
+[] - xtUML Project Two [phoenix.azt.mentorg.com]
+   -  models/
+          myDomain1.model      1.2 (ASCII -kkv)
+          myDomain2.model      1.4 (ASCII -kkv)
+[] + Some Java Project
+[] + Some C++ Project
+
+and here is what Model Explorer looks like:
+
+[] - xtUML Project One [phoenix.azt.mentorg.com]    
+  o myDomain1      1.2 (ASCII -kkv)
+  o myDomain2      1.1 (ASCII -kkv)
+[] - xtUML Project Two [phoenix.azt.mentorg.com]
+  o myDomain1      1.2 (ASCII -kkv)
+  o myDomain2      1.4 (ASCII -kkv)
+
+Note from the above example that it is a requirement that Model Explorer support
+Eclipse Team label decorations. It also follows that Team context menu entries
+shall be supported. Team menu entries shall only be displayed or enabled when
+the context menu is displayed from a controlled element. The only controlled
+element in the first release shall be the Domain. The standard Team menu entries
+for a project shall be shown at the Project level, because it is like any other
+Eclipse controlled project (i.e. it corresponds to a CM controlled module).
+
+The contents of a .model file are close to that of .sql files. Files of type
+.model contain the data in the following 5 subsystems of the Tiger metamodel:
+Domain, Association, Communication and Access, State Machine, and Subsystem,
+plus the marked classes of the 'Graphics Domain::Graphical Data' subsystem. The
+subsystems that comprise the OAL are not included in a .model file.
+
+New Domain
+A new domain is added to a project by highlighting an xtUML project and
+selecting "New > Domain Model", or by selecting "New > Other" then
+"xtUML" and "Domain Model" from the wizard tree. Alternatively,
+"New > Domain Model" and "New > Other ... (xtUML > Domain Model)" shall be
+available from the File menu when the BridgePoint perspective is active. In all
+cases, the new domain wizard is brought up. It shall show a panel that allows
+specification of the project to add the domain to, the domain name and a
+template file from which the domain is to be created. If the action was started
+from a selected project (i.e. not from the File menu), the project field shall
+be prefilled with the selected project path. The new domain wizard shall allow
+creation of new domains from both native .model and BP 6.1 .sql files. The use
+of a template shall be controlled by a checkbox labeled 'Use Template File'. If
+this is left unchecked, an empty domain is created (containing only the same
+minimal set of data types required by BridgePoint Builder). If the checkbox is
+checked, then a field labeled 'File' and a button labeled 'Browse' shall be
+enabled. The Browse button shall cause a system standard Open dialog to be
+shown. The result (i.e. the user selection) of opening this dialog shall be
+written to the 'File' field when it is closed by clicking 'OK'. Canceling the
+browse chooser shall not affect the content of the 'File' field. When the user
+clicks 'Finish' in the new domain wizard, the contents of 'File' field shall be
+used to find an existing .model or .sql file. A new .model file shall be created
+based on the contents of the located file. An additional checkbox labeled
+'Parse on Import' shall be provided. If unchecked (the default state), this
+shall disable the current parsing behavior that happens during an import
+operation. As a result of this work, the Problem list no longer needs to be
+cleared on import. This functionality is removed. The 'Parse All' menu entry at
+the domain level shall be retained and shall additionally be provided at the
+subsystem and state machine levels. Choosing this menu entry parses everything
+at that level of the tree and below. In common with other Eclipse wizard
+behavior, all field entries and settings shall persist between invocations of
+the wizard and the tool itself.
+
+Open
+When Tiger is brought up, all domains found in projects that have an xtUML
+nature are shown in the Model Explorer.  All editors that were in use when the
+tool was last used shall be restored. At startup, only the Domains needed for
+the editors being reopened shall be loaded into memory.
+
+Opening a model element is achieved by selecting it in the Model Explorer View
+and choosing 'Open', 'Open With' or by double clicking the element (the number
+of clicks required for an open is modifiable as standard in the Prefererences:
+Window > Workbench > Open Mode). This user preference shall be honored.
+
+Alternatively, it shall be possible to open a domain by double-clicking on the
+.model file from the Navigator View of the Resource perspective. The domain
+package diagram shall be shown but the ME shall remain invisible since the
+domain was not opened in the BridgePoint perspective. Files of type.model shall
+be marked with BridgePoint as the preferred perspective. This shall trigger the
+standard Eclipse behavior that asks the user if the wish to automatically switch
+to the nominated perspective.
+
+Save
+Unlike the operating characteristics of the existing BridgePoint Builder, Tiger
+canvases shall only flush metamodel changes immediately to the .model file. User
+triggered canvas save functionality is therefore required for all modifications
+made to Graphics Domain instances. In this respect, the canvas shall show the
+same user visible behavior as a text editor, except that abandoning changes is
+not possible. That is, diagram editors shall show a '*' edited marker whenever
+the user makes an action that changes the underlying graphical data in any way.
+The save action shall be enabled for canvases and this shall write the current
+state of diagram to the .model file. Data shall be written only for the current
+diagram. The edited marker shall be dismissed by this behavior. Standard Eclipse
+auto save behavior shall also be honored. However, standard Eclipse 'Revert' and
+'Changes not saved' dialog behavior are disabled. Diagram changes are always
+saved to the .model file when the diagram editor (or the whole Eclipse
+environment) is closed. This design decision makes Undo/Redo[2] very important
+to the usability of the tool. Undo/Redo features are not part of this work.
+
+Tiger’s other editors track Eclipse text editor behavior. When a change is made
+in a Tiger Activity or Description editor, an asterisk (*) is placed to the left
+of the title in the title bar. The changes can be saved by selecting
+“File > Save”, using the equivalent short cut key or pushing the Save button in
+the toolbar.  Changes can be canceled by dismissing the editor and selecting
+“No” when prompted to save the changes or by choosing “File > Revert”.
+
+When the user invokes the editor save behavior, the current state of the editor
+contents are flushed into the model as it is currently. The model shall then
+additionally be written to the .model file. The state of other open activity and
+description editors shall be unaffected by the save action.
+
+When the data is saved the asterisk is removed and, if the Team plugin is
+enabled and its default preferences are in use, a greater than sign (>) is
+placed to the left of the name of the domain and the BP Project in the Model
+Explorer view.
+
+When a model element is added or changed outside of an editor, i.e., in the
+Model Explorer or Properties View, the change shall be written immediately to
+the .model file. Any editor that happens to be open when the change is made
+shall refresh its appearance to reflect any change made. This refresh shall not
+affect the editor's synchronization state (i.e. whether there is an asterisk
+present or not). Editors that have been changed by the user shall remain as
+changed and editors whose contents are unchanged shall remain as unchanged.
+This shall be true, even if the refresh causes the displayed contents to change
+(i.e. the change was made elsewhere, so the editor contents only appeared to
+change).
+
+Save All
+The Save All option is available from the File menu.  It saves all currently
+open models to their respective .model files.  
+
+Save As
+The Save As action shall be available only when a controlled element is
+selected (for Phase I, this means a domain only). The action shall cause the
+Eclipse standard Save As dialog to appear. Clicking the 'OK' button with the
+default folder and file name shall have the same effect as clicking the Save
+button or selecting the Save menu entry. The standard Eclipse prompt to save
+modified editors shall be shown if necessary prior to committing the changes to
+the .model file.
+
+Close
+A Tiger editor can be closed just like any Eclipse editor by selecting 
+File > Close, or by selecting the X in the editor Title bar.  If the editor
+contains changes (the asterisk is present), the Eclipse “Save Resource” dialog
+is brought up with the name of the model resource. If the user clicks 'Yes' the
+changes are saved to the model file exactly as specified in 'Save' above. If the
+user clicks 'No', then the changes made in that editor are discarded and the
+editor closed. If the user chooses 'Cancel', then nothing is saved and the
+editor shall remain open.
+
+Close All
+All editors can be closed by selecting File > Close All.  Each Tiger model that
+contains changes shall be listed in the standard Eclipse “Save Resources”
+dialog. Each Tiger editor entry should contain the appropriate icon and the name
+of the resource.
+
+Export BP SQL
+This wizard is modified to allow the user to specify which domain they wish to
+export (currently there is no ambiguity, since the presently loaded model is
+always the one exported).
+
+xtUML Project Nature
+Eclipse plug-ins can modify their behavior based on the nature of a project.
+Tiger shall only scan projects that have an xtUML nature and shall ignore all
+others.
+
+Eclipse allows packages to have multiple natures, so one project can be an
+xtUML project and a Java project, C project, or other type of project.  
+
+It is a requirement that the xtUML nature of a project can be changed from
+the Resource Perspective.  To achieve this, either the context menu entry,
+“Add xtUML modeling features” or "Remove xtUML modeling features" shall
+be contributed to the Resource Navigator context menu, depending on whether the
+project already has the xtUML nature or not. 'Add xtUML modeling features' shall
+create the 'models' folder in the project if it does not already exist. However,
+'Remove xtUML modeling features' shall not remove the models folder or its
+contents.
+
+Rename
+The name of the domain and its corresponding file shall be kept synchronized at
+all times; if the user modifies the domain name in the Model Explorer, then the
+corresponding file must be renamed and when the file resource is detected as
+being renamed the internal name must be updated. Note that because of the way
+configuration management systems work, renaming a domain has the effect of
+resetting the version management status of the domain. When reintroduced, the
+domain shall have a new revision number. The model change mechanism shall be
+used for this so that undo/redo of domain rename correctly triggers the filename
+change. Rename of a project shall cause the project resource to be renamed as
+expected.
+
+Delete
+Deleting a domain from Model Explorer shall cause the user to be prompted with
+the standard Eclipse delete underlying resources dialog. If the user elects to
+not remove the underlying resources, the domain shall be restored the next time
+the tool is started (since it will be discovered as part of the xtUML nature
+start up procedure). The behavior for deleting an xtUML project shall be similar
+to that described for the domain (and identical to that shown when deleting a
+Java project from the Resource Navigator).
+
+Lazy Loading Support
+Simple support for lazy (deferred) model loading shall be added during this
+work. As discussed above under 'Open', only models that are needed to restore
+open editors shall be loaded at startup. Other models shall be loaded on demand
+as the user opens an editor that requires the data. Full lazy loading support
+(supporting models split across multiple files) shall be implemented in a later
+release (i.e. Phase II). This change will further improve load performance.
+
+Removed Functionality
+The Model Export wizard and the Model and SQL Import wizards shall be removed,
+since this functionality is now provided by the new domain wizard (for import)
+and by the save functionality (for export). The SQL export wizard is retained
+because it has no replacement.
+
+Suggested Design
+----------------
+There shall be a separate model root (introduced with the work to implement
+Compare[3]) for each BridgePoint domain in the workspace. This change requires
+that the getDefaultRoot strategy be re-designed.
+
+When the bp.core plugin is started, it shall scan all projects in the workspace.
+For each project found with an xtUML nature, the plugin shall scan for a models
+folder. It shall then create a model root for each domain found in that folder
+and load the model into the created root.
+
+Because all models are loaded at startup, all Tiger Eclipse Problems can be left
+in place permanently. All code to clear problems shall be removed, except where
+required by 'Parse All' functionality, where saving updates the Problem list and
+where Team activities swap .model files causing a reload of the domain. Since
+this can take significant time, the parseing behavior shall be modified to run
+in the background at the users option using the standard Eclipse 3 interface for
+this.
+
+Whenever a user clicks on a Problem, the model it pertains to shall already be
+in memory. Given that an Eclipse Problem can occur anywhere in any model,
+support for locating the correct model element shall be provided by caching the
+model root data inside the .oal and .dsc files.
+
+Code recently added to catch attempts to open a model file from the Resource
+Navigator shall be removed. Because all models are loaded at startup, the
+previously existing code now correctly opens the domain package diagram for the
+given model.
+
+Providing Team decorations and functionality is relatively simple. The 
+controlled items (this must be generated from markup data, see below) shall
+implement IAdaptable and return the IResource instance to which the controlled
+element maps. Thus, the project/system shall map to an IProject instance and
+the domain to an IFile instance. A small amount of additional work is required
+to enable LabelDecoration on the Model Explorer and Outline views, this is
+described on pages 338-339 of the Eclipse Developers book[4]. The MC-Java model
+compiler shall be enhanced to add suitable IAdaptable code to model classes
+marked as controlled items. The Domain and System Model elements shall have
+markup added that identifies them as controlled items. 
+
+To meet the requirement that only graphical data from the current diagram is
+written to the .model file when the save action is invoked, the diagram editor
+design must be modified so that the graphical data is cached separately from the
+metamodel data until the save action is performed.
+
+Work Required
+-------------
+i561.1      Replace getDefaultRoot strategy
+
+i561.2      Define xtUML nature and related startup code
+i561.2.1    Visit all of the workspace projects when core plugin is started
+i561.2.2    Show the xtUML project in the Model Explorer View
+i561.2.3    Support Creation of xtUML projects
+i561.2.3.1  Use project icon from Resource Navigator for a project in the
+            Resource Navigator, with a small green BridgePoint triangle
+            adornment on the upper right hand corner.
+i561.2.3.2  Adorn project icon in Resource Navigator with green BridgePoint
+            triangle (this shall be satisfied using the Eclipse infrastucture,
+            not by creating a new icon).
+i561.2.3.3  Create project by selecting New->Project then selecting
+                                                         "xtUML > xtUML Project"
+i561.2.3.4  Create project by selecting New->Other and then selecting
+                                                         "xtUML > xtUML Project"
+i561.2.3.5  Allow the specification of a legal project name
+i561.2.3.6  Create the models folder and install the xtUML nature on the
+            project
+i561.2.4    A domain shall be stored in a single file
+i561.2.4.1  Store each domain under the BP project in a subdirectory called
+            model.
+i561.2.5    Support creation of new Domains
+i561.2.5.1  By selecting New > Domain on the project
+i561.2.5.2  By selecting New > Other then selecting "xtUML > Domain"
+            from the wizard tree.
+i561.2.5.3  New domain wizard allows specification of the domain name
+i561.2.5.4  New domain wizard allows optional specification of a domain template
+            file, behavior specified in Analysis above.
+i561.2.5.5  Allow creation of new domains from both native .model and BP 6.1 SQL
+            files, controlled by a checkbox labeled 'Specify Template File'.
+i561.2.5.6  If 'Use Template File' is left unchecked, create an empty domain
+            (containing only the same minimal set of data types required by
+            BridgePoint Builder, design note to enumerate these).
+i561.2.6    Implement System/Project Adapter
+i561.2.7    Extend Canvas editor to read and write Memento information so that
+            the editor reopens without error when tiger is restarted.
+i561.2.8    The Tiger format model import wizard is no longer needed and is
+            removed.
+i561.2.9    Support Eclipse Team on controlled elements
+i561.2.9.1  Support Team label decorations
+i561.2.9.2  Support Team context menu entries
+i561.2.9.3  Provide generic solution (mark only Domain for the first release).
+i561.2.10   Provide “Add xtUML project nature” on Resource Navigator CME
+i561.2.11   Provide “Remove xtUML project nature” on Resource Navigator CME
+i561.2.12   Modify Model Export behaviorto export a model specified by a model
+            root.
+
+i561.3      Modify Editor save strategy
+i561.3.1    Save canvas changes immediately
+i561.3.2    Save Text and Activity editor changes to disk (currently only saves
+            to model).
+i561.3.3    Flush all View changes immediately to the .model file.
+i561.3.4    All editors must be resource change listeners and refresh.
+i561.3.5    Core must be resource change listener and change the appropriate
+            model element values.
+i561.3.5.1  Reload model files that change on disk.
+i561.3.5.2  Clear only problems related to changed model file
+i561.3.5.3  Parse all after automated reload
+i561.3.5.4  Parse in background
+i561.3.6    Save all currently open models to their respective .model files.  
+i561.3.7    Add save strategy to Diagram Editors
+i561.3.7.1  Change editors to cache their graphics data.
+i561.3.7.2  Implement save action.
+i561.3.7.3  Support auto save on Editor close.
+i561.3.8    The Tiger format model export wizard is no longer needed and is
+            removed.
+
+i561.4      Remaining Work to Do
+i561.4.1    Change to use the final file system naming conventions
+i561.4.1.1  Store each domain under the BP project in a subdirectory called
+            models.
+i561.4.1.2  Name the file for the domain with the extension .model
+i561.4.2    Synchronize domain and model resource file name (generic solution
+            required).
+i561.4.3    Propagate model change to file name
+i561.4.4    Propagate file name change to domain name.
+i561.4.5    Support opening of model files from Resource Navigator.
+i561.4.6    Support model Save As.
+i561.2.7    Allow an xtUML project to be closed in the Resource Navigator and
+            in the Model Explorer.
+i561.2.8.1  Close the trees and all open diagrams associated with the project
+i561.2.8.2  Show with the standard Eclipse closed project icon in the tree.
+i561.2.9    Allow an xtUML project to be reopened in the Resource Navigator
+            and in the Model Explorer.
+i561.2.9.1  Restore the regular project icon
+i561.2.9.2  Enable opening of the project's tree in the Model Explorer.
+
+Unit Tests
+----------
+_- Open Tiger with xtUML nature projects in workspace
+_R All projects are shown in Model Explorer
+
+_- Select "New > Project" then select "xtUML"
+_R The new xtUML project wizard appears
+_R The wizard prompts for the Project name and optionally for the workspace path
+   (test both default and custom paths)
+_- Select "New > Other" and then select "BridgePoint > xtUML > Project"
+_R The new xtUML project wizard appears
+_R The wizard prompts for the Project name
+_R The wizard cannot complete without a unique project name
+_- Click Finish
+_R The .project file contains an xtUML nature entry
+_R The icon adornment is shown on the Resource Navigator folder
+_- Open Model Explorer
+_R The new project appears in the View
+_- Close and reopen the project in the Resource Navigator
+_R The closed project is closed and reopened in the Model Explorer
+_- Close and reopen the project in the Model Explorer
+_R The closed project is closed and reopened in the Resource Navigator
+_- Turn on the Team decorations
+_- Right click on an xtUML project
+_R The Team interface is present in the menu
+_- Add the project to version control
+_R The project and domains are shown with version adornments
+_- Right click on a project and select New > Domain
+_R The new Domain wizard appears, the Project field is filled in
+_- Cancel the wizard
+_- Select New > Other then select "BridgePoint xtUML > > Domain" from the wizard
+   tree.
+_R The new Domain wizard appears, the Project field is filled in
+_- Cancel the wizard
+_- Deselect all projects
+_- Select File > New > Other then select "xtUML > Domain" from the wizard
+   tree.
+_- The new Domain wizard appears, the Project field is not filled in
+_- Specify the previously selected project
+_- Specify a Domain name unique to the project (i.e. it duplicates a domain name
+   in another xtUML project).
+_R Finish is enabled
+_- Specify a non unique Domain name
+_R Finish is disabled, a message in the standard place says that the name must
+   be unique
+_- Test that the template can be specified and that the domain is populated with
+   the data from the template
+_- Test that a bad template is handled gracefully.
+_- Test that a domain created without a template has the minimum set of core
+   data types.
+_- Test that templates can be specified in both model and sql forms.
+_R In all cases, a domain is created, a model file is created and a new domain
+   entry is visible in the model explorer.
+
+_- Open a canvas, make some changes.
+_R The changes are saved immediately to disk
+_- Open an Activity editor, make some changes
+_R The changes are _not_ saved immediately to disk
+_- Activate the save action
+_R The changes are saved to disk
+_- Repeat with Description editor
+_- Make changes from the Resource Navigator, Model Explorer, Outline and
+   Properties views.
+_R Verify that all changes are flushed immediately to disk.
+_R All open editors refresh when something affecting their appearance changes
+_R All open editors refresh when Configuration Management operations change the
+   model file.
+_- Verify Save All flushes all model changes to disk.
+_- Verify that Save As... saves a copy of the model to the user specified place.
+_- Verify that Close All closes all Description, Activity and Canvas editors.
+
+_- Select an xtUML project with existing domains
+_- Right click in Resource Navigator and select “Remove xtUML modeling features”
+_R A dialog with radio buttons asking the user if the underlying resources are
+   to be removed is shown.
+_- Click 'OK' without changing the default.
+_R Decoration is removed from the Folder, the project disappears from the Model
+   Explorer
+_- Right click in Resource Navigator and select “Add xtUML modeling features”
+_R Decoration is restored to the folder, project is restored to the Model
+   Explorer, all Domains are still present
+_- Right click in Resource Navigator and select “Remove xtUML modeling features”
+_R A dialog with radio buttons asking the user if the underlying resources are
+   to be removed is shown.
+_- Specify that resources are to be removed.
+_R Decoration is removed from the Folder, the project disappears from the Model
+   Explorer. The models folder disappears from the project in the Resource
+   Navigator.
+_- Right click in Resource Navigator and select “Add xtUML modeling features”
+_R Decoration is restored to the folder, project is restored to the Model
+   Explorer, no Domains are present
+
+_- Select a domain and rename it
+_R The filename as shown in Resource Navigator is changed to match
+_- Select a model file and rename it
+_R The domain name in Model Explorer is changed to match
+_- Create an Activity with a problem
+_- Close the editor and the Tiger session
+_- Reopen the Tiger session
+_- Open the Problem View
+_- Double click the problem created above
+_R The Activity editor opens without error
+
+_- With Tiger running, open an Activity editor.
+_- Close and reopen Tiger
+_R Editor is restored without error.
+
+_- Start Tiger
+_- Double click on an model file in the Resource navigator
+_R Domain Package Diagram for the model is opened.
+
+_- With Tiger running, open a Canvas editor.
+_- Close and reopen Tiger
+_R Editor is restored without error.
+
+End
+---
+
+$Log: persistence-i561.ant,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.19  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.18.50.1  2008/12/31 16:10:13  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.18  2005/01/29 00:15:57  campbell
+Job: 561
+Finalizing.
+
+Revision 1.17  2005/01/27 00:51:37  campbell
+Job: 561
+Addressed post first review comments from GBR.
+
+Revision 1.16  2005/01/20 23:04:10  campbell
+Job: 561
+Reworked Work required.
+
+Revision 1.15  2005/01/20 19:29:18  campbell
+Job: 561
+Review observations addressed.
+
+Revision 1.14  2005/01/19 19:21:44  campbell
+Job: 561
+Clarified that projects and domains always have the same name as
+their resource. Added memento behavior. Reworked WR and UT
+sections.
+
+Revision 1.13  2005/01/19 00:49:07  campbell
+Job: 561
+Added section on Delete behavior.
+Reworked Suggested Design section.
+
+Revision 1.12  2005/01/17 16:54:23  campbell
+Job: 561
+Clarifeid that new domaiun wizard has project path
+field that can be prefilled.
+
+Revision 1.11  2005/01/14 18:14:39  campbell
+Job: 561
+Change more BridgePoint references to xtUML.
+Reformat.
+Removed user visible references to 'nature'.
+
+Revision 1.10  2005/01/14 18:06:39  campbell
+Job: 561
+Change more BridgePoint references to xtUML.
+Reword 'Open' section.
+
+Revision 1.9  2005/01/13 19:37:31  campbell
+Job: 561
+Change BridgePoint Project to xtUML Project.
+
+Revision 1.8  2005/01/05 23:02:09  campbell
+Job: 561
+Removed references to lazy loading.
+
+Revision 1.7  2005/01/05 18:49:04  campbell
+Job: 561
+Addressed observations from WGT.
+
+Revision 1.6  2004/12/27 16:58:17  campbell
+Job: 561
+Addressed review observations.
+
+Revision 1.5  2004/12/23 17:33:22  campbell
+Job: 561
+Addressed review observations.
+
+Revision 1.4  2004/12/23 00:59:41  campbell
+Job: 561
+Partially addressed review observations.
+
+Revision 1.3  2004/12/21 23:50:07  campbell
+Job: 561
+Clarified that separate model files are not required.
+
+Revision 1.2  2004/12/21 23:24:08  campbell
+Job: 561
+Ready for Review.
+
+Revision 1.1  2004/12/13 18:08:02  campbell
+Job: 561
+Introduced.

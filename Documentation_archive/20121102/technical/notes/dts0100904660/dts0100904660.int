@@ -1,0 +1,199 @@
+========================================================================
+
+File:      $RCSfile: dts0100904660.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+DocGen support for Inter-Project References
+
+
+1. Abstract
+-----------
+This note describes the work performed to support projects with inter-project
+references (IPRs) in the BridgePoint document generation toolchain (DocGen).
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100904660
+[2] dts0100904660.ant - Analysis note for this work
+[3] ftp://mentorweb/pub/BP/dropoff/kbrown/docgen.exe
+
+4. Background
+-------------
+See [2].
+
+5. Requirements
+---------------
+See [2].
+
+6. Work Required
+----------------
+6.1  Updated bp.io.image.Generator.java to handle generating images for 
+     referred-to projects into the invoking project's doc/images/ folder.
+     
+6.2  Updated bp.mc.mc3020.ExportBuilder to return the names of all the projects
+     included in the output data (because of IPRs) when a client invokes the 
+     export builder on a given project/system model.
+6.2.1  It is not strictly required, but the bp.mc.AbstractExportBuilder was also
+       updated to return this information though it is never currently used.  
+       The change was added because it was very cheap and it allows us to use
+       this entry into the export builder for DocGen at same later point with
+       no additional code changes should we decide to retire bp.mc.mc3020.
+       
+6.3  Updated bp.docgen.Generator (the entry point for the "Create Documentation"
+     toolchain).
+6.3.1  Reordered to run export builder _before_ generating images.  This allows 
+       us to find out which other projects in the workspace need to be traversed
+       to gather images from.
+6.3.2  Update the image generation to gen the images for all referred-to
+       projects into the invoking project's doc/images/ folder.
+ 
+6.4  docgen.exe updates.  Changes made to the model compiler branch in the 
+     DocGen function package.
+6.4.1  docgen_system
+6.4.1.1  No longer performs a blind select of a single system from the input
+         data.  Now selects all systems and iterates over them.
+6.4.1.2  The support for specialized packages is moved outside the loop.  Thus,
+         any data that is in specialized packages is just blobbed together at
+         the end of the document.  This could have been made nicer, but we made
+         an engineering decision not to invest any more effort in specialized 
+         package specific code.
+6.4.2  docgen_oal
+6.4.2.1  This function is removed.  It served as a monolithic jumping off point
+         that handled outputting OAL info for each place that can hold OAL.  
+         The code is effectively split up and each of the parts of this function
+         now live right next to the place that houses the OAL.  This moves the
+         OAL listings from a big batch at the end of the document to many small
+         bits inside the document at each OAL home.
+6.4.3  docgen_domain
+6.4.3.1  Fallout from 6.4.2.  Added handling for activities in functions and 
+         bridges.
+6.4.4  docgen_packages
+6.4.4.1  Fallout from 6.4.2.  Added handling for activities in functions and 
+         bridges.
+6.4.5  docgen_components
+6.4.5.1  Fallout from 6.4.2.  Added handling for activities in Port/Interface
+         messages.
+6.4.5.2  Updated the component port table to list the interface name that is 
+         tied to the port to make the table more informative and tie to the 
+         component graphic above better because that graphic shows interface 
+         names but not port names.
+6.4.6  docgen_classes
+6.4.6.1  Fallout from 6.4.2.  Added handling for activities in state machines,
+         operations, and derived base attributes.
+6.4.7  docgen_datatype_packages
+6.4.7.1  Removed unused transient variable.
+  
+7. Implementation Comments
+--------------------------
+7.1  The analysis note [2] called for us to implement a project-level preference
+     to control IPR traversal during DocGen.  A new preference was not added.
+     Instead we rely on the existing project preference "Emit referred to 
+     elements in other projects".  When this project preference is turned off,
+     we only perform DocGen on the invoking project.
+7.2  The new docgen.exe needs to be put onto the build server for inclusion in
+     the BridgePoint Windows installer after promotion of this work is complete.
+     
+8. Unit Test
+------------
+The following is implemented as a JUnit test in bp.core.test Core Test Suite 2
+
+8.1  Test infrastructure
+8.1.1  Add three new test models to our SVN test model collection.  These models
+       are named: GPSWatch_LibraryHW, GPSWatch_LibraryUI, GPSWatch_System.  They
+       must all be pulled down locally for the JUnit to work.  All three 
+       projects are set to have IPRs allowed.
+8.1.2  GPSWatch_LibraryHW contains the Location, Tracking, and HeartRateMontior
+       components, their associated interfaces, and datatypes.  This is a 
+       "library" project with no wiring at all.
+8.1.3  GPSWatch_LibraryUI contains the UI components, its associated interfaces,
+       and datatypes.  This is a "library" project with no wiring at all.
+8.1.4  GPSWatch_System contains analysis diagrams and a system wiring package
+       that connects the GPS Watch components pulled in via IPR in their usual
+       wiring configuration.
+8.1.5  The tester must have the new version of docgen.exe ([3]) installed in
+       their development environment on disk under the tools/docgen/ folder in 
+       order to run the new JUnits. 
+       
+8.2  Test IPR project
+8.2.1  _- Run the "Create Documentation" action on the GPSWatch_System project
+       _R The system model package diagram image exists for all three projects
+          in the GPSWatch_System/doc/ folder.
+       _R The generated doc.xml file exists and contains data from all 3 projects
+       _R The doc.html contains the data from all 3 projects and has no broken
+          image links
+          
+8.3  Test IPR project with RTO data turned off
+8.3.1  _- Turn off the project preference to "Emit RTO data" for GPSWatch_System
+       _- Run the "Create Documentation" action on the GPSWatch_System project
+       _R The GPSWatch_System system model package diagram image exists in the 
+          GPSWatch_System/doc/ folder.
+       _R The generated doc.xml file exists and contains data only the 
+          GPSWatch_System project
+       _R The doc.html contains the data from only the GPSWatch_System project
+          and has no broken image links
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100904660
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test.ui/
+    DocGenTest.java
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/CFMon_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/CFMon_doc.xml
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/DocGenTest_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/DocGenTest_doc.xml
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/GPSWatch_System_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/GPSWatch_System_doc.xml
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/
+    GPSWatch_System_RTO_Off_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/
+    GPSWatch_System_RTO_Off_doc.xml
+
+com.mentor.nucleus.bp.docgen/src/com.mentor.nucleus.bp.docgen.generator/
+    Generator.java
+
+com.mentor.nucleus.bp.io.image/src/com.mentor.nucleus.bp.io.image.generator/
+    Generator.java
+
+com.mentor.nucleus.bp.mc/src/com.mentor.nucleus.bp.mc/AbstractExportBuilder.java
+
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ExportBuilder.java
+
+
+Branch name: MC-C (changes already committed)
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/DocGen/
+    DocGen.xtuml
+
+Branch name: trunk (changes already committed)
+<svn>/trunk/Models/Test/GPSWatch_LibraryHW (new model)
+<svn>/trunk/Models/Test/GPSWatch_LibraryUI (new model)
+<svn>/trunk/Models/Test/GPSWatch_System (new model)
+
+End
+---
+
+$Log: dts0100904660.int,v $
+Revision 1.3  2012/08/08 22:34:09  kbrown
+job:dts0100904660
+Address review minutes.
+
+Revision 1.2  2012/08/08 18:27:17  kbrown
+job:dts0100904660
+Updates to INT.
+
+Revision 1.1  2012/08/08 17:58:55  kbrown
+job:dts0100904660
+Mostly complete INT.

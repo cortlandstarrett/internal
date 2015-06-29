@@ -1,0 +1,154 @@
+========================================================================
+File:      $RCSfile: i1599.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Model Explorer does not update CVS label decoration after synchronization 
+through Resource Navigator.
+
+Abstract
+--------
+This note describes the changes required to ensure proper Model Explorer 
+refreshes. 
+
+History
+-------
+final i1599-060525-01.rvm
+
+Document References
+-------------------
+[1] Issue 1599
+[2] Issue 993  Scrolling using mouse wheel is slow in canvas editors
+[3] Issue 2043 Computing Differences dialog shown too often when merging
+
+Background
+----------
+Model Explorer does not properly display and remove the CVS dirty mark '>' on
+Root Model Elements.
+
+Analysis
+--------
+1. Two factors were found that cause Model Explorer not to refresh properly.
+
+1.1 Resource change events created by an auto build job cause unnecessary and 
+    inappropriate reloading of components.  The LabelDecorator maintains a map 
+    of decorated objects, and the reloaded component creates new objects which 
+    can not be looked up in the decoration-ready map of the DecorationManager. 
+
+1.2 ComponentResourceListner should be modified to update the Model Explorer 
+    tree when a xtuml file change is detected. The refresh methods used for this
+    purpose do not work if the xtuml modeling perspective is not active. This
+    refresh method tries to find the model explorer view in every WorkbechWindow 
+    and every page.  WorkbechWindow.getPages() will return only one page which 
+    is active, so the Model Explorer in the background never gets refreshed.
+
+Design
+------
+
+1. Filter model change events caused by the auto build jobs.
+
+A check is placed in ComponentResourceListener.resourceChanged() to filter 
+events caused by auto build jobs.  This checks the family of the current job, 
+and if it belong to ResourcesPlugin.FAMILY_AUTO_BUILD ot 
+ResourcesPlugin.FAMILY_MANUAL_BUILD, the event delta is ignored.
+
+2. Refresh model explorer when there is some xtuml resource change.
+
+We will take advantage of CVS label decoration. Whenever DecorationManager has 
+some decoration ready it calls back all registered  ILabelProviderListeners. Our 
+ModelExplrerViewer has an inherited ILabelProviderListener from class 
+StructuredViewer. Our listener also receives IResource CVS label 
+decoration ready events from class DecorationManager.  Currently we ignore any 
+event whose delta does not contain Model Element.  Now we find the component 
+represented by IResouce in the event delta and apply updates to that model 
+element.
+
+3. Cleanup all other Model Explorer refresh code.
+
+All other forced model explorer refresh code will be removed from 
+ComponentResouceListener. The UIUtil.refreshModelExplorer(Object) method is 
+no longer used, so it will be removed.
+
+Design comments
+---------------
+Two issues reference [2] & [3] were analyzed in the context of this issue.
+None of the two issues have the same reasoning as identified for this issue.
+
+Work Required
+-------------
+1. Filter model change events caused by auto build jobs.
+
+The changes are made to core/common/ComponentResourceListener.java according to
+the design.
+
+2. Refresh model explorer when there is a xtuml resource change.
+
+The changes are made to explorer/ExplorerTreeViewer.java according to the 
+design.
+
+3. Cleanup all other Model Explorer refresh code.
+
+Remove UIUtil.refreshModelExplorer(Object) and all references to it from 
+ComponentResouceListener.
+
+Unit Test
+---------
+_- Checkout MFP xtuml project from CVS
+_- Open Domain Package Diagram
+_- Switch to the RN perspective
+_- Do some graphical changes in the DPD
+_- Switch to xtuml Model perspective
+_R CVS dirty Mark '>' appears on Domain (file, folder) and SystemModel node.
+_- Switch to the RN perspective
+_- Perform commit thru RN
+_- Switch to xtuml Model perspective
+_R CVS dirty Mark '>' disappears from Domain (file,folder) and SystemModel node.
+
+End
+---
+
+$Log: i1599.dnt,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.16.1  2008/12/31 16:10:13  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/05/26 08:04:16  araza
+Job:1599
+Addressed review minutes.
+
+Revision 1.1  2006/05/26 08:00:50  araza
+Job:1599
+Addressed review minutes.
+
+Revision 1.3  2006/05/25 12:49:59  araza
+Job:1599
+Added analysis results for i993 & i2043.
+
+Revision 1.2  2006/05/24 19:14:43  rmulvey
+Job:1599
+Minor changes during pre-review.
+
+Revision 1.1  2006/05/24 18:33:33  araza
+Job:1599
+Initial.
+
+
+
+

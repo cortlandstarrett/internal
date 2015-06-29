@@ -1,0 +1,212 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Support transferring of system level elements
+
+1. Abstract
+-----------
+This note describes the requirements for providing import and export support of
+the new system level elements.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2657
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2657
+
+4. Background
+-------------
+We shall provide a way to transfer the new system level elements.
+
+5. Analysis
+-----------
+To support transferring of system level model elements we must provide an
+extension wizard to the eclipse Export... entry point.  We currently provide one
+which is titled, BridgePoint Model.  We should reuse this extension.  We must
+however create a new extension to the eclipse Import... entry point.
+
+5.1 Support exporting system level elements
+
+5.1.1 Provide export page
+
+In order to support exporting system level elements we must provide a wizard
+page which allows the user to select any system level element in the workspace.
+If one is selected before the export page is shown, then that element shall be
+selected when the page is displayed.
+
+The selection area shall be tree based, similar to the eclipse Archive file
+export page.  The tree shall resemble the explorer view tree, only there shall
+be no ModelElementFileFacade instances present.  Unlike the eclipse Archive file
+export page we will only have one window for selection.  The tree shall exclude
+all core data types and all of the built-in user data types.  The tree shall not
+extend pass the immediate children of the system.  The selection in the tree
+shall propagate to the system's selection.
+
+When exporting a piece of model a user would expect to have a structurally
+complete model.  There are a few system level elements which would require other
+system level elements from different packages to be exported as well.  These
+system level elements are Component Packages and Interface Packages.  If the
+contents being imported does not contain a referred to element, the importer
+will try to resolve the dangling reference using proxy data.  If the resolution
+was not possible a default element will be used.  For example if an interface
+operation is imported there will be a proxy for the data type, the importer will
+use the proxy data to try and find a matching dt.  If no match is found the
+default void data type will be used. Relying on that resolution does not satisfy
+a structurally complete model, therefore we shall auto-select referred to
+elements.  This shall only include the referred to element and it's package.
+
+There shall be a text field which will allow the user to specify the export
+location and file name.  There shall also be a "Browse..." button which will
+bring up the default eclipse file system browser.  We shall provide a check box
+to allow overwritting any existing destination file without question.  If this
+box is not checked a dialog will be shown asking the user if they would like the
+file to be overwritten.
+
+The canvas editor shall include the import and export actions to allow importing
+and exporting from the canvas.
+
+5.1.2 Use stream exporter to write model contents to file
+
+The stream exporter, which is used by the copy operation to export a model
+element to the clipboard, shall be used to export the selected elements to a
+single file.  This will provide all of the necessary proxies to allow element
+resolution when importing the exported element(s).
+
+5.2 Support importing system level elements
+
+5.2.1 Provide import page
+
+The import page requires a lot less than the export page.  For the 1.5.0 release
+we plan to import system level elements at the system level only.  For this
+reason we quite simply need a page with a list of the System Models in the
+workspace.  Later this will be the same exact tree as on the export page.  When
+more than just the system level is available for a destination we will need
+file content validation.
+
+5.2.2 Provide paste operations
+
+To support importing the element(s) from a file exported by the export page
+above we must hook up the children with the new parent as well as resolve any
+dangling references.  The paste infrastructure is in place for this.  Here we
+have a chance to provide copy/paste support for the new system level elements.
+We shall provide paste operations for all of the new system level elements.  We
+shall also provide the necessary resolution operations.
+
+In order to take advantage of the paste operations and the resolution operations
+we must use the PasteAction defined in core.  To do this we need to rework it so
+that all of it's functionality can be used against the file contents instead of
+the clipboard contents.
+
+5.2.3 Provide graphical symbol placement
+
+When importing the graphical elements for the exported element(s) we need to
+guarantee that the user is not left with overlapping symbols.  To do this we
+shall check the symbols original location for an existing symbol, if one is
+found we shall move the imported symbol by one grid position until there is no
+symbol beneath it.
+
+5.2.4 Support importing of old domain file
+
+The tool shall support importing old domain files from the new import wizard.
+To achieve this the tool shall pass the domain file to the old import code
+currently used by the New > xtUML Model wizard.  We can determine if the file is
+an old domain file by checking the header.  The header for a stream export is
+different than the header for an old domain file.
+
+6. Work Required
+----------------
+6.1 Provide export support
+6.1.1 Create export page
+6.1.1.1 Provide extension to eclipse Export... extension point
+6.1.1.2 Create variant of ModelContentProvider which excludes
+        ModelElementFileFacade instances and excludes core types
+6.1.1.3 Create tree which displays content provided above
+        The explorer tree should be reused here.
+6.1.1.4 Create text field for destination file
+6.1.1.5 Add Browse... button after text field
+6.1.1.6 Add import/export actions to canvas menu
+6.1.2 Use stream exported to write selected model elements to file
+6.1.2.1 Create a function that uses a stream exporter to write the selected
+        model contents to the stream.
+6.1.2.2 Write the stream to the selected destination file
+6.2 Provide import support
+6.2.1 Create import page
+6.2.1.1 Provide extension to eclipse Import... extension point
+6.2.1.2 Use the tree created above but filter all elements except for System
+        Model instances
+6.2.1.3 Implement paste* and resolve* operations for all system level elements
+6.2.1.4 Rework PasteAction accordingly, and create a new subtype of it
+6.2.1.5 Provide shape symbol auto reconcilation
+6.2.1.5.1 Create logic to provide automatic placement of newly created symbols
+6.2.1.5.2 Provide reconcile support for the elements listed in the analysis
+
+7. Acceptance Test
+------------------
+_- Export all system level elements from one project
+_- Import the exported system level elements to another empty project
+_- Compare the models folder from the two projects
+_R There are no structural differences
+
+_- Export a system level package
+_- Import the exported system level package into a system which has another
+   package of the same type with a different name
+_R The imported package is named differently
+
+_- Import an old domain file
+_R The old domain is imported correctly
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.5  2007/08/08 21:01:48  tlondon
+Job: 2657
+
+Adjust document after post-review discussions.
+
+Revision 1.4  2007/08/07 19:40:03  tlondon
+Job: 2657
+
+Address review minutes.
+
+Revision 1.3  2007/08/07 17:23:35  tlondon
+Job: 2657
+
+Clarify auto-select behavior.
+
+Revision 1.2  2007/08/07 14:43:26  tlondon
+Job: 2657
+
+Add section about auto-selecting referred to elements, to allow export of structurally complete model.
+
+Revision 1.1  2007/08/06 22:37:18  tlondon
+Job: 2657
+
+Introduce.
+

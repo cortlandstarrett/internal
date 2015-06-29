@@ -1,0 +1,193 @@
+========================================================================
+
+File:      $RCSfile: i2046.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:29 $
+
+(c) Copyright 2005-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Placeholder Manager does not track oal files with the same name correctly
+
+Abstract
+--------
+This note describes fixing of an issue which caused a wrong activity to be 
+hooked up with an existing place holder file.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 2046
+
+Background
+----------
+PlaceHolderManager uses hash code of ModelElementID to relate a place holder
+entry with a given model element. ModelElementID used a weak method for computing
+hash code, which resulted in similar hashcode for two different instances of
+ModelElementID. This was causing incorrect mapping of model elements with place
+holder entries.
+
+Design
+------
+
+This issue addresses two problems as described in the issue.
+
+1. Correcting of the naming convention for the place holders in case of similar 
+   name of an activity.
+   
+PlaceHolderManager.getFileWithUniqueName method is changed to use 
+<filename>.<differentiator>.<ext> format where differentiator = 1..n. The dot
+is used before the differentiator so that we can handle the situation where user
+can use a digit in the name itself and thus making it difficult to correctly 
+identify last known differentiator. Please note that the first name without any
+collision will be assigned without any differentiator.
+
+2. Fixing mapping technique.
+
+Instead of using hash code and a hash map, a tree map is used which uses 
+Comparator and Comparable interfaces for mapping. 
+
+2.1 ModelElementID is modified to implement Comparable interface. It uses 
+    following information in the given order for comparing as per Comparable 
+    interface.
+    
+    - Model root id.
+    - Type of model element.
+    - List of identifier values.
+    
+    Please note that above information is already being used for the 
+    implementation of equals method.
+    
+2.2 PlaceHolderManager is modified to use TreeMap instead of HashMap.
+
+Work Required
+-------------
+
+i2046.1  Modify PlaceHolderManager.getFileWithUniqueName method as specified in
+         the design section.
+
+i2046.2  Change ModelElementID class to implement Comparable interface.
+
+i2046.3  Modify PlaceHolderManager to use TreeMap instead of HashMap.
+
+Implementation Comments
+-----------------------
+It was found that a workspace path containing spaces broke the build system and
+some tests. Several additional changes were made to accommodate for this.
+
+Unit Test
+---------
+
+_- Load a test model with 10 activities with similar names and with consecutive 
+   ids. Note that each of these activities have different kind of error at 
+   pre-defined locations. 
+_- Parse all activities of the model.
+_R Verify that 10 place holder files are created with valid naming convention.
+_- From the problem view double click each activity.
+_R For each editor opened, verify if correct activity is opened. 
+
+
+Code Changes
+------------
+com.mentor.nucleus.bp.als/generate.xml
+- Added handling for workspace path containing spaces
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+                                                         TransactionManager.java
+- Changed to ignore the delayedProblemMarkerJob as a source of resource changes.
+
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+                                                ModificationValidationTests.java
+- Cured problem with tree refresh timing.
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+                                                           TestingUtilities.java
+- Added handling for workspace path containing spaces
+
+com.mentor.nucleus.bp.properties.test/generate.xml
+- Added handling for workspace path containing spaces
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    ModelElementID.java
+- Used java generics for collection declarations.    
+- Implemented Comparable interface so that it can be corrected mapped when used
+  as key in TreeMap such as PlaceHolderManager.
+- Changed getUniqueStringID method to use id prior to other long 
+  differentiators.
+- Added toString() method often helpful while debugging.
+    
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/placeholder/
+    PlaceHolderEntry.java
+- Renamed lastModelElementFileName to lastModelElementName to match its purpose.
+  Since the file name of contained proxy files can be different, code is changed
+  at various places to use this variable as last known name of model element 
+  with any differentiator.
+- Renamed findPlaceHolderFile to better readibility.
+- Updated PlaceHolderFileProxy.getMarker method to avoid returning null which is
+  invalid as per Eclipse documentation. 
+    
+    
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/placeholder/
+    PlaceHolderManager.java
+- Changed TreeMap instead of HashMap to correctly map the id with place holder
+  entries.    
+- Used java generics for collection declarations.    
+- Fixed getFileWithUniqueName method that didn't correctly look for unique name.
+- Removed used methods and variables.
+
+com.mentor.nucleus.bp.ui.text.test/models/com.mentor.nucleus.bp.ui.text.test/
+                                       ooaofooa/*PLCM format copy of core model*
+- Introduced test model.
+
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    activity/I2046IncorrectPlaceHolderMappingTest.java
+com.mentor.nucleus.bp.ui.text.test/src/UITextSuite.java
+- Introduced unit test.
+
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    DuplicateRelationshipNumberParseAllTest.java
+- Updated the name of place holder after changing naming policy of place holder
+  files.
+End
+---
+
+$Log: i2046.int,v $
+Revision 1.1  2009/09/03 18:24:29  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:41  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.16.1  2008/12/31 16:10:55  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2006/10/19 23:21:09  campbell
+Job: 2046
+Added final review comments.
+
+Revision 1.4  2006/06/15 18:21:22  babar
+Job:2046
+- Updated the code changes section.
+
+Revision 1.3  2006/06/09 12:14:06  babar
+Job:2046
+Added some detail.
+
+Revision 1.2  2006/06/08 22:46:06  babar
+Job:2046
+Removed minor errors.
+
+Revision 1.1  2006/06/08 22:44:19  babar
+Job:2046
+Introduced.

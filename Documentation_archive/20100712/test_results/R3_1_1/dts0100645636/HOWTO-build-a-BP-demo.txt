@@ -1,0 +1,113 @@
+========================================================================
+
+File:      $RCSfile: HOWTO-build-a-BP-demo.txt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2006-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Document References
+-------------------
+[1] CQ issue dts0100590737
+    Provide a licensing solution for the 2009 ET-robocon educational challenge
+    Note: This was the issue where we introduced a way to provide a demo 
+    version of BP.  The development notes describe the options we examined
+    and why we selected the method we did.
+[2] Documentation/internal/process/releases/HOWTO-build-a-release.txt
+    
+    
+How to create a BP demo
+-----------------------
+x- Determine the demo period.  You will need to know the start date and the end
+   date.
+x- Create a issue in ClearQuest to track the request for a new demo.   
+x- Open a standard BridgePoint development workspace (HEAD) that has been built.
+x- Create a new demo key file
+	x- Checkout the BridgePointDemoKeyCreator from HEAD in the BridgePoint CVS 
+	   repository.
+	x- Open the Java perspective   
+	x- Select the BridgePointDemoKeyCreator project and build it 
+	  (Project > Build Project)
+	xR BridgePointDemoKeyCreator builds with no errors
+	x- Select the BridgePointDemoKeyCreator project and run it 
+	   (right click > Run As... > Java Application)
+	x- Enter the demo start date in YYYYMMDD format and select OK
+	x- Enter the demo end date in YYYYMMDD format and select OK
+	xR The demo file, BridgePointDemo.txt, is create in the folder that the 
+	   MGLS_LICENSE_FILE environment variable points to.
+	x- Copy the BridgePointDemo.txt created in the previous step to:
+	   <workspace>/BridgePointDemoKeyCreator/license_files_handed_out/BridgePointDemo.txt-<startdate>-thru-<enddate>
+	   where startdate is the YYYYMMDD for the demo start and enddate is 
+	   YYYYMMDD for the end of the  demo.
+	x- Check in the demo file to the CVS repository
+
+x- Branch the plugins that will be modified.  NOTE!!  This changes will NOT
+   be promoted to head.	
+	x- Create a branch named Review-<new demo creation issue number> for the 
+	   following projects:
+	   Note: The changes made here will NOT be promoted to head.
+	   model_compilers 
+	   com.mentor.nucleus.bp.core
+x- Enable the demo license check in bp.core	
+	x- "Uncomment" the java code in 
+	   bp/core/util/BridgePointLicenseManager.java::checkLicense()
+	   that turns on the demo license
+	x- Check in the change to the branch
+x- Modify gen_erate.exe to allow the binary model compiler to run during the 
+   demo period.	
+	x- Modify model_compilers/generator/gen_erate/bp_source/win32/7.1B/main/src/gen_erate/main_gen_erate.cc
+	   and put in the hard-coded date-check.  To see what this code looks like 
+	   compare revisions 1.39.6.5 and 1.39 of main_gen_erate.cc.
+	   Note that this change simply wraps the binary 3020 license in a 
+	   try/catch block that allows the binary license to work for the specified 
+	   (hardcoded) demo period.
+	x- Note!!  Make sure you change the 2 hard-coded dates in the above code to
+	   reflect the correct demo start and end dates.
+	x- check in the change to the branch
+	x- Build a new gen_erate.exe
+x- Create a branch build for the modified branch	
+x- Manually create an installer from the branch build result
+   x- The procedure for building an installer is described as part of [2].  
+      The same procedure as outlined in [2] is followed except the following 
+      files must updated before creating the installer:
+       _- Before modifying the BridgePoint installer files, make a back up
+       x  on the build server of C:\BridgePoint\BridgePointDeliverables.  
+          Restore to this backup after the demo is done being created.
+	   x- Replace gen_erate.exe in the install pacakge  with the demo 
+	      gen_erate.exe created in the previous step (note that it should be
+	      replaced in all its locations).  There are currently 2 locations:
+			x- ./eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.dap.pkg_3.1.1/bridgepoint/win32/client/bin/gen_erate.exe			
+			   	x- In this location, there is a copy of gen_import.exe and
+			       gen_file.exe.  This are simply renamed copies of 
+			       gen_erate.exe.
+			x- ./eclipse_extensions/BridgePoint/eclipse/plugins/com.mentor.nucleus.bp.mc.mc3020_3.1.1/mc3020/bin/gen_erate.exe			
+	   x- Place BridgePointDemo.txt in the license folder 
+	      (C:\BridgePoint\BridgePointDeliverables\license) so it will be 
+	      installed with the product
+_R A demo installer is created
+x- Test the installer
+   _- If any MGLS* or LM* environment variable exit in the test environment
+      comment them out (simply rename them by adding "noForDemo" to their name). 
+   _- Install BridgePoint 
+   _- Launch the tool
+   _R No license errors
+   _- Open Help > License Information...
+   _- It show  no licenses are present (this is normal for the demo version).
+   _- Use the Getting started demo to create MicrowaveOven
+   _- Build MicrowaveOven with MC3020
+   _R No errors
+   _- Launch verifier and run MicrowaveOven
+   _R No Errors
+   _- Change the system date to 1 day after expiration
+   _R License errors appear
+   _- Restore the system date and any environment variable that were 
+      commented-out in the first step.
+   _- FYI (for internal testing), note that after hitting a license error with 
+      the demo version the tool will continue to fail (with license errors) 
+      until a new, clean, valid,copy of BridgePointDemo.txt is put into the 
+      license folder.

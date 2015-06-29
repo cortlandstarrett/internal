@@ -1,0 +1,215 @@
+========================================================================
+
+File:      $RCSfile: dts0100910436.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Audit VIEC realized code provided by the user.
+
+1. Abstract
+-----------
+This note describes the enhancements to the BridgePoint Verifier product so that
+it will produce a report confirming the conformance of user provided realized
+code to the expectations of the VIEC functionality.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100910436 - Provide feature to verify VIEC realized code
+     bindings
+[2]  cvs:\Documentation\internal\technical\dts0100831212\dts0100831212.ant
+[3]  ClearQuest DEI dts0100887931 - Enable users to co-simulate xtUML models
+     together with external code packaged in pre-compiled libraries
+[4]  ClearQuest DEI dts0100887837 - Introduce nightly build support
+[5]  ClearQuest DEI dts0100910433 - Audit realized bindings for External
+     Entities
+
+4. Background
+-------------
+The work for [3] introduced the ability for the user to write java code that
+implements a components functionality. This job makes that functionality easier
+to use by providing a report that confirms that the required java elements are
+accessible in the expected locations in the package hierarchy.
+
+5. Requirements
+---------------
+5.1 Specified in [2, 6.2.2] and summarized here.
+
+5.1.1 A new menu item, 'Verify realized bindings' shall be added to the
+      BridgePoint context menu for realized components or for packages that
+      contain such.
+5.1.2 Perform a check that the realized code can be bound.
+5.1.3 List everything that fails the binding check in a scrolling list
+      which can be copied to the clip board if required.
+5.1.4 Report the following problems:
+5.1.4.1  Class is not found.
+5.1.4.2  Expected method is missing.
+5.1.4.3  Expected constructor is missing.
+5.1.4.4  Expected interface definition is missing.
+5.1.4.5  Java realized data type class is missing an expected field.
+5.1.4.6  An expected return type is not compatible with what is provided by the
+         realized method.
+5.1.4.7  Declared return type does not provide an expected java field.
+5.1.5 Check only components marked as realized.
+5.1.6 Traverse the package and component containment hierarchy to perform the
+      check.
+5.1.7 The report shall contain a list of user defined types, stating which
+      ones have realized implementations found for them.
+
+5.2 Additional checks
+In addition to the requirements specified above, the audit shall check for
+the following:
+5.2.1 Enumerations
+5.2.1.1 Check for the existence of realized enumerated types used in any
+        interface to any realized component.
+5.2.1.2 Check that enumeration values are present for all modeled enumerations.
+5.2.1.3 Check that modeled enumerations are present for all realized enumeration
+        values.
+
+5.2.2 Structured Data types
+5.2.2.1 Check the accessibility of all members.
+5.2.2.2 Check for the existence of accessor methods on realized structured data
+        type members. This is not an error provided the fields in question are
+        public, however in this case the report shall make the recommendation
+        that the fields be encapsulated.
+
+6. Analysis
+-----------
+There is no pre-existing similar functionality, so this will require a new java
+class to implement it and a new action to allow the user to launch it. The
+logical place for these new classes to live is in the bp.debug.ui plugin.
+
+Note that the binding checks for External Entities are not implemented at this
+time. An issue[5] is raised to get this scheduled for a later release.
+
+7. Design
+---------
+7.1 Audit class
+A new class, VerifierInvocationAuditor, is added under the bp.debug.java.access
+package. It shall provide the following public static methods:
+
+public String performRealizedCodeAudit(Component_c)
+public String performRealizedCodeAudit(Package_c)
+
+These shall be accessed from a new action class, AuditRealizedCodeAction, under
+bp.debug.ui.actions (see 7.2).
+
+Both of these public methods delegate on to a single private method:
+
+private String internalPerformRealizedCodeAudit(NonRootModelElement)
+
+This handles both root element types. It first of all calls a private method,
+collectElements which takes an integer that takes the values defined in the
+existing modeled enumeration 'ElementTypeConstants'. At this time, only
+Components, Interfaces and DataTypes are checked, so the new internal method is
+called three times passing the enumerated constant value for each of these
+element types in turn.
+
+The collectElements method recursively descends the model hierarchy collecting a
+set containing instances of one of the three element types specified above. A
+set is used so that each element is checked once. An element is added to the set
+only if it is marked as realized (in the case of a component) or is attached to
+a realized component through one of its ports.
+
+Once the collection is obtained, additional private methods defined in the
+VerifierInvocationAuditor class are called to make the required checks on the
+realized code. These are:
+
+private String performAudit(Component_c, BPClassLoader)
+private String performAudit(Interface_c, BPClassLoader)
+private String performAudit(DataType_c, BPClassLoader)
+
+The BPClassLoader is passed so that the realized classes may be accessed using
+the same mechanism used by Verifier itself.
+
+In all cases above, the string return value contains a list of problems found
+with the realized code bindings. These results are aggregated and returned to
+the caller, AuditRealizedCodeAction.
+
+A number of other private methods are factored out to minimize the amount of
+code to be maintained:
+
+private Class<?> getClassForCoreTypeOf(DataType_c, boolean)
+private String getClassNameForDt(DataType_c)
+private DataType_c getCoreDataType(DataType_c)
+private String getNameForCoreTypeOf(DataType_c, boolean)
+private String performAudit(Class<?>, ExecutableProperty_c, BPClassLoader)
+
+The last one is factored out so that 'To' and 'From' Provider realized
+interfaces may be checked using the same code path.
+
+7.2 Audit Action
+Since we only want to check realized components, new action filter logic is
+added to the modeled action filter operations of Package, Component and
+Component Reference. These operations recursively call themselves to discover
+if any contained component is realized.
+
+The debug.ui plugin.xml file is modified to specify the menu contributions on
+Package and Component. Each entry specifies the action filter so that the audit
+menu entry is suppressed in non-realized models.
+
+The AuditRealizedCodeAction class is very simple. Its run method simply calls
+performRealizedCodeAudit() on the auditor class, passing the component or
+package obtained from the current selection. The resulting returned String is
+shown in a ScrolledTextDialog. When the BridgePoint headless mode work [4] is
+completed, this dialog must only be shown when not running headless. A note is
+added to that issue to ensure this change is made.
+
+8. Design Comments
+------------------
+None.
+
+9. Work Required
+----------------
+Fully described in section 7.
+
+10. Unit Test
+------------
+10.1 A new unit test model, VerifierBindingTest is added to the usual place in
+     the subversion repository (svn://trunk/Models/Test).
+10.2 Additionally, the VerifierMessageTestGlobals model may be used to show that
+     a model with good realized bindings shows no errors.
+10.3 A new test is required to test that right clicking a model element without
+     realized components does not show the 'Verify Realized Bindings' menu
+     entry.
+10.4 Since these changes are specific to the Verifier, only the Verifier JUnit
+     tests need be rerun.
+
+End
+---
+
+$Log: dts0100910436.dnt,v $
+Revision 1.6  2012/10/04 16:42:51  campbell
+Job: dts0100910436
+Address review observations.
+
+Revision 1.5  2012/10/04 14:03:10  campbell
+Job: dts0100910436
+Add section numbers.
+
+Revision 1.4  2012/10/04 12:32:01  campbell
+Job: dts0100910436
+Specify testing requirements.
+
+Revision 1.3  2012/10/04 12:20:35  campbell
+Job: dts0100910436
+Expand requirements section.
+
+Revision 1.2  2012/09/07 09:35:44  campbell
+Job: dts0100910436
+Ready for review.
+
+Revision 1.1  2012/09/05 10:27:49  campbell
+Job: dts0100910436
+Introduced.
+

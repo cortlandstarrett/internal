@@ -1,0 +1,980 @@
+========================================================================
+
+File:      $RCSfile: i130.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement event processing
+
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+generation of events and reading of event data items.
+
+History
+-------
+
+update i130-031704-01.rvm
+final  i130-031704-02.rvm
+
+Document References
+-------------------
+Issue 130
+action_semantics.dnt
+ooaofooa.bak
+Razor BridgePoint issue 2822
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so that event generation and creation are
+semantically validated.  Additionally, the reading of event 
+data items are also semantically validated.
+
+This work is part of implementing the action semantics 
+design (action_semantics.dnt), section AS1.4.3.
+
+The Tiger reduced parser (oal.bnf) has the following rules
+regarding these statements:
+
+create_event_statement
+  :
+    "create"!
+    "event"!
+    "instance"!
+    local_variable[true]
+    "of"!
+    event_spec
+  ;
+
+generate_statement
+  :
+  "generate"!
+  (
+    event_spec
+  |
+    local_variable[false]
+  |
+    attribute_access[false]
+  )
+  ;
+
+event_spec
+  :
+    event_label(TOK_TIMES)?
+    ( TOK_COLON! event_meaning )?
+    ( TOK_LPAREN! ( supp_data )? TOK_RPAREN! )?
+    "to"!
+    (
+      ( ( object_keyletters ( "assigner" | "class" ) )=>
+        object_keyletters ( "assigner" | "class" )
+      |
+        object_keyletters "creator"
+      )
+    |
+      (
+        inst_ref_var_or_ee_keyletters
+      )
+    )
+  ;
+
+supp_data
+  :
+    supp_data_item
+    TOK_COLON!
+    expr
+    (
+      TOK_COMMA!
+      supp_data_item
+      TOK_COLON!
+      expr
+    )*
+  ;
+
+event_data_access!
+  :
+    "rcvd_evt"
+    TOK_DOT
+    supp_data_item
+  ;
+
+Design
+------
+
+i130.1  Changes to grammar
+
+i130.1.1  Ignore constants in event_data_access rule
+
+We add exclamation points to the unneeded tokens in the
+event_data_access rule.  This ensures that the validation
+function is passed the value of the supp_data_item rule.
+
+event_data_access!
+  :
+    "rcvd_evt"!
+    TOK_DOT!
+    supp_data_item
+  ;
+
+
+i130.2  Changes to ooa
+  
+i130.2.1  Add Event Datum Value relationship
+
+The attribute Event Datum Value.Event_Data_Item_Name is removed.
+One relationship is added. Relationship R834 is from Event 
+Datum Value to State Model Event Data Item.  The relationship 
+is 1 - *. The Event Datum Value represents the value of an event
+data item to a state.  Event data items can be represented by 
+many Event Datum Value instances.
+
+i130.2.2  Add generating pre-existing attribute event
+
+In the Event subsystem, add relationship R714 from the Generate
+Preexisting class to the Attribute class.  The relationship has
+cardinality of 0,1 - 0,1.  The Generate Preexisting statement
+generates an event instance that is stored either in a 
+local variable (already modeled by R713) or an attribute (modeled by
+this new relationship).
+
+i130.2.3  Redo Event subsystem
+
+The Event subsystem is refactored to remove the multiple relationships
+to the V_VAR and SM_EVT classes. Rather than try to describe all 
+these changes, the changes are in ooaofooa.bak version 1.21 for review.
+
+i130.2.4  Add attribute to Block class
+
+The attribute Block.TempBuffer2 of type string is added.
+This attribute is used to store the first event data
+item name in a event parameter list.  The TempBuffer attribute
+is used to store the attribute name of the rest of the 
+parameters in the list (one at a time).
+
+i130.2.5  Clear operations
+
+The following clear operations are added:
+
+Create Event to Instance (E_CEI)
+Create Event to Assigner (E_CEA)
+Create Event to Creator (E_CEC)
+Create Event to External Entity (E_CEE)
+Generate (E_GEN)
+Generate to Assigner (E_GAR)
+Generate to Creator (E_GEC)
+Generate to External Entity (E_GEE)
+Generate Preexisting Event (E_GPR)
+
+Event Datum Value (V_EDV)
+
+The following clear operations are updated:
+
+Statement.clear() - Add check for E_ESS, E_GPR
+Value.clear() - Add check for V_EDV
+
+i130.2.6  Add State Action as an activity
+
+The class Action Specification (ACT_ACT) has the relationship
+R689 added to the class Action (SM_ACT).  This relationship 
+captures that the ACT_ACT 'specifies processing for' an Action.
+
+i130.2.7  Make bp issue 2822 changes
+
+BridgePoint issue 2822 changed how relationship R527 from 
+SM_PEVT to SM_NLEVT was formalized.  The changes made by this
+issue are made to the ooaofooa model.
+
+i130.3 Implement validation
+
+i130.3.1  Implement event_spec validation
+
+The event_spec rule can generate the following errors:
+
+- Class doesn't have a statechart
+- Unknown event label for statechart
+- * present for non-polymorphic event
+- Incorrect event_meaning for event
+- Missing data item for event
+- Incorrect data item for event
+- Datatype mismatch for parameter
+- Creation event specified for class without any creation transitions
+
+inst_ref_var_or_ee_keyletters_validate() - This function determines
+if the token being parsed is the name of an in-scope variable, or
+the keyletters of an external entity.  If it is a variable, the
+Block.tempBuffer attribute is set to "V_VAR.Var_ID" and the 
+variable id is returned.  If it is an EE's keyletters, Block.tempBuffer
+is set to "S_EE.EE_ID" and the EE's id is returned.
+Otherwise, an error is output.
+
+event_spec_start() - This function creates an instance of
+ACT_SMT, E_ESS and E_GES, and relates them to each other.
+These instances will be populated with the statement data
+as the statement is parsed. The ACT_SMT.Statement_ID is returned.
+
+event_label_validate() - This function determines if there is
+exactly one event label defined with the label passed in. If not,
+an error is raised.  Otherwise, an instance of either E_GEE
+or E_GSME is created (depending on if it's a EE or SM event).
+The Statement_ID is returned.
+
+event_meaning_validate() - The meaning is compared to the meaning
+defined for the event label found in event_label_validate().  If
+there is a mismatch, an error is raised.  The current rule id is
+returned.
+
+event_spec_end() - This function determines what kind of event
+is being defined, and invokes one of the following four helper
+functions:
+
+  process_class_event
+  process_creation_event
+  process_instance_event
+  process_ee_event
+
+Each of these functions validate that the event label specified
+by the statement is defined for the destination (if a label did 
+not exist, execution would not reach this point. However, a label may
+be defined, but not for the destination stated).  The functions
+then verify the parameter list by calling either:
+
+  is_valid_sm_event_data
+  is_valid_ee_event_data
+
+The process_creation_event function also verifies that the
+specified event causes a creation transition.
+
+The process_instance_event function searches for polymorphic
+events in the instance supertype hierarchy using the new
+utility function search_supertypes_for_event(subtype_sm: 
+unique_id, evt_name: string).  
+
+The bridge OS::remove_star(s: string) is created to 
+return the input string with the last character removed, 
+if the last character is equal to '*'.
+
+terminal_tok_times_validate() - This function is modified
+to find an instance of E_ESS using the current rule id,
+which will be the E_ESS identifier.  If there is an instance,
+the PEIndicated attribute is set to true.
+
+supp_data_loop6_end() - The function checks that the expression
+being passed as a parameter has no errors.  If the expression is OK,
+then an instance of V_PAR is created, and related to the current E_ESS
+instance.  The new instance is placed at the end of the parameter list.
+
+supp_data_end() - The function checks that the expression
+being passed as a parameter has no errors.  If the expression is OK,
+then an instance of V_PAR is created, and related to the current E_ESS
+instance.  The new instance is placed at the beginning of the parameter list,
+since it is the first parameter being passed to the event.
+
+i130.3.2  Implement event generation validation
+
+In addition to the errors caused by the event_spec rule,
+the event generation statement raises an error if the
+local_variable or attribute is not of type inst<Event>.
+
+generate_statement_end() - This function checks for the
+type of generate statement.  For the normal case, the 
+event_spec rule has already created all the instances, 
+so no other work is needed.  For the generate from pre-existing
+instance cases, the type of the variable is checked, and 
+the appropriate error is raised.  If all is OK, then 
+an instance of E_GPR is created, along with the ACT_SMT 
+supertype instance.  The Statement_ID is returned.
+
+i130.3.3  Implement event creation validation
+
+In addition to the errors caused by the event_spec rule,
+the event creation statement raises an error if the
+local_variable is not of type inst<Event>.
+
+create_event_statement_end() - This function first verifies
+that the local variable is the correct type, and raises an
+error if it isn't.  Otherwise, the function migrates the
+data from the E_GES instance into a E_CES instance. The
+Statement_ID is returned.
+
+i130.3.4  Implement parameter access validation
+
+The validation function event_data_access_validate()
+is implemented with checking that the data item is
+defined as part of the data set for the action being 
+translated.  If it is not, then an error is raised.
+There is also an error if the state's data set is
+defined by a polymorphic event that is no longer defined,
+i.e., the event into the state is orphaned.
+If there is no error, then an instance of Event Datum
+Value (V_EDV) is created along with the supertype V_VAL
+instance. The V_VAL.Value_ID is returned.
+
+i130.3.5  Update other validation functions
+
+action_start() - The function has the case of
+a state action being parsed added to it.
+
+
+Work Required
+-------------
+
+i130.1  Changes to grammar
+
+i130.1.1  Ignore constants in event_data_access rule
+
+The changes are made to oal.bnf
+
+i130.2  Changes to ooa
+
+All changes are made to ooaofooa.bak
+  
+i130.2.1  Add Event Datum Value relationship
+i130.2.2  Add generating pre-existing attribute event
+i130.2.3  Redo Event subsystem
+i130.2.4  Add attribute to Block class
+i130.2.5  Clear operations
+i130.2.6  Add State Action as an activity
+i130.2.7  Make bp issue 2822 changes
+
+i130.3 Implement validation
+
+All changes are made to function_import.sql
+
+i130.3.1  Implement event_spec validation
+i130.3.2  Implement event generation validation
+i130.3.3  Implement event creation validation
+i130.3.4  Implement parameter access validation
+i130.3.5  Update other validation functions
+
+
+Implementation Comments
+-----------------------
+
+- The OAL unit test is changed from creating instances using
+Java to reading a .bak file containing the test model.  The
+com.projtech.bp.io.sql package is used to import the test model.
+A new Java project called com.projtech.bp.als.oal.test is created.
+The test model is placed in als.oal.test/mdl/testOAL1.bak.  
+The dependency on the io.sql package is added to the als.oal.test 
+project in the files .project and .classpath.  The dependency on
+junit is removed from the als.oal/.classpath file.
+The parser member m_output is changed to public in oal.bnf to
+allow the test class access to it.
+
+- The OalParserTest.java file is removed from the excludes list
+for the format_java target in bp.als/build.xml
+
+- The OS_CACHE_SIZE environment variable is set to 64000000
+for all invocations of pt_gen_import and pt_gen_file in 
+bp.als/build.xml and MC-Java/build.xml.
+
+- The timeout for the pt_gen_file processing of java.arc
+is increased to 120 seconds in MC-Java/build.xml.
+
+- assignment_expr_end() - The attribute access case is updated
+to get the base attribute data type in the case of a 
+referential attribute. 
+
+- attribute_access_end() - The function is updated
+to get the base attribute data type in the case of a 
+referential attribute. 
+
+- action_start() - A test for class-based or instance-based operations
+is added to the operation case.
+ 
+- local_variable_validate() - Fixed the action instance selection logic 
+for the error case of when self is not allowed.
+
+- clear_assignment_data() - This utility function is
+created to delete any information for an assignment
+statement.  The function invocation replaces the 
+hand-written code in several places in assignment_expr_end().
+
+- The improved garbage deletion caused by clear_assignment_data()
+caused changes to many unit tests involving assignments with erroneous
+expressions.
+
+- Opened issue describing the following MC-Java error:
+
+The following OAL
+
+select many edi_set related by evt->SM_SUPDT[R520]->SM_EVTDI[R522];
+ 
+generates:
+ 
+        StateModelEventDataItem_c[] edi_set =
+            StateModelEventDataItem_c.getManySM_EVTDIsOnR522(
+                 EventSupplementalData_c.getManySM_SUPDTsOnR520(evt));
+
+which causes a compile error.
+
+- The os_ee_w_graphics.sql and err_ee_w_graphics.sql files were updated
+to remove all data types that aren't referenced by the EE's. The err_ee.sql
+and os_ee.sql files had the EE description updated.
+
+Unit Test
+---------
+
+- Create a class Test (D_TST) with an attribute named evt_inst,
+of type inst<Event>.  The class has an instance and class statechart 
+both with the following events:
+    D_TST1: 'none' (  )
+    D_TST2: 'one' ( i: integer )
+    D_TST3: 'two' ( i: integer, s: string )
+    D_TST4: 'three' ( i: integer, r: real, s: string )
+    D_TST5: 'mult'()
+    D_TST5: 'mult'()
+    D_TST6: 'mult_parms' (a: integer)
+    
+where the 'a' event data item is defined twice.
+
+Both statecharts have four states, named 'none', 'one', 'two',
+and 'three'.  Each state has a transition that is
+caused by the same named event.  The instance statechart also
+has creation transitions into each state caused by the appropriate
+event.
+
+- The D_TST class is a supertype of the Test Subtype (D_TS) class, which
+is a supertype of the Test Poly (D_TP) class. The D_TST class 
+defines the following polymorphic events:
+
+    D_TST7: 'poly'()
+    D_TST8: 'poly_data'(i: integer, r:real)
+
+The D_TS class defined the polymorphic event D_TS1: 'middle' (r: real).
+After the D_TP class referenced it and was checked in, the event was deleted
+from the D_TS class, leaving an orphaned reference in the D_TP class.
+The D_TP class has a statechart with three states that are transitioned
+by each polymorphic event (D_TST7, D_TST8, D_TS1).
+
+- Add the following events to the Test (T) external entity:
+
+    T1: 'none' (  )
+    T2: 'one' ( i: integer )
+    T3: 'two' ( i: integer, s: string )
+    T4: 'three' ( i: integer, r: real, s: string )
+    T5: 'mult'()
+    T5: 'mult'()
+    T6: 'mult_parms' (a: integer)
+
+------------ Event Generation --------------
+
+// testGenerateEventNoParms
+select any t from instances of D_TST;  generate D_TST1 to t;
+
+// testGenerateEventNoParmsToAssigner
+generate D_TST_A1 to D_TST assigner;
+
+// testGenerateEventNoParmsToCreator
+generate D_TST1 to D_TST creator;
+
+// testGenerateEventNoParmsToEE
+generate T1 to T;
+
+// testGenerateEventNoParmsAndMeaning
+select any t from instances of D_TST;  generate D_TST1:'none' to t;
+
+// testGenerateEventNoParmsToAssignerAndMeaning
+generate D_TST_A1:'none' to D_TST assigner;
+
+// testGenerateEventNoParmsToCreatorAndMeaning
+generate D_TST1:'none' to D_TST creator;
+
+// testGenerateEventNoParmsToEEAndMeaning
+generate T1:'none' to T;
+
+// testGeneratePolyEventNoParms
+select any t from instances of D_TP;  generate D_TST7* to t;
+
+// testGenerateEventOneParm
+select any t from instances of D_TST;  generate D_TST2(i:7) to t;
+
+// testGenerateEventOneParmToAssigner
+generate D_TST_A2(i:7) to D_TST assigner;
+
+// testGenerateEventOneParmToCreator
+generate D_TST2(i:7) to D_TST creator;
+
+// testGenerateEventOneParmToEE
+generate T2(i:7) to T;
+
+// testGenerateEventOneParmAndMeaning
+select any t from instances of D_TST;  generate D_TST2:'one'(i:7) to t;
+
+// testGenerateEventOneParmToAssignerAndMeaning
+generate D_TST_A2:'one'(i:7) to D_TST assigner;
+
+// testGenerateEventOneParmToCreatorAndMeaning
+generate D_TST2:'one'(i:7) to D_TST creator;
+
+// testGenerateEventOneParmToEEAndMeaning
+generate T2:'one'(i:7) to T;
+
+// testGenerateEventTwoParmsToInstance
+select any t from instances of D_TST;  generate D_TST3(i:7, s:"ok") to t;
+
+// testGenerateEventTwoParmsToAssigner
+generate D_TST_A3(i:7, s:"ok") to D_TST assigner;
+
+// testGenerateEventTwoParmsToCreator
+generate D_TST3(i:7, s:"ok") to D_TST creator;
+
+// testGenerateEventTwoParmsToEE
+generate T3(i:7, s:"ok") to T;
+
+// testGenerateEventTwoParmsOtherOrder
+select any t from instances of D_TST;  generate D_TST3(s:"ok2", i:6) to t;
+
+// testGenerateEventTwoParmsToAssignerOtherOrder
+generate D_TST_A3(s:"ok2", i:6) to D_TST assigner;
+
+// testGenerateEventTwoParmsToCreatorOtherOrder
+generate D_TST3(s:"ok2", i:6) to D_TST creator;
+
+// testGenerateEventTwoParmsToEEOtherOrder
+generate T3(s:"ok2", i:6) to T;
+
+// testGenerateEventTwoParmsAndMeaning
+select any t from instances of D_TST;  generate D_TST3:'two'(i:7, s:"ok") to t;
+
+// testGenerateEventTwoParmsToAssignerAndMeaning
+generate D_TST_A3:'two'(i:7, s:"ok") to D_TST assigner;
+
+// testGenerateEventTwoParmsToCreatorAndMeaning
+generate D_TST3:'two'(i:7, s:"ok") to D_TST creator;
+
+// testGenerateEventTwoParmsToEEAndMeaning
+generate T3:'two'(i:7, s:"ok") to T;
+
+// testGenerateEventThreeParmsToInstance
+select any t from instances of D_TST;  generate D_TST3(i:7, s:"ok", r:2.1) to t;
+
+// testGenerateEventThreeParmsToAssigner
+generate D_TST_A3(i:7, s:"ok", r:2.1) to D_TST assigner;
+
+// testGenerateEventThreeParmsToCreator
+generate D_TST3(i:7, s:"ok", r:2.1) to D_TST creator;
+
+// testGenerateEventThreeToParmsToEE
+generate T3(i:7, s:"ok", r:2.1) to T;
+
+// testGenerateEventThreeParmsToInstanceOtherOrder
+select any t from instances of D_TST;  generate D_TST3(s:"ok", r:2.1, i:7) to t;
+
+// testGenerateEventThreeParmsToAssignerOtherOrder
+generate D_TST_A3(s:"ok", r:2.1, i:7) to D_TST assigner;
+
+// testGenerateEventThreeParmsToCreatorOtherOrder
+generate D_TST3(s:"ok", r:2.1, i:7) to D_TST creator;
+
+// testGenerateEventThreeToParmsToEEOtherOrder
+generate T3(s:"ok", r:2.1, i:7) to T;
+
+// testPolyEventTwoParms
+select any t from instances of D_TP;  generate D_TST8*(i:2, r: 1.1) to t;
+
+// testGeneratePreExistingFromVar
+create event instance x of D_TST1 to D_TST creator; generate x;
+
+// testGeneratePreExistingFromAttr
+select any t from instances of D_TST; generate t.evt_inst;
+
+Error cases
+-----------
+
+// testGenerateNoSuchEvent
+select any t from instances of D_TST;  generate D_TST9 to t;
+
+// testGenerateNoSuchEventToAssigner
+generate D_TST_A9 to D_TST assigner;
+
+// testGenerateNoSuchEventToCreator
+generate D_TST9 to D_TST creator;
+
+// testGenerateNoSuchEventToEE
+generate T9 to T;
+
+// testGenerateNoSuchEventAndMeaning
+select any t from instances of D_TST;  generate D_TST9:'none' to t;
+
+// testGenerateNoSuchEventAndMeaningToAssigner
+generate D_TST_A9:'none' to D_TST assigner;
+
+// testGenerateNoSuchEventAndMeaningToCreator
+generate D_TST9:'none' to D_TST creator;
+
+// testGenerateNoSuchEventAndMeaningToEE
+generate T9:'none' to T;
+
+// testGenerateWrongMeaning
+select any t from instances of D_TST;  generate D_TST1:'one' to t;
+
+// testGenerateWrongMeaningToAssigner
+generate D_TST_A1:'one' to D_TST class;
+
+// testGenerateWrongMeaningToCreator
+generate D_TST1:'one' to D_TST;
+
+// testGenerateWrongMeaningToEE
+generate T1:'one' to T;
+
+// testGenerateWrongSMEventToInstance
+select any t from instances of D_TST;  generate TP_1 to t;
+
+// testGenerateWrongSMEventToAssigner
+generate D_TP1 to D_TST assigner;
+
+// testGenerateWrongSMEventToCreator
+generate D_TP1 to D_TST creator;
+
+// testGenerateWrongSMEventToEE
+generate D_TP1 to T;
+
+// testGenerateWrongEEEventToInstance
+select any t from instances of D_TST;  generate OT1 to t;
+
+// testGenerateWrongEEEventToAssigner
+generate OT1 to D_TST assigner;
+
+// testGenerateWrongEEEventToCreator
+generate OT1 to D_TST creator;
+
+// testGenerateWrongEEEventToEE
+generate OT1 to T;
+
+// testGenerateMultDefinedEvent
+select any t from instances of D_TST;  generate D_TST5:'mult' to t;
+
+// testGenerateMultDefinedEventToAssigner
+generate D_TST_A5:'mult' to D_TST assigner;
+
+// testGenerateMultDefinedEventToCreator
+generate D_TST5:'mult' to D_TST creator;
+
+// testGenerateMultDefinedEventToEE
+generate T5:'mult' to T;
+
+// testCreateEventToInstanceWithBadType
+select any t from instances of D_TST; x = 1; create event instance x of D_TST1 to t;
+
+// testCreateEventToAssignerWithBadType
+x = 1; create event instance x of D_TST_A1 to D_TST class;
+
+// testCreateEventToCreatorWithBadType
+x = 1; create event instance x of D_TST1 to D_TST creator;
+
+// testCreateEventToExternalEntityWithBadType
+x = 1; create event instance x of T1 to T;
+
+// testGenerateToInstanceWithBadVar
+generate D_TST1 to x;
+
+// testGenerateToExternalEntityWithBadKL
+generate T1 to X;
+
+// testGeneratePolyEventToCreator
+generate D_TST7 to D_TST creator;
+
+// testGenerateNLEventToCreator
+generate D_TST7 to D_TP creator;
+
+// testGenerateNonCreationEventToCreator
+generate D_D1 to D_D creator;
+
+// testGeneratePolyMarkedNonPolyEventToInstance
+select any t from instances of D_TST; generate D_TST1* to t;
+
+// testGeneratePolyMarkedNonPolyEventToCreator
+generate D_TST1* to D_TST creator;
+
+// testGeneratePolyMarkedNonPolyEventToClass
+generate D_TST_A1* to D_TST class;
+
+// testGeneratePolyMarkedNonPolyEventToExternalEntity
+generate T1* to T;
+
+// testGeneratePreExistingFromUnknownVar
+generate x;
+
+// testGeneratePreExistingFromWrongVar
+x = 1; generate x;
+
+// testGeneratePreExistingFromUnknownAttr
+select any t from instances of D_TST; generate t.bad;
+
+// testGeneratePreExistingFromWrongAttr
+select any t from instances of D_TST; generate t.id;
+
+// testSMEventNoParmsWithParm
+select any t from instances of D_TST; generate D_TST1( x: true ) to t;
+
+// testSMEventOneParmWithoutParm
+select any t from instances of D_TST; generate D_TST2() to t;
+
+// testSMEventOneParmUnknownParm
+select any t from instances of D_TST; generate D_TST2( i: x ) to t;
+
+// testSMEventTwoParmsSecondUnknownParm
+select any t from instances of D_TST; generate D_TST3( i: 7, s: z ) to t;
+
+// testSMEventOneParmExtraParm
+select any t from instances of D_TST; generate D_TST2( i: 2, r: 3.14 ) to t;
+
+// testSMEventOneParmDupParm
+select any t from instances of D_TST; generate D_TST2( i: 2, i: 1 ) to t;
+
+// testSMEventOneParmExtraParmDiffOrder
+select any t from instances of D_TST; generate D_TST2( r: 3.14, i:2 ) to t;
+
+// testSMEventOneParmWrongType
+select any t from instances of D_TST; generate D_TST2( i:true ) to t;
+
+// testSMEventTwoParmsWrongTypeFirst
+select any t from instances of D_TST; generate D_TST3( i: false, s:"good" ) to t;
+
+// testSMEventTwoParmsWrongTypeSecond
+select any t from instances of D_TST; generate D_TST3( i: 7, s:true ) to t;
+
+// testSMEventTwoParmsWrongTypeFirstDiffOrder
+select any t from instances of D_TST; generate D_TST3( s:true, i:7 ) to t;
+
+// testSMEventTwoParmsWrongTypeFirstDiffOrder
+select any t from instances of D_TST; generate D_TST3( s:"good", i:false ) to t;
+
+// testSMEventDupParms
+select any t from instances of D_TST; generate D_TST6( a: 7 ) to t;
+
+// testEEEventNoParmsWithParm
+generate T1( x: true ) to T;
+
+// testEEEventOneParmWithoutParm
+generate T2() to T;
+
+// testEEEventOneParmUnknownParm
+generate T2( i: x ) to T;
+
+// testEEEventTwoParmsSecondUnknownParm
+generate T3( i: 7, s: z ) to T;
+
+// testEEEventOneParmExtraParm
+generate T2( i: 2, r: 3.14 ) to T;
+
+// testEEEventOneParmDupParm
+generate T2( i: 2, i: 1 ) to T;
+
+// testEEEventOneParmExtraParmDiffOrder
+generate T2( r: 3.14, i:2 ) to T;
+
+// testEEEventOneParmWrongType
+generate T2( i:true ) to T;
+
+// testEEEventTwoParmsWrongTypeFirst
+generate T3( i: false, s:"good" ) to T;
+
+// testEEEventTwoParmsWrongTypeSecond
+generate T3( i: 7, s:true ) to T;
+
+// testEEEventTwoParmsWrongTypeFirstDiffOrder
+generate T3( s:true, i:7 ) to T;
+
+// testEEEventTwoParmsWrongTypeFirstDiffOrder
+generate T3( s:"good", i:false ) to T;
+
+// testEEEventDupParms
+generate T6( a: 7 ) to T;
+
+------------ Parameter verification --------
+
+// testReadPolyEvtData (PolyTwo)
+x = rcvd_evt.r;
+
+- Parse the following three tests using the indicated state
+for both the class and instance statecharts of the Test class:
+
+// testRead1EvtData (one)
+x = rcvd_evt.i;
+
+// testRead2EvtData (two)
+x = rcvd_evt.s; y = rcvd_evt.i;
+
+// testRead3EvtData (three)
+v = rcvd_evt.r; x = rcvd_evt.s; y = rcvd_evt.i;
+
+Error cases
+-----------
+
+// testReadNoSuchPolyEvtData (PolyTwo)
+x = rcvd_evt.x;
+
+// testReadOrphanedPolyEvtData (PolyOrphaned)
+x = rcvd_evt.r;
+
+// testReadPolyEvtDataWrongType (PolyTwo)
+x = true; x = rcvd_evt.r;
+
+// testWritePolyEvtData (PolyTwo)
+rcvd_evt.r = 1.1;
+
+// testWritePolyEvtDataWrongType (PolyTwo)
+rcvd_evt.r = "bad";
+
+- Parse the following action language using the indicated state
+for both the class and instance statecharts of the Test class:
+
+// testReadNoSuchEvtData (one)
+x = rcvd_evt.x;
+
+// testWriteEvtData (one)
+rcvd_evt.i = 1;
+
+// testWriteEvtDataMultData (two)
+rcvd_evt.s = "bad";
+
+// testWriteEvtDataWrongType (one)
+rcvd_evt.i = true;
+
+// testWriteEvtDataWrongTypeMultData (three)
+rcvd_evt.s = 2.1;
+
+// testReadEvtDataWrongType (one)
+x = true;  x = param.i;
+
+// testReadEvtDataWrongTypeMultParms (three)
+x = true;  x = param.r;
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/build.xml
+Initial version:  1.14  Final version: 1.17
+
+com.projtech.bp.als/sql/err_ee.sql
+Initial version:  1.6   Final version: 1.7
+
+com.projtech.bp.als/sql/err_ee_w_graphics.sql
+Initial version:  1.5   Final version: 1.6
+
+com.projtech.bp.als/sql/os_ee.sql
+Initial version:  1.4   Final version: 1.6
+
+com.projtech.bp.als/sql/os_ee_w_graphics.sql
+Initial version:  1.4   Final version: 1.6
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Deleted version:   1.20
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/TestParser.java
+Deleted version:   1.5
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/Os_c.java
+Initial version:   1.4  Final version: 1.5
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:   1.12 Final version: 1.13
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:   1.15 Final version: 1.16
+
+com.projtech.bp.als.oal/.classpath
+Initial version:   1.7  Final version: 1.8
+
+com.projtech.bp.als.oal/Test_Readme.txt
+Deleted version: 1.1
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/OalParserTest.java
+Introduced version: 1.1
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/TestParser.java
+Introduced version: 1.1
+
+com.projtech.bp.als.oal.test/.classpath
+Introduced version: 1.2
+
+com.projtech.bp.als.oal.test/.cvsignore
+Introduced version: 1.1
+
+com.projtech.bp.als.oal.test/.project
+Introduced version: 1.1
+
+com.projtech.bp.als.oal.test/Test_Readme.txt
+Introduced version: 1.1
+
+com.projtech.bp.als.oal.test/mdl/testOAL1.bak
+Introduced version: 1.1
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.20  Final version: 1.22
+
+MC-Java/build.xml
+Initial version:  1.1   Final version: 1.2
+
+End
+---
+
+$Log: i130.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.11  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.10.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.10  2004/03/18 23:31:32  greg
+Job: 130
+Update from review
+
+Revision 1.9  2004/03/18 16:37:55  greg
+Job: 130
+Updated format_java for als/build.xml
+
+Revision 1.8  2004/03/17 22:31:13  greg
+Job: 130
+Code changes made
+
+Revision 1.7  2004/03/17 21:46:50  greg
+Job: 130
+Update from review
+
+Revision 1.6  2004/03/17 15:26:14  greg
+Job: 130
+Add PolyMarkedNonPolyEvent tests
+
+Revision 1.5  2004/03/17 00:01:26  greg
+Job: 130
+Add creation event error tests
+
+Revision 1.4  2004/03/16 23:42:54  greg
+Job: 130
+Add .project and .classpath
+
+Revision 1.3  2004/03/16 23:19:41  greg
+Job: 130
+Add Os_c.java to Code Changes list
+
+Revision 1.2  2004/03/16 21:43:48  greg
+Job: 130
+Minor changes
+
+Revision 1.1  2004/03/16 21:36:48  greg
+Job: 130
+Initial introduction
+
+
+

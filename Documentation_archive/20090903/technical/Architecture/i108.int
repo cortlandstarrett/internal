@@ -1,0 +1,191 @@
+========================================================================
+
+File:      $RCSfile: i108.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+MC-Java Implementation Note
+Declare inst_ref vars on assignment, invoke void functions properly
+
+Abstract
+--------
+This note describes the changes to MC-Java to declare a 
+transient variable correctly when the variable's type is
+an inst_ref or inst_ref_set.  It also describes the change
+to correctly invoke functions returning void.
+
+History
+-------
+
+final i108_020404-01.rvm
+
+Document References
+-------------------
+
+Bugzilla issue 108
+
+Background
+----------
+
+The following OAL: 
+
+  select one link related by sel->ACT_LNK[R637];
+  last_link = link;
+
+is translated to :
+
+ChainLink_c link = ChainLink_c.getOneACT_LNKOnR637(sel);
+inst_ref<Object> last_link = link ;
+
+inst_ref<Object> should be ChainLink_c !
+
+Invocations of functions returning void are generated as 
+members of the "main_class_name".  They should be members
+of the "domain" class.
+
+Design
+------
+
+i108.1  Add checking to transient assignment
+
+When a transient variable is assigned to, and the 
+variable is being implicitly declared, the archetype
+is changed to check if the type of the variable is
+inst_ref<Object> or inst_ref_set<Object>.  If the
+variable is one of these types, the object being referenced
+is looked up, and the declaration of the variable is
+output.
+
+i108.2  Fix void function invocations
+
+The archetype code that generates void function invocations
+is changed to use the domain name as the class of which the function
+is a member.   The functions returning something other than void
+are already generated with the domain name.
+
+Work Required
+-------------
+
+i108.1  Add checking to transient assignment
+
+In statement.inc, in the function gen_asgn_trans_statement,
+the following code is added:
+
+  .if (statement.is_implicit == "TRUE")
+    .select any type from instances of S_DT where ("${selected.DT_ID}" == value.DT_ID)
++   .if ( type.Name == "inst_ref<Object>" )
++     .select one vint related by value->V_TVL[R801]->V_VAR[R805]->V_INT[R814]
++     .select any new_obj from instances of O_OBJ where (selected.Key_Lett == vint.Key_Lett)
++     .invoke cn = get_class_name( new_obj )
++{cn.body} \
++   .elif ( type.Name == "inst_ref_set<Object>" )
++     .select one vins related by value->V_TVL[R801]->V_VAR[R805]->V_INS[R814]
++     .select any new_obj from instances of O_OBJ where (selected.Key_Lett == vins.Key_Lett)
++     .invoke cn = get_class_name( new_obj )
++{cn.body} [] \
++   .else
+      .invoke result = do_type(type)
+${result.body} \
++   .end if
+  .end if
+
+i108.2  Fix void function invocations
+
+i108.2.1  In statement.inc, in the function gen_func_statement,
+the invocation of the function is changed to use the domain name
+($cr{domain.Name}) as the class of which the function is a member.
+
+i108.2.2  The parameter main_class_name to gen_func_statement 
+is no longer used, so it it removed.  The parameter is removed 
+from the invocation of gen_func_statement in gen_function_statements.
+The parameter can then be removed from gen_function_statements.
+The invocation of gen_function_statements has the parameter 
+removed in the file translate_oal.inc.
+
+Implementation Comments
+-----------------------
+
+- The function get_domain_name was added to arch_names.inc.
+The function was used to replace hard-coded domain names
+in the following files:
+
+java.arc
+statement.inc
+value.inc
+
+Unit Test
+---------
+
+- Rebuild core project
+R No compilation errors.
+
+- Rebuild als project
+R No compilation errors.
+
+- Translate the following code in odms2:
+
+select any d from instances of D_D;
+d2 = d;
+select many d_set from instances of D_D;
+d2_set = d_set;
+
+R Code generated, compiles and runs correctly
+
+- Translate the following code in odms2:
+
+::initialize();
+
+R Code generated, compiles and runs correctly
+
+Code changes
+------------
+
+TinyJava/arch_names.inc
+Initial version: 1.7   Final version: 1.8
+
+TinyJava/java.arc
+Initial version: 1.9   Final version: 1.10
+
+TinyJava/statement.inc
+Initial version: 1.4   Final version: 1.5
+
+TinyJava/translate_oal.inc
+Initial version: 1.3   Final version: 1.4
+
+TinyJava/value.inc
+Initial version: 1.3   Final version: 1.4
+
+End
+---
+
+$Log: i108.int,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.166.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/02/04 22:11:52  greg
+Job: 108
+Update from review
+
+Revision 1.1  2004/02/04 19:17:28  greg
+Job: 108
+Initial introduction
+
+
+

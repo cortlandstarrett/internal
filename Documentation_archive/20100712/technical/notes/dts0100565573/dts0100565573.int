@@ -1,0 +1,106 @@
+========================================================================
+
+File:      $RCSfile: dts0100565573.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Timer instances not always torn down when stopping
+
+1. Abstract
+-----------
+A check on the timer instance population shows that timers that existed when
+a Verifier session was stopped are still present when the next session is
+started. At the very least, this will have a performance impact and may even
+affect run-time behavior.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100565573
+
+4. Background
+-------------
+4.1 the steps to reproduce this issue:
+_- Start Verifier for any xtUML model containing timers
+_- Execute the model
+_- Terminate and relaunch the verification
+_- Check the timers array for each execution engine in the verified model
+_R The timer instances from the first verifier run still exist in the timers 
+   arrays
+   
+5. Design
+---------
+5.1 In BPDebugTarget class add new function removeTimersTraces()
+5.2 This function is private 
+5.3 This function takes one argument "ModelRoot"
+5.4 The new added function searches the modelRoot for all created timer 
+    instances and dispose them 
+5.5 The function removeTimersTraces() is called from within the function 
+    terminate() in the BPDebugTarget, hence all the created timer instances 
+    will be disposed and not found when re-launch is done.
+
+
+6. Implementation Comments
+--------------------------
+6.1 There's a limitation for this functionality of removing the traces of 
+    created timer instances when verifier session is terminated. 
+    The limitation is when there's a multicomponent model running in 
+    a verifier session and only one component is terminated the timers
+    traces of that certain component are not deleted until the whole
+    model execution is terminated.
+    The reason why this happen is because timer instances are traced using the 
+    ModelRoot and the different components in a model have the same ModelRoot      
+6.2 Timers traces are removed when terminating a verifier session for certain
+     model,but not for each component when it's terminated individually.
+     When one component is terminated individually it follows the default 
+     behavior provided by BridgePoint.It's traces will be removed during the 
+     termination of the execution of the whole model.
+
+7. Unit Test
+------------
+7.1 Manually test the existence of previously created timers
+_- Start Verifier for any xtUML model containing timers
+_- Execute the model
+_- Terminate and re-launch the verification
+_- Check the timers array for each execution engine in the verified model
+_R The timers are being disposed while termination 
+_R The timer instances from the first verifier run does not show in the timers 
+   arrays at re-launch
+   
+7.2 Manually test the termination of one model doesn't affect the other running
+    models in the same verifier session of previously created timers.
+_- Start Verifier 
+_- Execute different models
+_- Terminate one of the models
+_- Check the timers array 
+_R Only the timers instances of the terminated model are being disposed while
+   termination 
+_R The timer instances from the other models aren't affected.
+       
+7.3 Run JUnit tests 
+
+8. Code Changes
+---------------
+R3_1_1-HKA-dts0100565573-01 (Branch)
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPDebugTarget.java
+
+
+End
+---
+
+$Log: dts0100565573.int,v $
+Revision 1.1  2010/01/21 12:07:54  hkhaled
+job:dts0100565573
+committing implementation note

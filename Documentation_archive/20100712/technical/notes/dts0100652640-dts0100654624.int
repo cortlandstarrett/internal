@@ -1,0 +1,238 @@
+========================================================================
+
+File:      $RCSfile: dts0100652640-dts0100654624.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Introducing an ordered timers list and maintaining an "expiration time" for
+timers instead of "time_left".
+
+1. Abstract
+-----------
+This note describes the implementation needed to keep an ordered list of timers.
+It also describes the replacement of the reliance of timers on "time_left"
+to a new attribute "expiration".   
+
+2. History
+----------
+N/A
+
+3. Document References
+----------------------
+In this section, list all the documents that the reader may need to refer to.
+Give the full path to reference a file.
+[1] ClearQuest DEI dts0100652640
+Maintain ordered timers in verifier
+[2] ClearQuest DEI dts0100654624
+Modify the verifier timers to be based on expiration time rather than the time
+left
+
+4. Background
+-------------
+4.1 Within our current real-time verifier scheme, we get all the timers attached
+to each model root and tick each one of them with the timer thread's interval 
+(30 ms). Each tick decrements the "time_left" of the timer with the passing
+time.
+
+4.2 After each decrement, the check (time_left - p_interval/2 <= 0) is made. If
+the condition evaluates to true, the timer fires. The largest possible error is
+equal to:
++15 ms + time elapsed on ticking all existing timers + time elapsed in any
+thread interruptions since the interval has been calculated
+
+currentTime = System.nanoTime();
+while (true) {
+	try {
+	long startTime = currentTime;
+	synchronized(this) {
+	  this.wait(TIMER_RESOLUTION_MILLISECS);
+	  currentTime = System.nanoTime();
+	}
+	int intervalUs = Math.round((currentTime - startTime) / 1000);
+	Iterator it = roots.iterator();
+	while (it.hasNext()) {
+		ModelRoot modelRoot = (ModelRoot) it.next();
+		ExecutionEngine_c ee = ExecutionEngine_c.ExecutionEngineInstance(modelRoot);
+		if (ee != null) {
+		  try {
+	      ModelRoot.disableChangeNotification();
+	      Timer_c[] timers = Timer_c.TimerInstances(modelRoot);
+		  for (int i = 0; i < timers.length; i++) {
+			if (timers[i] != null) {  // can go null during shutdown
+				timers[i].Tick(intervalUs);
+			}
+		  }
+		  }
+		  catch (Exception e) {
+			  CorePlugin.logError("Exception found during verifier timer execution.", e);
+		  }
+		  finally {
+              ModelRoot.enableChangeNotification();
+		  }
+		  notifyCount--;
+		  if (notifyCount <= 0) {
+			  //Need to refresh Views: BPThread.refreshVerifierViews();
+			  ee.Notify();
+			  notifyCount = NOTIFY_COUNT_INTERVAL;
+		  }
+	    }
+	}
+	} catch (InterruptedException e) {
+		// Normal behavior
+	}
+}
+
+4.3 As for the simulated time verifier, it scans all the available timers and
+marks the closest timer and jumps to it. It then decrements all of the other
+timers with the "jump" that was made.
+
+4.4 Maintaining an ordered list of timers and switching to expiration, will
+provide simpler code and smaller error for the verifier execution.
+
+5. Design
+---------
+5.1 A new private attribute "expiration" is added to the Timer class. It holds
+the absolute time at which the timer will expire. This attribute will be the
+basis for all timer checks and updates. time_left will only be used for display
+purposes. 
+ 
+5.2 To maintain an ordered timer list, two functions are added; insertTimer and
+removeTimer.
+5.2.1 "insertTimer" will insert the timer in the timers list in an
+orderly manner i.e. if (new time expiration < existing timer expiration), then
+the new timer will be placed in the list above the existing timer.
+5.2.2 "removeTimer" will find the timer in the list and remove it
+
+5.3 The real-time verifier thread will look as follows:
+while (true) {
+	try {
+		synchronized(this) {
+			this.wait(TIMER_RESOLUTION_MILLISECS);
+		}
+			
+		if (!timersList.isEmpty()){
+			ExecutionEngine_c ee = ExecutionEngine_c.ExecutionEngineInstance(timersList.get(0).getModelRoot());
+			ModelRoot.disableChangeNotification();
+			timersList.get(0).Tick(System.nanoTime());
+			ModelRoot.enableChangeNotification();
+			notifyCount--;
+			if (notifyCount <= 0) {
+			//Need to refresh Views: BPThread.refreshVerifierViews();
+			if (ee!= null)
+				ee.Notify();
+				notifyCount = NOTIFY_COUNT_INTERVAL;
+			}
+		}
+	} catch (InterruptedException e) {
+		// Normal behavior
+	}
+}
+
+Basically, the thread will only Tick the first timer on the list with the
+current time.
+If ((getExpiration() - p_CurrentTime) < TIMER_RESOLUTION_MILLISECS/2), the 
+timer will fire. This will reduce the largest error in a timer to:
++15 ms + time elapsed from the Tick till the check gets executed
+
+5.4 The simulated-time verifier thread will look as follows:
+while (true) {
+	try {
+		idleBusyLock.wait();
+		if (allIdle && !suspended){																
+			long time_leap = 0;
+			if (!timersList.isEmpty()){
+				ExecutionEngine_c ee = ExecutionEngine_c.ExecutionEngineInstance(timersList.get(0).getModelRoot());
+				time_leap = timersList.get(0).getExpiration() - System.nanoTime();
+				ModelRoot.disableChangeNotification();
+				timersList.get(0).Tick(timersList.get(0).getExpiration());
+				ModelRoot.enableChangeNotification();
+				notifyCount--;
+				if (notifyCount <= 0) {
+					//Need to refresh Views: BPThread.refreshVerifierViews();
+					if (ee!= null)
+						ee.Notify();
+					notifyCount = NOTIFY_COUNT_INTERVAL;
+				}
+			}
+												
+			for (int i = 0; i < timersList.size(); i++) {
+				if (timersList.get(i) != null) {  // can go null during shutdown
+					if (!(timersList.get(i).getLabel().equalsIgnoreCase("not running"))){
+						timersList.get(i).setExpiration(timersList.get(i).getExpiration() - time_leap);
+					}
+				}
+			}									
+		}							
+	} catch (InterruptedException e) {
+		// Normal behavior
+	}
+}
+
+The thread looks the same as the real-time verifier's except for decrementing
+all other existing timers with the time leap that has been made. The reason for
+this is that the expiration of a new timer being created will be relative to the
+current time "System.nanoTime()" and will have no knowledge of the time leap
+that was made. Unless, existing timers get decremented, the timers list will not
+be correctly ordered. A good alternative would be keeping a function that
+returns the current time which will effectively return the current system time
+plus all the leaps that were made. This will also result in using the same
+thread for both simulated and real time verifiers.
+
+6. Implementation Comments
+--------------------------
+N/A
+
+7. Unit Test
+------------
+7.1 Run the verifier unit test.
+
+7.2 Re-running the whole verifier unit test while simulated time is enabled.
+(not automated due to an issue with reloading the same test twice).
+
+7.3 Test with the SeatHeater model.
+
+7.4 Test with the SeatHeater model.
+_- Manually modify the SimTime static variable in TIM class to true
+_- Execute the SeatHeater model
+_R Successful fast execution of the model
+
+7.5 Test with the Tick model.
+
+7.6 Test with the Tick model.
+_- Manually modify the SimTime static variable in TIM class to true
+_- Execute the Tick model
+_R Successful fast execution of the model
+
+8. Code Changes
+---------------
+R3_1_1-HK-dts0100652640 (Branch)
+
+com.mentor.nucleus.bp.core/src/lib/TIM.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Execution Engine/Execution Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Timer/Timer.xtuml
+
+End
+---
+
+$Log: dts0100652640-dts0100654624.int,v $
+Revision 1.3  2010/02/17 16:01:12  hkashif
+job:dts0100654624
+Fixing typos
+
+Revision 1.2  2010/02/17 15:51:40  hkashif
+job:dts0100654624
+Updating implementation note
+
+Revision 1.1  2010/02/04 18:35:09  hkashif
+job:dts0100654624
+Introducing implementation note

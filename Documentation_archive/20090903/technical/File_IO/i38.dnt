@@ -1,0 +1,765 @@
+========================================================================
+
+File:      $RCSfile: i38.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Import and export of functions and external entities
+
+
+Abstract
+--------
+This note describes the changes to add import and export of function 
+and external entity data.
+
+History
+-------
+
+Document References
+-------------------
+[1] bp.core/doc/internal/technical/File_IO/i38.ant
+Bugzilla issue 38
+Bugzilla issue 393
+
+Background
+----------
+
+In order for M5 to be self hosting, we need to be able to
+import and export functions and external entities. This functionality is 
+only needed for self-hosting.
+
+Design
+------
+
+i38.1 Create plugin for function and external entity import and export
+
+The new plugin com.projtech.bp.internal.io.sql is created.  The plugin is 
+dependent on bp.core, bp.io.sql, bp.ui.text, bp.io.core, and bp.ui.canvas.
+The plugin defines four extension points for the import/export of functions
+and external entities.
+
+i38.2  Import functions or ees
+
+i38.2.1 Create common datatype handling class
+
+The class ImportDataTypeHandler is created. The class extends CoreImport.
+The class implements the following public methods:
+
+    public ImportDataTypeHandler(Ooaofooa modelRoot, String inFile)
+        throws FileNotFoundException
+	  - invoke the super constructor, and create an instance of ImportBPSql 
+
+	public void processStatement(Ooaofooa modelRoot,String table,Vector parms,
+		int numParms,IProgressMonitor pm)
+      - check if the insert is for a datatype instance or an instance that
+      references a datatype.  If it is not, then invoke 
+      ImportBPSql.processStatement()
+
+	public String processValue(String table, int col_num, String val)
+	  - Invoke ImportBPSql.processValue()
+
+    protected void relateAllNewDatatypes(IProgressMonitor pm)
+      - Used by derived classes to create new datatype instances in the 
+      default model root.
+      
+    protected boolean processDataTypeData(Ooaofooa modelRoot, String table,
+        Vector parms, int numParms)
+       - Used by processStatement() to determine if the statement should be
+       processed.  If the statement is for a datatype that conflicts with an
+       existing datatype, return true.  Otherwise if the statement contains
+       a reference to a datatype with an id conflict, resolve the conflict,
+       and return false.  Otherwise, return false.
+      
+The processStatement and processValue methods are invoked by the sql parser.
+
+i38.2.2 Function Import Wizard
+
+The class FunctionImportWizard is created.  The class extends CoreImportWizard.
+The class implements the following public methods:
+
+    public FunctionImportWizard() 
+      - set window title to "Import Function SQL"
+
+    protected CoreImportPage createImportPage(IStructuredSelection selection)
+      - create import page instance with title "BridgePoint Function Import"
+      and description "Enter the Source File Name"
+
+    protected CoreImport createImportProcessor() throws FileNotFoundException
+      - create and return an instance of ImportFunctionSql class that uses
+      the model root "__import_function_model_root_name"
+
+    protected boolean databaseClearRequired()
+      - return false
+
+i38.2.3 Function Import Page
+
+The class FunctionImportPage is created.   The class extends CoreImportPage.
+The class implements the following method:
+
+	FunctionImportPage( String pageName, IStructuredSelection selection)
+	  - invoke super's constructor, and set fileExtension to ".sql"
+
+i38.2.4 Function Import SQL
+
+The class ImportFunctionSql is created.   The class extends 
+ImportDataTypeHandler. The class implements the following public methods:
+
+	public ImportFunctionSql(String infileName, Ooaofooa modelRoot)
+	throws FileNotFoundException
+	  - invoke the super constructor, and set the clear database flag to false
+
+	public void run(IProgressMonitor pm)
+	  - clear the import function database, load the sql, and instantiate
+	  all new imported datatypes and functions in default model root. All 
+	  functions are parsed. The visibility of AllActivityModifier.parseAction 
+	  is changed to public for use by this class.
+
+    public String expectedContent()
+      - return "synch_service"
+
+    public String expectedVersion()
+      - return "6.1D"
+
+	public void preprocessStatement(String s, BufferedReader dis) 
+      throws IOException
+      - If the statement in s is an insert into S_DT, S_SYNC, or S_SPARM,
+      save the statement info for use by postprocessStatements()
+
+    public int postprocessStatements()
+      - Find any conflicting datatypes in the import data.  Find any function
+      conflicts in incoming data.  If there are no conflicts, return PPS_OK.
+      If there are only datatype conflicts, return PPS_ASK.  If there are 
+      function conflicts, return PPS_ERROR.
+
+
+i38.2.5 External Entity Import Wizard
+
+The class EEImportWizard is created.  The class extends CoreImportWizard.
+The class implements the following methods:
+
+    public FunctionImportWizard() 
+      - set window title to "Import External Entity SQL"
+
+    protected CoreImportPage createImportPage(IStructuredSelection selection)
+      - create import page instance with title "BridgePoint External Entity 
+      Import" and description "Enter the Source File Name"
+
+    protected CoreImport createImportProcessor() throws FileNotFoundException
+      - create and return an instance of ImportFunctionSql class that uses
+      the model root "__import_ee_model_root_name"
+
+    protected boolean databaseClearRequired()
+      - return false
+      
+i38.2.6 External Entity Import Page
+
+The class EEImportPage is created.   The class extends CoreImportPage.
+The class implements the following method:
+
+	EEImportPage( String pageName, IStructuredSelection selection)
+	  - invoke super's constructor, and set fileExtension to ".sql"
+
+i38.2.7 External Entity Import SQL
+
+The class ImportEESql is created.   The class extends 
+ImportDataTypeHandler. The class implements the following public methods:
+
+	public ImportEESql(String infileName, Ooaofooa modelRoot)
+	throws FileNotFoundException
+	  - invoke the super constructor, and set the clear database flag to false
+
+	public void run(IProgressMonitor pm)
+	  - clear the import ee database, load the sql, and instantiate
+	  all new imported datatypes and external entities in default model root.
+      All bridges are parsed. The visibility of AllActivityModifier.parseAction 
+	  is changed to public for use by this class.
+
+    public String expectedContent()
+      - return "synch_service"
+
+    public String expectedVersion()
+      - return "6.1D"
+
+	public void preprocessStatement(String s, BufferedReader dis) 
+      throws IOException
+      - If the statement in s is an insert into S_DT or S_EE,
+      save the statement info for use by postprocessStatements()
+
+    public int postprocessStatements()
+      - Find any conflicting datatypes in the import data.  Find any entity
+      conflicts in incoming data.  If there are no conflicts, return PPS_OK.
+      If there are only datatype conflicts, return PPS_ASK.  If there are 
+      external entity conflicts, return PPS_ERROR.
+
+
+i38.3  Export functions
+
+i38.3.1 Create common datatype handling class
+
+The class ExportDataTypeHandler is created. The class extends CoreExport.
+The class provides utility functions for the use of its derived types.
+The class implements the following methods:
+
+    public ExportDataTypeHandler(Ooaofooa modelRoot, String outfileName, 
+        boolean export_graphics) throws FileNotFoundException
+	  - invoke the super constructor
+	  
+    protected DataType_c[] getCoreAndPredefinedDatatypes(Ooaofooa modelRoot)
+      - return the instances of DataType_c that are the predefined datatypes
+    
+    protected void addNonCoreDatatype(HashSet dt_set, DataType_c dt)
+      - add dt to the dt_set if dt is not a predefined datatype
+
+i38.3.2 Function Export Wizard
+
+The class FunctionExportWizard is created.  The class extends CoreExportWizard.
+The class implements the following public methods:
+
+    public FunctionExportWizard() 
+      - set window title to "Export Function SQL"
+
+    protected CoreExportPage createExportPage()
+      - create export page instance with title "BridgePoint Function Export"
+      and description "Enter the Destination File Name"
+
+    protected CoreExportPage getExportPage()
+      - return the export page
+
+    protected CoreExport createExportProcessor() throws FileNotFoundException
+      - create and return an instance of ExportFunctionSql class that uses
+      the default model root
+
+i38.3.3 Function Export Page
+
+The class FunctionExportPage is created.   The class extends CoreExportPage.
+The class implements the following method:
+
+	FunctionExportPage( String pageName, IStructuredSelection selection)
+	  - invoke super's constructor, set fileExtension to ".sql", 
+	  and set the text to "Export all functions to BridgePoint 6.1 SQL"
+
+i38.3.4 Function Export SQL
+
+The class ExportFunctionSql is created.   The class extends 
+ExportDataTypeHandler. The class implements the following public methods:
+
+	public ExportFunctionSql(String outfileName, Ooaofooa modelRoot)
+		throws FileNotFoundException
+	  - invoke the super constructor
+
+	public void run(IProgressMonitor pm) throws InvocationTargetException
+	  - find all function instances, find all non-core datatypes referenced
+	  by the functions and parameters, export the core datatypes, non-core 
+	  referenced datatypes, and functions with parameters.
+
+i38.4  Export external entites
+
+i38.4.1 External Entity Export Wizard
+
+The class EEExportWizard is created.  The class extends CoreExportWizard.
+The class implements the following public methods:
+
+    public EEExportWizard() 
+      - set window title to "Export External Entity SQL"
+
+    protected CoreExportPage createExportPage()
+      - create export page instance with title "External Entity SQL Export"
+      and description "Enter the destination file name"
+
+    protected CoreExportPage getExportPage()
+      - return the export page
+
+    protected CoreExport createExportProcessor() throws FileNotFoundException
+      - create and return an instance of ExportFunctionSql class that uses
+      the default model root
+      
+i38.4.2 External Entity Export Page
+
+The class EEExportPage is created.   The class extends CoreExportPage.
+The class implements the following method:
+
+	EEExportPage( String pageName, IStructuredSelection selection)
+	  - invoke super's constructor, set fileExtension to ".sql", 
+	  and set the text to "Export External Entity to BridgePoint 6.1 SQL"
+
+    public boolean getExportGraphics() 
+      - return true if export graphics checkbox is checked
+      
+    public String getExternalEntityName()
+      - return the contents of the destination file name combobox
+
+i38.4.3 External Entity Export SQL
+
+The class ExportEESql is created.   The class extends 
+ExportDataTypeHandler. The class implements the following public methods:
+
+	public ExportEESql(Ooaofooa modelRoot, final String EEname, 
+	   String outfileName, boolean export_graphics) throws FileNotFoundException
+	  - invoke the super constructor, find and save instance of ExternalEntity_c
+	  with EEname
+
+	public void run(IProgressMonitor pm) throws InvocationTargetException
+	  - find all non-core datatypes referenced by the bridges and parameters, 
+	  external entity data items, and EE event data items, export the core 
+	  datatypes, non-core referenced datatypes, and external entity (with
+	  bridges, data items, events, and event data items).  Export the graphics
+	  if requested.
+
+i38.5  Add batchRelate function
+
+In order for the imports to perform relates on the imported instances,
+the generation of the batchRelateAll function is changed in MC-Java.   The
+code that does the actual relates is placed in the new public static function 
+batchRelate, and the existing function batchRelateAll is changed to iterate 
+over the instance extent, and invoke batchRelate on each instance.  The imports
+can then invoke batchRelate on the imported instances as needed.
+
+i38.6  Update id assigner values
+
+The generated constructor that takes all attribute values is changed to
+update the id assigner value.  This is an existing bug that would've eventually
+caused problems.
+
+i38.7  Refactor export code
+
+i38.7.1 Add utility function
+
+The declaration of the following method is added to the CoreExport class.
+
+	protected String get_file_header(String content, String version)
+
+get_file_header is a utility function used by derived classes to format
+the file header of exported files.  The content parameter is the file content
+(domain, synch_service, external_entity).  The version parameter is the 
+BridgePoint version the file is compatible with (6.1D or 7.0).
+All currently existing classes derived from CoreExport are changed to 
+use this function.
+
+i38.8  Refactor import code
+
+i38.8.1 Move file read function to base class
+
+The following functions are added to CoreImport.java:
+
+	protected void read(InputStream inStream) throws IOException
+	protected void read(Reader reader) throws IOException
+	public Reader getInputReader() throws IOException
+	public InputStream getInputStream() throws IOException 
+
+gen_import_java.arc is modified to remove the declaration of these functions
+from the generated derived classes.
+
+i38.8.2  Abstract countAndValidateInsertStatements() from derived classes
+
+The method countAndValidateInsertStatements() is moved to the CoreImport class.
+The function returns PPS_ERROR if there was an error, a positive integer for
+the number of statements if there were no errors, and PPS_ASK if the wizard 
+should ask permission from the user before proceeding.
+
+The following abstract methods are added to the CoreImport class to support this 
+function:
+
+	public abstract String expectedContent()
+	  - the derived class returns the expected value of the 'content' field
+	  of the file header
+	  
+    public abstract String expectedVersion()
+	  - the derived class returns the expected value of the 'version' field
+	  of the file header
+	  
+	public abstract void preprocessStatement(String stmt, BufferedReader is)
+		throws IOException
+	  - this function is called during the first pass scan of the file.
+	 the implementation in the derived class does any checking needed
+	 
+	public abstract int postprocessStatements();
+	  - the derived class determines if the file contents (after the first pass
+	  scan of the file) can be imported.  The function returns: 
+	     PPS_OK    - there were no problems
+	     PPS_ERROR - there were fatal problems; the file cannot be imported
+	     PPS_ASK   - there were non-fatal problems; the file could be imported
+
+i38.8.3  Add clear database flag to CoreImport constructor
+
+The constructors for the CoreImport class have a parameter clearDatabase 
+(boolean) added to them.  The value is saved in the new data member 
+m_clear_database.  This data member is used in doLoadSql() to determine if 
+the database should be cleared before the import begins.  All derived classes
+will have the clearDatabase parameter added to their constructors as well.
+The value of the parameter when creating an instance is the value returned 
+by databaseClearRequired() (see i38.8.5.1).
+
+i38.8.4  Abstract doLoadSql() from derived classes
+
+The method doLoadSql() is moved from gen_import_java.inc to the CoreImport 
+class.  The function returns true if the import was successful, false otherwise.
+The function is changed to check the clear database flag before clearing the 
+database.
+
+i38.8.5 Changes to CoreImportWizard
+
+i38.8.5.1  The abstract method protected boolean databaseClearRequired() is
+added to the class.  The method is implemented in all derived classes.  All 
+derived classes return true, except EEImportWizard and FunctionImportWizard,
+which return false.
+
+i38.8.5.2 The CoreImportWizard.performFinish() method has the following changes:
+
+- If databaseClearRequired() == true and not empty database show "Ok to clear?" 
+    prompt
+- If databaseClearRequired() == false and empty domain show error dialog stating
+    "There is no domain loaded.  This import requires a domain to be loaded."
+- Add prompt when countAndValidateInsertStatements() returns PPS_ASK
+- Add exit when countAndValidateInsertStatements() returns PPS_ERROR
+- Change error logging code to handle multiple lines in import error message
+
+i38.9  Fixup scroll position values from BP SQL
+
+In BridgePoint, if a diagram is never viewed, the scroll position is set to
+(-1, -1).  The import code for BridgePoint SQL is changed to check for scroll
+positions less than zero, and set the scroll position to the BridgePoint 
+default (1600, 4200) if they are less than zero.  The y scroll position is
+then corrected as before.
+
+i38.10  Change parse to update Suc_Pars attribute
+
+Issue 393 described a change to the parser so that the Suc_Pars attribute of the
+activity is updated after each parse.  This functionality is needed for this
+work, so we implement it here.  Issue 393 will be moved to FIXED when
+this work is complete.
+
+i38.10.1  Add utility function to update Suc_Pars
+
+The following method is added to the AllActivityModifier class:
+
+    public static void updateSuc_Pars( int newValue, Object o_input )
+    
+The newValue parameter is the new value for the Suc_Pars attribute (1 == success,
+2 == failed).  The o_input parameter is an instance that has a Suc_Pars 
+attribute.  The method determines the type of o_input (Function_c, Operation_c,
+etc.), and sets the Suc_Pars attribute to the value provided.
+
+i38.10.2  Update Suc_Pars on import
+
+The function AllActivityModifier.parseAction is changed to invoke updateSuc_Pars
+after the parse completes with the appropriate new value, depending on if 
+there are errors present or not.  This function is called by the various
+import procedures.
+
+i38.10.3  Update Suc_Pars on save
+
+The function DocumentProvider.doSaveDocument is updated to change the
+value of the Suc_Pars attribute to the appropriate value.  This function is
+called when the user saves the contents of an OAL editor.
+
+i38.11  Refactor graphical element creation code
+
+i38.11.1  Add new Shape operation
+
+The operation Shape.moveToDefaultPosition is added.  The operation has the
+following OAL:
+
+select one ge related by self->GD_GE[R2];
+if ( not_empty ge )
+  select one mdl related by ge->GD_MD[R1];
+  select one es related by ge->GD_ES[R10];
+  if ( not_empty mdl and not_empty es )
+    spacing = es.defaultWidth / 10;
+    select many ge_set related by mdl->GD_GE[R1];
+    self.NW_X = mdl.ScrollXPos + (spacing * cardinality ge_set);
+    self.NW_Y = mdl.ScrollYPos + (spacing * cardinality ge_set);
+    self.SE_X = self.NW_X + es.defaultWidth;
+    self.SE_Y = self.NW_Y + es.defaultHeight;
+  end if;
+end if;
+
+This operation is used by the function and ee import sql classes to add
+shapes to the diagram.
+
+i38.11.2 Use new operation in existing functions
+
+An invocation of Shape.moveToDefaultPosition replaces equivalent code in
+the functions fixBPFNGraphics and fixBPDTGraphics.
+
+i38.12  Fix bug for loading empty domains
+
+i38.12.1 In the functions fixBPFNGraphics and fixBPDTGraphics, the code 
+searches for the rightmost shape in the DPD diagram.  The code creates the 
+new shape before searching for existing shapes.  If the diagram is empty, then 
+the new shape and the rightmost shape are the same, which causes a shape of zero
+height and width to be created.  The code is changed to create the new shape
+after searching for the existing rightmost shape.
+
+i38.12.2 In ImportBPSql.fixUpGraphicalData(), a call to batchRelate() is made
+after each Model_c and GraphicalElement_c instance is created.  This ensures
+that all relationships that can be populated, are populated.  This ensures that
+the Graphical Element is related to its Element Specification when R10 is
+traversed by Shape.moveToDefaultPosition.
+
+
+Work Required
+-------------
+
+i38.1 Create plugin for function and external entity import and export
+
+The plugin is created as described in the design.
+
+i38.2  Import functions or ees
+
+i38.2.1 Create common datatype handling class
+
+The class ImportDataTypeHandler is generated by the archetype 
+gen_dt_import_java.arc as described in the design.  The generated portion is
+for determining which attributes of classes in ooaofooa are referentials to 
+the DataType class.  These attributes will need to be fixed up when a 
+datatype conflict occurs.
+
+i38.2.2 Function Import Wizard
+
+The class FunctionImportWizard is created as described in the design.
+
+i38.2.3 Function Import Page
+
+The class FunctionImportPage is created as described in the design.
+
+i38.2.4 Function Import SQL
+
+The class ImportFunctionSql is created as described in the design.
+
+i38.2.5 External Entity Import Wizard
+
+The class EEImportWizard is created as described in the design.
+      
+i38.2.6 External Entity Import Page
+
+The class EEImportPage is created as described in the design.
+
+i38.2.7 External Entity Import SQL
+
+The class ImportEESql is created as described in the design.
+
+i38.3  Export functions
+
+i38.3.1 Create common datatype handling class
+
+The class ExportDataTypeHandler is created as described in the design.
+
+i38.3.2 Function Export Wizard
+
+The class FunctionExportWizard is created as described in the design.
+
+i38.3.3 Function Export Page
+
+The class FunctionExportPage is created as described in the design.
+
+i38.3.4 Function Export SQL
+
+The class ExportFunctionSql is created as described in the design.
+
+i38.4  Export external entites
+
+i38.4.1 External Entity Export Wizard
+
+The class EEExportWizard is created as described in the design.
+
+i38.4.2 External Entity Export Page
+
+The class EEExportPage is created as described in the design.
+
+i38.4.3 External Entity Export SQL
+
+The class ExportEESql is created as described in the design.
+
+i38.5  Add batchRelate function
+
+The changes are made to java.arc as described in the design.
+
+i38.6  Update id assigner values
+
+The changes are made to java.arc as described in the design.
+
+i38.7  Refactor export code
+
+i38.7.1 Add utility function
+
+The changes are made to CoreExport.java as described in the design.
+An invocation of get_file_header replaces the hard-wired code in 
+gen_export_java.inc
+
+i38.8  Refactor import code
+
+i38.8.1 Move file read function to base class
+
+The changes are made to CoreImport.java as described in the design.
+The existing function definitions are removed from gen_import_java.inc
+
+i38.8.2  Abstract countAndValidateInsertStatements() from derived classes
+
+The changes are made to CoreImport.java as described in the design.
+The existing function definition is removed from gen_import_java.inc
+
+i38.8.3  Add clear database flag to CoreImport constructor
+
+The changes are made to CoreImport.java as described in the design.
+The new parameter is added to the constructors generated by gen_import_java.inc.
+All existing hand-written code that invokes the constructors is changed to add 
+the new parameter:
+
+als.oal.test/OalParserTest.java
+als.oal.test/ParseAllInDomain.java
+bp.compare/ModelCacheManager.java
+bp.compare.test/ModelInspectorTest.java
+bp.core.test/create_action_test.arc
+io.mdl.test/IOMdlTest.java
+io.mdl.test/IOMdlNestedTest.java
+io.sql.test/IOTest.java
+ui.canvas.test/CanvasEditorInteraction.java
+ui.canvas.test/CanvasTest.java
+ui.canvas.test/OpenCanvasEditor.java
+ui.properties.test/IsAllowedTypeTest.java  (also fix header)
+ui.text.test/OpenDescriptionEditor.java
+
+i38.8.4  Abstract doLoadSql() from derived classes
+
+The method doLoadSql() is moved from gen_import_java.inc to the CoreImport 
+class as described in the design.
+
+i38.8.5 Changes to CoreImportWizard
+
+i38.8.5.1 The changes are made as described in the design.
+
+i38.8.5.2 The changes are made as described in the design.
+
+i38.9  Fixup scroll position values from BP SQL
+
+The changes are made to gen_import_java.inc as described in the design.
+
+i38.10  Change parse to update Suc_Pars attribute
+
+i38.10.1  Add utility function to update Suc_Pars
+
+The change to AllActivityModifier.java is made as described in the design.
+
+i38.10.2  Update Suc_Pars on import
+
+The change to AllActivityModifier.java is made as described in the design.
+
+i38.10.3  Update Suc_Pars on save
+
+The change to DocumentProvider.java is made as described in the design.
+
+i38.11  Refactor graphical element creation code
+
+i38.11.1  Add new Shape operation
+
+The operation Shape.moveToDefaultPosition is added to ooaofgraphics.bak.
+
+i38.11.2 Use new operation in existing functions
+
+The changes are made to ooaofgraphics.bak as described in the design.
+
+i38.12  Fix bug for loading empty domains
+
+i38.12.1 The changes are made to ooaofgraphics.bak as described in the design.
+
+i38.12.2 The changes are made to gen_import_java.inc as described in the design.
+
+Unit Test
+---------
+
+testImportFunctionIntoEmptyDomain
+  - import a function into an empty domain
+  
+testImportFunctionWithConflict
+  - import the same function into the same domain again
+  
+testImportFunctionWithDatatypeConflict
+  - import a function sql file that has a datatype conflict only
+  
+testImportEEIntoEmptyDomain
+  - import an EE into an empty domain
+  
+testImportEEWithConflict
+  - import the same EE into the same domain again
+  
+testImportEEWithDatatypeConflict
+  - import an EE sql file that just has a datatype conflict
+
+testExportFunction
+  - export the functions from a domain
+  
+testExportEEWithoutGraphics
+  - export an EE from a domain without graphics
+
+testExportEEWithGraphics
+  - export an EE from a domain with graphics
+  
+testOALProcess
+  - perform all steps of the OAL development process (as specified in [1])
+
+testCMEProcess
+  - perform all steps of the CME development process (as specified in [1])
+
+testEmptyDomainDPD
+  - validate that the DPD for an empty domain appears correctly
+  
+testDPDwithOneEE
+  - validate that the DPD appears correctly after importing an EE
+  - validate that the data type package diagram appears correctly after 
+      importing the EE
+  - validate that the EE package diagram appears correctly after import
+
+testDPDwithOneFunction
+  - validate that the DPD appears correctly after importing a function
+  - validate that the data type package diagram appears correctly after 
+      importing the function
+  - validate that the function package diagram appears correctly after 
+       importing a function
+
+testDPDwithAnotherEE
+  - validate that the DPD appears correctly after importing another EE
+  - validate that the data type package diagram appears correctly after 
+      importing the EE
+  - validate that the EE package diagram appears correctly
+
+End
+---
+
+$Log: i38.dnt,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.152.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/10/14 23:35:32  greg
+Job: 38
+made review changes
+
+Revision 1.3  2004/10/14 00:16:08  greg
+Job: 38
+Add two more files to ImportBPSql constructor invocation change list
+
+Revision 1.2  2004/10/14 00:09:24  greg
+Job: 38
+Add ImportBPSql constructor invocation change list
+
+Revision 1.1  2004/10/13 23:46:47  greg
+Job: 38
+Ready for review
+

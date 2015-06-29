@@ -1,0 +1,331 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Verifier support for Arrays and Structured Data Types
+
+1. Abstract
+-----------
+This note describes the design for supporting arrays and structured data types
+within Verifier.
+
+2. History
+----------
+final - i2857-051107-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 2857
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2857
+[2] <CVS>/Documentation/internal/technical/notes/i477.ant
+[3] <CVS>/Documentation/internal/technical/notes/i478.ant
+[4] Bugzilla item 2866
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2866
+[5] Bugzilla item 2884
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2884
+[6] Bugzilla item 2889
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2889
+
+
+4. Background
+-------------
+The designs for supporting arrays and structured data types in Builder are set
+out in [2] and [3] respectively. This note describes the changes required to
+permit models containing these changes to be executed.
+
+5. Analysis
+-----------
+The design for the front end changes called for a value chain to be implemented.
+This allowed arbitrarily deep nesting of structures and arrays[3]. In order to
+provide runtime support for this, an analogous parallel data structure must be
+built at runtime. A new subsystem 'Runtime Value', shall be added to the meta-
+model. This subsystem contains a dual composite pattern, one part for structure
+containment and one for array containment.
+
+Each lobe of the composite pattern shall be managed by a link class. For the
+structure lobe, the link class shall bear a 'Name' attribute. This name shall be
+used to identify which child value is to be selected when traversing deeper into
+a group of structured data items. For the array lobe, the link class shall bear
+an 'Index' attribute. This attribute shall be used for the same purpose; to
+identify which value to return. When accessing an array, the computed index
+value shall be used to compare with the indices of the values found within the
+set of values found in an array value.
+
+The index value of the Value in Array link class is single valued. That is,
+to store multi dimensional array values, each value may itself be an array
+value. So in a sense, all array values are single dimensioned, but in the case
+of a multi dimensioned array, each value is itself an array of values. This
+makes for a simple, recursive implementation, and permits the copying of
+partially resolved array values, for example (where foo has been declared as
+3 dimensional):
+
+bar = foo;
+zeb = foo[x];
+chi = foo[x][y];
+xi = foo[x][y][z];
+
+are all legal. After execution, the temporary chi is a single dimensional array,
+so za = chi[a] will be legal (but ya = chi[a][b] is not).
+
+6. Design
+---------
+6.1 Executing with Structured Data
+
+6.1.1 Recall from [3] that:
+
+      b.foo = 1;
+
+      is instantiated by the parser as:
+
+         ACT_AI - R609 - V_VAL - R801 - V_LIN(1)
+           |
+         R689
+           |
+         V_VAL
+           |
+         R801
+           |
+         V_AVL - R806 - O_ATTR("foo")
+           |
+         R807
+           |
+         V_VAL - R801 - V_IRF - R808 - V_VAR("b")
+
+6.1.2 After executing the example statement in Verifier, the equivalent
+      Runtime Value subsystem instances will be as follows:
+
+         V_VAR - R3010 - L_LVL
+           |               |
+         R801            R3306
+           |               |
+         V_IRF           RV_RVL
+           |               |
+        V_VAR("b")       R3300
+                           |
+                         RV_SVL
+                           |
+                         R3301 - RV_VIS("foo")
+                           |
+                         RV_RVL
+                           |
+                         R3300
+                           |
+                         RV_SMV("1")
+
+       Notice that values such as literal integers (V_LIN) do not have a runtime
+       representation. They are fixed for the duration of the execution, so a
+       runtime value is not needed. The value in 'foo' by contrast is dynamic
+       and may be changed by later statements, so it is placed in a runtime
+       value. Note also that, all values (on which anything other than
+       assignment may be done) ultimately resolve to instances of Simple Value
+       (RV_SMV).
+
+6.2 Executing with Array Values:
+
+6.2.1 Recall from [2] that:
+
+      foo.bar[x].zar.b[2];
+
+      will be instantiated by the parser as:
+
+         V_AER- R839 - V_VAL - R801 - V_LIN("2")
+           |
+         R838
+           |
+         V_VAL
+           |
+         R801
+           |
+         V_MVL - R836 - S_MBR("b")
+           |
+         R837
+           |
+         V_VAL
+           |
+         R801
+           |
+         V_MVL - R836 - S_MBR("zar")
+           |
+         R837
+           |
+         V_VAL
+           |
+         R801
+           |
+         V_AER- R839 - V_VAL - R801 - V_TVL("x")
+           |
+         R838
+           |
+         V_VAL
+           |
+         R801
+           |
+         V_AVL - R806 - O_ATTR("bar")
+           |
+         R807
+           |
+         V_VAL - R801 - V_IRF - R808 - V_VAR("foo")
+
+6.2.2 After executing the statement 'foo.bar[x].zar.b[2] = "Hello world";' in
+      Verifier, the following instances will exist (assuming x computes to 7):
+
+         V_VAR - R3010 - L_LVL
+           |               |
+         R801            R3306
+           |               |
+         V_IRF           RV_RVL
+           |               |
+        V_VAR("foo")     R3300
+                           |
+                         RV_SVL
+                           |
+                         R3301 - RV_VIS("bar")
+                           |
+                         RV_RVL
+                           |
+                         R3300
+                           |
+                         RV_AVL
+                           |
+                         R3302 - RV_VIA(7)
+                           |
+                         RV_RVL
+                           |
+                         R3300
+                           |
+                         RV_SVL
+                           |
+                         R3301 - RV_VIS("zar")
+                           |
+                         RV_RVL
+                           |
+                         R3300
+                           |
+                         RV_SVL
+                           |
+                         R3301 - RV_VIS("b")
+                           |
+                         RV_RVL
+                           |
+                         R3300
+                           |
+                         RV_AVL
+                           |
+                         R3302 - RV_VIA(2)
+                           |
+                         RV_RVL
+                           |
+                         R3300
+                           |
+                         RV_SMV("Hello World")
+
+      Here you can see the value chain theme played out again, this time through
+      runtime values. Not obvious from these diagrams is that, assuming no prior
+      execution, no other instances of RV_VIA or RV_VIS exist. That is, the
+      arrays and structures are sparsely populated by Verifier. This is as
+      specified in [2], but also applies equally to structured values. Verifier
+      shall raise a runtime warning when an attempt is made to read a structure
+      member or array element that has never been written.
+
+      The getValue operation of the Array Length Value class (V_ALV) does _not_
+      count the number of array elements actually present in the array. Instead,
+      it iterates over all the array members and returns the highest value
+      found, plus 1 (as specified in [3], array indices begin at zero).
+
+7. Design Comments
+------------------
+7.1 The array test exposed a defect in the realized java implementation for
+    Verifier's timer. TIM is updated to return a date with a zeroed time.
+
+7.2 i2866[4] is also promoted with this issue (already moved to fixed).
+
+7.3 The Generate pre-existing event class was made more generic to point to an
+    arbitrary value that specifies the event to generate. Not all values are
+    valid of course, but there are enough to justify this simplification.
+
+7.4 There were two cases [5,6] where cardinality was reversed in the metamodel.
+    The metamodel behavior was found to be already correct, so these defects
+    were mainly cosmetic. These cosmetic cardinality changes are made as part of
+    this issue. The corresponding issues require promotion along with this
+    issue.
+
+8. Work Required
+----------------
+8.1 Add the Runtime Value subsystem
+
+8.2 Add a getRuntimeValue operation to the Value class and to those subtypes
+    which need to implement it. This operation traverses the value chain and
+    simultaneously traverses the runtime value chain introduced above. Since the
+    same traversal is used for both l- and r-values, this approach works both
+    for reading and writing values.
+
+8.3 Provide copyValue and isEqual operations on Runtime Value class. These shall
+    recursively perform a member-wise copy and compare respectively.
+
+8.4 Rework the existing Verifier execution infrastructure so that all simple
+    'value: instance' attributes are removed and replaced with an association
+    with the Runtime Value supertype class. This change allows Verifier elements
+    that could previously only hold simple atomic values to now hold values of
+    arbitrary complexity. The copyValue operation is called where a compound
+    type is found in Assign to Member.execute and also in Value.computeValue.
+    The isEqual operation is called from Binary Operation.getValue.
+
+8.5 Rework the debug.ui model classes to support the new runtime value classes.
+    This will support user inspection of compound values (arrays and structured
+    data values).
+
+8.6 Explorer build data is updated to allow compound values to be inspected
+    by the user in the Session Explorer and Spotlight views.
+
+9. Unit Test
+------------
+The test models sdt_test and array_test shall execute in Verifier without
+logging failures. These models shall be added to the automated Verifier test.
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:56  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.5  2007/05/11 20:45:57  campbell
+Job:2857
+Address review observations.
+
+Revision 1.4  2007/05/11 20:00:07  campbell
+Job:2857
+Updated.
+
+Revision 1.3  2007/05/11 19:21:08  campbell
+Job:2857
+Cosmetic.
+
+Revision 1.2  2007/05/11 19:20:30  campbell
+Job:2857
+Updated.
+
+Revision 1.1  2007/05/11 19:17:29  campbell
+Job:2857
+Updated.
+

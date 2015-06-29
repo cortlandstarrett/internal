@@ -1,0 +1,329 @@
+========================================================================
+
+File:      $RCSfile: dts0100900268.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Calling a function defined in a top-level package causes NullPointerException 
+in Verifier
+
+1. Abstract
+-----------
+Errors occur when attempts are made to invoke bridges and functions whose 
+action homes are directly under function packages, not inside a component. This 
+issue is raised to investigate and resolve this problem.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100900268
+[2] ClearQuest DEI dts0100655156
+    Missing information in Verifier console error messages.
+[3] ClearQuest DEI dts0100903465
+    Check Verifier Error messages test coverage
+
+4. Background
+-------------
+In BridgePoint, components are the unit of execution.  Any OAL body not part of 
+a component is simply a (shared) fragment that must be invoked from some 
+component context.  
+
+5. Requirements
+---------------
+5.1 Prevent NullPointerExeptions in OAL introduced by [2] that is used to
+    get a 'path' to the OAL home that is being executed when a model execution 
+    error is encountered.
+5.2 BridgePoint components shall be able to invoke shared OAL fragments whose 
+    action homes are outside of the component being executed.
+
+6. Analysis
+-----------
+There are two bugs that are preventing the tool from being able to execute
+the OAL 'fragments':
+
+6.1 NPEs are caused by calls introduced in [2] that are used to get a 'path' to 
+    the OAL action home being executed.  This path represents the fully 
+    qualified name of the OAL action home being executed.
+         
+    [2] introduced new OAL into a significant number of places in the ooaofooa 
+    that is used to provide information to error messages during model 
+    execution.  The OAL introduced has a consistent 'shape' because it is 
+    calling a bridge introduced in [2]: 
+    	USER::logError(string:msg, string:path).  
+    In order to get the path to pass to this bridge, a method, 
+    ACT_ACT::getPath() is used.  The ACT_ACT (Body class) instance used for 
+    this already existed in the majority of OAL homes modified.  However, in 
+    cases where the needed body instance did not exist, or another mechanism to 
+    acquire the path was used, an automatic variable was introduced.   In both 
+    of these cases, the possibility exists that an instance used for this 
+    call to getPath() may be null.   The code introduced did not account for 
+    this possibility.  When the body instance is null a NullPointerException is 
+    encountered in this 'new' OAL as it attempts to call the logError() 
+    operation on the null body instance.
+
+	This problem has been seen in many different situations since the 
+	promotion of [2].  Therefore, the approach taken to resolve this must not 
+	only account for this particular instance of the problem, but for all
+	possible cases where this situation may be encountered.
+
+6.2 BridgePoint is currently not parsing and initializing OAL fragments that are 
+    outside of the components launched during model execution.
+    
+    Components are the units of execution in BridgePoint.    When a launch 
+    configuration is executed, BPDebugTarget.java::setupSelectedModels()is 
+    called with the selected launch configuration as a parameter.   The 
+    selected components in this launch configuration are parsed, initialized, 
+    and then executed.  When there are components in the launch configuration, 
+    the parent of the component is not a part of the launch configuration data.  
+    The selected component(s) are therefore what get parsed, and initialized.  
+    Potential shared OAL fragments whose OAL homes are outside of the selected 
+    component(s) are not included in the parse or initialization, and this is 
+    the cause of errors during model execution when those shared fragments are 
+    executed.  These errors have the form:
+    "Error executing {Function|Bridge}.  No OAL found"  
+
+
+7. Design
+---------
+7.1 Find and modify all of the OAL introduced by [2] to prevent NPEs that may 
+    happen if the logError() call is made against a null instance.
+7.1.1 Make the possible error message strings represented by the first parameter
+    to USER::logError(msg, path) consistent.
+      
+7.1.1.1 Modify USER::logError(msg,path) so that if the path passed is null or 
+    empty a descriptive message is used: <Path is not available>
+    
+7.1.1.2 Modify Body_c::getPath to return a default value of:
+	<Path is not available in getPath()>
+
+7.1.1.3 Modify all places where one-word path description strings are passed 
+  into USER::logError to pass an empty string instead so the default message 
+  defined in USER::logError (7.1.1.1) will be used.   
+  
+  These 1-word strings were:
+  'PathNotAvailable", 'PathNotNeeded', 'PathNotProvide','NoPathProvided',
+  'PathNotResolved'.
+  By passing the empty string, we use a consistent message for these cases.
+  That consistent message is defined in USER::logError as:
+  '<Path is not available>' (7.1.1.1).
+  
+  To find and update all the places to modify, the Eclipse regular expression
+  search/replace facility was used: 
+	Search:
+		USER::logError.+(msg:.*\".*\").*path:\"\w+\".*\;
+    Replace:
+	    USER::logError($1,path:"");
+
+  44 places were modified with this change.
+
+7.1.2 Find and modify all calls to USER::logError() to prevent the possibility
+    of an NPE.
+7.1.2.1      
+    This is a batch change that touches 110 spots in 41 files.
+    Modify calls to logError to always watch for a null instance.  Use the 
+    eclipse regular expression search and replace facility to find and replace 
+    the locations in OAL that need this change.  To do this, use the following 
+    search:
+		USER::logError.+(msg:.*\".*\").*path:(.*)\..*getPath().*\; 
+  
+  	This results in 110 matches.  However, some of the matches are in places 
+    where 'self' is used as the instance that '.getPath()' was called on, and 
+    of course there is no reason to test self for null.  Therefore, the regular 
+    expression is modified to filter out 'self':
+		USER::logError.+(msg:.*\".*\").*path:(.*[^self].*)\.getPath().*\;  
+  
+  	That search results in 103 matches.  To assure the difference (7 matches) 
+  	are really attributed to calls to getPath from self, run this search:
+		USER::logError.+(msg:.*\".*\").*path:(.*self)\..*getPath().*\;  
+
+  	It does indeed result in 7 matches.  Therefore here is the search and 
+  	replace to be used.
+	Search:
+        USER::logError.+(msg:.*\".*\").*path:(.*[^self].*)\.getPath().*\;  
+	
+    Replace:	
+        pathMsg = "<No Path Available - Empty instance>";
+        if (not_empty $2)
+          pathMsg = $2.getPath();            
+        end if;
+	    USER::logError($1,path:pathMsg);
+7.1.2.2 The prior change to modify calls to logError to always watch for a null 
+   instance (7.1.2.1) missed multi-line invocations of getPath().
+   Therefore, the regular expression was modified as follows to catch these.
+
+  	SEARCH:
+		USER::logError.+(msg:.*\R*\".*[^;]$.*\R*.*),.*path:(.*[^self].*)\.getPath().*\;
+  	REPLACE:
+        pathMsg = "<No Path Available - Empty instance>";
+        if (not_empty $2)
+          pathMsg = $2.getPath();            
+        end if;
+	    USER::logError($1,path:pathMsg);
+
+  	This includes 84 changes performed with the above search/replace.
+	
+
+
+7.2 Modify the parser to parse and initialize shared fragments.
+
+7.2.1 Modify AllActivityModifier.java and add an override of the 
+	processAllActivities() function by adding a new parameter at the end:
+		public void processAllActivities(int op, boolean disposeBeforeParse, 
+											boolean includeSharedFragments) 
+
+	Leave the original function signature in-place to allow functionality to 
+	remain the same for callers that use the original function signature.  The 
+	body of the function with the original signature simply calls the new 
+	function and passes false for the new parameter. 
+	When the new includeSharedFragments parameter is set to true, this 
+	routine makes calls to parse system-level OAL under the packages that 
+	the given element being parsed exists in.  It navigates 'up' the chain of 
+	packages to account for nested packages.  Along with this change, the 
+	functions getAllFunctions, and getAllBridges were also modified to 
+	contain a new parameter (boolean onlySharedFragments) so they do not 
+	recurse beyond the level the shared fragments exist in when 
+	onlySharedFragments is specified.   When onlySharedFragments is false 
+	the behavior is the same as before this change.
+
+7.2.2 Add a parameter, boolean {include|only}SharedFragments, to the following 
+   functions in AllActivityModifier.java.  This parameter is simply passed-along 
+   from the parameter added to processAllActivities() (7.2.1).
+   
+   public processAllActivities(int op, boolean disposeBeforeParse, 
+   							boolean includeSharedFragments)
+   private void getAllActivities(boolean onlySharedFragments)
+   private void getAllFunctions(boolean onlySharedFragments)
+   private void getAllBridges(boolean onlySharedFragments)   
+   private void addActivitiesToList(ArrayList<NonRootModelElement> act_set,
+			                PackageableElement_c pkgElem, ActivityKind kind,
+                            Package_c rootPkg, boolean onlySharedFragments)
+   private void addFunctionsToList(ArrayList<Function_c> function_set, 
+   							Package_c pkg, boolean onlySharedFragments)
+   
+   private void addBridgesToList(ArrayList<Bridge_c> bridge_set, 
+   							Package_c pkg, boolean onlySharedFragments)
+   
+   Modify the functions called-out above to respect the onlySharedFragments
+   flag by inspecting only elements inside the current package being processed
+   as opposed to the behavior that occurs when "onlySharedFragments==false",
+   which is to recurse down the tree to find all elements of the specified type.
+   
+7.2.3 In getAllFunctions(boolean onlySharedFragments) and 
+   getAllBridges(boolean onlySharedFragments) we must no longer delete instances 
+   found by a previous discovery pass prior to this current pass because that 
+   previous pass may have been an 'onlySharedFragments' pass in which case 
+   deleting the instance would throw away the work of that 'onlySharedFragments' 
+   discovery pass.
+
+7.2.4 Modify AllActivityModifier.java::initializeBodies(
+				final ModelRoot modelRoot, final NonRootModelElement nrme) 
+   to recursively call itself when a non-root model element is passed-in that 
+   is of type Component_c or Package_c.  Use a while loop to iterate
+   'up' over all the parent Package_c instances in the given non-root model 
+   element hierarchy, and call  initializeBodies() passing only the model root 
+   and null for the non-root model element to force 'shared fragment' OAL 
+   instances to be initialized.
+
+
+7.2.5 In bp.debug/BPDebugTarget.java::launchElement() modify the call to
+	AllActivityModifier.java::processAllActivities() to pass "true" for the new
+	includeSharedFragments boolean parameter to force shared fragments to 
+	be parsed and initialized for model execution.
+
+
+8. Design Comments
+------------------
+8.1 I considered removing what I thought was "dead code" from 
+   BPDebugTarget.java::setupSelectedModels().  This action was NOT taken.
+   However, this section explains why the action was  was not taken.  
+   
+   The "dead-code" was an 'else if (elements[k] instanceof Package_c) { ... }'.
+   I thought this was dead code because Package_c is not an executable instance, 
+   and this loop never has to handle a Package_c instance.
+   
+   BPDebugTarget.java::setupSelectedModels() iterates over a list of elements 
+   that are selected to be launched.  This list of elements comes from a call to  
+   BPDebugUtils.java::getElementsSelectedInConfigurationForProject() which gets 
+   the elements from BPDebugUtils.java::getElementsSelectedInConfiguration().
+   The data returned from this configuration is stored in the launch 
+   configuration.  BP stores IDs of the executable elements in the launch 
+   config.  A package is not a executable element, so if a configuration 
+   contains a package with no elements that are launchable, the following 
+   message is returned during launch:
+   
+   "Nothing to Verify. Open the Debug dialog and check the configuration 
+   for this session."
+   
+   However, it is still considered a valid launch configuration to have a 
+   package with OAL but no components.  Therefore the code was not removed.
+
+8.2 In bp.properties/BuildPropertysource.arc I renamed the call to 
+    NonModelRootElement.java::getParentPackage() to getFirstParentPackage() to 
+    help make it clear that this function is not JUST getting a parent, but 
+    the first parent (it is functionality specific to the properties plugin).   
+    The same change was made for  NonModelRootElement.java::getParentComponent() 
+    (changed to getFirstParentComponent()).  This was done because, since that 
+    function exists in NonRootModeElement.java, others may reuse it and the 
+    previous name did not indicate that it was special-cased.
+    
+	When this change was made, a corresponding change was made to the place(s) 
+	that were calling these functions to have them call the new 
+	findFirst{Component|Package} version.  However, there was only one
+	place, and that is in BuildPropertysource.arc
+
+    I then introduced the following new function:
+		private Package_c getParentPackage();
+	which returns the package that the specified NonRootModelelemnt is in, or 
+	null is there is no 'parent' package.
+		
+9. Work Required
+----------------
+Specified in the Design section.
+
+10. Unit Test
+------------
+10.1 Verify that shared fragments can be successfully invoked from a component.
+_- Create a NEW workspace
+_- Import top_lvl_func.zip as an existing project archive file, 
+   from \\wv\dfs\bridgepoint\field_data\dts0100900268
+_- Modify this test model to contain:
+	-- functions and bridges that exist at the system level.  
+	-- functions and bridges below the system level but outside of a component
+	-- nested components calling more then 1-level 'up' the package 
+	   hierarchy for a function/bridge
+_- Modify the model to contain log statements to verify successful execution.
+_- Launch the CP1 component in Verifier
+_- Run the P1::CP1:CP_P1::UF function to execute the fragments
+_R Verifier session terminates with no warnings/errors
+_R Expected log statements that indicate success appear in the console
+
+End
+---
+
+$Log: dts0100900268.dnt,v $
+Revision 1.4  2012/08/10 13:20:27  rmulvey
+job:dts0100900268
+Updated documentation
+
+Revision 1.3  2012/08/08 13:51:27  rmulvey
+job:dts0100900268
+Fixed poor  grammar  in several places.
+
+Revision 1.2  2012/08/08 13:42:06  rmulvey
+job:dts0100900268
+Fixed spelling
+
+Revision 1.1  2012/08/07 21:17:14  rmulvey
+job:dts0100900268
+Introduced
+

@@ -1,0 +1,420 @@
+========================================================================
+
+File:      $RCSfile: dts0100616739.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+MC-SystemC
+
+
+1. Abstract
+-----------
+Model compilers emit text.  Most often the text has been software.  However,
+this need not be the case.  Hardware-oriented text can also be emitted.  This
+note describes requirements and design for a model compiler variant that will
+emit SystemC that can be simulated on industry standard SystemC simulation
+platforms.
+
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100616739 MC-SystemC
+[2] <cvs>Documentation/internal/technical/notes/dts0100616739/minimum_requirements_e_r1.pdf
+    UML to SystemC Utility Development, Hiroyuki Yagi, Sony
+[3] <cvs>Documentation/internal/technical/notes/dts0100616739/Sony_BP_demo_summary_r1.pdf
+    UML to SystemC Utility Development, Hiroyuki Yagi, Sony
+[4] ClearQuest DEI dts0100643334 Message Direction (Un)Confusion
+
+4. Background
+-------------
+An engagement with a large consumer electronics corporation is driving a
+prototype SystemC model compiler.  This customer desires to build models
+of systems and generate SystemC compatible module structure.  They are also
+interested in simulating the behavior of the modules. [2] describes minimum
+requirements for a UML to SystemC utility development environment.
+
+The distinctives of xtUML in general and BridgePoint in particular are 
+execution and translation.  A BridgePoint xtUML model is a platform independent
+model (PIM) of some system abstracting it requirements in a syntactically
+precise and semantically complete form.
+
+These Executable UML models can be run (executed) to observe the behavior of
+the modeled system.  This execution requires no underlying platform other
+than BridgePoint itself.  The models are interpreted in accordance to the 
+rules of Executable UML.
+
+The syntactic precision and semantic completeness that enables the interpretive
+execution of xtUML platform independent models allows them to be translated
+into other executable languages running on specific platforms.  xtUML models
+can be (and have been) translated into C, C++, AUTOSAR-C, Java, Ada, VHDL,
+assembly, HTML and other forms.  A model translator called a model compiler
+is used to transform the model from xtUML to other forms.  The translation
+must adhere to the rules of executability supplied by the semantics of xtUML.
+
+A corollary distinctive of xtUML and BridgePoint is its "systems nature".
+Because the modeling language supports execution in a platform independent
+way, full systems can be modeled and tested before mapping the systems onto
+platforms.  Specifically, the dividing line between hardware and software
+can be decided late(r) in the development process.  By combining a software
+model compiler and a hardware model compiler, it is possible to model both
+hardware and software together in xtUML.  Then, after analysis and testing,
+a mapping of components can be made to hardware and software modules.
+
+SystemC is an ideal candidate for such combined hardware and software
+model driven development (MDD).  xtUML models can model the entire system.
+The system can be executed as a PIM (platform independent model) to validate
+its overall functional behavior.  After analysis components of the model can
+be mapped to hardware and software.  Hardware components can be translated 
+into hardware with a hardware language (SystemC) translator (model compiler).
+Software components can be translated into embedded (C) code.
+
+[PROCESS FLOW PICTURE HERE]
+
+A model compiler for SystemC must be strongly influenced by the distinctives
+of xtUML and BridgePoint.  The SystemC model compiler must allow for the
+behavior modeled in xtUML to be mapped into SystemC constructs that preserve
+the syntax and semantics of Executable UML.  In other words, all of the
+artifacts from xtUML must map in some way into (executable) SystemC.
+
+In contrast, a tool that leverages only the graphics of UML for entering
+SystemC model will lack the power and distinctives of xtUML.  Such a tool
+is simply a "UML Schematic Entry" tool.  xtUML can go far beyond.
+
+
+5. Analysis
+-----------
+Currently, BP is used to generate the structure of a SystemC description only.
+[3] describes manual modifications needed to bridge the generated code into
+compliance for SystemC simulation/synthesis.
+
+BP shall also generate the simulation/synthesis behavioral portions of SystemC
+description.
+
+Current open issues can be categorized into:
+1- SystemC Modules
+2- Structural Declaration issues
+3- Behavior related issues
+4- Other issues
+
+
+Currently, BridgePoint is used to generate the structure of a SystemC
+description only.  [3] describes manual modifications needed to bridge the
+generated code into compliance for SystemC simulation/synthesis.
+
+BridgePoint shall also generate the simulation/synthesis behavioral portions
+of SystemC description.
+
+
+5.0    Generation Modes
+------------------------
+5.0.1  Two modes of code generation for SystemC shall be supported, simulation mode
+       and synthesis mode.
+5.0.2  Simulation mode will be the default.
+5.0.3  To enable code generation for synthesizable SystemC, a system-level
+       mark will be activated. This mark will be added to the system.mark
+       marking file in the /gen folder of the project.
+5.0.4  The systhesis mark will indicate which synthesizer is to process the
+       generated code.  MC-SystemC will attempt to output the expected dialect
+       of the given SystemC synthesizer.
+
+
+5.1 SystemC Modules
+--------------------
+SystemC Modules (SC_MODULE) are the basic bulding block. Modules break complex systems
+into smaller pieces.  A module should contain the following parts:
+
+  SC_MODULE("module_name"){
+  	//-- Port Declaration (Item1)
+  	sc_in<data_type>    port1;
+  	sc_out<data_type>   port2;
+  	
+  	//-- Internal Varaibles and Methods (Item2)
+  	
+  	
+  	//-- Constructor
+  	SC_CTOR(module_name){
+  		//-- Instantiate internal modules (Item3)
+  		
+  		//-- Bind internal module ports (Item4)
+  		
+  		//-- Declare and Register Processes (Item5)
+  		
+  	}
+  }
+  
+Item1, Item3 and Item4 are all related to the structure of the modules and the
+connectivity between them, while Item2 and Item5 are related to the module 
+behavior.
+
+In xtUML, components are the building blocks of the model. Accordingly, xtUML
+components can be mapped into SC_MODULE(s).
+
+5.2 Structural Declaration Issues:
+----------------------------------
+5.2.1   Interfaces
+		SystemC standard library is shiped with standard primitive ports and channels.
+		Each customer has the right to develop his port/channel library.
+		Currently, BP generates primitive ports/channels. Customer substitute the interface 
+		type with his own ones. It is required to seperate the definition of the
+		port/channel into one global header file.
+		
+		For each interface, we should declare (in a seperate, global, header file) 
+		five typedefs for the following items:
+		- required/out port
+		- required/in port
+		- provided/out port
+		- provided/in port
+		- channel
+		
+		Module ports should use these definitions while declaring its ports and connecting
+		internal modules. 
+		
+5.2.2   Port Name
+		Current naming uses interface_name + port_name + signal/operation_name + 
+		provided/required identifier + direction identifier
+		
+		This results in a very long name. We are still waiting for feedback from customer.
+
+5.2.3   Multiple data:
+        Components' ports are connected through channels. Only one primitive channel
+        called "sc_signal" is shipped with SystemC library. "sc_signal" can carry only
+        primitive data types. Problems occur with following configurations:
+         - Multiple Signals/Port
+         - Multiple Parameters/Signal
+         - Structured Data Types
+        
+        These cases can be handled either by:
+         - Flatten data into many, signle data, ports
+         or
+         - Generate new channels and interface which can carry theses data.
+           In SystemC, channels have internal behavior for read/write operations.
+           Open issue: How to model this channel behavior in BP.
+        
+           
+5.2.3   No Data:
+		Open Issue: Channels connecting different modules should carry any type of data.
+		Thus operations/signals with no parameters has no direct mapping to
+		SystemC. 
+
+5.3 Behavior Related Issues
+----------------------------
+5.3.1  Classes
+     xtUML components are mapped into SystemC modules (the systemC flavor of
+     classes). A direct approach is to map xtUML classes into C++ classes, 
+     instantiate objects from these classes inside SystemC Modules.
+     
+     class xtUML_className{
+     	//Class attributes
+     	//Class functions
+     	//Instance based dispatcher
+     }
+     
+     SC_MODULE("module_name"){
+     
+     	//Declare class instance here     	
+     	
+     	SC_CTOR("name") : /* Call constructor for class instance here */   {
+     		
+     		//register instance based dispatcher here
+     		SC_THREAD( class_instance.dispatcher_function_name );
+     			sensitive << clock.pos();
+     			sensitive << reset.neg();
+     	}
+     }
+     
+     However, analysis show that problelms will occur due to
+     - Port scope:
+       Ports are defined within the module scope. Class functions will not be
+       able to read/write from a port.
+     
+     - Register dispatcher functions
+       Macro used to declrae SC_THREAD( ), concatenates function name with other
+       strings before calling the function. The period "." used to seperate instance
+       name from function name leads into compillation error.
+       
+     The alternative method is to flatten all class attributes and functions inside
+     the body of the module.   
+
+
+5.3.2  Event Dispatching
+       SystemC use a different methodology than current mc3020 event dispatching
+       mechanisim. We do not have an option to define our own events types.
+       All events should be of "sc_event type.
+       All information encapsulated inside the event like (reference to the class
+       instance, event number) is no longer exist.
+
+       Main element for SystemC behavior is process. Three types of processes exist
+       SC_METHOD, SC_THREAD and SC_CTHREAD. For each process one should do the following
+           1- Declare the process
+           2- Assign a list of signals and events to "sensitivity lsit". If the
+              value a signal is changed or an events "notify" function is called;
+              the process will be fired.
+           3- Assign a function to the process. This function will be called when the process is fired
+              (value one of the signal associated to the sensitivity list is changed)
+
+       example:
+
+       SC_METHOD(function_name);
+           sensitive << signal_name_1;
+           sensitive << signal_name_2;
+           sensitive << signal_name_3;
+
+5.3.2.1    Events
+         SystemC fires a process when a "notify" function is called for an associated
+         event or when signal value is changed. Thus xtUML events can be mapped
+         into objects of type sc_event (not synthizable) or to signals sc_sginal (synthizable).
+         This requires to change the generation of the statement "generate event".
+         
+         Open issue: how to map OAL code segments which use event's data (ex: event.count)
+
+5.3.2.2    Dispatcher
+         Current mc3020 dispatcher gets the information about the "instance" from
+         the event instance. This information is no longer exist. The assignment
+         to the sensitivty list is done statically at coding time. A prior knolwedge
+         of number of instances is needed to generate as many dispatchers as the
+         number of instances and assign the right events to each dispatcher.
+               
+         In order to use Event-Matrix approach, a process sensitive to each event
+         is needed to detremine next state.
+
+5.3.2.3    Timer Events
+         A notification of an event can be deffered in time. Thus a timer event
+         can be mapped into a deffered event notification. However, MC3020 uses
+         "Timer" external entity. Special handling for "Timer" EE is needed.
+
+
+5.4 Other Issues:
+------------------
+5.4.1 Synthesis
+
+  Each tool has defined its own subset of SystemC constructs to be synthesized.
+  A synthesis standard from OSCI is still under review (OSCI newsletters on
+  13 Nov 2009).  If the customer uses a non-Mentor tool we will need its
+  documents (But we will not be able to test and verify synthesis reports
+  match what we are generating)
+
+
+
+
+6. Design
+---------
+6.1   Classes:
+      Class attributes and functions will be flattened inside the module definition.
+
+6.2   Instance Based State Machines:
+      OAL code inside states and on transitions will be mapped into functions inside
+      the defined classes. In order to use Event-Matrix approach, a process sensitive
+      to each event is needed to detremine next state.
+
+		Example: A state machine having two events
+            
+            SC_MODULE("module_name"){
+            	//--- Class Data
+            	//--- State Machine
+            	sc_event event1;
+            	sc_event event2;
+            	
+            	void event1_dispatcher();
+            	void event2_dispatcher();
+            	void state_machine_dispatcher();
+            	
+            	int state_event_matrix[][];			// State Event Matrix
+            	void (Module_Name::*state_action_functions[ ]) (void);   
+            					//Array of pointers to state action procedures 
+            	void action1(void);
+            	void action2(void); 
+            					
+            	
+            	SC_CTOR("name"){
+            	
+            	
+            		SC_CTHREAD(state_machine_disptacher), clock.pos);
+            			reset_signal_is(reset, false);
+            			
+            		SC_METHOD(event1_dispatcher);
+            			sensitive << event1;
+            			
+            		SC_METHOD(event2_dispatcher);
+            			sensitive << event2;
+            			
+            		state_action_functions [ ] = &module_name::action1;
+            		state_action_functions [ ] = &module_name::action2;
+            	}
+            }
+            
+            
+            void module_name::event1_dispatcher(){
+            	current_state = state_event_matrix[current_state][events_enum_event1];
+            }
+            
+            void module_name::event2_dispatcher(){
+            	current_state = state_event_matrix[current_state][events_enum_event2];
+            }
+            
+            void module_name::state_machine_dispatcher(){
+            	//reset behavior
+            	current_state = 1;
+            	(*state_action_functions[current_state])();
+            	wait();
+            	
+            	while(1){
+            		(*state_action_functions[current_state])();
+            		wait();
+            	}
+            }
+        
+6.2   Class Based State Machines:
+	  Class based state machines are used to recieve signals from other modules.
+	  Thus, it is appropriate to map those (one state) receiving state machines
+	  into a signle process attached to a SC_METHOD. This will result into more
+	  accurate cycle-by-cycle simulation when using SystemC simulator.
+
+
+
+7. Design Comments
+------------------
+
+
+8. Work Required
+----------------
+8.1.    A branch of mc3020 prototyping a C++ model compiler is modified to
+        include the functionality described in the requirements and design.
+8.2.    The OSCI SystemC simulator is downloaded and installed.
+
+
+
+9. Unit Test
+------------
+Iterations between the BridgePoint development team and the customer are
+required until clear requirements have stabilized.
+
+End
+---
+
+$Log: dts0100616739.dnt,v $
+Revision 1.8  2010/03/11 13:27:25  yshoukry
+job:dts0100616739
+-New design issues which are related to state machines are analyzed and design is proposed
+
+Revision 1.7  2010/01/29 16:31:17  cstarret
+job:dts0100616739
+incorporating behavior strategy
+
+
+[pruned]
+
+Revision 1.2  2009/12/16 16:36:59  yshoukry
+Initial design note
+

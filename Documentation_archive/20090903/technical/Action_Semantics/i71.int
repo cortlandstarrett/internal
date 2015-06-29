@@ -1,0 +1,183 @@
+========================================================================
+
+File:      $RCSfile: i71.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Automate OAL validation function generation
+
+Abstract
+--------
+This note describes automating the creation of the OAL validation 
+functions.
+
+History
+-------
+
+final i71-081503-01.rvm
+
+Document References
+-------------------
+Issue 71
+
+Background
+----------
+
+The current process for creating validation functions requires 
+the developer manually edit a file to remove data type declarations.
+Secondly, if the signature of the validation function changes,
+all work has to be re-entered.
+
+The process is changed so that there is only one file (function_import.sql) in the
+repository that contains all the OAL function definitions.
+
+Design
+------
+
+When the developer wishes to change the OAL validation functions,
+the process is:
+
+- Rebuild the als project (if not current)
+- Import als/sql/oal_functions.sql into MB
+- Import als/sql/err_ee_w_graphics.sql into MB
+- Reparse all functions
+- Add new functionality, fix anything broken by changes to grammar
+- Export functions, without graphics, to als.oal/sql/function_import.sql
+- Rebuild the als project
+
+Each time the project is rebuilt, a new oal_functions.sql is
+created with the latest action language and function argument
+list.
+
+i71.1  Extract function bodies from current code
+
+The archetype extract_function_bodies.arc is written.  This 
+archetype creates a file named <S_SYNC.Name>.oal for each 
+S_SYNC instance.  The file contains the S_SYNC.Action_Semantics
+data. The function instances are populated in 
+the generation database from the file function_import.sql.
+Files were used to avoid problems formatting the data, for
+example if we wanted to create an INSERT statement with the
+Action_Semantics, we would have to convert all the line feeds
+to the character string "\n".
+
+i71.2  Use function bodies to populate generated function definitions
+
+The archetype function_gen.arc is changed so that when 
+generating a function INSERT statement, the Action_Semantics
+attribute is set to the contents of the file named <S_SYNC.Name>.oal,
+if the file exists.  If the file doesn't exist, the default action
+(what was previously generated) is output.  This way, the generated
+functions always have the correct parameter list (generated from the
+grammar), and the OAL processing.
+
+i71.3  Automate creation of the function.pei.sql file
+
+Currently the file function.pei.sql is created manually by copying
+function_import.sql, and removing all data type insert statements.
+
+The Ant task replaceregexp is used to replace all the data type insert
+statements with the empty string.
+
+i71.4  Update build script
+
+The build.xml file is updated so that:
+
+- extract_function_bodies.arc is run against the function_import.sql 
+  file's data, before executing function_gen.arc.   All .oal files
+  are deleted after they are no longer needed.
+  
+- The creation of the function.pei.sql file from function_import.sql
+  is executed.
+
+
+Work Required
+-------------
+
+i71.1  Extract function bodies from current code
+
+The archetype extract_function_bodies.arc is written.  The .oal
+files are written to the sql/ directory.
+
+i71.2  Use function bodies to populate generated function definitions
+
+Modify function_gen.arc as described in the design.
+
+i71.3  Automate creation of the function.pei.sql file
+
+The target "create_pei" is added to build.xml.  
+
+i71.4  Update build script
+
+The build script is changed as described in the design.
+
+Implementation Comments
+-----------------------
+  
+- function.pei.sql is removed from CVS, and added to sql/.cvsignore
+
+Unit Test
+---------
+
+- Copy als.oal/sql/function.pei.sql to function.temp.sql
+- Rebuild als project
+R als.oal/sql/function.pei.sql is created
+R function.pei.sql and function_import.sql are identical aside
+  from the lack of data type inserts in function.pei.sql
+R function.pei.sql and function.temp.sql have no differences
+R oal/sql/oal_functions.sql loads into Model Builder without any import errors.
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/extract_function_bodies.arc
+Introduced version: 1.1
+
+com.projtech.bp.als/arc/function_gen.arc
+Initial version: 1.3   Final version: 1.4
+
+com.projtech.bp.als/build.xml
+Initial version:  1.1  Final version: 1.2
+
+com.projtech.bp.als.oal/sql/.cvsignore
+Introduced version: 1.1
+
+com.projtech.bp.als.oal/sql/function.pei.sql
+Deleted version: 1.3
+
+
+
+End
+---
+
+$Log: i71.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.168.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2003/08/15 17:01:29  greg
+Job: 71
+Made review changes
+
+Revision 1.1  2003/08/14 19:47:20  greg
+Job: 71
+Initial introduction
+

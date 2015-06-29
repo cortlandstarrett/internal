@@ -1,0 +1,113 @@
+========================================================================
+
+File:      $RCSfile: i2120.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Prevent resizing incorrect symbols
+
+Abstract
+--------
+This note describes the changes required for preventing resizing of the
+incorrect symbol.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 2120
+
+Background
+----------
+It is currently possible to get into a situation where trying to resize a symbol
+that is selected causes another unselected symbol to be resized.  This occurs if
+multiple instances of the Element in Resize class exist as the selection of
+these classes returns the wrong instance in this situation.  There are two ways
+to get into this situation, one is by using undo and the other by pressing and
+releasing the mouse button without moving the hotspot.  This is occuring when
+a Mouse Release event causes a transition outing of the Waiting to Move Hotspot
+state.
+
+Design
+------
+1. Wrap entire movement logic in a transaction
+
+The reason that undoing a resize causes the tool to get into the situation
+described in the Background is that the creation of the Element in Resize
+instance was not being done within the transaction boundaries.  This had the
+effect of the Element in Resize being restored but not deleted after the undo.
+
+To fix this the transaction shall be started in the Waiting to Move Hotspot
+state.  This obseletes the state which was used to start the transaction after
+a mouse move had occured, therefore this state shall be deleted and a mouse move
+transition shall be directed to the Moving Hotspot state directly.
+
+To handle the case where the mouse is never moved, a new state shall be added
+which is transitioned into if the mouse is released before movement occurs.
+This state shall cancel the transaction and delete any Element in Resize and
+Waypoint in Movement instances created in the Waiting to Move Hotspot state.
+This has the side effect of fixing the other issue stated in the Background as
+its root cause was that the created elements were not being cleaned up if no
+movement occured.
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+_- Resize a symbol on a canvas
+_- Undo the resize
+_- Resize another symbol on the same canvas
+_R The symbol is correctly resized
+
+_- Select a symbol on a canvas
+_- Click over each hotspot for the symbol
+_- Resize a different symbol
+_R The symbol is correctly resized
+
+Code Changes
+------------
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+
+com.mentor.nucleus.bp.ui.canvas.test/src/.../ShapeResizeTest.java
+
+End
+---
+
+$Log: i2120.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:07  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/05/23 18:25:14  tlondon
+Job: 2120
+
+Update according to review minutes.
+
+Revision 1.2  2006/05/22 20:39:48  tlondon
+Job: 2120
+
+Removing explorer changes
+
+Revision 1.1  2006/05/22 17:50:54  tlondon
+Job: 2120
+
+Initial

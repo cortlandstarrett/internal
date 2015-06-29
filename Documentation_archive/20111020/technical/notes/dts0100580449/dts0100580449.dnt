@@ -1,0 +1,454 @@
+========================================================================
+
+File:      $RCSfile: dts0100580449.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Provide OAL and Description search
+
+1. Abstract
+-----------
+This note describes the changes required to support searching OAL and
+Description data within the BridgePoint tool.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100580449 - Search facility
+[2] Documentation/internal/technical/notes/dts0100580449/dts0100580449.ant
+
+4. Background
+-------------
+See [2].
+
+6. Design
+---------
+6.1 Define Search model
+
+The following new subsystems are added to the ooaofooa:
+
+Engine
+Participation
+Query
+Result
+
+Consideration was taken for creating a new model under it's own project.  This
+approach was not chosen as there is no cross project support in OAL.  For a
+modeled solution of reference searching, navigation of the ooaofooa will be
+required.  The following subsystems are added within a root subsystem named
+Search.
+
+The Engine subsystem consists of Engine classes which can process unique
+queries, for instance a Description Engine can process a set of Search
+Participants that have a searchable description value.  Each subtype Engine
+class has a processQuery() operation, which takes an id for locating the Query
+that needs processing.  The operation will process all associated participants
+and for each will get the searchable value (see paragraph below), then process
+the query parameters against that value.  For the description and action
+language query types a new bridge is called, Search::locateContentResults().
+This bridge is implemented in Java and uses the java utility class Pattern for
+locating matches.  Results are created for any matches found, and each result
+has the character start location and pattern length stored for displaying
+results.  Each class has a dispose() operation added for tearing down all
+associations and deleting all instances. 
+
+The Participation subsystem consists of classes that capture searchable data.
+During participation configuration these elements are created and a searchable
+value is stored (for instance the value of the Descrip attribute).  Additionally
+the real element's instance key is stored, along with the class name and model
+root id.  This captured data is used to resolve the real model element for
+result display.
+
+Each class has the necessary dispose() operations added.
+
+The Query subsystem consists of classes that capture query data entered in by
+the user.  The query data consists of the following:
+
+pattern - String
+regEx - boolean
+caseSensitive - boolean
+scope - SearchScope (a new enumeration, consisting of EnclosingSystem, Universe
+and Selection)
+type - Determined by subtype of the Query class, can be Description Query or
+ActionLanguageQuery at this point.  The type is chosen by checking the
+appropriate box.  And "All" box is not necessary as the default behavior is all,
+the only time it will not search both the action language and descriptions is
+when the user checks only one.
+
+The Query supertype class has operations that aid in creating the various
+subtypes.  These operations will create the necessary Engine classes and the 
+subtype Query classes.
+
+The Query class has a run() operation that will pass it's ID to the associated
+Engine class' processQuery() operation.    
+
+The Query class has a class based operation, configureScope().  This operation
+simply forwards the call to a bridge in a new Search external entity.  This
+operation is written in Java as the current scoping deals with concepts that are
+external to the ooaofooa.  In addition to this the scoped elements must be
+maintained in a list in order for the engines to process.  In a modeled solution
+this would require a new association with each element type to a search related
+model element.  Another way to solve it would be to create two new supertypes,
+Action Language Element and Description Element and create new subtypes for all
+elements that have OAL and a Descrip attribute.  The less intrusive way is to
+handle this scope list in Java, where the NonRootModelElement supertype can be
+used. 
+
+The Query class also has a configureParticipants() operation.  This operation is
+responsible for scanning the model elements found in the configured scope.  For
+the Description and Action Language queries this is handled by a bridge
+operation.  The Search external entity consists of a gatherParticipants() bridge
+operation that processes the list captured by the configureScope() bridge
+operation locating elements that have OAL or a Descrip attribute.  For each
+found the necessary Participant classes are created.
+
+Each class has the necessary dispose() operations added.
+
+The Result subsystem consists of classes that capture matched result data for
+display.  A Search Result class captures the fact that an element has one or
+more matches present.  The Match class captures each individual match within the
+searchable data.
+
+6.2 Extend eclipse search API
+
+6.2.1 Eclipse Search framework mapping
+
+In order to tie in the modeled search elements with eclipse we must map the
+modeled functionality to the eclipse search framework classes.  The following
+classes are mapped:
+
+Search Result -> ModelSearchResult extending AbstractTextSearchResult
+Query -> ModelSearchQuery implementing ISearchQuery
+
+The ModelSearchResult class gives eclipse the list of matches that shall be
+displayed in the Search view.  The ModelSearchQuery class is passed to the
+eclipse Search infrastructure for processing.  The class must implement a run()
+method, which in this case will process the equivalent modeled query elements.
+
+6.2.2 Add search page
+
+A new project is created, com.mentor.nucleus.bp.ui.search.  This project
+contains the UI related classes for plugging into the eclipse search
+infrastructure.  For the Search page a new class is created, ModelSearchPage.
+This class implements the ISearchPage interface.  The page is designed with the
+following:
+
+A text field: for pattern entry
+A case sensitive button
+A regular expression button
+A limit to group which contains an Action Language button and a Descriptions
+button
+The eclipse Scope group, maintained in external code.
+A Search and Cancel button
+
+The data entered into the search page is persisted using the eclipse dialog
+settings framework.
+
+When the search button is hit the tool will create an instance of
+ModelSearchQuery and pass it into the eclipse search facilities.
+
+6.2.3 Add search result page
+
+A new class is created to display search results in the eclipse Search view, 
+ModelSearchResultPage.  This class provides two types of view, a tree based view
+and a flat view.  For each type a content provider is created.
+
+In the case of the flat view the data is sorted alphabetically, and simply shows
+the ooaofooa element that contains the data that was matched.
+
+In the tree based view the matches show as children of the ooaofooa model
+element that contained that data that was matched.  The tree consists of all
+parents up to the SystemModel instance.
+
+Double clicking a match will open the appropriate editor.
+
+6.3 Performance
+
+Considering that search must load elements in order to process the searchable
+data, it can take a long time to process a query.  This length of time is easily
+mistaken as a search performance issue.  Therefore the load process was profiled
+to search for ways to improve performance.
+
+6.3.1 setBackpointer*
+
+The profiler indicated one area that was taking a considerable amount of
+processing time.  This was in the generated setBackpointer* methods.  These
+methods are generated to check existence in the list before inserting the new
+element.  The backpointer lists are instances of ArrayList.  The existence check
+must iterate all elements when looking for the existence of the given element.  
+These methods are meant to help the BP engineers to identify problems in the
+written OAL.  Therefore we should not be allowing the additional overhead into
+the customer releases.  We cannot leave these methods in the tool for the
+development builds and out of the tool for customer releases, as they change the
+behavior of the tool.  Considering this we shall simply remove these calls.  If
+we want to verify the backpointers during development we must implement
+something that does not change the behavior of the tool.  One possibility is to
+implement an internal verification tool that is run after every transaction.
+
+6.3.2 clearBackpointer*
+
+Another area that is problematic for search is delete performance.  When
+re-running a search query, the previous results must be removed.  The profiler
+indicated a few areas that were taking up most of the processing time.  The
+first are the counter methods to the setBackpointer* methods, clearBackpointer*.  
+Where we are again checking for existence prior to removal of an element from 
+the backpointer list.  An identical approach is taken here, where the existence
+check is removed entirely.
+
+6.3.3 NonRootModelElement.isOrphaned() 
+
+Another area that was taking a good deal of processing time is
+NonRootModelElement.isOrphaned().  This method checks the InstanceList for
+containment of the element to determine its orphaned status.  To resolve this
+the InstanceList class is changed from an ArrayList to a HashSet which provides
+a constant access time.  In order for a HashSet to perform properly all
+element's IDs must be configured before insertion, to do this the elements are
+added to the InstanceList after all other elements are associated rather than at
+creation time.
+
+6.3.4 Consistency Checker
+
+The final area that was consuming a great deal of processing time is the
+consistency checker, which runs after a transaction has completed.  This checker
+is similar to the verification of existence before inserting into a backpointer
+list in that it is only helpful for the BP development team.  The difference is
+that this checker does not change tool behavior with the exception of
+performance.  Therefore this checker shall now be disabled unless the
+environment variable PTC_MCC_DISABLED is set to false.  This flag is currently
+used to enable dangling reference checks during deletion.  The new-start check
+list shall be modified to inform developers to set this flag to false.
+ 
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design.
+
+9. Unit Test
+------------
+9.1 Search
+
+9.1.1 Search page
+
+_- Open eclipse Search
+_R The xtUML Search tab is listed
+_- Select the xtUML Search tab
+_R The search page has the following elements:
+  _R Search text field
+  _R Case sensitive button
+  _R Regular expression button
+  _R Limit To group
+  _R Action Language button
+  _R Descriptions button
+  _R Scope group
+
+9.1.2 Case sensitive
+
+_- Add this comment in some OAL and in A description: // Find me
+_- On the search page enter 'Find me' as the text
+_- Check the Case sensistive button
+_- Hit search
+_R The Search Result page is shown
+_R The Search Result page has both the description and OAL elements listed
+_- Open the search page again
+_R The page contains the same values (same text, and the Case sensitive button
+   checked)
+_- Change the text in the search field to 'find me'
+_- Hit search
+_R The Search Result page is empty
+
+9.1.3 Regular expression
+
+_- Add this comment in some OAL and in A description: // Find me
+_- On the search page enter 'Fi.*e' as the text
+_- Check the Regular expression button
+_- Hit search
+_R The Search Result page is shown
+_R The Search Result page has both the description and OAL elements listed
+_- Open the search page again
+_R The page contains the same values (same text, and the Regular expression
+   button checked)
+
+9.1.4 Action Language only
+
+_- Add this comment in some OAL and in A description: // Find me
+_- On the search page enter 'Find me' as the text
+_- Check the Action Language button only
+_- Hit search
+_R The Search Result page is shown
+_R The Search Result page has only the OAL elements listed
+_- Open the search page again
+_R The page contains the same values (same text, and the Action Language button
+   checked)
+
+9.1.5 Description only
+
+_- Add this comment in some OAL and in A description: // Find me
+_- On the search page enter 'Find me' as the text
+_- Check the Descriptions button only
+_- Hit search
+_R The Search Result page is shown
+_R The Search Result page has only the description element listed
+_- Open the search page again
+_R The page contains the same values (same text, and the Descriptions button
+   checked)
+
+9.1.6 Scope
+
+9.1.6.1 Workspace
+
+_- Add this comment in some OAL and in A description: // Find me 
+_- On the search page enter 'Find me' as the text
+_- Check the Action Language button and the Descriptions button
+_- Check Workspace as the scope
+_- Hit Search
+_R The Search Result page is shown
+_R The Search Result page has both the description and OAL elements listed
+_- Open the search page again
+_R The page contains the same values (same text, the Action Language and
+   Descriptions buttons checked, and Workspace set as the scope)
+
+9.1.6.2 Selected resources
+
+_- Add this comment in some OAL and in A description: // Find me
+_- Select the element(s) with the above OAL and descriptions set in Model
+   Explorer
+_- On the search page enter 'Find me' as the text
+_- Check the Action Language button and the Descriptions button
+_- Check Selected Resources as the scope
+_- Hit Search
+_R The Search Result page is shown
+_R The Search Result page has both the description and OAL elements listed
+_- Open the search page again
+_R The page contains the same values (same text, the Action Language and
+   Descriptions buttons checked, and Selected Resources set as the scope)
+_- Close the search page and select some other element
+_- Open the search page and make sure Selected Resources is checked
+_- Hit Search
+_R The Search Result page is shown
+_R The Search Result page is empty
+
+9.1.6.3 Enclosing projects
+
+_- Add this comment in some OAL and in A description: // Find me
+_- Select the project containing the element(s) with the above OAL and
+   descriptions set in Model Explorer
+_- On the search page enter 'Find me' as the text
+_- Check the Action Language button and the Descriptions button
+_- Check Enclosing Projects as the scope
+_- Hit Search
+_R The Search Result page is shown
+_R The Search Result page has both the description and OAL elements listed
+_- Open the search page again
+_R The page contains the same values (same text, the Action Language and
+   Descriptions buttons checked, and Enclosing Projects set as the scope)
+_- Close the search page and select some other project
+_- Open the search page and make sure Enclosing Projects is checked
+_- Hit Search
+_R The Search Result page is shown
+_R The Search Result page is empty
+
+9.1.6.4 Working Set
+
+_- Add this comment in some OAL and in A description: // Find me
+_- Create two working sets, one which contains the files for the element(s) that
+   have the OAL and description set, and one which contains a file that is not
+   for those elements
+_- On the search page enter 'Find me' as the text
+_- Check the Action Language button and the Descriptions button
+_- Check Working set as the scope
+_- Hit Choose...
+_- Select the working set containing the elements
+_- Hit Search
+_R The Search Result page is shown
+_R The Search Result page has both the description and OAL elements listed
+_- Open the search page again
+_R The page contains the same values (same text, the Action Language and
+   Descriptions buttons checked, and Working set set as the scope)
+_- Hit Choose...
+_- Select the working set not containing the elements
+_- Hit Search
+_R The Search Result page is shown
+_R The Search Result page is empty
+
+9.2 Search Result page
+
+9.2.1 Removal
+
+_- Run a search query that produces results
+_- Select one match in the result page
+_- Hit the single X on the toolbar
+_R That match is removed
+_- Hit the double X on the toolbar
+_R All matches are removed
+
+9.2.2 Search again
+
+_- Run a search query that produces results
+_- Hit the search again button on the toolbar
+_R The matches are cleared and re-found
+_R No duplicates exist
+
+9.2.3 Tree view
+
+_- Run a search query that produces results
+_R The results are listed in a tree, where the system model is the root and
+   all parents exist down to the match
+   
+9.2.4 Flat view
+
+_- Run a search query that produces results
+_- Select the Flat view option from the pull down
+_R The results are listed without hierarchy
+_R The results show a path to the element containing the text
+
+9.2.5 Navigation
+
+_- Run a search query that produces results
+_- Hit the down arrow
+_R The editor containing the match is opened and highlighted
+_- Hit the down arrow again
+_R The next match in the same editor is highlighted
+_- Hit the down arrow until a new element is navigated to
+_R The editor containing the new match is opened and hightlighted
+_- Hit the back arrow
+_R The previous editor is focused and the last match is highlighted
+
+9.3 Performance
+
+- For the performance changes all existing tests must pass
+
+9.3.1 Additional tests
+
+_- Load the ooaofooa
+_- Compare with an expected time
+_R The time should be within a margin of the expected time
+
+_- Delete the ooaofooa (after fully loaded)
+_- Compare with an expected time
+_R The time should be within a margin of the expected time
+
+End
+---
+
+$Log: dts0100580449.dnt,v $
+Revision 1.2  2011/08/11 21:51:40  tlondon
+Job: dts0100580449
+Address review minutes
+
+Revision 1.1  2011/08/08 16:40:51  tlondon
+Job: dts0100580449
+
+Introduce design note
+

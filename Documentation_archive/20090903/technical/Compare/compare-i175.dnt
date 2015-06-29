@@ -1,0 +1,710 @@
+========================================================================
+
+File:      $RCSfile: compare-i175.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:09 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Model Differences
+
+Abstract
+--------
+Eclipse based BridgePoint shall provide the ability to compare models
+logically i.e. ignoring differences in ids and comparing the content of
+the models themselves.
+
+History
+-------
+	
+Document References
+-------------------
+[1] Eclipse Documentation: 
+    Plug-in Development Guide > Programmer's Guide > Compare Support
+[2] com.projtech.bp.core/doc/internal/technical/Model_Explorer-Outline_View/
+                                         model_explorer-outline_view-i224.ant
+Background
+----------
+See Analysis Note (compare-i175.ant v 1.9).
+
+Design
+------
+The model differencing for tiger runs on two SQL files, to compute the 
+logical differences between them. It uses the compare architecture of the
+eclipse plug-in [1] to the best possible extent. The difference performed is
+actually based on the text extracted from the model (see Analysis note for
+detail). 
+
+- Eclipse Compare Architecture
+Eclipse provides three extension points to integrate the comparison functionality
+into it:
+
+- Structure Merge Viewer Extension Point 
+This extension point allows a plug-in to register compare/merge viewers for 
+structural content types. This extension point handles the creation of a tree 
+like structure of the comparison and shows it in one of the comparison views.
+
+- Content Merge Viewer Extension Point
+In cases where the comparison doesn't display the structured comparison tree, 
+rather only the contents are of two files are displayed side by side, Content 
+Merge Viewer is used. An example of that is Replace With > Local History. The
+content viewers (ancestor, left & right) are specially handled through this 
+extension point.
+
+- Content Viewer Extension Point
+A content viewer is used in places where only a single input is available and 
+therefore no compare is necessary.  A typical example for this is the "Restore 
+from Local History" option.  
+
+The model difference work is divided into various tasks in the order in which 
+they are taken up:
+
+- i175.1 - Reading the input in the Meta Model
+The extensions of the file to be handled by the compare plug-in are written in 
+the plug-in manifest file within the extension point tag. The framework forwards
+the input received to the respective extension point implementation.
+
+- i175.1.1 - Read the SQL input into the model
+The class com.projtech.bp.io.sql.ImportBPSql is slightly modified to provide 
+support of InputStream as input instead of only file name String. The input 
+object received through getStructure method is passed to the ImportBPSql 
+constructor and the run method is than initiated.
+
+One file is loaded at a time in the model, then it is traversed and transformed 
+before being unloaded.  
+ 
+(See Appendix 1, for an alternate Memory Model considered for loading a model 
+file).
+
+- i175.2 - Traversal and Transformation
+This task generates code to traverse the model created in the previous step and
+makes it available for the comparison done by the Eclipse API (see
+section i175.5). Following are the tasks performed together (sequentially):
+
+- i175.2.1 - Creating Traversal Mechanisms
+A set of classes for iterating through the meta-model is created by refactoring
+the archetypes used in com.projtech.bp.ui.explorer and using the modified 
+UItree.pei.sql[2] and uitree.sql.
+It is proposed to have generalized Inspectors for the meta-model which can be
+used to iterate though the meta-model classes and access each of the class' 
+information. These inspectors are placed in com.projtech.bp.core.inspectors. 
+At a later stage these inspectors can replace the adapters used in Model 
+Explorer to provide the generalized approach. 
+The files created below are addressed with reference to the path of 
+com.projtech.bp.core. The archetypes and mdl files are also placed in the 
+respective folders of com.projtech.bp.core.
+
+- i175.2.1.1 - Create comparison tree model (ooaofooa_hierarchy.bak)
+The model com.projtech.bp.ui.explorer/mdl/uitree.bak is copied and modified as 
+follows:
+An attribute "NameOnly" of type string is added to T_TPS class. The attribute 
+acts as a kind of coloring information for the tree nodes present in a T_TPS 
+object. If NameOnly attribute is empty, T_TPS object represents a normal 
+Parenthood specification between Parent_Tree_Node_Spec_ID and 
+Child_Tree_Node_Spec_ID. Otherwise any string in NameOnly specifies that the 
+node represented by Child_Tree_Node_Spec_ID is actually a referential element 
+in Parent_Tree_Node_Spec_ID node. The value of NameOnly attribute in this case 
+is the role of the referential attribute in parent class. 
+
+- i175.2.1.2 - Create Pre-existing instances file (ooaofooa_hierarchy.pei.sql)
+This file specifies the relationships that exist in the elements of the meta 
+model. The file is also used in a similar fashion to 
+com.projtech.bp.ui.explorer/sql/uitree.pei.sql [2]. 
+
+- i175.2.1.3 - Create Inspector Interface
+The Inspector interface (IModelClassInspector)is written in 
+arc/create_model_inspector.arc. This interface provides generalized methods to 
+traverse through a meta model and access its information.
+
+- i175.2.1.4 - Generate Inspector Classes
+The create_model_inspector.inc generates the Inspectors of all the classes 
+mentioned in pre existing instances of T_TNS. The "CategoryName" attribute of 
+T_TNS is used to create the name of an Inspector Class. Every class implements 
+the methods defined in the IModelClassInspector which are as follows:
+- public Object getParent(Object arg)
+  The "ParentChildRelChain" string attribute in T_TPS is parsed forward to get
+the parent object (in Meta-Model) of the object passed as argument (i.e. arg) 
+using the functions defined in core/arc/parse_chain.inc. 
+
+In case of multiple parents, only that instance is returned which is not null. 
+- ObjectElement[] getChildren(Object arg)
+  In this case the "ParentChildRelChain" is parsed backward, to get arrays of 
+children of every type using the functions defined in core/arc/parse_chain.inc. 
+Multiple arrays are returned in this case, each representing one type of child. 
+All types of children arrays are then copied to one array of ObjectElement with 
+type of each child as name and ObjectElement.RELATION_ROLE_NAME as the type of 
+ObjectElement.
+- public boolean hasChildren(Object arg)
+  This method uses the same technique as of getChildren() to get the children 
+arrays. In case no child is specified (according to Pre-existing instances), 
+it returns false, and true otherwise.
+  
+- ObjectElement[] getReferentials(Object arg)
+  Each referential attribute in a class has a role associated with it. For 
+example the return type of a function, data type of a parameter, etc. 
+Referential attributes are mentioned in the pre-existing instances, with a role
+specified in "NameOnly" attribute of T_TPS. This information is stored in a 
+wrapper class ObjectElement (refer to section 3.1.5), where the roleName is the
+"NameOnly" string concatenated with Parent Node name, role type is 
+ObjectElement.REFERENTIAL_ATTRIBUTE_ELEMENT and the role value object is 
+obtained using the "ParentChildRelChain". This function returns an array of the 
+ObjectElement.
+- ObjectElement[] getAttributes(Object arg)
+  Every attribute in Meta-model has a name, a value and is of type 
+ObjectElement.ATTRIBUTE_ELEMENT. This function also returns an array of 
+ObjectElement after populating the information about each attribute. The 
+attribute name is extracted from the meta model. To provide the 
+internationalization support an eclipse properties file is created. 
+create_properties_file.inc creates the property file with each record having 
+the format as key = Atttribute.Descrip:FullName. Where the format of the key is 
+<ModelClassName_c>.<AttributeName>.  
+
+- i175.2.1.5 - Role wrapper class, ObjectElement
+This class wraps information about every element of an object. Every object
+element can be of any of the three types:
+ATTRIBUTE_ELEMENT :	A primitive attribute
+REFERENTIAL_ATTRIBUTE_ELEMENT : A referential attribute
+RELATION_ROLE_ELEMENT : A collection of objects resulting from an association 
+with another object i.e. children of a node.
+The class has following methods:
+- public ObjectElement(String aName, int aType, Object aValue):
+Default overloaded constructor.
+
+The contents are accessed through the following getter functions:
+- public String getName()
+- public int getType() 
+- public Object getValue() 
+
+- i175.2.1.6 - Create Inspector Registry Interface
+The Interface IModelInspectorRegistry is created with the following abstract 
+method:
+- public IModelClassInspector getInspector(Class modelClass)
+Given a Model Class object this method's implementation should return the 
+appropriate Inspector from the model inspector’s registry.
+
+- i175.2.1.7 - Create Main Iterator class for Class Inspectors
+A class ModelInspector is created to iterate through the meta model. 
+The class uses a HashMap to find an Inspector against the name of a meta model 
+class, for which the code is generated using create_model_iterator.inc. The 
+class implements IModelClassInspector and IModelInspectorRegistry, and is used 
+by the text generator to access each meta model object. The class has following 
+methods:
+- private void initializeMap()
+  This method adds the hash map entries to map each Inspector object against the 
+name of meta model class name.
+
+All other methods are implementation of the IModelClassInspector (that call the 
+respective function of Inspector class after getting it from the HashMap) and 
+IModelInspectorRegistry.
+
+- i175.2.2 - Sort a Contents Tree
+The meta-model contents trees are sorted so that exact comparison on both 
+models can be done accurately. There are two rules for sorting a tree's node. 
+
+Rule 1: Sort the elements of meta-model according to the sorting (reflexive) 
+relationship if one exists. For example attributes have relationship R103
+that defines the order of attributes in which they are defined in the model.
+This sorting is ensured through the generated code of getAttributes() method in 
+the Inspector classes.
+
+Rule 2: In case where no Rule 1 exists, the same level children are 
+alphabetically sorted. The sorting is based on the name obtained using the 
+getName or Get_name methods of a model element. 
+
+To provides the sorting support the Comparator interface is implemented by the
+class TextRepComparator in ModelClassTextGenerator.java. 
+
+- i175.2.3 - Transform contents Tree
+Using the Inspectors defined in the section i175.2.1, every element in the model 
+is traversed, its text is generated and against each element a 
+DocumentRangeNode is constructed. Once text for whole of the model is generated
+it is placed in a Document object to be shown by the respective viewers.
+Following classes/interface are declared in com.projtech.bp.compare.text 
+package to provide a generalized text generator:
+- ITextGenerator
+  Interface to generate text for one element of model.
+- ITextBuffer
+  Inner interface in ITextGenerator, to provide standardized text storage class.
+- ModelClassTextGenerator
+  An implementation of the ITextGenerator that generates text of a model 
+  element. 
+
+- i175.2.3.1 - Create Text Generation Interfaces
+The interfaces ITextGenerator and ITextBuffer are created and implemented as 
+described in following sections.
+
+- i175.2.3.2 - Create Text Generation class for Model Class
+The interface ITextGenerator is implemented by the ModelClassTextGenerator. The
+class is responsible for generating the text of attributes and referentials and
+the children in a Model Class, and maintaining the required indentation level 
+as well. 
+Every model class can be divided into four sub parts based on the nature of
+the text that it generates:
+- SELFID_PART_INDEX
+Indicates the text that shows the heading of the Model Element based on the 
+type/category of the element e.g. Domain, Model Class, Bridge, Function, etc.
+- ATTRIBUTE_PART_INDEX
+Indicates the text for all the attributes of the Model Element.
+- REFERENTIAL_PART_INDEX
+Indicates the text for all the referentials of the Model Element.
+- CHILDREN_PART_INDEX
+Text for the elopements which are child relations of the Model Element. 
+
+The class has following methods:
+- ModelClassTextGenerator(IModelInspectorRegistry aRegistry)
+It sets the internal registry object with the parameter aRegistry.
+
+- void generateFor(Object object, ITextBuffer buffer, int indentationLevel)
+  Implemented method of the ITextGenerator. This method calls the overloaded 
+  generateFor() method for every part of the model element.
+- public void generateFor(Object object, int partIndex, ITextBuffer buffer, 
+                          int indentationLevel)
+  This implemented method of the ITextGenerator, gets the Inspector for the 
+  'object' from model inspector registry, and generates the text for the 
+  specified part ('partIndex') of the object. 
+  For CHILDREN_PART_INDEX it calls the generateFor(object, buffer, 
+  indentationLevel) method for each child element. It uses the inner class 
+  'TextRepComparator' (an implementation of java.util.Comparator) for performing
+  the sorting based on Rule 2 in section i175.2.2.
+
+- void generateForAttributes(IModelClassInspector inspector,	
+                        Object object,
+                        ITextBuffer buffer,
+                        int indentationLevel)
+  Generates the indented text for the attributes of 'object' and appends it to 
+  the 'buffer'.
+- void generateForReferentials( IModelClassInspector inspector,
+                                Object object,
+                                ITextBuffer buffer,
+                                int indentationLevel)
+  Generates the indented text for the referential attributes of 'object' and 
+  appends it to the 'buffer'.             
+
+- protected void appendIndentingString(ITextBuffer buffer, int indentLevel, 
+                                       int bias)
+  Appends four (4) spaces per indentLevel to the 'buffer'. The 'bias' is the 
+  length of label string and is the number of spaces added at the end of 
+  indentation spaces in case of multi line text against the particular label.
+
+- void appendIndentedMultilineString(ITextBuffer buffer, int indentLevel,
+                                     int tagLength, String attribStr)
+  This function adds the required indentation to 'attribStr' based on the 
+  'indentLevel' and 'tagLength' and appends the resultant string to 'buffer'. 
+
+- protected ObjectElement[] sort(ObjectElement[] objects)
+  Given an array of ObjectElement, it returns a sorted array of ObjectElement.
+
+- i175.2.3.3 - Creating Text Generator for Compare Plug-in
+The compare plug-in requires a document to be created along with a tree of 
+IStructureComparator for the eclipse compare architecture. Every element of the
+model is encapsulated in CompareDocumentRangeNode class which extends 
+org.eclipse.compare.structuremergeviewer.DocumentRangeNode class and implements
+org.eclipse.compare.ITypedElement. The methods of the class are:
+
+- public CompareDocumentRangeNode(String type, String name, IDocument document, 
+								  int start, int length)
+  The only constructor that sets up a node with an objects data. The 'type' 
+  parameter is class name of a model elements object. 'name' contains the human
+  readable attribute of the element (see section i175.2.2 for details).
+  This attribute is shown in the difference tree. 
+  'document' contains the text as generated by the text generator, 'start' 
+  refers to the starting index of the text of this node in 'document' whereas 
+  'length' is the length of the text.
+- public String getName()
+  Returns the name of the node.
+- public Image getImage()
+  Returns the image associated with this object. Every element's associated 
+  image is mentioned in the ooaofooa_hierarchy.pei.sql, and Util class' static 
+  function getImage()is generated to return the image against each node.
+  
+  To make the trees in Model Explorer and Model Difference identical, the files 
+  ooaofooa_hierarchy.pei.sql and UITree.pei.sql must be in-sync with each other.
+- String getType()
+  Returns the type of node (passed as the first parameter to constructor).
+- String getStringContents()
+  Returns the text contents this node covers in the document.
+
+ModelStructuredTextGenerator class extends ModelClassTextGenerator and is used
+by the compare plug-in to create the tree of CompareDocumentRangeNode and provide 
+the Document based ITextBuffer. The class maintains a stack of 
+CompareDocumentRangeNode objects to adjust the indexes of document in the every 
+node after the text for all the children of that node is created. The class 
+provides the following methods:
+
+- ModelStructuredTextGenerator(IModelInspectorRegistry initializedRegistry)
+  The constructor calls the constructor of ModelClassTextGenerator and 
+  initializes the stack.
+
+- public CompareDocumentRangeNode createNodeTree(Object object)
+  This method adds the root node in the stack and then calls the generateFor(...) 
+  method to generate the text. Finally this method pops the root element, and 
+  sets its length.
+  
+- public void generateFor(Object object, ITextBuffer buffer, 
+                          int indentationLevel)
+  This over-ridden method creates instances of CompareDocumentRangeNode, 
+  handles the stack and calls itself recursively to create the tree of 
+  CompareDocumentRangeNode 
+
+- i175.3 - Model Cache Manager
+As already discussed, an SQL file is converted to a readable text format and
+this text is generated while the tree of CompareDocumentRangeNode is built. The
+structure merge viewer (an instance of StructureDiffViewer) requires tree for 
+structural compare, while to show text in the lower two panes the content merge
+viewer (an instance of ContentMergeViewer) requires the generated text.
+
+To avoid duplication of text generation, a central manager class 
+ModelCacheManager is implemented. The class can load the model for the first 
+time it is required and the other viewers can then receive the text from the 
+manager class. 
+
+All the viewers release all references they have of a model prior to being 
+disposed. Once all references are removed the model is also released from the 
+memory.
+
+In case of any error while loading the model from the SQL file, the Cache 
+Manager throws a LoadModelException which is caught by the viewer classes to
+behave accordingly.
+
+- i175.4 - Eclipse Framework and Extension point
+The Model Compare plug-in implements the all Extension points mentioned above. 
+The eclipse API has a number packages org.eclipse.compare.* that provide all
+the required classes that fulfills the above requirements for performing Model 
+Difference.
+A class ModelDiffViewer extends StructureDiffViewer. The purpose is to provide 
+filtering to the difference tree and handle the disposing of models from 
+ModelCacheManager. The filter restricts display of CompareDocumentStructureNode
+that have name "Body". These leaf nodes are created during text generation for 
+storing the text of a non-leaf node (i.e. a Model Element that has some child 
+relations). The reason to have these leaf nodes is that fact that the default 
+differencer performs the compare on only leaf nodes.
+An inner class TreeElementFilter which extends the class 
+org.eclipse.jface.viewers.ViewerFilter, is used to provide the required 
+filtration to ModelDiffViewer.
+Another class ModelCompareStructureCreator implements the IStructureCreator. 
+The getStructure(Object input) function's implementation gets the tree of 
+IStructureComparators from the ModelCacheManager and returns it to the 
+ModelDiffViewer.
+
+A class ModelContentMergeViewer extends Viewer abstract class and wraps an 
+object of TextMergeViewer. This viewer is returned for the Content Merge Viewer 
+extension point. Class ModelMergeViewerContentProvider extends 
+MergeViewerContentProvider, and is passed to TextMergeViewer to display the 
+generated text instead of raw SQL file. Following methods of 
+MergeViewerContentProvider are extended:
+- public Object getAncestorContent(Object input)
+- public Object getLeftContent(Object input)
+- public Object getRightContent(Object input)
+These methods return root object of CompareDocumentRangeNode tree against the 
+passed input object (representing a model's input stream). The root object is 
+fetched from the ModelCacheManager.
+
+A class ModelContentViewer extends Viewer abstract class and wraps an object of 
+SourceViewer. This viewer is implemented for the Content Viewer Extension point. 
+The function setInput() is overridden to set the textual input for the display 
+of model (which is taken from ModelCacheManager) in the viewer.
+
+The classes ModelStructureDiffViewerCreator, ModelContentMergeViewerCreator, and 
+ModelContentViewerCreator are the extension points classes.
+
+ComparePlugin class provides instance of ModelCacheManager, support of writing
+to Log and displaying custom error dialog boxes. 
+
+i175.4.1 - Unloading/Disposing the models
+Any model loaded into the ModelCacheManager is unloaded after all the viewers 
+who had requested for it have disposed. Hence the function dispose() in all 
+the viewers implementation is over-ridden to perform this task. 
+In case of Content Merge Viewer and Content Viewer, objects of TextMergeViewer 
+and SourceViewer are wrapped respectively. The implementation of the both of 
+these viewers have overridden the dispose() method, so that allow the removal of
+model before the respective viewer is actually disposed.
+
+- i175.5 - MC- Java Modification
+In order to generate textual representation of the model, the model is first 
+loaded and then iterated to generate text for each model element. It is obvious 
+that these instances of model elements should be loaded in a separate workspace 
+or in other words should not be mixed with the working copy of user model 
+elements. Current java model compiler supports Singleton root element code 
+generation and uses java static variables to maintain instance lists for each 
+class, thus introducing the limit of creating single model workspace. Therefore 
+MC-Java is modified in order to generate code which allows multiple workspaces 
+of models. Following are different changes that are made in MC-Java:
+
+- 1) Static variable that was previously generated in each class to hold 
+instances of that class, has been removed. Instead model root element (Ooaofooa) 
+now keeps all instance lists. In order to allow fast lookup, it maps each of 
+these lists with its corresponding java class 'Class'. Following instance 
+method has been introduced to allow lookup of instance lists of particular 
+class. 
+
+InstanceList getInstanceList(Class type) - this method returns an 
+instance list that is mapped to particular java class. If one is not available 
+then it creates and returns.
+
+- 2) Instead of holding all instances in java.util.Vector, a dedicated 
+class InstanceList is introduced which extends java.util.Vector. Each instance 
+list is associated with a particular instance of model root (Ooaofooa). This 
+class also ensures following rules. 
+
+    - Right type of model elements are added to this list.
+    - Creation of an instance list, should also result in registration of this 
+      instance list with model root for a particular type.
+    - If all instances are removed from this list, then it should also 
+      un-register from model root.
+
+Following methods are added:
+
+    Ooaofooa getRoot() - returns the model root that holds this instance list
+    Class getType() - returns the java class Class, instances of which can be 
+                      added to this instance list.
+
+Following methods are added to model root (Ooaofooa) to allow registration and 
+un-registration.
+
+    void associateInstanceList(InstanceList list)
+    void deAssociateInstanceList(InstanceList list)
+
+- 3) New abstract class NonRootModelElement is introduced, which derives from 
+ModelElement. All (generated) meta model classes derive from this abstract 
+class. Following are its constructors and methods.
+
+    protected NonRootModelElement() - Allows creation of model element 
+                                      associated with default working instance 
+                                      of model root.
+    protected NonRootModelElement(Ooaofooa root) - Allows creation of model 
+                                      element associated with particular 
+                                      instance of model root.
+
+    protected InstanceList getInstanceList() - returns instance list to which 
+                                               derived class is added.
+    public void delete() - Utility method to remove this instance from the
+                           instance list
+    public Ooaofooa getModelRoot() - Returns the model root to which this model
+                                     element is related.
+
+- 4) MC-Java is modified so that all generated 'instance' methods that require 
+model root use getModelRoot() to obtain its reference.
+
+- 5) MC-Java is modified so that all generated 'class' methods that require 
+model root include additional parameter defining model root, which is going to 
+be referred for internal working.
+
+- 6) All dependant modules/plug-ins are updated to include default model root in 
+their static invocations to meta model classes.
+
+- 7) In order to support multiple model roots, string based id is introduced to 
+model root (Ooaofooa). Two methods are introduced in model root (Ooaofooa).
+
+    public static Ooaofooa getDefaultInstance() - returns default working 
+                                       instance of model root. If one is not 
+                                       already created it creates one, otherwise 
+                                       returns created instance. 
+    public static Ooaofooa getInstance(String id) - returns a model root with 
+                                       particular string id, if it already 
+                                       exists otherwise creates a new instance.
+
+    The getDefaultInstance() method is different from getInstance() in a way 
+    that it does not look up for the model in HashMap rather maintains a 
+    reference to it, for faster access.
+        
+Work Required
+-------------
+- i175.1 - Reading the input into the Meta Model
+- i175.1.1 - Read the SQL input into the model
+Modify the ImportBPSql through the associated archetypes by adding an 
+constructor that receives InputStream. 
+
+- i175.2 - Traversal and Transformation
+
+- i175.2.1 - Creating Traversal Mechanisms
+
+- i175.2.1.1 - Create comparison tree model (ooaofooa_hierarchy.bak)
+Load the uitree.bak in BridgePoint, make the suggested changes and save it with
+this name. 
+
+- i175.2.1.2 - Create Pre-existing instances file (ooaofooa_hierarchy.pei.sql)
+Create ooaofooa_hierarchy.pei.sql with all the required nodes and relationships.
+
+- i175.2.1.3 - Create Inspector Interface
+Add the inspector interface code in create_model_inspector.arc. 
+
+- i175.2.1.4 - Generate inspector Classes
+Create create_object_inspector.inc file to generate an inspector class and call 
+the create_model_inspector() function from create_model_inspector.arc for every 
+node in T_TNS.  
+Create create_properties_file.inc to create the properties file, and add code
+to ComparePlugin.java file to access the property file.
+
+- i175.2.1.5 - Role wrapper class, ObjectElement
+Write the code of ObjectElement class in the create_model_inspector.arc for 
+this class.
+- i175.2.1.6 - Create Inspector Registry Interface
+Hand write the interface IModelInspectorRegistry in 
+com.projtech.bp.core.inspector package.
+
+- i175.2.1.7 - Create Main Inspector class for Class Inspectors
+Create the create_model_inspector.arc file to generate the ModelInspector class. 
+Call the function create_model_inspector().
+
+- i175.2.2 - Sort the Contents Tree
+Provide the sorting support as described in Design section.
+
+- i175.2.3 - Transform contents Tree
+
+- i175.2.3.1 - Create Text Generation Interfaces
+Create IModelInspectorRegistry.java with IModelInspectorRegistry interface, 
+ITextGenerator.java with ITextGenerator interface and ITextBuffer interface 
+definitions.
+
+- i175.2.3.2 - Create Text Generation class for Model Class
+Write class ModelClassTextGenerator as described in the design section. 
+
+- i175.2.3.3 - Creating Text Generator for Compare Plug-in
+Create the ModelStructuredTextGenerator class as mentioned in design section. 
+
+- i175.3 - Model Cache Manager
+Create class ModelCacheManager. Create the inner class ModelMapEntry and another 
+inner class ModelLoadException which extends Exception. 
+Also place ModelStructuredTextGenerator as inner class of ModelCacheManager.
+
+- i175.4 - Eclipse Framework and Extension point
+In the plug-in add extensions org.eclipse.compare.structureMergeViewer, 
+org.eclipse.compare.contentMergerViewer, and org.eclipse.compare.contentViewer.
+Implement all classes as mentioned in the design section. Create 
+CompareDocumentRangeNode as an inner class of ModelCompareStrcutureCreator.
+
+- i175.5 - MC-Java Modification
+Make all the changes as described in design section.
+
+
+APPENDIX
+--------
+1 - Discarded Alternatives
+
+- Eclipse Framework
+  The extension point org.eclipse.compare.structureCreator was initially 
+considered. This extension point does not provide complete control on the 
+views and hence was not considered.
+
+- i175.2.A - Loading input into a Dedicated Model for comparison
+This alternative considers having different data structure for the models being
+loaded from the files for differences.
+ADVANTAGE: This will guarantee model isolation for both files and hence avoid 
+duplication of model instances.
+ADVANTAGE: This may possibly be faster (as it can be optimized for the model 
+differencing, instead of keeping it generic as core)
+DISADVANTAGE: Having a dedicated model for the differencing can cause the same
+model to have divergent behaviors. 
+
+- i175.2.A - Using the Adapters as in io.explorer to get IStructureCreator
+This technique will involve getting into the lower level details of the eclipse
+comparison architecture. The issue that would have been needed to be addressed 
+is the mechanism to traverse the textual data in the nodes for comparison 
+mechanisms. Although this technique would have allowed an identical tree view 
+as used by the explorer but it would have required handling more of the low 
+level eclipse API.
+
+End
+---
+
+$Log: compare-i175.dnt,v $
+Revision 1.1  2009/09/03 18:22:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.13  2009/01/01 23:13:35  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.12.152.1  2008/12/31 16:10:48  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.12  2004/09/14 04:44:38  babar
+Job:175
+Observations addressed against i175-091304-01.rvm Revision: 1.2
+Corrected spellings
+
+Revision 1.11  2004/09/06 11:07:31  siddique
+Job:175
+Corrections made & design note updated.
+
+Revision 1.10  2004/09/06 08:31:11  siddique
+Job:175
+Corrections made & design note updated.
+
+Revision 1.9  2004/08/31 10:39:39  siddique
+Job:175
+Updated to include design level changes after handle Restore from Local
+History and Replace functionalities
+
+Revision 1.8  2004/07/30 11:38:06  siddique
+Job:175
+Updated design note according to new inspectors, changes in text 
+generation, changes to compare plug-in, archetypes and other such stuff.
+
+Revision 1.7  2004/07/21 15:03:57  siddique
+Job:175
+Typos fixed
+
+Revision 1.6  2004/07/21 08:03:08  siddique
+Job:175
+Updated after review.
+
+Revision 1.5  2004/07/19 14:34:22  siddique
+Job:175
+Introduced.
+
+Revision 1.1.2.7  2004/07/19 14:32:18  siddique
+Job:175
+Ready for review
+
+Revision 1.1.2.6  2004/07/16 11:46:57  siddique
+Job:175
+Removed typos.
+
+Revision 1.1.2.5  2004/07/16 10:36:16  siddique
+Job:175
+Minor naming updations
+
+Revision 1.1.2.4  2004/07/16 07:42:14  siddique
+Job:175
+All sections updated: MC_java modification, Text generation, input 
+handling added.
+
+Revision 1.1.2.3  2004/07/15 13:24:09  siddique
+Job:175
+Working prototype introduced.
+
+Revision 1.1.2.2  2004/07/12 06:46:57  siddique
+Job:175
+Text Generation support added, without creation of comparison trees.
+
+Revision 1.1.2.1  2004/07/07 13:16:32  siddique
+Job:175
+Design note updated to include the names of original archetypes and classes
+
+Revision 1.4  2004/06/24 10:10:32  campbell
+Job: 175
+Miscellaneous modifications and clarifications.
+
+Revision 1.3  2004/06/24 07:52:02  siddique
+Job:175
+Divided the design into further tasks, to get an estimate of work required.
+
+Revision 1.2  2004/06/22 15:14:56  siddique
+Job:175
+Expanded each section, introduced appendix for discarded alternatives.
+
+Revision 1.1  2004/06/22 08:10:40  siddique
+Job:175
+Introduced with different design alternatives.
+
+

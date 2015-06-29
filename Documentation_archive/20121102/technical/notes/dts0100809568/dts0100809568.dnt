@@ -1,0 +1,159 @@
+========================================================================
+
+File:      $RCSfile: dts0100809568.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Repair BridgePoint new Project initialization chaining.
+
+1. Abstract
+-----------
+This note describes the changes that need to be backed out and the new work
+required to re-enable support for this feature.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100809568 - Allow the CDT-based BridgePoint new project
+    wizard to be extensible.
+[2] ClearQuest DEI dts0100638163 - Support CDT.
+[3] Bugzilla issue i714
+[4] <BP_Install_Root>\eclipse_extensions\EDGE\eclipse\plugins\
+                                                   com.mentor.nucleus\plugin.xml
+4. Background
+-------------
+During the migration to Eclipse C/C++ Development Toolkit (CDT)[2], the existing
+BridgePoint new project wizard was replaced with one derived from CDT. This
+broke the downstream tooling initialization in use by customers. The original
+infrastructure was introduced and fully documented under[3]. 
+
+5. Analysis
+-----------
+5.1 Reinstate old NewSystem Wizard
+The new NewProject wizard declared in the CDT plugin needs to be removed and the
+old NewSystemWizard needs to be returned to service. It binds downstream tools
+using a system of cascaded extension points that allow downstream tools to
+decorate a new project with the required folders and files.
+
+5.2 Redeclare extension points and adjust references to them
+The extension point declarations were previously provided by EDGE. These need to
+be moved into BridgePoint. The reference to the 'model-compilers' extension
+point in the MC3020 plugin needs to be adjusted for the declaration's new
+location.
+
+5.3 Rework cdt plugin to provide CDT upgrade code
+Finally, the new cdt plugin needs to extend the 'code-builders' extension point
+and provide a class that can upgrade a project to ready it for CDT.
+
+6. Design
+---------
+6.1 Reinstate old NewSystem Wizard
+6.1.1 As suggested in the analysis, the new NewProject wizard declared in the
+CDT plugin is removed together with a page for it, BPMainPage.
+
+6.1.2 The old NewSystemWizard was never actually deleted from the code base and
+so the only action required is to change the extension point as a cascade from
+6.2.2 below.
+
+6.1.3 During testing, a defect was found in the plugin instantiation infra-
+structure in WizardDelegate.getDelegateProvider such that the downstream
+delegate would not always be instantiated. This is fixed.
+
+6.2 Redeclare extension points and adjust references to them
+6.2.1 The extension declarations were located in the copy of EDGE that we have.
+They were found in [4] and copied into the archetype create_core_plugin.inc in
+bp.core.
+
+6.2.2 The 'model-compilers' extension point that was removed from the MC3020
+plugin is reinstated and changed from 'com.mentor.nucleus.model-compilers' to
+point to its new location, 'com.mentor.nucleus.bp.core.model-compilers'.
+
+6.2.3 The MC3020NewProjectWizard is restored from the repository. Some minor
+adjustment of its functionality is required. The class is modified to remove
+some EDGE specific special casing. and the extension point is modified as a
+cascade change from 6.2.2 above.
+
+6.3 Rework cdt plugin to provide CDT upgrade code
+6.3.1 A new class, BridgePointCDTProjectWizard is added to the package,
+com.mentor.nucleus.bp.cdt.wizards. It extends DelegatingWizard so that it can
+participate in the project initialization chaining protocol. It overloads just
+two methods; addPages (overloaded to do nothing) and performFinish(IProject).
+The latter method contains code to upgrade the passed project to enable CDT
+functionality. It closely resembles the code in bp.mc.mc3020.ModelCompiler, in
+the method convertFromEDGEToCDT(). Here, however, we do not need to remove any
+EDGE files. We just need to perform the upgrade to CDT.
+
+6.3.2 The BPMainPage and NewProjectWizard classes are removed from the package,
+com.mentor.nucleus.bp.cdt.wizards of the new BridgePoint CDT adapter plugin.
+
+6.3.3 The plugin.xml file in the CDT plugin is modified to remove the newWizards
+extension and replace it with a 'bp.core.code-builders' extension to connect it
+into the tool chain.
+
+6.4 internal test plugin
+The test plugin com.mentor.nucleus.internal.test had a test extension point
+removed.
+
+This extension point had no purpose since the mc3020 test plugin has been
+abandoned. The extension point is restored anyway in case we ever get the mc3020
+test plugin running again.
+
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully detailed in the design section.
+
+9. Unit Test
+------------
+Since the automated test that is designed to test this is broken, a manual test
+is necessary.
+
+_- Open BridgePoint and in the Model Explorer right click and select
+   New > Project...
+_R The New Project Wizard opens.
+_R There is a BridgePoint category that contains an 'xtUML Project' entry.
+_- Select this entry and click Next >
+_R The old New xtUML Project wizard appears.
+_- Type in a project name
+_R Finish is enabled
+_- Click Finish
+_R The wizard is dismissed and the project is created.
+_- Switch to the C/C++ Perspective
+_R The new project is present and decorated with the BridgePoint icon.
+_R There is a gen folder (from MC3020)
+_R There is a src folder decorated with a 'C' badge.
+_R There is an Includes pseudo folder that contains references to a minGW
+   installation.
+
+_- Switch back to the xtUML perspective.
+_- Add a Component Package and a Component to the new model.
+_- Create a new Domain and formalize the Component to it.
+_- Open the Component and add a Subsystem and in it a Class.
+_- Switch back to the C/C++ Perspective
+_- Click on the Project and select 'Build Project'
+_R MC3020 runs and generates code in the src folder.
+_R CDT detects the new files and compiles them
+_R A Binaries pseudo folder is created containing <projectName>.exe
+
+End
+---
+
+$Log: dts0100809568.dnt,v $
+Revision 1.1  2011/11/09 19:27:48  campbell
+Job: dts0100809568
+Introduced.
+

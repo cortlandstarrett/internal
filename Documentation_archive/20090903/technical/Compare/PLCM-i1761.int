@@ -1,0 +1,342 @@
+========================================================================
+
+File:      $RCSfile: PLCM-i1761.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:09 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Model Comparison
+
+Abstract
+--------
+This document describes the implementation details of the work done for Tiger's
+PLCM Model Compare functionality. It also includes the changes made to Meta Data
+and corresponding changes made to all other plugins. 
+
+History
+-------
+
+Document References
+-------------------
+[1] /Documentation/internal/technical/Compare/PLCM-i1761.dnt 
+[2] /Documentation/internal/technical/Compare/compare-i175.int
+
+Background
+----------
+See Design Note [1].
+
+Implementation Comments
+-----------------------
+
+1. Change the ImportModel to ImportModelComponent to import the separate  
+   component instead of the complete model. It makes compare on separate model 
+   files.  It also loads and generates text of the child model elements of the 
+   component that are not across the boundaries by checking the isProxy 
+   method.
+2. Added constructor to the ImportModelComponent for importing the model 
+   component from a stream using gen_import_java.inc in bp.io.core package.
+3. Change the PersistableModelComponent to make it load without the existence of  
+   it's underlying resource path to make it useful in the case of the stream's 
+   component.
+4. The Text generation mechanism is same as in single file persistence (see [2])
+   except the state machines now do not show the class key.
+   Change in the ModelClassTextGenerator.java to display the orphaned class key
+   to empty while generating data of Instance State Machine and Class State 
+   Machine. The state machine displays the orphaned class key because the class 
+   is across the boundary in the case of the state machine. In case of other 
+   than the state machine, if the text generator gets the orphaned element it 
+   returns null for that element name then gets it from 
+   ComparePluginMessages.properties by using the ModelCacheManager.
+5. Change in ooaofooa.xtuml in bp.core to cache the attributes in case of 
+   stream import where we can't go across the boundary to get the information.  
+   These cached attributes use the local cached information to display the 
+   information of across boundary model elements.
+5.1 Added one derived attribute in ReferencialAttribute to cache the name of
+	the referential attribute.
+		1. BaseAttrName
+5.2 Add three attributes in AttributeReferenceInClass for caching.
+		1. RObj_Name (for cache the referenced Class Name of Attribute)
+		2. RAttr_Name (for cache the referenced Attribute Base Name)
+		3. Rel_Name (for cache the referenced over relation)
+6. Change the file_io.pei.sql file in bp.io.sql package to make it backwards 
+   compatible after adding the attributes in metadata.
+7. Change the create_view_test.arc and BuildPropertySource.arc 
+   in bp.ui.properties and bp.ui.properties.test package to filter the cached 
+   attributes of metadata.
+8. Change in gen_import_java.inc in bp.io.core to make it import the required 
+   fields from the metadata after adding the attributes in metadata.
+9. Update the expected results of CombineSplitReferentials 15, 16 and 17 in 
+   bp.core.test because the combine split referential orphaned elements have 
+   now been resolved by adding the cached attributes.
+10. Update the expected results of canvastest.xtuml in bp.io.mdl.test after 
+    adding the attributes in metadata because the metadata is updated and their  
+    insert statements have now been increased.
+11. Add the new method getRemoteResource(String, IPath) in CVSTestUtil.java in 
+    bp.test package for CVS tests.
+
+Unit Test
+---------
+1.
+_- Update the previously implemented tests of bp.compare.test that uses the 
+  model comparison of single file persistence model. Changed it into multifile
+  compare, to compare the model component of the model.
+  following tests are updated to PLCM compare. as previously implemented in 
+  single file model, see [2]
+    
+  - BaseCompareTest.java
+  - CompareCreationTransitionDiffTest
+  - CompareFileDeletionCheck
+  - CompareSQLFilesTest
+  - GenerateComparisonText
+  - GenerateComparisonTextTest
+  - HierarchyFileCoverageTest
+  - I495HierarchyComparisonTest
+  - I558DiffNextButtonTest
+  - ModelInspectorTest
+
+2.
+All the above mentioned tests are newly created. before these tests verified
+manually, see [2] for manual tests.
+
+_- (CompareTest.java) Test verifies overall working of the model compare 
+   plugin. It uses two sets of model components, all the above mentioned compare
+   tests compare the complete model hierarchy by comparing from domain model and
+   then all it's subsequent child components.
+  
+   testCompareTwoDifferentModels()
+   	Compare the two different models. It compares from the domain component and 
+   	iterates comparison to their subsequent child components and counts the 
+   	model differences.
+
+   testCompareTwoSimilarModels()
+   	Compare the two same models. It compares from the domain component and 
+   	iterates the comparison to their subsequent child components and counts the 
+   	model differences.
+  	
+   testCompareTwoLogicallySameModels()
+   	Compare the two logically same models. it compare from domain component and 
+   	iterate comparison to there subsequent child components and count the model 
+   	differences.
+   
+   testCompareTwoInvalidModels()
+    Compare the two models in which one model is invalid. It will then show the
+    notification of the invalid model.
+
+3.
+_- (InspectorTest.java) 
+	testModelInspector()
+		This test first loads a domain model, then iterates through 
+		the child components to make sure every node is visited and no 
+		exceptions are thrown (i.e. ModelInspectors are tested), and then  
+		generates the text of all its child components as well. It also records 
+		the time performed in each task that can be used for performance 
+		evaluation. This test verifies whether the text generated during 
+		comparison is correct or not. This is done by comparing generated text 
+		with expected resulting text, which has already been generated and 
+		verified manually for the following aspects:
+   - All the classes mentioned in the PEI file are included in the required
+     hierarchy.
+   - All attributes of the (meta model) classes are included, as specified in 
+     the model.
+   - All referential of the (meta model) classes are included, as specified in 
+     the PEI file.
+
+4.
+_- (LocalHistoryTest.java) 
+	testRestorefromLocalHistory()
+	    It deletes test.xtuml file, restores it from local history and then  
+    	loads the deleted model
+    testCompareWithLocalHistory()
+		It gets the model from the list of timestamps of the file. and compares 
+		it. 
+	testReplaceWithLocalHistory()
+		It gets the model from the list of timestamps of the file and replaces 
+		it from the recent.
+
+5.
+_- (CVSOperationsTest.java) 
+	testCompareWithCVS()
+		It first checks out the model from CVS, makes changes on the model and 
+		then compares it from CVS's version of the model.	
+
+6.
+_- Overridden Changes of i1608
+	Overridden changes of i1608 that was overridden when the issue i1763 
+	promoted, restore these changes into PLCM branch.
+
+7.
+- Use the test procedure described in test_setup.txt to execute above mentioned 
+  tests.  
+R  All tests pass.
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.compare/src/com/mentor/nucleus/bp/compare/
+    ModelCacheManager.java
+com.mentor.nucleus.bp.compare/src/com/mentor/nucleus/bp/compare/text/
+    ModelClassTextGenerator.java
+
+com.mentor.nucleus.bp.compare.test/expected_results/difftree_sorting_order.exp
+com.mentor.nucleus.bp.compare.test/expected_results/testOAL1.txt
+com.mentor.nucleus.bp.compare.test/expected_results/test/test.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/Datatypes/Datatypes.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/External Entities/
+    External Entities.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/Functions/Functions.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/SS/SS.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/SS/A/A.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/SS/A/
+    ClassStateMachine/ClassStateMachine.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/SS/B/B.exp
+com.mentor.nucleus.bp.compare.test/expected_results/test/SS/B/
+    InstanceStateMachine/InstanceStateMachine.exp
+
+com.mentor.nucleus.bp.compare.test/models/*
+
+com.mentor.nucleus.bp.compare.test/src/CompareTestSuite.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/BaseCompareTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/CompareCreationTransitionDiffTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/CompareFileDeletionCheck.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/CompareSQLFiles.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/CompareSQLFilesTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/I424SortingTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/I495HierarchyComparisonTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/I558DiffNextButtonTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/ModelInspectorTest.java
+    
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/plcm/
+    CompareTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/plcm/
+    CVSOperationsTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/plcm/
+    InspectorTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/plcm/
+    LocalHistoryTest.java
+
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    PersistableModelComponent.java
+
+com.mentor.nucleus.bp.core.test/expected_results/CombineSplitReferentials_15/*
+com.mentor.nucleus.bp.core.test/expected_results/CombineSplitReferentials_16/*
+com.mentor.nucleus.bp.core.test/expected_results/CombineSplitReferentials_17/*
+
+com.mentor.nucleus.bp.core.test/arc/gen_Formalize_tests.arc
+
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    CantHappenEvtIgnoreEvtTests.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ModelChangeListenersBatchingTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    MultipleReload.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    OperationsTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    SubtypeSupertypeFormalizeTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureExistingProjectsTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureTest.java
+    
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+com.mentor.nucleus.bp.io.core/src/com/mentor/nucleus/bp/io/core/CoreImport.java
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/canvastest.xtuml
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    FileVsFolder_i1608Test.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    ModifyTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMBaseTest.java
+
+com.mentor.nucleus.bp.io.sql/sql/file_io.pei.sql
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    CVSTestUtil.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    CanvasEditorUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    CanvasTestUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    CVSTestUtil.java (removed)
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/CVSUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    ExplorerUtil.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    ExplorerUtils.java (removed)
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    GenericEditorUtils.java (removed)
+
+com.mentor.nucleus.bp.ui.explorer.test/src/com/mentor/nucleus/bp/ui/explorer/
+    test/ExplorerTest.java
+com.mentor.nucleus.bp.ui.explorer.test/src/com/mentor/nucleus/bp/ui/explorer/
+    test/I634ExplorerEmptySelectionTest.java
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+
+com.mentor.nucleus.bp.ui.properties.test/arc/create_view_test.arc
+
+com.mentor.nucleus.bp.ui.properties/src/com/mentor/nucleus/bp/ui/properties/
+    DomainNameValidator.java (removed)
+com.mentor.nucleus.bp.ui.properties/src/com/mentor/nucleus/bp/ui/properties/
+    SystemModelNameValidator.java (removed)
+
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    description/OpenDescriptionEditor.java
+
+
+End
+---
+
+$Log: PLCM-i1761.int,v $
+Revision 1.1  2009/09/03 18:22:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:35  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.24.1  2008/12/31 16:10:48  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2006/04/28 00:28:10  rmulvey
+Job:1761
+Modifed com.mentor.nucleus.bp.core.test/arc/gen_Formalize_tests.arc during promotion.
+
+Revision 1.4  2006/04/27 13:01:05  satta
+job:1761
+restore Overridden changes of i1608.
+
+Revision 1.3  2006/04/25 11:51:02  rmulvey
+Job:1761
+Added  numbering and corrected grammar during pre-review.
+
+Revision 1.2  2006/04/25 08:28:49  satta
+job:1761
+code change section updated.
+
+Revision 1.1  2006/04/24 15:21:08  satta
+Job: 1761
+Implementation note introduced.
+

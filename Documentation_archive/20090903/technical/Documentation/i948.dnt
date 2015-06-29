@@ -1,0 +1,235 @@
+========================================================================
+
+File:      $RCSfile: i948.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:10 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Allow getting started to work for evaluating customers
+
+Abstract
+--------
+This note describes the changes necessary for allowing evaluating customers to
+view all generated and compiled code even though they do not have a 3020
+license.  This note also handles fixes for various test track issues.
+
+History
+-------
+final i948-052605-01.rvm
+
+Document References
+-------------------
+[1] Issue 948
+[2] Issue 942
+[3] Test track issue 12
+[4] Test track issue 24
+[5] Test track issue 31
+[6] Test track issue 38
+
+Background
+----------
+Currently, if a user does not possess a 3020 license the getting started can
+never be completed. [2] handles changing the documentation to tell an evaluating
+customer who does not have a 3020 license to skip the actual build process.  The
+documentation walks the user through looking at the code.  Therefore, the
+getting started sample project must handle copying pre-generated and
+pre-compiled code to the sample project.
+
+Analysis
+--------
+The sample project shall be created using the getting started link.  Then on a
+machine with a 3020 license all the code shall be generated and compiled.  The
+output shall then be placed in a zip file, which the getting started action will
+use in the case where a user does not have a 3020 license.
+
+Design
+------
+1. Fix closeWelcomePage method to correctly close the welcome page.
+
+From [5]:
+
+"What happens is the Modeling perspective opens with just a gray window with no
+views... and you can't open any views this happens when the modeling perspective
+is open for the first time by the launch of the quickstart on the welcomepage
+after the EDGE Project's perspective was in use..."
+
+The problem was with the way the welcome screen was being closed.  The method
+found the view instance of the welcome page and called its dispose method.  In
+the case where a user opens the Edge Project's perspective before running the
+getting started action, both perspectives (xtUML Modeling and Edge Project's)
+had a handle on the welcome page.  The closeWelcomePage method would call a
+dispose on the Edge perspective's handle which disposed the welcome page and
+broke the xtUML perspective's handle.
+
+This is fixed by calling eclipse's IntroManager's close method instead of the
+view's dispose method.  This close method only closes the welcome page that is
+currently shown.
+
+The closeWelcomePage call in, GettingStartedAction.java, is moved so that it is
+called after the xtUML perspective is opened.
+
+2. Create project contents zip file
+
+The sample project is created, through the GettingStartedAction class, on a
+machine which has a 3020 license.  The project is built and compiled using 3020
+without model debugger support.
+
+A zip file is created which contains pre-generated and pre-compiled code in the
+locations specified in [2].  It also contains the pre-generated and pre-compiled
+Model Debugger executables.
+
+3. Remove unneeded methods
+
+Since a zip file is now going to exist which will contain marking files with
+the necessary TagInitializationFunction markings, the methods for inserting the
+.invoke statements are removed.  The method for copying the Model Debugger
+executable and xml file is removed as they are also kept in the zip file.  All
+methods are replaced with code that pulls the necessary files from the zip file.
+
+4. Add unlicensed support
+
+In the case where a user does not possess a 3020 license the
+GettingStartedAction class shall extract all the contents of the zip file and
+place it in the MicrowaveOven project.
+
+5. Add model debug build configuration
+
+A new Edge build configuration is created, Model_Debug.  This configuration
+contains the Model Debugger specific arguments for the linker and the C
+compiler, specified in [2].  The .xpj file (the Edge project file) is added to
+the zip.  In both cases, licensed and non-licensed, the .xpj file is extracted
+to the project.
+
+6. Store model template value
+
+Document reference [4] states that the new xtUML Model page saves the value of
+the import location after going through the Getting Started.  This is expected
+behavior except in the Getting Started case.
+
+The WizardNewDomainCreationPage.internalSaveWidgetValues() method is called in
+the classes dispose.  While this is fine for normal operation, it does not give
+any code the chance to store different values.  The call to this method is moved
+into NewDomainWizard.performFinish().  This allows the GettingStartedAction
+class to cache and reset the values after performFinish is called but before the
+page is disposed.
+
+Design Comments
+---------------
+
+Document Reference [2] states that build projects must take place in the Edge
+Projects perspective.  Therefore, the available perspectives in the Open
+Perspective menu item is changed from Resource to Edge Projects and Edge Debug.
+
+bp.welcome's plugin.xml was changed to add a dependency on the nucleus.product
+plugin in order to determine whether or not a user possesses a 3020 license.
+
+Document reference [3] asks to add '(Clicking this link will create a sample
+project'.  The file, quickStartContent.xml, was modified to add this text.
+
+
+Work Required
+-------------
+The changes are listed in detail in the design section, no more information is
+needed.
+
+Unit Test
+---------
+
+_- Start tiger with Edge as the product w/o a 3020 license
+_- Click through the xtUML Quick Start
+_R The MicrowaveOven project is created
+_R The following files and folders exist
+  Debug/Mingw GNU Objects/* 
+  Debug/Output/MicrowaveOven.exe
+  Model_Debug/Mingw GNU Objects
+  Model_Debug/Output/MicrowaveOven.exe
+  Model_Debug/Output/MicrowaveOven.xml
+  src/* (pre-generated source)
+  .xpj (with Model_Debug configuration)
+_- Right click on Debug/Output/MicrowaveOven.exe and select Open With >
+   System Editor
+_- Start tiger with Edge as the product with a 3020 license
+_- Click through the xtUML Quick Start
+_R The MicrowaveOven project is created
+_R The following files and folders exist
+  Debug/Mingw GNU Objects 
+  Debug/Output
+  Model_Debug/Mingw GNU Objects
+  Model_Debug/Output/MicrowaveOven.exe
+  Model_Debug/Output/MicrowaveOven.xml
+  src/ (empty)
+  .xpj (with Model_Debug configuration)
+_- Select Project > Build Project
+_R The MicrowaveOven code is generated and compiled
+_- Right click on Debug/Output/MicrowaveOven.exe and select Open With >
+   System Editor
+_R The Debug version is executed
+_- Right Click on Model_Debug/Output/MicrowaveOven.exe and select Open With > 
+   Model Debugger
+_R Model Debugger is started with the model loaded
+_- Select File > New > Other ... > Nucleus BridgePoint > xtUML Model
+_R The "Use import file" box is not checked
+_R The "Import file" field is empty
+_- Check "Use import file" box
+_- Choose an xtUML model to use for import
+_- Click finish
+_- Click through the xtUML Quick Start
+_- Select File > New > Other ... > Nucleus BridgePoint > xtUML Model
+_R The "Use import file" box is checked
+_R The "Import file" field contains the path to the above model
+
+_- Run through the Getting Started Documentation
+_R All steps work
+
+_- Run all existing junit tests
+_R All junit tests pass
+
+End
+---
+
+$Log: i948.dnt,v $
+Revision 1.1  2009/09/03 18:20:10  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:19  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.30.1  2008/12/31 16:10:28  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/05/26 21:48:22  tlondon
+Job: 948
+
+Added comments about plugin.xml and quickStartContent.xml changes
+
+Revision 1.4  2005/05/26 21:30:25  tlondon
+Job: 948
+
+Added comment about edge perspectives in Open > Perspective
+
+Revision 1.3  2005/05/26 20:01:09  tlondon
+Job: 948
+
+Fixed according to review minutes
+
+Revision 1.2  2005/05/26 16:25:30  tlondon
+Job: 948
+
+Finished
+
+Revision 1.1  2005/05/24 22:47:40  tlondon
+Job: 948
+
+Initial
+

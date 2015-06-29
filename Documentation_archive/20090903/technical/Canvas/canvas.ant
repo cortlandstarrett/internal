@@ -1,0 +1,394 @@
+========================================================================
+
+File:      $RCSfile: canvas.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note - Canvas Functionality
+
+Abstract
+--------
+Eclipse based BridgePoint needs a canvas on which to show diagrams. This
+note discusses the high level requirements and the design alternatives
+available for use with the canvas.
+
+History
+-------
+ update - canvas-012004-01.rvm
+ final  - canvas-012104-01.rvm
+
+Document References
+-------------------
+[1] core/doc/internal/technical/File_IO/sql_import.ant|dnt|int
+[2] core/doc/internal/technical/Object_Contribution/
+                                         object_contribution.ant|dnt|int
+
+Analysis
+--------
+The highest level requirement is derived from the general requirement
+that the Eclipse based BridgePoint replacement should not offer less
+functionality than the tool it replaces. Given this assertion, it
+follows that the diagram canvas should not offer less than its
+predecessor either.
+
+There are several aspects of the BridgePoint interface that are
+uniquely helpful to the user. For example, a cursor that changes shape
+when hovering over something it can edit is helpful to both the novice
+user as a hint that functionality is available and to the expert to
+confirm that the cursor is correctly placed to carry out a given task.
+These features shall be retained to provide brand continuity.
+
+The new editor is not required to function identically, the features
+discussed above are to be enhanced where possible. There are also
+several areas in which the current editor does not perform exactly as
+required (an attempt to resize a relationship phrase text box more often
+than not results in moving it, for example), and there are several other
+areas where the behavior is inconsistent, for example relationship
+phrases sometimes resize themselves spontaneously when lines are
+selected. In still other areas, behavior is inconsistent between
+drawing tools; drawing a transition or relationship can be terminated
+by double clicking, this is not the case for states or class symbols.
+The objective for the Tiger replacement is that the canvas editor shall
+behave correctly and consistently in all situations and across all
+diagrams.
+
+During the transition phase between BridgePoint Builder and its
+replacement, it is required that import from Builder and output to
+generator be supported. This interface shall be kept as simple as
+possible for absolute reliability and to guarantee our existing
+customers an upgrade path for their data.
+
+High Level Design
+-----------------
+The Eclipse tools project, Graphical Editor Framework, was considered
+for this work. It is rejected for several reasons:
+
+- GEF dictates the look and feel of the canvas editor. We wish to 
+  retain the BridgePoint brand look and feel and to stand out from the
+  raft of Eclipse UML products.
+- The quality of engineering involved in the GEF project is questionable;
+  documentation is sparse and usually out of date, example code often
+  will not compile with the latest release and so on.
+- There is considerable emphasis on auto layout and auto connector
+  routing. BridgePoint has always avoided such an approach (wisely in
+  the humble opinion of the author).
+- Project Technology cannot expect to carry much influence with the
+  developers of this project and so would be left to go it alone or
+  accept a set of features not ideally suited to the task.
+- A good, consistent user interface is best developed using state
+  models. No evidence of this is seen in the GEF community, but Project
+  Technology has the tools to capture required user interface behavior
+  in this way and translate it directly to code, thereby saving more
+  effort than would have been saved by adopting GEF.
+
+To meet the consistency requirements, a single canvas editor provides
+the viewing and editing facilities for all the diagrams of the tool.
+User interaction with this editor shall be controlled by state machine
+and specified by state charts.
+
+Rather than use GEF, this editor shall draw directly to an SWT Canvas
+drawing surface. Coupling to the Canvas class and associated Graphics
+Context (GC) class shall be minimized by accessing all graphics routines
+through bridge calls on an external entity, Graphics (GR). These bridge
+calls shall be mapped to native Java methods that actually make the
+required graphics calls. No other native functions shall be permitted
+without good reason. In this way, the maximum functionality is captured
+as state models and action language and the minimum is fixed in hand
+written code.
+
+We wish to import model and graphical data from the existing tool.
+Loading this data is addressed elsewhere[1], however it should be noted
+that it is a requirement that no pre-processing of graphical data is
+required or proposed at this time. This is done so that we may import
+models from the previous tool and have confidence the models have
+logical and graphical integrity. Any incorrect display of these models
+therefore lies within Tiger and not within the model pre-processing
+(since there is none). We will almost certainly replace both the meta-
+model and graphics domain as we move towards full UML2 support. By that
+time, the rest of Tiger will have been sufficiently exercised so that
+this additional processing may be added. Consequently, it is proposed
+that the existing published Graphics Domain model form the core of the
+canvas implementation.
+
+The canvas performs the roles of both a viewer and a controller in the
+classic Model View Controller (MVC) design pattern. The metamodel
+management package, com.projtech.bp.core performs the Model role.
+
+Viewer Requirements
+
+In a viewer role, the canvas shall satisfy the following requirements:
+
+ - Symbol display
+ - Selection highlighting
+ - Diagram printing
+
+Symbol Display
+All symbols shall be drawn to the UML 2.0 standard wherever possible.
+All text shall be shown in a user selectable font. Text shall be
+rendered with anti-aliasing where supported. The user shall be able to
+specify the same display options as offered by the existing BridgePoint
+Builder tool. For example, Attributes, Keyletters, Class numbers, Event
+data and State Actions may be optionally displayed in the existing
+canvas. Text contained by a node symbol shall be clipped to the external
+dimensions of the symbol, so no text can spill onto the canvas. Text
+attached to a connector shall be displayed at a user modifiable offset
+from the connector.
+
+Selection Highlighting
+Selected symbols shall be shown with a bold outline. If a canvas is
+writable, selected node symbols shall also show four resize handles
+(small L-shaped graphics), one at each corner of the symbol. Again, only
+if the canvas is writable, selected connector symbols shall show a small
+circle at each line segment vertex. Text associated with connector
+symbols shall also display resize handles when the connector
+is selected and the canvas is writable.
+
+Diagram Printing
+The Eclipse default print button, an entry in the File menu and the user
+selectable print hotkey (default is Ctrl + P) shall all initiate
+printing of a canvas. Only individual diagram printing shall be
+supported at this time. A dialog box appears and allows the user to
+select a printer. An options button allows them to select either
+portrait or landscape mode. The diagram shall be automatically scaled to
+fit the page.
+
+Controller Requirements
+
+In its role as a controller, the canvas shall control the following user
+activities:
+
+ - Scrolling and panning
+ - Context menu activation
+ - Scaling
+ - Grid snap
+ - Symbol selection
+ - Symbol movement
+ - Symbol resize
+ - Waypoint manipulation
+ - New symbol drawing
+
+Controller functionality is contingent on the canvas being writable. For
+Drop 1, canvases are always writable. At a later date, when version
+control requirements are added, writability will be determined by the
+status of the file in the file system that contains the data for the
+component being edited.
+
+Scrolling and Panning
+The canvas shall display horizontal and vertical scroll bars and thumbs.
+When the user manipulates these, the effect shall be as expected for
+normal scrollbar behavior. If the user presses the spacebar, the cursor
+shall change to a hand symbol. When in this state, a left mouse click
+shall cause the hand cursor to close and mouse movements shall then
+effectively 'drag' the canvas around, allowing the user to place the
+canvas scroll position accurately in two dimensions simultaneously.
+
+Context Menu Activation
+If the user right clicks over the canvas a context menu shall be shown.
+Its contents shall be decided by what was under the mouse cursor when
+the context menu was activated (See Object Contribution[2]). If a
+context menu is activated over a symbol, the symbol shall be selected to
+confirm for the user which model element shall be affected by the
+context menu selection. If the context menu is activated over the back-
+ground of the canvas, then the contents will be those defined by the
+model entity represented by the canvas itself, except that menu entries
+that might cause an unexpected outcome for the user (such as Cut and
+Delete) are disabled.
+
+Scaling
+The canvas shall allow scaling in a number of different ways:
+
+ - Zoom In       Magnification shall increase by one step, centered on
+                 the center point of the visible canvas.
+ - Zoom Out      Magnification shall decrease one step.
+ - Zoom All      Magnification shall be adjusted so that every symbol on
+                 the canvas is visible.
+ - Zoom Selected Magnification shall be adjusted so that every symbol in
+                 the current selection is visible. If nothing is
+                 selected, no change shall take place.
+ - Zoom to %age  A drop down list shall be displayed in the canvas tool-
+                 bar containing fixed percentage view sizes. Selection
+                 of one of these shall cause magnification to be set to
+                 this value, centered on the center point of the visible
+                 canvas.
+
+All the above shall be shown as tool buttons in the toolbar, except the
+zoom to percentage, which is specified above as a drop down list.
+
+Grid Snap
+The grid snap shall be set to 10 pixels. Grid snap shall be permanently
+enabled.
+
+Symbol Selection
+Symbols shall be selected in a group using an elastic rectangle. A
+symbol can be added or removed from the group by clicking on it while
+holding down the Shift key (if the clicked symbol is not selected, it
+is added to the selection, if it is selected then it is removed from the
+selection). Clicking on the canvas background shall clear the selection.
+
+Symbol Movement
+If the user left clicks over a selected symbol (or symbol group) and
+moves the mouse while holding down the mouse button, the selected
+symbols shall move on the canvas. Connector symbols that are attached
+to selected node symbols at both ends shall be moved with their attached
+node symbols. A connector symbol attached to only one selected node
+symbol shall have its last segment stretched to maintain its connection
+with node symbol. Text blocks associated with connector symbols shall be
+moved as their connectors move, preserving the offset from the connector
+set by the user. If the user clicks over the center of a selected text
+box (i.e. one with resize handles) the box position shall track the
+position of the mouse until the mouse is released (clicking over the
+corners of a text box as opposed to the center shall initiate text box
+resizing, see next section).
+
+Symbol Resize
+If the user moves the mouse over a resize handle (see below), the cursor
+changes to a diagonal arrow. If the user left clicks while the cursor is
+in this state, the symbol or text associated with the resize handles
+shall be resized by tracking the mouse movement until the user releases
+the mouse button. Connector symbols attached to a resizing node symbol
+shall dynamically crop themselves to the node symbol outline.
+
+Waypoint Manipulation
+If the user moves the mouse over the vertex between the line segments
+of a selected connector symbol, the cursor shall change to a 'circle and
+arrow'. If the user left clicks while the cursor is in this state, the
+vertex position shall track the mouse movement until the user releases
+the mouse button.
+
+A context menu activated over a connector symbol shall include an 'Add
+Waypoint' menu entry. This shall immediately insert a new waypoint at
+the clicked location. Conversely, a context menu activated over a way-
+point shall contain a 'Delete Waypoint' entry. Choosing this selection
+shall immediately remove the waypoint.
+
+New Symbol Drawing
+The canvas shall provide buttons on the toolbar for each valid symbol it
+can display. When a button is selected, the cursor shall change to a
+pencil tool. To draw a node symbol, the user left clicks and drags until
+the symbol is of the appropriate size. Some symbols are required to be
+of fixed aspect ratio, others can have any form factor. To draw a
+connector symbol, the user must left click over a legal starting node
+and drag the line until it is outside the node symbol. At this point,
+the user may either click at each desired waypoint or drag the line to
+its desired position (this behavior shall be almost identical to the
+existing canvas). Finally, the user must click over a legal ending node
+symbol to complete the operation. At this point, the connector symbol
+must clip its start and end segments to the outlines of the start and
+end node symbols.
+
+Connector text boxes shall be placed on the canvas if the connector
+label or end phrases contain any text. Text defaults shall be the same
+as existing Builder behavior. Placement of floating text annotation
+shall follow the same policy as the existing Builder tool. Floating
+adornments (such as cardinality) shall be placed to the left of vertical
+connectors and floating text (such as relationship text phrases) shall
+be placed to the right. In the case of horizontal connectors, adornments
+shall be placed above the line and text below. In all cases, the other
+degree of freedom will be used to ensure that the placed text shall be
+legible (i.e. not obscured by the node symbol to which the connector is
+joined). For sloping lines, the appropriate combination of these
+policies shall be applied. Each text item is enclosed within a box whose
+dimensions are defined by the position of the resize handles discussed
+above in the section 'Symbol Resizing'. The text is displayed wrapped
+within the dimensions of this box. Auto-sizing of each text box (based
+on what text is present) shall take place when text is first entered for
+a given text adornment. No automatic resizing shall take place after
+this time, it shall be up to the user to adjust text box sizes after
+subsequent changes to their contents.
+
+Other MVC Requirements
+
+From the MVC point of view, the canvas is required to perform another
+two functions in addition to displaying and allowing the user to modify
+diagrams. It must initiate the creation of metamodel instances when
+symbols are drawn on the canvas, and it must listen for model changes
+made from elsewhere and keep itself consistent with the Model by adding
+and deleting the appropriate symbols. These updates shall be made
+whether the diagram is currently being displayed or not. If a new symbol
+is required as a result of activity external to the canvas, it shall be
+added to the top left hand corner of the canvas. Top left means the top
+leftmost portion of the visible region if the canvas editor is open and
+top leftmost part of the last viewed region if the canvas is closed.
+Each successive symbol added in this way shall be 'stacked' (moved a
+little down and to the right of the last one) so that the user can see
+that they have multiple symbols to arrange. Connector symbols added from
+outside the canvas shall be drawn 'as the crow flies' from the center
+point of the starting symbol to the center point of the end symbol
+(normal node/connector cropping will also occur of course). It shall be
+up to the user to add the necessary waypoints to achieve a satisfactory
+layout.
+
+If a model change indicates that the metamodel element represented by
+the canvas is deleted, the canvas must delete the graphical elements it
+owns, delete itself and if necessary, close its user interface down.
+
+Work Required
+-------------
+The requirements placed on the canvas fall into four broad categories:
+
+i100.1 Draw symbols
+i100.2 Manage user interaction with the displayed symbols
+i100.3 Allow the user to draw new symbols on a canvas
+i100.4 Detect changes made to the model by other plugins and update
+       the display accordingly.
+
+Due to the relatively large amount of work required to support these
+requirements, it is proposed that these work items be individually
+tracked as separate design and implementation notes.
+
+End
+---
+
+$Log: canvas.ant,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.166.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2004/01/21 23:27:56  campbell
+Job:100
+Fixed 2nd review observations.
+
+Revision 1.7  2004/01/21 16:20:03  campbell
+Job:100
+Added miscellaneous additional details.
+
+Revision 1.6  2004/01/21 00:54:59  campbell
+Job:100
+Fixed WGT observations.
+
+Revision 1.5  2004/01/20 23:37:53  campbell
+Job:100
+Added requirement to close down on model element deletion.
+
+Revision 1.4  2004/01/20 23:34:49  campbell
+Job:100
+Added detailed canvas behavioral requirements.
+
+Revision 1.3  2004/01/20 21:12:38  campbell
+Job:100
+Update from first review.
+
+Revision 1.2  2004/01/19 23:59:24  campbell
+Job:100
+Minor spelling updates.
+
+Revision 1.1  2004/01/19 19:31:25  campbell
+Job:100
+Introduced.
+

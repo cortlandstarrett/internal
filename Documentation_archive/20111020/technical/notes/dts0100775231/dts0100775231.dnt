@@ -1,0 +1,227 @@
+========================================================================
+
+File:      $RCSfile: dts0100775231.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Modify MC-Java to use getGlobal() in select where statements that use 
+referential ids
+
+1. Abstract
+-----------
+A previous issue introduced the ability to search a model root's hash'ed 
+instanceList to find an identifier as opposed to sequentially iterating over 
+every instance.  After that was introduced a method named 
+instanceList.getGlobal() was introduced that allowed us to search all model 
+roots, not just the current root.
+This issue is raised to modify MC-Java to use getGlobal() in select 
+statements that contain referential ids in the where clause.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100775231 - Modify MC-Java to use getGlobal() in select
+	where statements that use referential ids
+[2] ClearQuest DEI  dts0100774721 - Assign to Component failure in nested 
+	component under generic package
+
+4. Background
+-------------
+4.1 In any specialization hierarchy, all of the instances share an ID value 
+    which is the ID value of the top most instance in the specialization 
+    hierarchy.
+
+    Normally, when retrieving an ID for one of the subType instances in the 
+    specialization hierarchy, there is checking made for superType instance. 
+    If it exists, then it retrieves the superType ID.
+    
+    e.g.  Get ID for S_DT : 
+    	public java.util.UUID getDt_id() {
+		if (IsSupertypePackageableElement != null) {
+			return IsSupertypePackageableElement.getElement_id();
+		}
+		return m_dt_id; 
+	}
+
+4.2 Every model root has an InstanceList that contains all of the model elements
+    created under this model root. Each InstanceList entry is defined by a 'Key' 
+    and 'Value'. The 'Key' is the InstanceKey of instance, and 'Value'  
+    is the instance itself. Searching in InstanceList is done using the 'Key'.
+
+4.3 The InstanceKey consists of one or more identifying attributes. The 
+	attribute 'ID'  is a mandatory part of the key.
+
+4.4 When selecting a subType instance based on its ID, the superType instance 
+    ID is always used if found. 
+ 
+ 
+5. Analysis
+-----------
+5.1 When MC-Java was modified to use getGlobal() for the first time in [2], it 
+	caused significant fall out. The main difference between ClassQueryInterface 
+	and getGlobal is:
+    - In the ClassQueryInterface approach, we select all instances created based
+    on the class type in the current model root. For each instance we retrieve 
+    its ID and compare it with ID in the select statement.
+    - In the getGlobal() approach, we filter the InstanceList first based on 
+    class type to get a HashMap with all class instances for each model root.
+    Then we search the HashMap using the ID in the select statement.
+  
+
+5.2 The fall out brought by modifying MC-Java to use getGlobal() is due to 
+	failure to select an instance knowing its ID. The reason is that the queried 
+	instance is stored in the HashMap with a different ID than what is used in 
+	the select statement. The ID used in the HashMap is the subType ID, and the 
+	ID used in the query is the superType ID. Why the both IDs do not match, 
+	that will be explained later in 5.4
+
+5.3 The model elements get new IDs in some cases such as importing new xtUML 
+	model file or pasting. In both scenarios the model elements are first 
+	created with the source ID ( xtUML model in importing or  copied element 
+	in the pasting ), later the instance is given another new unique ID.
+
+5.4 After creating specialization hierarchy instances and relating them with each
+	other, this time they all have the same ID. When the most top SuperType ID 
+	is changed due to some cases as explain in 5.3, the new ID value is only 
+	copied to the most top superType instance ID, also the superType instance 
+	key in the InstancceList is updated with new ID, but all of its subType 
+	instances IDs remain the same. This causes a mismatch between the superType 
+	ID and all of its subType ID until the tool is restarted.
+
+	So whenever the superType instance ID is updated, we should not only update 
+	its key in the HashMap, but all of its subType keys in HashMap as well.
+
+
+    This requires a modification in 
+    NonRootModelElement.updateInstanceKey(Object, Object) to have a recursion
+ 	mechanism that gets the subType instances, if found, for the updated 
+ 	instance key, and invoke it recursively for each subType. 
+ 	
+	This modification is not enough to solve the problem  because : 
+	
+5.4.1 Switching model root causes a reset of the subType key because it is
+	  retrieved using getInstanceKey() which gets the subType old key ( pasting 
+	  is a use case for switching model root)
+ 
+5.4.2 When an xtUML model is imported, the created instances are added to 
+	  the InstanceList in the same order written in file. At the end of the load 
+	  process, each one of the instances in the InstanceList gets a new ID.
+	  The problem is that the superType instance is written in the file BEFORE 
+	  its subType, so the superType instance ID is updated and the effect 
+	  cascades to its subType, and then again the subType instance ID is updated
+	  which leaves the IDs again not identical.
+	 
+	  - Therefore, boolean hasSuperType() function should be implemented for 
+	  subType classes if return true, then skip the ID update for the subType 
+	  instance
+
+5.4.3 For specialization hierarchy consisting of more than two levels, the 
+	  update ID is done on two hierarchy steps. This causes fallout in the 
+	  update subType key in the HashMap approach.  Following is a use case to 
+	  describe this:
+	  Specialization Hierarchy : S_UDT ->  S_DT -> PE_PE
+	  Action : Copy and Paste S_UDT
+ 
+ 	  When S_UDT is pasted, the following steps done by order : 
+	  - A new S_UDT instance is created
+	  - A new S_DT instance is created
+	  - Related S_DT with S_UDT
+	  - Set new ID for  S_DT
+	  - Find the S_DT instance in the HashMap using old ID
+	  - Update the S_DT instance key in the HashMap
+	  - Find the S_UDT instance in the HashMap using old ID 
+	  - Update the S_UDT instance key in the HashMap
+	  - A new PE_PE instance is created
+	  - Relate PE_PE with S_DT.
+	  - Find the PE_PE instance in the HashMap using the old ID
+	  - Update the PE_PE instance key in the HashMap
+	  - Find the S_DT instance in the HashMap using old ID 
+	  - Update the S_DT instance key in the HashMap
+	  - Find the S_UDT instance in the HashMap using old ID
+	  R_ Unable to find it.
+	 
+	  This happened because the old ID -we search with- is retrieved using 
+	  getInstanceKey(), i.e. we are searching with the S_UDT old ID ( the 
+	  original one) and the current S_UDT key in HashMap is the S_DT one, that 
+	  is why search fails.
+	
+	  - It is required to update the ID for the subType as well in the HashMap.
+	  This will resolve the switch model root problem as well mentioned in
+ 	  5.4.1.1
+
+6. Design
+---------
+6.1 Restore the work done in [2].
+6.2 Cascaded superType subType ID updating in HashMap
+6.2.1 Add new method updateSubtypeKeys(NonRootModelElement, Object, Object)
+      This method should query for all possible  NonRootModelElement subTypes
+      and invoke updateInstanceKey() for each one of them.
+
+6.2.2 Modify generate_supertype_subtype_util.arc to generate java method 
+	  List<NonRootModelElement> getSubtypes(NonRootModelElement) to be used
+	  by updateSubtypeKeys to query for the subTypes instance.	
+	  
+	 
+6.3 Checking for superType 
+6.3.1 Add new java method  boolean hasSuperType() to NonRootModelElement, 
+      returning false.
+6.3.2 Modify java.arc and arch_utils.inc to generate hasSuperType(). The 
+      checking for the superType instance is same one used in the get_<>_id() 
+      method.
+6.3.3 Modify gen_stream_import.arc to add checking for the superType using 
+      hasSuperType() before update subType ID while importing  xtUML model file.	
+	
+6.4 Update the subType ID
+6.4.1 Add new java method setInstanceKey() to NonRootModelElement
+6.4.1 Change java.arc to generate  setInstanceKey(), and call it by 
+	  updateSubtypeKeys()
+     
+
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully outline in the design section.
+
+9. Unit Test
+------------
+9.1 All Junit test must pass.
+
+End
+---
+
+$Log: dts0100775231.dnt,v $
+Revision 1.5  2011/07/19 13:49:40  nmohamad
+job:dts0100775231
+Grammar fix and pull out the RSL code
+
+Revision 1.4  2011/07/19 13:08:16  nmohamad
+job:dts0100775231
+Add getSubType  archtype
+
+Revision 1.3  2011/07/19 12:34:27  nmohamad
+job:dts0100775231
+Reviewing
+
+Revision 1.2  2011/07/18 20:57:39  nmohamad
+job:dts0100775231
+Reference to  old  issue.
+
+Revision 1.1  2011/07/18 19:00:54  nmohamad
+job:dts0100775231
+Create
+

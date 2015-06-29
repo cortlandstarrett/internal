@@ -1,0 +1,164 @@
+========================================================================
+
+File:      $RCSfile: i868.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add more checking to parser
+
+Abstract
+--------
+This note describes changes to the OAL validation routines to add checking
+to prevent Null Pointer Exceptions.
+
+History
+-------
+
+final i868-042705-01.rvm
+
+Document References
+-------------------
+[1] Issue 868
+[2] Issue 597
+
+Background
+----------
+
+The issue [1] lists several cases where null pointer exceptions (NPE) are 
+generated when parsing an activity.
+
+Analysis
+--------
+The null pointer exceptions are due to previous parse errors in the activity
+causing data not to be present when the validation routines are assuming that
+they are.
+
+Design
+------
+
+The work for issue 597 [2] created an archetype that finds all unchecked 
+accesses of instance references.  The results for processing the OAL validation 
+functions is over 900 warnings.  This design will remove the warnings for the 
+functions found by this issue.
+
+1. Remove unsafe accesses
+
+The following validation functions are listed in the issue as throwing NPEs:
+
+Attribute_access_end
+Clear_assignment_data
+Bridge_or_transform_invocation_validate
+Binary_operation_validate
+Invocation_parameters_loop4_end
+
+These functions are changed so that they do not report any dangerous access
+of variables, as reported by the issue 597 archetype.
+
+2.  Fix additional functions
+
+2.1 There are other functions with code similar to 
+Bridge_or_transform_invocation_validate.  These functions, as well as the
+underlying support function is_valid_invocation have all their dangerous 
+accesses removed as well:
+
+Bridge_invocation_validate
+Transform_ib_invocation_validate
+Transform_invocation_validate
+Function_invocation_validate
+is_valid_invocation
+
+2.2 The function Supp_data_loop6_end is similar to 
+Invocation_parameters_loop4_end.   It has all dangerous accesses removed 
+from it.
+
+3. Fix ooaofooa problems
+
+While reviewing various instance deletion code, the following changes 
+were made to the ooaofooa.
+
+3.1  Fix cardinalities
+
+The relationships 806 and 807 (in Value subsystem) were changed to 1-*, since
+an attribute and variable combination can be used to read an attribute value
+many times.   This change in cardinality caused a change in the O_ATTR.dispose()
+operation.
+
+3.2 Fix Variable dispose
+
+The V_VAR.clear() operation failed to tear down relationships 807 and 823. 
+This is fixed.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+
+All changes are made to function_import.sql and ooaofooa.xtuml (and .bak).
+
+Unit Test
+---------
+
+The following tests are added to OalParserTest().  These are the only 
+error cases where a unit test was found that could reproduce the NPE.
+
+- testInvocationRetBooleanParmRealStringIntBadSecond()
+
+select any t from instances of D_TST; 
+::test7( i: 3, s: t.s, r: 4.1 );
+
+where D_TST doesn't have an attribute named s.
+
+- testSMEventThreeParmsToInstanceBadSecond
+
+select any t from instances of D_TST; 
+generate D_TST4( i: 7, s: t.s, r: 11.2 ) to t;
+  
+where D_TST doesn't have an attribute named s.
+
+- testEEEventThreeParmsToInstanceBadSecond
+
+select any t from instances of D_TST;
+generate T4(i: 7, s:t.s, r:2.1) to T;
+
+End
+---
+
+$Log: i868.dnt,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.36.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/04/27 17:48:25  greg
+Job: 868
+Addressed review observations
+
+Revision 1.2  2005/04/26 21:25:04  greg
+Job: 868
+Fix typo
+
+Revision 1.1  2005/04/26 21:21:45  greg
+Job: 868
+Renamed from i848.dnt
+
+Revision 1.1  2005/04/26 20:59:22  greg
+Job: 848
+Introduce
+

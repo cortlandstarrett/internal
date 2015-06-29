@@ -1,0 +1,243 @@
+========================================================================
+
+File:      $RCSfile: i3100.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Export OAL as part of the model export.
+
+1. Abstract
+-----------
+In the current version (1.5.0), OAL is not being exported.  The goal of this 
+issue is to provide a means to export the OAL when models are exported.
+
+2. History
+----------
+/Documentation/internal/review_minutes/R1_5_1/i3100-091007-01.rvm   update
+
+3. Document References
+----------------------
+[1] Bugzilla item 3100
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3100
+[2] Bugzilla item 1699
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1699
+    Persist action language
+[3] Documentation/internal/technical/Persistence/i1699.dnt
+[4] Documentation/internal/technical/archive/20070830/notes/i1699.int
+
+4. Background
+-------------
+The ability to persist OAL in our models was added in release 1.4.4 [2].  At the
+time this was added model export utilized the PEI data in the file_io.pei.sql
+data file.  Shortly after this release, copy/paste functionality was added to 
+the product and with it came a second PEI data file (stream.pei.sql).  The model
+export facility began using this stream-based PEI data instead of the file_io
+PEI data and because of this the OAL persistence in model export was lost.
+
+OAL is still persisted in the model itself, but it is now longer written-out 
+when the model is exported.  It is possible for customers to utilize a mechanism 
+that is very similar to what our MC3020 model compiler currently uses to read 
+the model directly and avoid the export step.  To do this, the user would use
+xtumlmc_build.exe as follows:
+1. xtumlmc_build.exe ConvertMultiFileToSingleFile <fully qualified path to project>  <temp1.xtuml>
+   This step is used to convert the multi-file model to a single-file model and
+   to remove the proxies from the model.
+2. xtumlmc_build.exe ReplaceUUIDWithLong <temp1.xtuml>  <temp2.xtuml>
+   This step is used to convert UUID into longs.  
+3. xtumlmc_build.exe xtumlmc_cleanse_model <temp2.xtuml>  <final_result>.xtuml
+   This step is used to remove graphical elements from the model.
+
+The above procedure is useful for users who want to compile their models 
+without having to go through the step of manually exporting the model. However,
+some users would like to continue to use the single-file model that is
+exported by our model export wizard.  Therefore, this issue will describe how
+OAL export will be incorporated into the current model export feature.
+
+
+5. Analysis
+-----------
+5.1 Introduce OAL into model Export
+The same persistence mechanism used by copy/paste is currently used by model 
+export (stream.pei.sql).  Persistence of OAL data is not currently included in 
+this mechanism, but it will be introduced with this issue.
+
+5.2 Stream vs file_io persistence
+Analysis of the 2 persistence PEI files shows many similarities.  For
+maintenance purposes, we would like to consolidate these 2 files.  However, the
+differences are such that doing so is not an insignificant task.  The 
+differences are as follows:
+1) The action home is persisted differently.  
+   In the stream case, the action home is persisted through the state associated 
+   with the action home.  In the file_io.pei case the action home is persisted 
+   through the state machine.  This difference causes the PEI data in the
+   2 files to diverge early in the persistence chain.
+
+2) Differences in instances being persisted (EO instances and AEP instances)
+   There are instances persisted in the stream case that are not persisted in 
+   the file_io case and vice-versa.
+
+3) The following 3 fields are used differently: EO.writeProsition, 
+   EO.componentRoot, EO.ignoreParent.  They are used by different archetypes, 
+   and the values are not used consistently.
+   
+Consolidation of these files will require a change to the filo_io model and to 
+the archetypes that use this model.   A separate issue will be raised to 
+address consolidation of the 2 PEI files.
+
+5.3 Filter OAL from Copy/Paste
+When OAL is added to the stream based persistence mechanism, OAL will be copied
+and pasted as part of copy/paste operations.  This is not desirable from a 
+performance standpoint.  We do not want to persist the OAL in copy/paste 
+operations.  A filter should be added to prevent OAL from being included in
+copy/paste operations.
+
+5.4 Optional export of OAL data
+Users have a mechanism for capturing the OAL data without exporting the model.  
+This mechanism is described above (5.2).  The primary reason use of model export
+is to allow sharing of models.  Therefore, BridgePoint will not export OAL by
+default.  A new category of preferences shall be added to the BridgePoint
+preferences.  
+-The new category will be named "Model Export".  
+-This category will contain an option named "Export OAL".  
+-Following the lead of other BP options, this option can be set to either "yes", 
+or "no".  
+-The default will be "no". 
+
+5.5 Optional export of graphical data
+Model Compilers do not use graphical parts of the model.  An option shall be 
+added to the BridgePoint Model Export preferences to exclude graphical parts of 
+the model.
+-This option will be named "Export Graphics".  
+-The default will be "yes".
+
+6. Design
+---------
+6.1 Use CVS resource history and [3,4] to examine the changes made to 
+    io.mdl/sql/file_io.pei.sql when OAL persistence was added [2].  The same
+    changes made to the file_io.pei.sql file will be made to stream.pei.sql.
+    The only differences will be where stream vs file_io takes different paths
+    through the meta-model to persist the data.
+6.2 Use information from the diff in step 1.1 to add PEI data to
+    io.mdl/sql/stream.pei.sql.  
+6.3 Raise an issue to request that the stream.io.sql and file_io.pei.sql files
+    be consolidated.
+6.4 Prevent OAL inclusion in copy/paste and optionally include OAL in model 
+    export.
+6.4.1 Create an option in the BridgePoint Model Export preferences named
+      "Export OAL" and make it's default value "no",
+6.4.2 Add an boolean attribute to file_io:EO named isOAL.  
+6.4.2.1 This attribute will default to false.
+6.4.2.2 Modify PEI data and mark the isOAL attribute to true for OAL classes.
+        OAL classes in the following subsystems shall be considered OAL and will
+        be marked as such:
+        Event (E_*), ACT_*,  Value (V_*)
+6.4.3 Modify archetypes to never include OAL in copy/paste operations.
+6.4.4 Modify the export code to only include OAL if the user preference to 
+      export oal is set to "yes".
+6.5   Optionally prevent graphical elements from being included in model 
+      export.
+6.5.1 Create an option in the BridgePoint Model Export preferences named
+      "Export Graphics" and make it's default value "yes".
+6.5.2 Add an boolean attribute to file_io:EO named isGraphical.  
+6.5.2.1 This attribute will deafult to false.
+6.5.2.2 Modify PEI data and set the isGraphical attribute to true for graphics
+        classes (GE_*, DIM_*)            
+6.5.3  Modify the export code to exclude graphics classes if the BridgePoint 
+       "Export Graphics" preference is set to "no".
+
+7. Design Comments
+------------------
+None
+
+8. Work Required
+----------------
+The work required in described in the design section above.
+
+9. Unit Test
+------------
+9.1 Verify existing unit tests pass
+
+9.2 Simple verification of persistence of OAL data
+_- Create a new xtUML project
+_- Create a model and import Dogs
+_- Open an OAL editor (any existing OAL) and modify the OAL
+_- Export the model to dogs_export.xtuml
+_- grep -e "INSERT INTO E_\|ACT_\|V_" dogs_export.xtuml | sort | uniq
+_R Instances of E_*, ACT_*, and V_* are found
+
+9.3 Verify that all OAL statements can be persisted
+_- Create a new xtUML project
+_- Create a model and import io.mdl.test/expected_results/testOAL1.xtuml
+_- Touch the OAL to force persistence
+_- Export the model 
+_R model is exported successfully
+_- grep -e "CREATE TABLE E_\|ACT_\|V_" <workspace>/MC-Java/ooa_schema.sql | cut -d: -f2 | cut -d" " -f3 | sort -u > oal_schema.txt
+_- grep -e "INSERT INTO E_\|ACT_\|V_" <workspace>/com.mentor.nucleus.bp.io.mdl.test/expected_results/testOAL1.xtuml | cut -d" " -f3 | sort -u > oal_test.txt
+_- diff oal_schema.txt oal_test.txt
+_R No differences.  
+
+9.4 Test model compiler output vs BP export
+_- Use io.mdl.test/testOAL1
+_- Export the model using the BP export wizard (testOAL1_wizard.xtuml)
+_- xtumlmc_build.exe ConvertMultiFileToSingleFile <path to testOAL1 project>  <testOAL1_mc.xtuml>
+_- Extract the OAL-related inserts from the models using grep/cut/sort
+_- Diff the results
+_R Results match
+
+
+End
+---
+
+$Log: i3100.dnt,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.8  2007/09/11 20:18:05  rmulvey
+Job:3100
+Addressed the observation about the "Export Non-Semantic Data" preference.   The preference is changed to "Export Graphics".  When the user chooses to exclude graphics, only DIM_* and GE_* classes will be filtered.
+
+Revision 1.7  2007/09/11 15:52:41  rmulvey
+Job:3100
+Add attributes file_io::EO::isGraphical and file_io::EO::isOAL to track which classes are determined semantic and which are OAL (instead of using archetype functions).
+
+Revision 1.6  2007/09/11 15:43:49  rmulvey
+Job:3100
+Added a reference to the previous review minutes in history.
+
+Revision 1.5  2007/09/11 15:36:22  rmulvey
+Job:3100
+Fixed typos
+
+Revision 1.4  2007/09/11 15:25:20  rmulvey
+Job:3100
+Addressed observations by adding information to specify  a new category of BridgePoint preferences, Model Export.  With these preferences users will be allowed to optionally include OAL in the export, and optionally exclude non-semantic parts of the model.
+
+Revision 1.3  2007/09/11 14:12:23  rmulvey
+Job:3100
+Addressed observations.
+
+Revision 1.2  2007/09/10 18:49:45  rmulvey
+Job:3100
+Introduced
+
+Revision 1.1  2007/09/10 18:47:59  rmulvey
+Job:3100
+Introduced

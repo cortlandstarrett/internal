@@ -1,0 +1,161 @@
+========================================================================
+
+File:      $RCSfile: dts0100693490.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Implement bad-fonts-generator-hang fix
+
+
+1. Abstract
+-----------
+Generator has long had problems when specific fonts exist in Windows.  Normally
+this shows up on machines that are configured for East Asian support.  This 
+note describes the changes made to solve this issue.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100693409
+[2] MS-DOS CP 949, \\wv\dfs\bridgepoint\field_data\dts0100693490\app949.fon
+
+4. Background
+-------------
+Japanese customers often face problems running generator due to long-standing 
+font problems generator has with Adobe and East Asian fonts.  In the past, we 
+have instructed these customers (via the release notes) to manually remove 
+problematic fonts from their system prior to running generator.
+
+This is clearly not an ideal situation, especially for new users.  The work
+outlined below proposes a new application that warns the user of known problem-
+atic fonts each time BP is run.
+
+5. Design
+---------
+5.1  Options.  There are several options for places to handle the font resource 
+     management.
+5.1.1  Integrate the font management into generator (gen_erate.exe) itself.  The
+       generator already includes some Windows header files and links against
+       some Windows libraries.
+5.1.2  Create a new application to handle the fonts.  Modify the xtumlmc_build
+       script to call the font control application before and after running
+       gen_erate.exe.
+5.1.3  Create an application that runs when BridgePoint starts that looks for 
+       problem fonts and warns the user about them.
+
+5.2  Decision. The chosen path is option 5.1.3.
+5.2.1  The desired route was option 5.1.2.  However, we found that invoking the 
+       removal application inside of xtumlmc_build was too late.  Even when the
+       fonts were removed from the system table at this point, generator still
+       hung.  In addition, the Windows7 font management is sufficiently diff-
+       erent than WindowsXP that our scheme of adding and removing fonts with
+       API calls did not work as desired.  
+     
+5.5  The fonts to remove and add are read from a file list named
+     font_list.txt that lives in the same directory as the font checking app-
+     lication.  When the application runs, it looks for fonts in the system
+     font table that match (either exact or partial as specified in the file)
+     and adds them to a dialog warning the user they may cause problems.  If 
+     not problem fonts are found, the application exits silently.
+5.5.1  The font checking application (fontchecker.exe) is a simple C++ program
+       built using VisualC++ 6.0 and MFC.
+5.5.1.1  The fontchecker project is stored in BP CVS under utilities/fontchecker
+5.5.1.2  The fontchecker executable will be statically linked to avoid potential
+         problems in the future because of missing DLLs.
+5.5.1.3  The list of fonts to remove is stored at 
+         <CVS>/utilities/fontchecker/Release/font_list.txt
+5.5.2  The application (exe) and font list will be retrieved from CVS as part
+       of the nightly_build process and copied into the distribution tools/ 
+       folder by the nightly build scripts.
+5.5.3  Add the <CVS>/utilities project to the release build tagging script.
+
+     
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+7.1  The tests here are manual tests.  After the design is proven to work and 
+     the promotion is completed, we'll add test 7.2 to our SMA QA system to 
+     check that the functionality continues to work before each release.  The 
+     following test needs to be run on both Windows XP and Windows7.
+     
+7.2  Test (Repeat on WinXP and Win7)
+  _- Copy font checker EXE and list file to <BP install>/tools/fontchecker/
+  _- Edit the BridgePoint_Launcher.bat, add the following directly before the
+     "start eclipse...":
+     cd %MGC_EMBEDDED_HOME%\tools\fontchecker
+     fontchecker.exe
+     cd %MGC_EMBEDDED_HOME%\eclipse
+  _- Start BridgePoint
+  _R The fontchecker application runs and exits without displaying any dialog.  
+     BridgePoint shows the workspace chooser.  To the user it appears nothing 
+     out of the ordinary happened.
+  _- Edit font_list.txt in a text editor.  Add "Sys" to the end of the list. Add
+     "foo" right after the % sign on the line that starts with %
+  _- Run BridgePoint again
+  _R A dialog pops up indicating the System font was found as a potential
+     problem font before the workspace chooser appears.
+  _R The warning message displays with the modification you made.
+     
+8. Code Changes
+---------------
+Branch name: R3_2_5-SKB-dts0100693490
+com.mentor.nucleus.bp.core/tools/configure_build_process.sh (branched at tools level)
+com.mentor.nucleus.bp.core/tools/tag_bp.sh  (branched at tools level)
+com.mentor.nucleus.bp.core/tools/tag_bp_nb.sh  (branched at tools level)
+
+Installer_MIP_MIMIC/BridgePoint_Launcher.bat
+
+Newly added to source control:
+utilities/fontchecker/fontchecker.aps
+utilities/fontchecker/fontchecker.clw
+utilities/fontchecker/fontchecker.cpp
+utilities/fontchecker/fontchecker.dsp
+utilities/fontchecker/fontchecker.dsw
+utilities/fontchecker/fontchecker.h
+utilities/fontchecker/fontchecker.ncb
+utilities/fontchecker/fontchecker.opt
+utilities/fontchecker/fontchecker.plg
+utilities/fontchecker/fontchecker.positions
+utilities/fontchecker/fontchecker.rc
+utilities/fontchecker/fontcheckerDlg.cpp
+utilities/fontchecker/fontcheckerDlg.h
+utilities/fontchecker/ReadMe.txt
+utilities/fontchecker/resource.h
+utilities/fontchecker/StdAfx.cpp
+utilities/fontchecker/StdAfx.h
+utilities/fontchecker/Release/font_list.txt
+utilities/fontchecker/Release/fontchecker.exe
+utilities/fontchecker/res/fontchecker.ico
+utilities/fontchecker/res/fontchecker.rc2
+
+
+
+End
+---
+
+$Log: dts0100693490.int,v $
+Revision 1.3  2011/05/26 17:07:08  kbrown
+job:dts0100693490
+Updated.
+
+Revision 1.2  2011/04/29 18:17:48  kbrown
+job:dts0100693490
+INT ready for review.
+
+Revision 1.1  2011/04/29 16:04:04  kbrown
+job:dts0100693490
+First draft of INT.

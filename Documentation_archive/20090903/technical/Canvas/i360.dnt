@@ -1,0 +1,264 @@
+========================================================================
+
+File:      $RCSfile: i360.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Bring canvases into line with new nested package policy
+
+Abstract
+--------
+Issue 360 observes that display of data types, functions and EE's on the
+canvas are inconsistent with what is shown in the tree. This note addresses
+this issue.
+
+History
+-------
+final - i360-081004-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 360.
+[2] Bugzilla issue 224 and associated notes.
+
+Background
+----------
+After the work for i224[2], all External Entities are now shown under an
+external entities package in the Model Explorer. This is incompatible with the
+graphics data exported by BridgePoint Builder, since this shows external
+entities directly on the Domain Package Diagram. Because of changes to the
+tree navigation policy, external entities drawn on the DPD no longer appear in
+the tree at all. In addition, there are no corresponding canvases for Data Type
+or Function Packages either.
+
+Design
+------
+i360.1    Create new canvases for the Data Type Package Diagram, the Function
+          Package Diagram and the External Entity Package Diagram.
+i360.2    Create new symbols for External Entity, Data Type, External Entity
+          Package, Data Type Package and Function Package.
+i360.3    Add a New Subsystem tool to the Class Diagram.
+i360.4    Modify the import code in io.sql to create new symbols and canvases.
+
+Design Comments
+---------------
+Some incorrect OAL was found in External Entity.newBridge that initialized the
+Bridge to return an integer type. This is changed to return void. Bridge
+parameters were also not being associated with a default type. They are
+initialized to integer.
+
+Work Required
+-------------
+i360.1    New canvas types are created for the missing diagrams
+i360.1.1  Allocate new ooa type values for data type package, function package
+          external entity package.
+i360.1.2  Add required new elements to bp.ui.canvas/plugin.xml so that the above
+          canvases are registered.
+i360.1.3  Change the color specification for the external entity symbol to make
+          it in line with the requirement.
+i360.1.4  New canvas colors are created for each of the new canavs types.
+
+i360.2    The following symbols need to be under the new diagrams:
+
+          - Data Type Package Diagram
+            - Data Type
+            - Data Type Package
+          - Function Package Diagram
+            - Function Package
+          - External Entity Package Diagram
+            - External Entity
+            - External Entity Package
+
+i360.2.1  The operations get_style, get_text_style, get_compartments,
+          get_entries, and get_compartment_text are added to core data type,
+          user data type, enumeration data type, data type package,
+          function package and external entity package.
+i360.2.2  Modify external entity operations get_style, get_compartments and
+          get_compartment_text to create a new external entity symbol based on
+          the UML classifier.
+i360.2.3  Create new icons for the creator buttons for new data type package,
+          function package, external entity package and data type.
+i360.2.4  Allocate new ooa type value for Data Type symbol.
+i360.2.5  Add required new elements to bp.ui.canvas/plugin.xml so that the above
+          symbols are registered.
+i360.2.6  Add core data type, user data type, enumeration data type,
+          function package, datatype package and external entity package to
+          CL_c.getOoaIDfromInstance.
+i360.2.7  Add get_ooa_id to core data type, user data type, 
+          enumeration data type, function package, datatype package and
+          external entity package.
+i360.2.8  Rewrite the external entity operations get_style, get_text_style,
+          get_compartments, get_entries, and get_compartment_text to produce
+          the symbol style and content required by the specification.
+i360.2.9  The bridge.initialize operation is corrected to default to a void
+          return type.
+
+i360.3    Add a New Subsystem tool to the Class Diagram
+i360.3.1  The subsystem symbol is added to the set of symbols shown on the
+          class diagram.
+i360.3.2  Set the operation 'newSubsystem' as the creator method in the new
+          symbol.
+
+i360.4    Modify the import code in io.sql to create new symbols and canvases	
+i360.4.1  Package symbols are added for data type package and, if necessary,
+          for functions and external entities. For each package symbol added
+          a new Model instance is also created.
+i360.4.2  New Graphical Element instances are added for each of the imported
+          data types.
+i360.4.3  A new function, 'fixBPGraphics' is added to the Graphics Domain
+          model. This maximizes the amount of functionality captured as
+          action language. Additional support functions, fixDTGraphics,
+          fixFNGraphics and fixEEGraphics are factored out to make the
+          actions more manageable. These functions provide out the following
+          behavior:
+i360.4.3.1  Any external entity symbols are removed from the DPD and added to
+            the external entities diagram at the same co-ordinates.
+i360.4.3.2  The symbol positions previously occupied on the DPD by external
+            entities are used to show the added packages (Data Type, EE and
+            Function). If insufficient EE symbols were present, new package
+            symbols are added tiled relative to existing symbols on the DPD.
+i360.4.3.3  The datatype symbols are laid out in a tile pattern on the
+            data type model canvas.
+i360.4.3.4  The default height and widths specified in instances of GD_ES are
+            used to set both the symbol sizes and the spacing between them.
+i360.4.4  Modify bp.core/schema/com.projtech.bp.core.editors.exsd to specify
+          optional defaultHeight and defaultWidth attributes of symbol.
+i360.4.5  Modify bp.ui.canvas/plugin.xml to specify default size data for those
+          symbols that must be laid out automatically (i.e. the new packages
+          and the data types).
+i360.5    Modify the export code to remove all extra graphics introduced by the
+          enhancements to import proposed above.
+i360.5.1  Move external entity graphical elements back onto the DPD and delete
+          all other new packages before exporting.
+i360.5.2  Since the user may wish to export and continue work on the model, use
+          fixBPGraphics to restore the model to its previous state .
+
+Unit Test
+---------
+_- Import ODMS.
+_- Open the DPD.
+_R The DPD shows the odms subsystem.
+_R The DPD shows a data type package labeled Data Types.
+_- Open the Data Type package.
+_R A new diagram opens that shows all the data types declared for the ODMS
+   model.
+_R The DPD shows a function package labeled Functions.
+_- Open the Functions package.
+_R A new, empty, diagram opens (there are no nested packages in this package,
+   and functions do not themselves have a symbol).
+_R The DPD shows an external entity package labeled External Entities.
+_- Open the external entity package.
+_R A new diagram opens showing the two external entities in the ODMS model,
+   QP and PIO.
+_- Expand the two symbols.
+_R The symbols show all of the bridge operations of the external entities.
+
+_- Reopen the ODMS DPD.
+_- Select the new Data Type Package tool.
+_- Draw a new symbol.
+_R The new package is added to the canvas and to the tree.
+_- Double click the package on the canvas.
+_R A new, empty, diagram is opened.
+_- Select the new User Data Type tool.
+_- Draw a new symbol.
+_R A new Data Type symbol is shown on the canvas and in the tree.
+_- Select the new Enumeration tool.
+_- Draw a new symbol.
+_R A new Enumeration symbol is shown on the canvas and in the tree.
+_- Right click on the Enumeration and select New > Enumerator.
+_R The new enumerator is shown on the canvas and in the tree.
+_- Remove the spaces from the names created in the previous two steps.
+_R The names update on the canvas.
+_- Select the new Data type package tool.
+_- Draw a new symbol.
+_R The new package is added to the canvas and to the tree.
+_- Double click the package on the canvas.
+_R A new, empty, diagram is opened.
+
+_- Reopen the ODMS DPD.
+_- Select the new Function Package tool.
+_- Draw a new symbol.
+_R The new package is added to the canvas and to the tree.
+_- Double click the package on the canvas.
+_R A new, empty, diagram is opened.
+_- Select the new Function Package tool.
+_- Draw a new symbol.
+_R The new package is added to the canvas and to the tree.
+_- Double click the package on the canvas.
+_R A new, empty, diagram is opened.
+
+_- Reopen the ODMS DPD.
+_- Select the new External Entity Package tool.
+_- Draw a new symbol.
+_R The new package is added to the canvas and to the tree.
+_- Double click the package on the canvas.
+_R A new, empty, diagram is opened.
+_- Select the new External Entity tool.
+_- Draw a new symbol.
+_R The new external entity symbol is added to the canvas and to the tree.
+_- Right click the external entity and select New > Bridge Operation.
+_R The new operation is added to the canvas and to the tree.
+_R The new operation return type is void.
+_- Right click the Bridge Operation IN THE TREE and select
+   New > Bridge Parameter.
+_R The new parameter is added to the canvas.
+_R The new parameter type is integer.
+_- Select the new External Entity Package tool.
+_- Draw a new symbol.
+_R The new package is added to the canvas and to the tree.
+_- Double click the package on the canvas.
+_R A new, empty, diagram is opened.
+
+_- Open the activity editor on the function, 'initialize'.
+_- Add 'foo = UnnamedEnumeration::UnnamedEnumerator' where the names match the
+   type added by a previous test above.
+_R Added OAL parses correctly.
+
+- Run all unit tests (OalParserTest, ParseAllInDomain, IOTest, CanvasTest,
+  UITextTest).
+R All tests pass.
+
+End
+---
+
+$Log: i360.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.152.1  2008/12/31 16:10:07  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/08/11 18:14:11  campbell
+Job: 360
+Added final history record
+
+Revision 1.4  2004/08/11 15:33:44  campbell
+Job: 360
+Review issues addressed.
+
+Revision 1.3  2004/08/10 16:21:48  campbell
+Job: 360
+Ready for review.
+
+Revision 1.2  2004/08/09 23:46:35  campbell
+Job: 360
+Added Unit Test section.
+
+Revision 1.1  2004/08/06 23:27:30  campbell
+Job: 360
+Introduced.

@@ -1,0 +1,193 @@
+========================================================================
+
+File:      $RCSfile: i272.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:48 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Integrating Model Verifier and Model Debugger with Eclipse
+
+Abstract
+--------
+This note describes the technology choices available for implementing the
+Model Debugger and Model Verifier inside Eclipse.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 272
+[2] Bugzilla Issue 1110
+[3] com.projtech.bp.core/ooaofooa/Body, Value, Instance Access,
+                                      Relate and Unrelate, Selection, Invocation
+
+Background
+----------
+Model Verifier and Model Debugger need to operate seamlessly with Tiger and with
+the other EDGE components. This note analyses and selects the technologies to be
+used in replacing the Model Verifier.
+
+Analysis
+--------
+Alternatives
+Several alternative technologies were examined for suitability in this role.
+These were:
+
+1. Extend the ObjectStore removal exercise[2] to include Model Verifier and
+   restore this product to the suite.
+2. As above, except strip out the front end and use the remaining executable as
+   a back end execution engine. Develop a front end in Eclipse.
+3. Produce a fast turnaround model compiler solution that produces java for
+   execution in a java virtual machine.
+4. Port the instance subsystem from the Model Debugger design. Decorate the OOA
+   of Processing[3] with execute() operations that create and modify instances
+   in the ported instance subsystem. Model a dispatcher that manages the event
+   queues and emulates MC-3020's execution engine.
+5. Create generic methods that carry out the work of selection, assignment etc.
+   These methods take arguments that say which association to use for the
+   selection, which instance value to assign etc. Parse the OAL and convert it
+   to calls to these generic methods.
+
+Evaluation
+The relative merits and demerits are discussed below. The score is from 0-9
+where 0 is very poor and 9 is excellent:
+
+1. Familiar technology              7
+   Short development time           5 (we don't yet know)
+   User interface                   1
+   Connection to other executables  0
+
+2. Familiar technology              5
+   Short development time           3 (it has to be greater effort than 1.)
+   User interface                   9
+   Connection to other executables  0                           -
+
+3. Familiar technology              8
+   Short development time           5 (MC development + instrumentation)
+   User interface                   9
+   Connection to other executables  5 (bridging would need to be developed)                           -
+
+4. Familiar technology              9 (UI support falls out)
+   Short development time           7 (we have an accurate estimate)
+   User interface                   9
+   Connection to other executables  5 (bridging would need to be developed)
+
+5. Familiar technology              3
+   Short development time           5 (we don't yet know)
+   User interface                   7 (UI not addressed)
+   Connection to other executables  5 (bridging would need to be developed)
+
+The conclusion is that option 4. is the preferred technology for building Model
+Verifier.
+
+Suggested Design
+----------------
+Add the instances subsystem to the OOA of OOA. Add an execute() operation to
+every class below and including Body. The execute() operation for Body shall be:
+
+select one outer_block related by self->ACT_BLK[R666];
+if (not_empty outer_block)
+  outer_block.execute();
+end if;
+
+Block's execute() operation selects all the statements the block contains across
+R602 and then causes each statement to execute in order (as defined by R661).
+
+The While Stmt execute() operation shall be:
+
+select one value related by self->V_VAL[R626];
+if (value.getBoolean() == true)
+  select one child_block related by self->ACT_BLK[R608];
+  child_block.execute();
+end if;
+
+Note that getBoolean() can be called above because we know the parser would
+otherwise have signalled an error. There will be one get*() operation for each
+core type. If the value's data type is ever ambiguous, it can always be found by
+navigating R820.
+
+The Assign to Attribute statement's execute consequently looks like this:
+
+select many values related by self->V_VAR[R629]->I_INS[R???]->I_AVL[R???]
+select any target related by self->O_ATTR[R630];
+for each lvalue in values
+  select one attr related by lvalue->O_ATTR[R???];
+  if (attr == target)
+    select one rvalue related by self->V_VAL[R609];
+    select one dt related by rvalue->S_DT[R820];
+    if (dt.Name == "Boolean")
+      lvalue.setBoolean(rvalue.getBoolean());
+    elif
+      // etc.
+    end if;
+    break;
+  end if;
+end for;
+
+It would be nice to factor the type test out, but the instance reference
+limitation dictates that this optimization should be left until such support
+exists. Using unique ids for this instead of duplicating it in the few places it
+will be needed does not seem to be indicated.
+
+If performance turns out to be a problem, we could mark some of these execute()
+operations and hand write them to solve the above problem using reflection
+instead.
+
+Work Required
+-------------
+1.  Port the Instance subsystem from the Model Debugger razor engineering
+    database.
+2.  Add execute operations to all classes under body, in the style of the
+    examples above.
+3.  Create new views for instances and for the event queue.
+4.  Derive the line number from the original OAL. Report this during execution
+    as the current Program Counter.
+5.  Model the execution engine.
+6.  Design execution engine plugin mechanism and API. This API shall include
+    breakPoint handling, stepping, run, pause etc.
+7.  Translate the execution engine and wire up to the API defined in 6.
+8.  Add context menus to allow creation, deletion association and disassociation
+    of instance population elements.
+9.  Extend the Properties editor to allow the user to modify instance population
+    values.
+10. Implement the ability to pass and receive values and events across the
+    simulation boundary.
+
+Acceptance Test
+---------------
+Execute all models in the MC test suite. Ensure that the execution followed the
+same path as the generated source code.
+
+End
+---
+
+$Log: i272.ant,v $
+Revision 1.1  2009/09/03 18:20:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.30.1  2008/12/31 16:10:22  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/09/08 19:25:34  campbell
+Job: 272
+Updated with comments from CSS.
+
+Revision 1.1  2005/08/30 23:45:28  campbell
+Job: 272
+Introduced.
+

@@ -1,0 +1,255 @@
+========================================================================
+
+File:      $RCSfile: dts0100590737.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Provide a time-locked version of BridgePoint
+
+1. Abstract
+-----------
+There is a need to have a version of BridgePoint that we can easily provide as
+a demo to customers.  This version must be able to run on any machine during an
+evaluation period.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100590737
+    http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=82d04bcc-bf2e-4e5c-9187-932262b09da1
+    
+[2] Bugzilla issue 3426 - ESC San Jose 2008 Collateral
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3426
+    
+    This is the issue that tracked the creation of a USB stick that contained
+    BridgePoint.  This USB stick was distributed at the ESC in San Jose in 2008.
+    
+[3] Mentor Graphics Auto Evaluation Request System
+    http://salesconnect.mentor.com/authorization/notauthorized_autoeval.cfm
+
+    This is used by sales to provide evaluation to customers.  The restrictions
+    are that these are 30 day (max) non-renewable  licenses.  These licenses
+    all require a MAC address.  A floating or node-locked license is available
+    from this system.
+    
+[4] Mentor Graphics internal license request form
+    http://mentorweb.wv.mentorg.com/WWOPS/WOF/ShareP/Forms/license.cfm
+    
+[5] Examples of the Windows Crypto API in use
+    http://www.codeguru.com/cpp/misc/misc/cryptoapi/article.php/c3899/
+
+[6] WIKI for AES that includes links to implementations in various languages
+    http://en.wikipedia.org/wiki/Advanced_Encryption_Standard
+        
+4. Background
+-------------
+BridgePoint has had an evaluation version available in the past, and a small
+application was created to aid in delivery of this evaluation [4].  This was
+created and handled out on a USB stick during the Embedded Software Conference 
+in 2008 [4].  To activate this evaluation version the prospect had to call 
+customer support and request a license.  In order to get the license the 
+prospect had to supply the MAC address of the machine the evaluation would run 
+on.
+
+5. Analysis
+-----------
+The goal of this issue is to provide a time-locked version of BridgePoint.  
+
+5.1 The time-locked version will run on any machine.
+5.2 No new demo-specific errors messages or warnings will be introduced.  
+
+6. Design
+---------
+
+6.1 Design options
+6.1.1 Use FlexLM licensing for the evaluation
+
+	Mentor Graphics products all use FlexLM to enforce licenses.  Mentor 
+	Graphics provides the ability to give an interested party an evaluation 
+	license, but that license is node-locked or floating (which requires a 
+	license server).  A user that wishes to evaluate the product must therefore
+	first supply Mentor Graphics with a MAC address of the machine(s)
+	they wish to run on.  
+	
+	FlexLM does support the ability to produce a time-locked license that will 
+	run on any machine.  It does this by allowing "DEMO" or "ANY" to be 
+	specified as the node ID during license generation.  Unfortunately, while 
+	this option is supported by FlexLM, Mentor Graphics currently does not 
+	provide this option for license generation [4].
+	
+6.1.2 Using a Windows DLL, introduce a time-locked license into BridgePoint that 
+      is checked when a FlexLM license is not present.  The Windows DLL 
+      (BridgePointDemo.dll) and text file (BridgePointDemo.txt) will be given 
+      to customers evaluating the product.  Presence of the DLL will indicate 
+      that a demo license should be checked.  The DLL does not need to be 
+      rebuilt with each demo.  Only the encrypted text file must be built and 
+      sent to the user.   The DLL and text file shall work as follows:
+      - Java reads an encrypted string from the file (BridgePointDemo.txt), 
+        encrypts it with a public key, and passes it to the DLL.  
+      - The DLL (BridgePointDemo.dll) decrypts the string with the private key 
+        and then decrypts the AES encrypted string (the string from 
+        BridgePointDemo.txt).  The DLL then reads the start date/end date 
+        from the string andvcompares those dates to the current machine date.
+      		-If the current date is within the start date and end date the
+      		DLL returns the string "IsValidDemo<time of day>" encrypted with the
+      		public key.
+      		-If the current date is NOT within the start date and end date the
+      		DLL shall modify the users BridgePointDemo.txt file by adding a
+      		digit to the middle of the existing string.  The DLL will then
+      		return the string "IsNotValidDemo<time of day>" encrypted with the
+      		public key.
+      	    -The Java code decrypts the result string, reads the result and
+      	    if "IsValidDemo" is at the start of the string it allows access.
+      	    If it is not, access is not allowed and processing continues as 
+      	    as it would if there was no demo license. 
+      	    
+6.1.2.1 The text file (BridgePointDemo.txt) will contain a string encrypted 
+        using AES encryption.  This string shall have the following pieces of 
+        information:
+        -Copyright message
+        -Small license saying this is a demo
+        -Start date of demo
+        -End date of demo
+6.1.2.2 Communication between java and the DLL shall be encrypted using RSA
+      (public key/private key). 
+
+6.1.2.3 A script (Perl) shall be used to create a public key and private key.  
+      A similar script shall be used to create (BridgePointDemo.txt) and the 
+      encrypted string in that that file.  
+
+      
+6.1.3 Without introducing a Window DLL, introduce a time-locked license into 
+      BridgePoint that is checked when a FlexLM license is not present.  
+      This option is similar to 6.1.2, but the encryption is done within the
+      Java plugin (or C executable for gen_erate.exe).  There is no need for a
+      separate Windows DLL.  A text file (BridgePointDemo.txt) will hold a
+      encrypted string that allows access to the product during the demo period.
+      To activate a demo a prospect would simply be provided with a valid
+      BridgePointDemo.txt.  Flow of control is as follows:
+      - Java reads the encrypted string from the file (BridgePointDemo.txt), 
+        decrypts it with a "secret" key and reads the result.  
+      		-If the current date is within the start date and end date access
+      		is allowed to the product.
+      		-If the current date is NOT within the start date and end date 
+      		access is NOT allowed to the product the encrypted string in 
+      		BridgePointDemo.txt shall be modified by changing a hex character
+      		in the middle of the string.  This will prevent the user from
+      		simply setting the time back on the machine after the demo expires.
+      		Processing then continues as it would if there was no demo.      
+      
+6.1.3.1 The text file (BridgePointDemo.txt) will contain a string encrypted 
+        using AES encryption.  This string shall have the following pieces of 
+        information:
+        -Copyright message
+        -Small license saying this is a demo
+        -Start date of demo
+        -End date of demo
+6.1.3.1 A script (Perl) shall be used to BridgePointDemo.txt and the 
+      encrypted string in that that file.        
+6.1.3.2 The BridgePointDemo.txt file should be placed in the same folder as the
+      FlexLM licenses.  The MGLS_LICENSE_FILE environment variable is used to
+      determine this folder's location just as it is for the FlexLM license 
+      file.
+      
+The constraints of the Mentor Graphics supplied FlexLM licenses described
+in 6.1 prevent the FlexLM option from being used because it does not meet the
+criteria outlined in the analysis section (specifically 5.1).  The option 
+described in 6.1.2 has undo complexity.  The option outlined in 6.1.3 shall
+be used.  Note that we do not have to deploy this feature in the main BP 
+product (in head), we could chose create a version just for this customer.
+This decision can be made prior to issue promotion.
+
+
+
+7. Design Comments
+------------------
+None
+
+8. Work Required
+----------------
+8.1 Modify BridgePoint Java plugins to use 
+    bp/core/util/BridgePointLicenseManager.java
+    
+8.1.1 When a license check is required in a BridgePoint plugin, it will go
+      through  BridgePointLicenseManager.java.     
+
+8.2 Create a perl script used to build the file that is delivered to a 
+    demo customer (BridgePointDemo.txt).  This shall use AES encryption to 
+    encrypt a string as described in section 6.1.3.1.
+
+8.3 Modify BridgePointLicenseManager.java to check the demo license.
+8.3.1 This check is done only AFTER FlexLM licensing has failed to acquire a
+    license.
+8.3.2 Read the encrypted string from BridgePointDemo.txt (if the file is 
+      present)
+8.3.3 Decrypt the string, read the start date/end date (if present) and
+      check the date against the current machine date.
+8.3.3.1 If the BridgePointDemo.txt was present AND it contained valid date
+      strings AND the demo is expired, then modify the BridgePointDemo.txt
+      and change a digit in the encrypted string to corrupt it as specified in 
+      6.1.3.    
+8.4 Modify gen_erate.exe and perform the same tasks specified in 8.3.
+
+9. Unit Test
+------------
+9.1 Verify that the product works as it previously did when BridgePointDemo.txt
+    is not present.  Existing unit tests shall test this.
+9.2 Test the demo
+	_- Remove FlexLM licenses
+	_- Create a BridgePointDemo.txt file and place it on the system
+	_- Run BridgePoint
+	_R The License DIALOG will report errors
+	_- The product is fully functional 
+9.3 Test Demo expiration 
+	_- Remove FlexLM licenses
+	_- Create a BridgePointDemo.txt file and place it on the system
+	_- Run BridgePoint
+	_R License errors are reported
+    _R These are the same errors that were present prior to the demo DLL
+9.3 Test corrupt demo license file 
+	_- Remove FlexLM licenses
+	_- Create a invalid BridgePointDemo.txt file and place it on the system
+	_- Run BridgePoint
+	_R No NPEs occur
+	_R License errors are reported
+    _R These are the same errors that were present prior to the demo DLL
+    
+    
+End
+---
+
+$Log: dts0100590737.dnt,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/06/02 15:45:17  rmulvey
+job:dts0100590737
+Added a 6.1.3.2 about where the BridgePointDemoLicense.txt file must be located.  It shall be in the same folder as the FlexLM license.  The MGLS_LICENSE_FILE environment license file is used to determine this location as it is for the FlexLM license file.
+
+Revision 1.4  2009/06/02 14:11:42  rmulvey
+job:dts0100590737
+Simplified analysis
+
+Revision 1.3  2009/06/02 14:07:48  rmulvey
+job:dts0100590737
+Addressed all observations
+
+Revision 1.2  2009/05/28 18:04:22  rmulvey
+job:dts0100590737
+Updated the note to include details about how this demo licensing will be implemented.
+
+Revision 1.1  2009/05/27 18:49:34  rmulvey
+job:dts0100590737
+Introduced the start of a design note.
+

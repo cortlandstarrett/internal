@@ -1,0 +1,644 @@
+========================================================================
+
+File:      $RCSfile: i103.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement control, delete, return, relate, unrelate
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+several statements.
+
+History
+-------
+
+update i103-013004-01.rvm
+final  i103-013004-02.rvm
+
+Document References
+-------------------
+Issue 103
+action_semantics.dnt
+
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so the following statements are validated properly
+
+- relate
+- unrelate
+- control
+- return
+- delete
+
+This work is part of implementing the action semantics 
+design (action_semantics.dnt), section AS1.4.3.
+
+The Tiger reduced parser (oal.bnf) has the following rules
+regarding these statements:
+
+control_statement
+  :
+    "control"!
+    "stop"!
+  ;
+delete_statement
+  :
+    "delete"!
+    "object"!
+    "instance"!
+    inst_ref_var
+  ;
+relate_statement
+  :
+    "relate"!
+    inst_ref_var
+    "to"!
+    inst_ref_var
+    "across"!
+    relationship
+    (
+      TOK_DOT!
+      phrase
+    )?
+    (
+      "using"!
+      assoc_obj_inst_ref_var
+    )?
+    ;
+return_statement
+  :
+    "return"!
+  (
+    expr
+  )?
+  ;
+unrelate_statement
+  :
+    "unrelate"!
+    inst_ref_var
+    "from"!
+    inst_ref_var
+    "across"!
+    relationship
+    (
+      TOK_DOT!
+      phrase
+    )?
+    (
+      "using"!
+      assoc_obj_inst_ref_var
+    )?
+  ;
+
+Design
+------
+
+i103.1  Control statement validation
+
+i103.1.1  Add control statement to ooa of ooa
+
+The class Control (ACT_CTL) is added to the Action subsystem.
+The class is a subtype of the Statement Class.  It has
+no other attributes or relationships.  The class has a 
+clear() operation that does nothing.
+
+i103.1.2  Update control_statement_end() function
+
+The validation function is changed to create an instance
+of ACT_CTL, and the supertype instance of Statement.  The function
+returns the Statement_ID.
+
+i103.1.3  Update Statement.clear operation
+
+The Statement (ACT_SMT) clear operation is updated to 
+check for a Control subtype. 
+
+i103.2  Return statement validation
+
+i103.2.1  Update return_statement_end() function
+
+The validation function is changed to create an instance
+of ACT_RET, and the supertype instance of Statement.  
+If the expression is present, then the ACT_RET instance is 
+related to the V_VAL instance. The following errors can occur:
+
+- Return statement without a value when one is required
+- Return statement with a value of the incorrect type
+- Return statement with a value when one is not required.
+
+Integer values are allowed to be returned for reals.
+
+
+
+i103.2.2  Update clear operations
+
+The Statement (ACT_SMT) clear operation is updated to 
+check for a Return subtype.  The operation Return.clear
+is created.  It clears, unrelates and deletes the 
+related V_VAL instance, if present.
+
+i103.3  Delete statement validation
+
+i103.3.1  Update delete_statement_end() function
+
+The validation function is changed to create an instance
+of ACT_DEL, and the supertype instance of Statement.  
+The ACT_DEL instance is also related to the Variable 
+(V_VAR) instance for the instance being deleted.  
+It is an error if the type of the variable is anything 
+other than inst_ref<Object>.
+
+i103.3.2  Update clear operations
+
+The Statement (ACT_SMT) clear operation is updated to 
+check for a Delete subtype.  The operation Delete.clear
+is created.  It unrelates from the related V_VAR instance.
+
+i103.4  Relate statement validation
+
+i103.4.1  Add bridge OS::convert_relationship_string()
+
+The bridge OS::convert_relationship_string is used
+to convert a string like "R3" to the integer value 3.
+The bridge takes one argument of type string, and
+returns an integer.  If the string is not a validly
+formatted string, the function returns -1.
+This bridge is needed as the relationship string 
+returned by the parser is in the "Rxx" form, but the
+relationship is identified in the ooa of ooa by the
+number.  It is part of the OS external entity because
+we need to supply a native implementation for the function.
+If the function could be written in OAL, then we
+would just need a utility function.
+
+i103.4.2  Update relationship_validate() function
+
+The function checks if the relationship is defined correctly in 
+the meta-model.  If it is, then the value of R_REL.Rel_ID
+is returned.  The following errors are checked for:
+
+- No such relationship
+- More than one relationship with the same number
+
+i103.4.3  Update phrase_validate() function
+
+If there is a phrase present in the relate statement, this
+function is called.  The function creates an instance of
+Literal String (V_LST) and the supertype Value (V_VAL), and 
+saves the phrase in that instance.  This instance is a placeholder
+to save the phrase value until it can be verified later.
+The instance will be deleted once the statement has been 
+processed. The attribute V_VAL.Value_ID is returned.
+
+i103.4.4  Update assoc_obj_inst_ref_var_validate() function
+
+This rule is used for the relate ... using statement. The
+function returns the value returned by the invocation of 
+the inst_ref_var_validate() function.
+
+i103.4.5  Update relate_statement_end() function
+
+The validation function is changed to create an instance
+of Relate (ACT_REL) or Relate Using (ACT_RU) depending on
+what was parsed.  The following errors are checked for:
+
+- Missing the using clause for associative relationships
+           
+- The relationship phrase is missing for a reflexive relationship
+
+- An incorrect phrase is used for a relationship
+
+- A phrase is not allowed for a supertype/subtype relationship
+
+- The relationship does not exist between the two objects
+
+- Relating two objects that are both subtypes in the sub/sup relationship
+   across the sub/sup relationship
+
+- The object in the using clause is not the associative object
+
+- The object is not part of the associative relationship
+
+- A using clause is present for a non-associative relationship
+
+- The object is incorrectly specified in the associative relationship
+
+
+Validation operations that are common to relate and unrelate
+are placed in the utility functions is_valid_relationship()
+and is_valid_assoc_relationship().  Common code for
+validating reflexive relationships is placed in the utility
+function has_valid_phrase().
+
+The operation Object In Relationship
+(R_OIR).get_text_phrase() is implemented.  The operation finds
+the text phrase for the subtypes R_PART, R_FORM, R_AONE, R_AOTH,
+R_CONE, R_COTH.  The operation Relationship(R_REL).is_reflexive()
+is implemented as well.  It returns true if the relationship
+(simple or associative) is reflexive.
+ 
+
+i103.4.6  Update clear operations
+
+The Statement (ACT_SMT) clear operation is updated to 
+check for a Relate or Relate Using subtype.  The operations
+Relate.clear and Relate Using.clear are created.  They unrelate
+the instances from the related V_VAR and R_REL instances.
+
+
+i103.5  Unrelate statement validation
+
+i103.5.1  Update unrelate_statement_end() function
+
+The validation function is changed to create an instance
+of Unrelate (ACT_UNR) or Unrelate Using (ACT_URU) depending on
+what was parsed.  The same errors as the relate statement
+are checked for.
+
+i103.5.2  Update clear operations
+
+The Statement (ACT_SMT) clear operation is updated to 
+check for an Unrelate or Unrelate Using subtype.  The operations
+Unrelate and Unrelate Using.clear are created.  They unrelate
+the instances from the related V_VAR and R_REL instances.
+
+
+Work Required
+-------------
+
+i103.1  Control statement validation
+
+i103.1.1  Add control statement to ooa of ooa
+
+The class is added to ooaofooa.bak.
+
+i103.1.2  Update control_statement_end() function
+
+The validation function is changed as described in the design.
+
+i103.1.3  Update Statement.clear operation
+
+The Statement.clear operation is updated 
+as described in the design.
+
+
+i103.2  Return statement validation
+
+i103.2.1  Update return_statement_end() function
+
+The validation function is changed as described in the design.
+
+i103.2.2  Update clear operations
+
+i103.2.2.1 The Statement.clear operation is updated 
+as described in the design.
+
+i103.2.2.2 The Return.clear operation is created 
+as described in the design.
+
+i103.3  Delete statement validation
+
+i103.3.1  Update delete_statement_end() function
+
+The validation function is changed as described in the design.
+
+i103.3.2  Update clear operations
+
+i103.3.2.1 The Statement.clear operation is updated 
+as described in the design.
+
+i103.3.2.2 The Delete.clear operation is updated 
+as described in the design.
+
+i103.4  Relate statement validation
+
+i103.4.1  Add bridge OS::convert_relationship_string()
+
+i103.4.1.1 The bridge OS::convert_relationship_string is created
+as described in the design.  Both os_ee.sql and
+os_ee_w_graphics.sql are updated.
+
+i104.4.1.2. The native implementation in Os_c.java is
+updated to add the new function.
+
+i103.4.2  Update relationship_validate() function
+
+The validation function is changed as described in the design.
+
+i103.4.3  Update phrase_validate() function
+
+The validation function is changed as described in the design.
+
+i103.4.4  Update assoc_obj_inst_ref_var_validate() function
+
+The validation function is changed as described in the design.
+
+i103.4.5  Update relate_statement_end() function
+
+i103.4.5.1 The validation function is changed as described in the design.
+
+i103.4.5.2 The utility function is_valid_relationship()
+is created.
+
+i103.4.5.4 The utility function is_valid_assoc_relationship()
+is created.
+
+i103.4.5.5 The utility function has_valid_phrase() is created.
+
+i103.4.5.6 The operation Object In Relationship.get_text_phrase()
+is implemented as described in the design.
+
+i103.4.5.7 The operation Relationship(R_REL).is_reflexive()
+is implemented as described in the design.
+ 
+
+i103.4.6  Update clear operations
+
+i103.4.6.1 The Statement.clear operation is updated
+as described in the design.
+
+i103.4.6.2 The Relate.clear operation is created
+as described in the design.
+
+i103.4.6.3 The Relate Using.clear operation is created
+as described in the design.
+
+i103.5  Unrelate statement validation
+
+i103.5.1  Update unrelate_statement_end() function
+
+i103.5.1.1 The validation function is changed as described in the design.
+
+i103.5.1.2 In the ooaofooa model, the Unrelate.relationship_phrase and 
+Unrelate Using.relationship_phrase type changed from integer to string.
+
+i103.5.2  Update clear operations
+
+i103.5.2.1 The Statement.clear operation is updated
+as described in the design.
+
+i103.5.2.2 The Unrelate.clear operation is created
+as described in the design.
+
+i103.5.2.3 The Unrelate Using.clear operation is created
+as described in the design.
+
+
+Implementation Comments
+-----------------------
+
+- In MC-Java, ooa_schema.sql, add the relationship_phrase attribute
+to the ACT_RU, ACT_UNR and ACT_URU classes. In fragment.inc, add 
+initialization values for relationship_phrase.
+
+- The bridge OS::remove_ticks was added. The bridge takes a
+ticked phrase and returns the phrase with the ticks removed.
+If the first character is not a tick, then the input is returned
+unchanged.
+
+- The bridge OS::INTEGER_TO_STRING was added. The bridge takes
+an integer, and returns a string version of the integer.
+
+Unit Test
+---------
+
+The following tests are added to OalParserTest:
+
+// testControlStop
+control stop;
+
+- Return from void function
+// testReturn
+return;
+
+- Return from a function returning an integer
+// testReturnIFromI
+return 1;
+
+- Return from a function returning a real
+// testReturnRFromR
+return 1.1;
+
+// testReturnIFromR
+return 2;
+
+// testDelete
+create object instance d1 of D_D; delete object instance d1;
+
+--------- relate ----------
+-- Each of the relate tests is also performed as an unrelate
+--  i.e., the 'relate' is changed to 'unrelate' and 'to' to 'from'
+
+// testRelateBinary
+create object instance d1 of D_D; 
+    create object instance h of D_H; relate d1 to h across R4;
+
+// testRelateBinaryGoodPhraseNotReflexive
+create object instance d1 of D_D; 
+    create object instance h of D_H; relate d1 to h across R4.'is permanently assigned to';
+
+// testRelateSubtypeGood
+create object instance d1 of D_D; 
+    create object instance od of D_OD; relate d1 to od across R3;
+
+//  R12 is a reflexive relationship added from D_D to D_D with phrases 'precedes' and 'follows'
+
+// testRelateBinaryGoodReflexive
+create object instance d1 of D_D; 
+    create object instance d2 of D_D; relate d1 to d2 across R12.'precedes';
+    
+// testRelateBinaryGoodReflexive2
+create object instance d1 of D_D; 
+    create object instance d2 of D_D; relate d1 to d2 across R12.'follows';
+
+// testRelateAssocGood
+create object instance d1 of D_D; 
+    create object instance q of D_QP; create object instance dq of D_DQ; relate d1 to q across R1 using dq;
+
+// testRelateAssocGood2
+create object instance q of D_QP; 
+    create object instance d1 of D_D; create object instance dq of D_DQ; relate q to d1 across R1 using dq;
+
+// testRelateAssocGoodWithPhrase
+create object instance d1 of D_D; 
+    create object instance q of D_QP; create object instance dq of D_DQ; relate d1 to q across R1.'needed by' using dq;
+
+//  R13 is an associative reflexive relationship added from D_QP to D_QP 
+     with phrases 'precedes' and 'follows' and associative object D_QPO
+
+// testRelateAssocGoodReflexive
+create object instance qp1 of D_QP; 
+    create object instance qp2 of D_QP; create object instance qpo of D_QPO; relate qp1 to qp2 across R13.'precedes' using qpo;
+    
+// testRelateAssocGoodReflexive2
+create object instance qp1 of D_QP; 
+    create object instance qp2 of D_QP; create object instance qpo of D_QPO; relate qp1 to qp2 across R13.'follows' using qpo;
+
+// testUnrelateBinary
+create object instance d1 of D_D; 
+    create object instance h of D_H; unrelate d1 from h across R4;
+
+
+------- Invalid operations --------------
+
+- return from void function
+// testReturnSFromV
+return "test";
+
+- return from string function
+// testReturnIFromS
+return 7;
+// testReturnVFromS
+return ;
+
+// testDeleteI
+x = 5; delete object instance x;
+
+--------- relate ----------
+-- Each of the relate tests is also performed as an unrelate
+--  i.e., the 'relate' is changed to 'unrelate' and 'to' to 'from'
+
+
+// testRelateBinaryBadRelNum
+create object instance x of D_D; create object instance y of D_D; relate x to y across R99;
+
+// testRelateBinaryWrongRelNum
+create object instance x of D_D; create object instance y of D_D; relate x to y across R4;
+
+// testRelateBinaryWrongPhraseNotReflexive
+create object instance d1 of D_D; 
+    create object instance h of D_H; relate d1 to h across R4.'is permanent home for';
+
+// testRelateBinaryBadPhraseNotReflexive
+create object instance d1 of D_D; 
+    create object instance h of D_H; relate d1 to h across R4.'bad phrase';
+
+// testRelateBinaryBadPhraseReflexive
+create object instance d1 of D_D; 
+    create object instance d2 of D_D; relate d1 to d2 across R12.'neither';
+    
+// testRelateBinaryBadNoPhraseReflexive
+create object instance d1 of D_D; 
+    create object instance d2 of D_D; relate d1 to d2 across R12;
+
+// testRelateBinaryPhraseSubtype
+create object instance d1 of D_D; 
+    create object instance od of D_OD; relate d1 to od across R3.'is a';
+
+// testRelateBinaryTwoSubtypes
+create object instance od1 of D_OND; 
+    create object instance od2 of D_OD; relate od1 to od2 across R3;
+
+// testRelateAssocBadNoUsing
+create object instance d1 of D_D; 
+    create object instance qp of D_QP; relate d1 to qp across R1;
+
+// testRelateBinaryWrongRelNum
+create object instance x of D_D;
+    create object instance y of D_OD; relate x to y across R4;
+
+// testRelateAssocBadAone
+create object instance h of D_H; 
+    create object instance qp of D_QP; create object instance dq of D_DQ; relate h to qp across R1 using dq;
+
+// testRelateAssocBadAoth
+create object instance d1 of D_D; 
+    create object instance h of D_H; create object instance dq of D_DQ; relate d1 to h across R1 using dq;
+
+// testRelateAssocBadAssr
+create object instance d1 of D_D; 
+    create object instance qp of D_QP; create object instance h of D_H; relate d1 to qp across R1 using h;
+
+// testRelateAssocWrongOrderAssr
+create object instance d1 of D_D; 
+    create object instance qp of D_QP; create object instance dq of D_DQ; relate d1 to dq across R1 using qp;
+
+// testRelateAssocBadReflexiveNoPhrase
+create object instance qp1 of D_QP; 
+    create object instance qp2 of D_QP; create object instance qpo of D_QPO; relate qp1 to qp2 across R13 using qpo;
+
+// testRelateAssocBadReflexiveBadPhrase
+create object instance qp1 of D_QP; 
+    create object instance qp2 of D_QP; create object instance qpo of D_QPO; relate qp1 to qp2 across R13.'neither' using qpo;
+
+Code Changes
+------------
+
+com.projtech.bp.als/sql/os_ee.sql
+Initial version: 1.2   Final version: 1.3
+
+com.projtech.bp.als/sql/os_ee_w_graphics.sql
+Initial version: 1.2   Final version: 1.3
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version: 1.14  Final version: 1.15
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/Os_c.java
+Initial version: 1.3   Final version: 1.4
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version: 1.6   Final version: 1.7
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version: 1.9   Final version: 1.10
+
+TinyJava/fragment.inc
+Initial version: 1.4   Final version: 1.5
+
+TinyJava/ooa_schema.sql
+Initial version: 1.6   Final version: 1.7
+
+End
+---
+
+$Log: i103.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2004/01/30 18:16:30  greg
+Job: 103
+Update from final review
+
+Revision 1.5  2004/01/30 17:51:57  greg
+Job: 103
+Update from review
+
+Revision 1.4  2004/01/29 20:21:16  greg
+Job: 103
+Fix copyright year
+
+Revision 1.3  2004/01/29 20:03:43  greg
+Job: 103
+Correct title
+
+Revision 1.2  2004/01/29 19:51:39  greg
+Job: 103
+Ready for review
+
+Revision 1.1  2004/01/28 00:22:14  greg
+Job: 103
+Initial introduction
+

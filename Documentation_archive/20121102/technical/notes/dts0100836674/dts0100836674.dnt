@@ -1,0 +1,260 @@
+========================================================================
+
+File:      $RCSfile: dts0100836674.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Convert an xtUML Project to generic packages without using Export/Import.
+
+1. Abstract
+-----------
+This note describes how we will provide functionality to convert existing xtUML
+projects from specific package to generic package form. 
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100836674 - Convert a xtUML project from specific package
+    to generic package without using import/export.
+
+4. Background
+-------------
+As well as being a strategic step on our roadmap towards generic packages, a
+customer has asked for this functionality at a high priority because the
+existing Export/Import method involves the destruction of the existing model.
+Loss of the model is not itself a serious problem, since it will be re-imported
+at the next conversion step. However, when the model is deleted, so are its
+revision control system records. The conversion to generic packages was designed
+to provide resource level continuity, but loss of revision control data
+effectively neutralizes this benefit. This work will provide an alternative
+upgrade mechanism that will work with the models in place, thereby preserving
+revision control continuity.
+
+5. Requirements
+---------------
+5.1 Migrate a project from specific to generic packages without deleting any
+    file or revision control resources.
+5.2 Add a new menu entry 'Upgrade model to generic packages...'.
+5.3 Show this menu only on system level elements that contain specific package
+    data.
+5.4 Upgraded models will look and behave exactly as if they had been exported
+    and imported with the existing 'Convert to generic packages' option checked.
+5.5 Upgrade the project to use global data types at the same time.
+5.6 Provide progress feedback to the user during the upgrade process.
+
+Note that automatically enabling Inter-project references was also considered.
+Since many customers do not yet use this feature it shall remain as a separate
+step at this time.
+
+6. Analysis
+-----------
+The existing upgrade code provided during import for generic package upgrade has
+had some good exercise within the team and in the field, as has the menu based
+global data types upgrade. It is recommended that we reuse both these pieces of
+code. The only difference with this work shall be that the generic package
+upgrade will be run on models that are already in memory as opposed to newly
+imported models.
+
+Generic package upgrade must take place outside a transaction because otherwise
+the persistence mechanism is faced with an unsupported state where resources are
+deleted and recreated within the same transaction. Because of this, we will need
+to:
+
+- Traverse the upgraded model and force the upgraded data to be permanently
+  persisted.
+- Send model change notifications so that editors and views are updated.
+
+7. Design
+---------
+7.1 Reuse existing upgrade code.
+The existing upgrade code is located in bp.io.core.ImportHelper in the method
+upgradeToGenerics(). An analysis of the code already present shows that it needs
+only three minor changes to make it suitable for use in this new context:
+
+7.1.1 Remove reliance on passed loaded instances array
+The purpose of this array is to limit the upgrade to the set of elements
+actually loaded during an import. In this new context, there is no import and
+so the instance set is not needed. The code is changed to check for null passed
+in this argument. If null is found, the whole project full of models is
+upgraded. This partly meets requirement 5.3 above.
+
+7.1.2 Update a progress monitor
+Since large projects take several minutes or more to convert, the existing code
+is modified to report conversion progress to a progress monitor. This interface
+is not used in the existing import upgrade since it already supports acceptable
+progress reporting. A null progress Monitor will be passed in this case. This
+fully meets requirement 5.6 above.
+
+7.1.3 Build a new to old mapping
+In order to perform the refresh steps specified in the analysis section above,
+we need to keep a map that relates old specific packages to their new generic
+package replacements. The upgradeToGenerics() method is modified to accept and
+update such a map.
+
+7.2 Add menu entry and action handler
+7.2.1 Extend the core.io plugin
+Modify the plugin definition file to add a context menu extension with title as
+specified in 5.2 above. The definition shall call out the class:
+
+  com.mentor.nucleus.bp.io.core.ui.UpgradeToGenericsAction
+
+The extension entry shall specify a filter; "can upgrade to generics". This
+addresses the remainder of requirement 5.3.
+
+7.2.2 Implement the action handler class
+The UpgradeToGenericsAction class shall implement the IObjectActionDelegate
+interface. The run method required by this interface shall first of all present
+a cancel-able warning dialog:
+
+"This action converts all specialized packages in the model to generic packages.
+It will also move all element data type references to refer to global types.
+Redundant system level data types and empty data type packages will be removed. 
+
+For Team controlled projects, this will mark multiple elements in the project as
+modified.
+    
+This action cannot be undone."
+
+If the user elects to proceed, we obtain the set of selected System Model
+instances from the selection and iterate over each one. During each iteration,
+we ensure all model elements in the selected project are loaded in memory. We
+then invoke the upgradeToGenerics helper method. This invocation will be done
+through a progress dialog as discussed in 7.1.2. Once conversion to generic
+packages is complete, the run method shall call GlobalsUtil.upgradeToGlobals()
+before forcing model persistence by calling persistSelfAndChildren() on the
+PersistableModelComponent associated with each converted package. Finally, the
+run method notifies model change listeners of the change so that all open views
+and editors are updated. This section of the design addresses requirements 5.1
+and 5.5.
+
+7.2.3 Filter System Model instances
+The System Model action filter operation is extended to handle the "can upgrade
+to generics" query. The filter will check for the existence of specialized
+packages, returning false if it finds none.
+
+7.3 Removal of existing upgrade to generics and upgrade to globals functions
+Removing these functions was considered. They clutter the user interface context
+menu, leading to possible user confusion.
+
+There are likely many customers in the field who will have become used to
+upgrading models to generic packages through the import procedure. For this
+reason, we will leave the 'Upgrade to generic packages' check box in place.
+
+The 'Upgrade to use global model elements...' menu entry shall be removed and
+the proposed new menu entry specified here shall perform the necessary upgrade
+to globals for those models that already contain only generic packages but have
+not yet been upgraded to globals. Similarly, models that have been upgraded to
+global types but which contain some or all specific packages shall also be
+upgraded by this work.
+
+7.4 Refactor upgrade code
+To make it easier to remove this code in the future, all the generic package
+upgrade code both new and existing is moved to a static class in the bp.io.mdl
+plugin.
+
+8. Design Comments
+------------------
+8.1 Constants upgrade
+During this work, it was noted that the existing generic package upgrade code
+does not handle constants. The small amount of additional code was added to
+support this.
+
+8.2 System level data type package deletion
+The existing upgrade to globals functionality removes empty system level data
+type packages. During manual testing of the code change for 8.1, it was noted
+that this removal behavior is defective in that it considers the package to be
+empty if it finds no data type elements within. Thus it ignores constants, and
+other, nested packages. This is fixed so that the upgrade does not destroy user
+data.
+
+8.3 Change component upgrade policy for domains
+It was noted that when upgrading domains to generic packages, the existing
+policy is to leave the top level domain package with public visibility. This
+can cause many parse errors if multiple domains in the same project use the same
+key letter or association number ranges. The package visibility policy for
+domains is therefore changed to 'private'. This is more in keeping with the
+'separate subject matter' semantic of a domain.
+
+9. Work Required
+----------------
+Fully described in the design section.
+
+10. Unit Test
+------------
+10.1 Check model consistency (Demonstrates conformity with 5.4 above)
+_- Take a wide sample of existing specialized models
+_- Convert them using:
+ _- Export/Import followed by use of the Upgrade to globals menu entry and,
+ _- the new single step menu based method introduced by this work.
+_R In all cases the models after conversion are identical.
+
+10.2 Check revision control data is preserved (Demonstrates conformity with 5.1)
+Using the same sample of models as above:
+_- Checking out the model from revision control.
+_- Perform the upgrade using the new menu based method.
+_- Examine the Synchronize view
+_R Every model resource is present
+_R All resources are marked dirty
+_R No resources are marked for introduction (? decoration)
+_R No resources are marked as removed (except system level data type packages)
+
+_-  Test both optimistic and pessimistic revision control types.
+
+10.3 Test case matrix
+
+Models Upgraded to globals       Yes            No
+Models contain:
+
+Nothing                          [1]            [2]
+
+Specific packages only           [2]            [2]
+
+Generic packages only            [1]            [2]
+
+Domains                          [2]            [2]
+
+Specific and Generics            [2]            [2]
+
+Domains and Generics             [2]            [2]
+
+Specific and Domains             [2]            [2]
+
+All 3 root model types           [2]            [2]
+
+Expected Outcomes:
+[1] 'Convert to generic packages' menu item not present
+[2] 'Convert to generic packages' present, specialized model packages are
+    upgraded and no specialized packages remain (the normally read only core
+    system 'Datatypes' package is also expected to be deleted). No generic
+    packages are touched where they already exist.
+
+End
+---
+
+$Log: dts0100836674.dnt,v $
+Revision 1.4  2012/03/27 10:36:48  campbell
+Job:dts0100836674
+Address final review obs.
+
+Revision 1.3  2012/03/26 16:09:38  campbell
+Job:dts0100836674
+Address review minutes.
+
+Revision 1.2  2012/03/26 13:27:06  campbell
+Job:dts0100836674
+Document change to domain visibility setting.
+
+Revision 1.1  2012/03/26 12:48:47  campbell
+Job:dts0100836674
+Introduced.
+

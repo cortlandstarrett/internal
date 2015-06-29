@@ -1,0 +1,128 @@
+========================================================================
+
+File:      $RCSfile: i845-i75.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Unable to Expand a Model in Model Explorer After Restoring
+
+Abstract
+--------
+It is possible to get into a situation where the Model Explorer becomes unable
+to properly redraw a model.  This issue talks about the reason the model fails
+to be redrawn and how the issue was resolved.
+
+History 
+-------
+
+Document References
+-------------------
+[1] Bugzilla_mfp issue 75
+[2] Bugzilla issue 845
+
+Background
+----------
+The root problem that causes this issue involves a problem associated with
+proxy reference counting.  The domain proxy is being deleted prematurely because
+it's reference count drops to 0 before it should.  Details of exactly how this 
+happens can be found in [1].
+
+Design
+------
+1.   Investigate and determine the reason Domain proxies are being deleted
+     prematurely.
+2.   Investigate solutions that prevent the Domain proxy from being deleted
+     prematurely.
+2.1  Discuss options and pick a solution.
+2.2  Implement the solution.
+
+Implementation Comments
+-----------------------
+1.	The problem can be looked at in several different ways.
+1.1 The Domain proxies, which are involved in a containment relationship are not
+    being loaded when the Domain is loaded.
+1.2 The Domain proxies are not being properly reference counted.
+1.3	Reference counting of proxies in a containment relationship is too complex.
+    Proxies involved in a containment relationship are not reference counted
+    when they are loaded.  They have the concept of an implicit count, so their
+    count does not get incremented when they are loaded.
+2.  Each option was considered.
+2.1	Option 1.1 was selected mainly because it was very simple and required no 
+    major changes to the current proxy implementation.  The 
+    ensureAllInstancesAvailable() in PersistableModelComponent.java was modifed
+    to watch for the case where the domain proxies are not loaded, and if they
+    are loaded, load them before the call to ensureAllInstancesLoaded().
+2.2 Options 1.2 and 1.3 were not selected.  The issue of problems with reference 
+    counting are beyond the scope of this issue.  There are complexities 
+    associated with reference counting.  Where there is complexity there are 
+    problems.  This issue is being handled separately.
+
+Unit Test
+---------
+1. Steps to reproduce the problem (to be used in the following steps).
+	x_Create a project using the model io.mdl.test/models/MultiLevelModel.xtuml
+	x_Open Activity editor for MultiLevelModel->SS1->X->ISM->One state machine 
+	  state.
+	x_Make sure option 'always' is selected in Preferences->
+	  Nucleus BridgePoint->Parse all activities on resource change.
+	x_Restart Tool.
+	x_Make some changes in restored Activity editor.
+	x_Save changes in Activity editor. 
+	x_Make another change in the Activity editor.
+	x_Attempt to expand the project in Model Explorer (select the "+").
+
+2.	Verify that you can reproduce the problem.
+	x_In ui.explorer/src/com/mentor/nucleus/bp/ui/explorer/ExplorerView.java 
+	  comment-out the following line in the function named hookListeners():  
+	  "setTreeSelection(treeViewer, sel);"
+	x_Build the project without the fix noted in the code changes section.
+	x_Follow the steps in #1 above to attempt to duplicate the problem.
+	R_The model will NOT expand.
+
+3.	Verify that the problem is fixed
+	x_In ui.explorer/src/com/mentor/nucleus/bp/ui/explorer/ExplorerView.java 
+	  comment-out the following line in the function named hookListeners():  
+	  "setTreeSelection(treeViewer, sel);"
+	x_Build the project with the fix noted in the code changes section.
+	x_Follow the steps in #1 above to attempt to duplicate the problem.
+	R_The model will expand.
+
+Code Changes
+------------
+The changes associated with this issue are in branch: 
+R1_1_0_M2-i845-HEAD-i75
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/PersistableModelComponent.java
+
+End
+---
+
+$Log: i845-i75.int,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.28.1  2008/12/31 16:10:13  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/02/09 02:15:09  rmulvey
+Job:1615
+Addressed the review minute observations.
+
+Revision 1.1  2006/02/01 05:02:25  rmulvey
+Job:845
+Introduced an implementation note for mfp 75 (this change is under 10 lines so no additional notes are required).

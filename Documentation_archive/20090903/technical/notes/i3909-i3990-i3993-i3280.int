@@ -1,0 +1,261 @@
+========================================================================
+
+File:      $RCSfile: i3909-i3990-i3993-i3280.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Renaming DataType package invalidates DataType references
+Impossible to open an unnamed and persisted package
+JUnit test cleanup
+
+1. Abstract
+-----------
+This note describes bug fixes for renaming data type packages [1], persisting 
+empty "container" packages [2], and issues found during unit test cleanup 
+following a release [3]. 
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3909 
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3909
+    Renaming DataType package invalidates DataType references
+[2] Bugzilla item 3990
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3990
+    Impossible to open an unnamed and persisted package
+[3] Bugzilla item 3993
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3993
+	JUnit test cleanup
+[4] Bugzilla item 3280
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3280
+    Verifier JUnit test suite updates
+	
+4. Background
+-------------
+none
+
+5. Design
+---------
+5.1 Renaming DataType package invalidates DataType references [1]
+5.1.1  In ModelExportPage.java:selectReferredToElements() a section was added to 
+    check for dependencies  when the selected element is a container package 
+    (Package_c).  Dependent elements are now automatically selected when a 
+    Package_c that refers to them is selected.  We were previously not doing 
+    this which means we would allow invalid models to be exported in the case 
+    where a Package_c was selected, but referred-to element inside the 
+    selected Package_c were not selected.
+5.1.2 In checkNestedDataTypePackagesForReferences(DataTypePackage_c, 
+	NonRootModelElement) account for the fact that the given DataTypePackage 
+	may be in a Package_c.  This fixes a ClassCastException in the export 
+	wizard.  This exception was hit when EP_PKGs that contained S_DPKs were 
+	selected/deselected in the export wizard.
+	
+5.2 Impossible to open an unnamed and persisted package [2]
+	In callFireMethod(Runnable) the 2 places where the Runnable was executed 
+	on the display thread were changed from asynchronous execution to 
+	synchronous execution.  This fixes a persistence race condition.  The 
+	problem was that this routine is called to invoke the resource change 
+	listeners after a model change, and  if the listeners do not get a chance 
+	to run before  persistence occurs then then an incomplete model may be 
+	persisted.
+
+	An example of this occurs when a new model element is  added to a System 
+	package diagram.  When the element is created, it is added to the default 
+	model root (PersistableModelComponent.setComponent()) and then the canvas 
+	model listener is invoked to update the graphical  elements model root 
+	(CanvasModelListener.modelRootChanged()).  Before this fix, what was 
+	happening is that the CanvasModelListener was invoked asyncronously, 
+	therefore it was simply dumb luck if the modelroot change ran before 
+	persistence.  If the model root change did not happen before persistence 
+	then the graphics were not persisted.
+
+5.3 Verifier JUnit test suite updates [3]
+    - Update expected results to account for changes to element ordering and 
+      new attributes that have been added over the last few BridgePoint 
+      versions.
+    - Split the io.mdl.test/IOMdlTestSuite into 2 parts to workaround 
+      test errors caused by conflicting static initializations that happen when
+      the test suite is instantiated.    
+    
+5.4 Verifier JUnit test suite updates [4]
+    Have VerifierTest extend BaseTest so we pickup the logging that we get from 
+    BPTest/TestResultLogger.java
+    
+	Require the bp.test plugin because it extends the 
+	"org.eclipse.jdt.junit.testRunListeners"extension point with the 
+	bp/test/TestResultLogger.java class to provide us with a result log.
+
+6. Implementation Comments
+--------------------------
+6.1 Removed the xtuml nature from the mc3020.test project.  This xtuml nature 
+    is not needed in this project, and the project does not have the supporting 
+    folders/files that a project with an xtuml nature should have which causes 
+    error log entries when threads run that make assumptions about the fact 
+    that a project with an xtuml nature should have these files/folders.
+
+
+7. Unit Test
+------------
+7.1 Verify that issue 3909 [1] is resolved.
+    _- Create a new project (i3909)
+    _- Open the System Model Package Diagram
+    _- Add a new Container Package (Testcontainer_package1)
+    _- Open Testcontainer_package1
+    _- Create a new Data Type Package (Testdata_type_package) in
+		Testcontainer_package1
+    _- Add a new UDT in Testdata_type_package (TestIntDataType) and make it an 
+       integer
+    _- Open the System Model Package Diagram
+    _- Add a new Container Package (Testcontainer_package2)
+    _- Open Testcontainer_package2
+    _- Create a new Interface Pacakge (Testdata_interface_package)
+    _- Create a new Interface in Testdata_interface_package (Testinterface)
+    _- Add a new signal to Testinterface (Testsignal)
+    _- Add a parameter (TestIntParam) to TestSignal of type TestIntDataType
+    _- Restart the tool
+    _- Rename Testdata_type_package to Testdata_type_packageRenamed
+    _R No problems are displayed in the problem view
+    _- Open Testdata_interface_package in Me and select the TestIntParam 
+       parameter of the Testsignal signal
+    _R Is of type TestIntDataType as expected
+    
+7.1.1 
+    _- Using the model created in the previous step, export/import the model 
+       and select/deselect the dependant container package while doing so.
+    _R No NPE is encountered
+   
+      
+
+7.2 Verify that new "container" pacakges are properly persisted.
+    _- Create the following elements in a system package diagram
+			Package_c
+			DataTypePackage_c
+			ComponentPacakge
+			InterfacePackage
+			SequenceDiagram
+			CommunicationDiagram
+			UseCase diagram
+			ActivityDiagram	   
+	_- restart 
+	_- Open the editors of the created elements
+	_R The editors open successfully
+		
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+com.mentor.nucleus.bp.core/tools/create_nightly_build.sh
+com.mentor.nucleus.bp.core/tools/tag_bp_nb.sh
+com.mentor.nucleus.bp.core/generate.xml
+
+com.mentor.nucleus.bp.core.test/expected_results/Activity_3/Activity_3-111
+com.mentor.nucleus.bp.core.test/expected_results/Activity_3/Activity_3-111.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_1/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_1/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_10/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_10/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_11/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_11/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_13/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_13/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_14/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_14/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_2/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_2/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_2/1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_2/1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_8/
+    CommunicationTest_8-111
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_8/
+    CommunicationTest_8-111.jpg
+com.mentor.nucleus.bp.core.test/expected_results/SequenceTest_46/
+    SequenceTest_46-111
+com.mentor.nucleus.bp.core.test/expected_results/SequenceTest_46/
+    SequenceTest_46-111.jpg
+com.mentor.nucleus.bp.core.test/expected_results/UseCaseTest_6/UseCaseTest_6-111
+com.mentor.nucleus.bp.core.test/expected_results/UseCaseTest_6/
+    UseCaseTest_6-111.jpg
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite2.java
+
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/test/
+    VerifierTest.java
+com.mentor.nucleus.bp.debug.ui.test/plugin.xml
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/
+    specification_package_upgrade_results.txt
+com.mentor.nucleus.bp.io.mdl.test/src/IOMdlTestSuite.java
+com.mentor.nucleus.bp.io.mdl.test/src/IOMdlTestSuite2.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/
+    SpecificationPackageUpgradeTests.java
+com.mentor.nucleus.bp.io.mdl.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.mc.mc3020.test/.project
+
+Models/models/Models/ComponentSyntaxTest/Component Test Interface/
+    ComponentTestInterface/ComponentTestInterface.xtuml
+Models/models/Models/ComponentSyntaxTest/Good Syntax/Good Syntax/
+    Test Component Syntax/Test Component Syntax.xtuml
+
+
+
+End
+---
+
+$Log: i3909-i3990-i3993-i3280.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.2.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2008/11/26 15:57:22  rmulvey
+Job:4034
+Removed the fix for bug 4034 from this branch.  It requires a change to
+io.core/export_functions.inc that is not a small enough change to squeeze into another branches
+promotion.  The modification that needs to be made is to modify the change made during revision
+1.18.2.1 of io.core/export_functions.inc to add a check to make sure we are not performing a
+single-file export when the generated RGO export methods are called during RTO export and
+during the S_DT special-case exporting.
+
+Revision 1.1  2008/11/26 15:31:51  rmulvey
+Job:4034
+Added the fix for bug 4034 to this branch.
+
+Revision 1.1  2008/11/26 15:15:15  rmulvey
+Job:3909 3990 3993 3280
+Introduced
+
+Revision 1.1  2008/11/17 20:05:09  rmulvey
+Job:3909 3990 3993
+Introduced

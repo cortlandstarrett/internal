@@ -1,0 +1,1159 @@
+========================================================================
+
+File:      $RCSfile: i384.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add Context Menu functionality required for self hosting
+
+Abstract
+--------
+This note describes the changes to implement the functionality to allow
+self-hosted development of Tiger.
+
+History
+-------
+
+final i384-110804-01.rvm
+final i384-111704-01.rvm
+
+Document References
+-------------------
+Issue 384
+i384.ant
+Issue 541
+
+Background
+----------
+
+There are operations users of Tiger need to perform that cannot be achieved
+using the properties editor.  This note describes the design of those 
+operations.
+
+Design
+------
+i384.1    Create Context Menu Pre-existing Instances
+
+i384.1.1  Add wizard description text
+
+The wizard page has a place for describing what the user should do.  The
+attribute Context Menu Entry.WizardDescription (string) is added to the
+context_menu model.
+
+i384.1.2  Add menu entries
+ 
+The following instances are added to context_menu.pei.sql:
+
+ Operation               Wizard Description
+
+Attribute
+---------
+Add to Identifier       Select identifier to add this attribute to
+Remove from Identifier  Select identifier to remove this attribute from
+Set as Derived Attribute
+Set as Base Attribute
+Move Up
+Move Down
+
+Imported Class
+--------------
+Assign Class             Select class this imported class represents
+
+Association
+-----------
+Formalize Binary         Select non-formalizing class and identifier to use
+Formalize Linked         Select identifier to use from each class
+Formalize Inh            Select identifier to use in supertype
+Unformalize
+
+Transition
+----------
+Assign Event             Select event to assign to transition
+Remove Event
+
+Event
+-----
+Ignore in State          Select state where this event is ignored
+Cant Happen in State     Select state where this event can't happen
+Add Data Item            Select data item to add to event
+Remove Data Item         Select data item to remove from event
+
+State
+-----
+Ignore Event             Select event to ignore in this state
+Cant Happen Event        Select event that can't happen in this state
+
+The following operations are not implemented by this design:
+
+Event - Set as Polymorphic
+Event - Set as Normal
+Attribute - Combine With
+Attribute - Split
+
+i384.2    Provide bodies for the CME functions
+
+i394.2.1  Add context menu functions
+
+The following functions are created:
+
+O_ATTR_AddToIdentifier
+
+select any attr from instances of O_ATTR 
+    where USER::selectOne(id:selected.Attr_ID);
+// UI: exclude O_ID instances we are already related to
+select any oid related by attr->O_OBJ[R102]->O_ID[R104]
+    where USER::selectOne(id:selected.Oid_ID) and not attr.isPartOfId(id: selected.Oid_ID);
+if ( not_empty oid )
+  attr.addToIdentifier(oid: oid.Oid_ID );
+end if;
+
+O_ATTR_RemoveFromIdentifier
+
+select any attr from instances of O_ATTR 
+    where USER::selectOne(id:selected.Attr_ID);
+select any oid related by attr->O_ID[R105]
+    where USER::selectOne(id:selected.Oid_ID);
+if ( not_empty oid )
+  result = attr.removeFromIdentifier( oid: oid.Oid_ID );
+  if ( result != "" )
+    USER::warning( msg: result );
+    return false;
+  end if;
+end if;
+
+O_IOBJ_AssignClass
+
+select any iobj from instances of O_IOBJ
+    where USER::selectOne(id:selected.IObj_ID);
+// exclude classes in the same subsystem as iobj
+select any obj related by iobj->S_SS[R3]->S_DOM[R1]->S_SS[R1]->O_OBJ[R2]
+    where USER::selectOne(id:selected.Obj_ID) and selected.SS_ID != iobj.SS_ID;
+if ( not_empty obj )
+  relate iobj to obj across R101;
+end if;
+
+O_ATTR_SetAsDerivedAttribute
+
+// UI: only applies to O_NBATTR instances
+select any attr from instances of O_ATTR 
+    where USER::selectOne(id:selected.Attr_ID);
+attr.migrateBaseToDerived();
+
+O_ATTR_SetAsBaseAttribute
+
+// UI: only applies to O_DBATTR instances
+select any attr from instances of O_ATTR 
+    where USER::selectOne(id:selected.Attr_ID);
+attr.migrateDerivedToBase();
+
+R_REL_Unformalize
+
+select any rel from instances of R_REL
+   where USER::selectOne(id:selected.Rel_ID);
+rel.unformalize();
+
+SM_TXN_AssignEvent
+
+select any txn from instances of SM_TXN
+   where USER::selectOne(id:selected.Trans_ID);
+select one dest_state related by txn->SM_STATE[R506];
+select one orig_state related by txn->SM_NETXN[R507]->SM_STATE[R508];
+is_creation_transition = false;
+if ( empty orig_state )
+  select one orig_state related by txn->SM_NSTXN[R507]->SM_SEME[R504]->SM_STATE[R503];
+  if ( empty orig_state )
+    is_creation_transition = true;
+    orig_state = dest_state;
+  end if;
+end if;
+select any event related by txn->SM_SM[R505]->SM_EVT[R502]
+      where USER::selectOne(id:selected.SMevt_ID)
+         and orig_state.notAlreadyAssigned(event: selected.SMevt_ID, crtxn: is_creation_transition)
+         and ((selected.SMspd_ID == dest_state.SMspd_ID) or 
+              (dest_state.SMspd_ID == GD::NULL_UNIQUE_ID()));
+txn.addEvent(id: event.SMevt_ID);
+
+SM_TXN_RemoveEvent
+
+select any txn from instances of SM_TXN
+   where USER::selectOne(id:selected.Trans_ID);
+txn.removeEvent();
+
+SM_EVT_AddDataItem
+
+select any evt from instances of SM_EVT 
+    where USER::selectOne(id:selected.SMevt_ID);
+select any item related by evt->SM_SM[R502]->SM_EVTDI[R516]
+    where USER::selectOne(id:selected.SMedi_ID) and not evt.hasDataItem(id: selected.SMedi_ID);
+if ( not_empty item )
+  result = evt.changeDataItemSet(id: item.SMedi_ID, addition: true);
+  if ( result != "" )
+    USER::warning( msg: result );
+    return false;
+  end if;
+end if;
+
+SM_EVT_RemoveDataItem
+
+select any evt from instances of SM_EVT 
+    where USER::selectOne(id:selected.SMevt_ID);
+select any item related by evt->SM_SUPDT[R520]->SM_SDI[R522]->SM_EVTDI[R522]
+    where USER::selectOne(id:selected.SMedi_ID);
+if ( not_empty item )
+  result = evt.changeDataItemSet(id: item.SMedi_ID, addition: false);
+  if ( result != "" )
+    USER::warning( msg: result );
+    return false;
+  end if;
+end if;
+
+R_REL_FormalizeBinary
+
+select any rel from instances of R_REL
+   where USER::selectOne(id:selected.Rel_ID);
+select any simp related by rel->R_SIMP[R206];
+select any non_formalizer related by simp->R_PART[R207]->R_RTO[R204]
+   ->R_OIR[R203]->O_OBJ[R201]
+    where USER::selectOne(id:selected.Obj_ID);
+if ( not_empty non_formalizer )
+  select any Identifier related by non_formalizer->O_ID[R104]
+    where USER::selectOne(id:selected.Obj_ID) and 
+       O_ID::hasAttributes(obj_id: selected.Obj_ID, oid_id: selected.Oid_ID );
+  if ( not_empty Identifier )
+    simp.formalize( part_obj_id: non_formalizer.Obj_ID, id_id: Identifier.Oid_ID );
+  end if;
+end if;
+
+R_REL_FormalizeLinked
+
+select any rel from instances of R_REL
+   where USER::selectOne(id:selected.Rel_ID);
+select one a_rel related by rel->R_ASSOC[R206];
+select one one_obj related by a_rel->R_AONE[R209]->R_RTO[R204]
+   ->R_OIR[R203]->O_OBJ[R201];
+select one oth_obj related by a_rel->R_AOTH[R210]->R_RTO[R204]
+   ->R_OIR[R203]->O_OBJ[R201];
+select any one_id related by one_obj->O_ID[R104]
+    where USER::selectOne(id:selected.Obj_ID) and 
+       O_ID::hasAttributes(obj_id: selected.Obj_ID, oid_id: selected.Oid_ID );
+select any oth_id related by oth_obj->O_ID[R104]
+    where USER::selectOne(id:selected.Obj_ID) and
+       O_ID::hasAttributes(obj_id: selected.Obj_ID, oid_id: selected.Oid_ID );
+
+if ( not_empty one_id and not_empty oth_id )
+  a_rel.formalize( one_id: one_id.Oid_ID, oth_id: oth_id.Oid_ID );
+end if;
+
+R_REL_FormalizeInh
+
+select any rel from instances of R_REL
+   where USER::selectOne(id:selected.Rel_ID);
+select one ss_rel related by rel->R_SUBSUP[R206];
+select one super_obj related by ss_rel->R_SUPER[R212]->R_RTO[R204]
+   ->R_OIR[R203]->O_OBJ[R201];
+select any id related by super_obj->O_ID[R104]
+    where USER::selectOne(id:selected.Obj_ID) and
+       O_ID::hasAttributes(obj_id: selected.Obj_ID, oid_id: selected.Oid_ID );
+if ( not_empty id )
+  ss_rel.formalize( id: id.Oid_ID );
+end if;
+
+SM_EVT_IgnoreInState
+
+select any evt from instances of SM_EVT 
+         where USER::selectOne(id:selected.SMevt_ID);
+select any state related by evt->SM_SEVT[R525]->SM_SEME[R503]->SM_CH[R504]->SM_SEME[R504]->SM_STATE[R503]
+    where USER::selectOne(id:selected.SMstt_ID);
+if (not_empty state)
+  select any seme related by state->SM_SEME[R503] 
+      where (selected.SMevt_ID == evt.SMevt_ID);
+  seme.migrateChToEi();
+end if;
+
+SM_EVT_CantHappenInState
+
+select any evt from instances of SM_EVT 
+         where USER::selectOne(id:selected.SMevt_ID);
+select any state related by evt->SM_SEVT[R525]->SM_SEME[R503]->SM_EIGN[R504]->SM_SEME[R504]->SM_STATE[R503]
+    where USER::selectOne(id:selected.SMstt_ID);
+if (not_empty state)
+  select any seme related by state->SM_SEME[R503] 
+      where (selected.SMevt_ID == evt.SMevt_ID);
+  seme.migrateEiToCh();
+end if;
+
+SM_STATE_IgnoreEvent
+
+select any state from instances of SM_STATE
+         where USER::selectOne(id:selected.SMstt_ID);
+select any event related by state->SM_SEME[R503]->SM_CH[R504]->SM_SEME[R504]->SM_SEVT[R503]->SM_EVT[R525]
+    where USER::selectOne(id:selected.SMevt_ID);
+if (not_empty event)
+  select any seme related by event->SM_SEVT[R525]->SM_SEME[R503] 
+      where (selected.SMstt_ID == state.SMstt_ID);
+  seme.migrateChToEi();
+end if;
+
+SM_STATE_CantHappenEvent
+
+select any state from instances of SM_STATE
+         where USER::selectOne(id:selected.SMstt_ID);
+select any event related by state->SM_SEME[R503]->SM_EIGN[R504]->SM_SEME[R504]->SM_SEVT[R503]->SM_EVT[R525]
+    where USER::selectOne(id:selected.SMevt_ID);
+if (not_empty event)
+  select any seme related by event->SM_SEVT[R525]->SM_SEME[R503] 
+      where (selected.SMstt_ID == state.SMstt_ID);
+  seme.migrateEiToCh();
+end if;
+
+O_ATTR_MoveUp
+
+select any attr from instances of O_ATTR 
+    where USER::selectOne(id:selected.Attr_ID);
+attr.moveUp();
+
+O_ATTR_MoveDown
+
+select any attr from instances of O_ATTR 
+    where USER::selectOne(id:selected.Attr_ID);
+attr.moveDown();
+	
+i394.2.2  Add operations to ooaofooa
+
+The following operations are added to ooaofooa.bak:
+
+O_ATTR.addToIdentifier(oid: integer )
+O_ATTR.removeFromIdentifier( oid: integer ) : string
+  - return value has error message, or is empty on success
+O_ATTR.moveUp()
+O_ATTR.moveDown()
+O_ATTR.migrateDerivedToBase()
+O_ATTR.migrateBaseToDerived()
+O_ATTR.migrateBaseToReferential()
+O_ATTR.isPartOfId(id: unique_id ): boolean
+
+O_ID.hasAttributes( obj_id: unique_id, oid_id: integer): boolean (class-based)
+
+R_PART.migrateToFormalizer()
+
+R_FORM.migrateToParticipant()
+
+R_SIMP.isFormalized(): boolean
+R_SIMP.formalize(part_obj_id: unique_id, part_id: integer)
+R_SIMP.unformalize()
+
+R_ASSOC.isFormalized(): boolean
+R_ASSOC.formalize(one_id: integer, oth_id: integer)
+R_ASSOC.unformalize()
+
+R_SUBSUP.formalize(id: integer)
+R_SUBSUP.unformalize()
+
+R_REL.isFormalized(): boolean
+R_REL.unformalize()
+
+R_RTO.unformalize()
+
+SM_SEME.migrateChToEi()
+SM_SEME.migrateEiToCh()
+
+SM_EVT.changeDataItemSet(id: unique_id, addition: boolean) : string
+  - return value has error message, or is empty on success
+SM_EVT.hasDataItem(id: unique_id): boolean
+
+SM_STATE.updateSuppData()
+SM_STATE.notAlreadyAssigned( event: unique_id, crtxn: boolean): boolean
+
+SM_TXN.addEvent(id: unique_id)
+SM_TXN.removeEvent()
+
+SM_SUPDT.findWithChangedData(addToSet: boolean, data: unique_id): unique_id
+If an instance of SM_SUPDT exists with the same data as this one, but with
+'data' either added or removed (depending on 'addToSet'), then return the 
+id of that matching instance.  Otherwise, return null.
+
+O_OBJ.findUnusedIdentifier(): integer
+O_OBJ.newReferentialAttribute( ref_obj_id: unique_id, ref_oid_id: integer,
+   ref_attr_id: unique_id, id: integer )
+
+i384.3    Rework the tree data to show attribute subtypes
+
+This work is not needed, as the action filtering code (i384.6) supplies
+the same functionality.
+
+i384.4    Modify the workflow archetypes to support Wizards again
+
+The archetypes for generating the wizards are recreated from the work done in 
+prototype 2.
+
+i384.4.1  Modify context_menu model
+
+The context_menu model is changed by adding the classes used to define workflow
+wizards:
+
+Step
+  This class is a single piece of work that is done in a workflow.
+  
+Field
+  This is data that a Step needs to complete.
+  
+Custom Field Label
+  This is the specification of a custom label for a Field.
+  
+i384.4.2 Add '...' to menu entries with wizards
+
+The plugin generation archetype is modified to add a '...' after the menu item 
+if there is a wizard defined for the menu item.
+
+i384.4.3 Add extra imports and context for actions with wizards
+
+The object contribution action generation archetype is modified to check if
+the action has a wizard.  If it is, then additional import statements are
+generated.  We also cache the workbench part for the context to run the
+wizard in.
+
+i384.4.4  Add processing for USER::warning
+
+The bridge USER::warning(msg: string): void is added to the ooaofooa model.  
+The archetypes are modified to change invocations of this bridge into an
+invocation of MessageDialog.openError(), passing in the msg parameter.
+
+i384.4.5  Add custom field labels
+
+The fields on a wizard page are normally the name of the variable used to
+store the result of the user's selection from the field.  For some cases, 
+this is not helpful.  When a custom field label is needed, an instance
+of Custom Field Label is created in context_menu.pei.sql.  The value of 
+the label can be any Java code that returns a String.   The only wizard that
+currently needs custom labels is the formalize link association wizard.
+
+i384.5    Create Object Identifier instances 
+
+i384.5.1  Create instances on class creation
+
+When an instance of Model Class (O_OBJ) is created, we also need to create
+instances of Object Identifier (O_ID) that represent the identifiers for
+the Model Class.  The operation Model Class.addIdentifiers() is created.
+It ensures that there are three identifier instances of O_ID for the class.
+The operation should take into account that an identifier instance may already
+exist (see i384.5.2). The operation is invoked from Model Class.initialize().  
+
+Creating the identifiers just-in-time was considered, but creating the
+identifiers at initialization time was seen as simpler and adequate for
+the time being.
+
+i384.5.2  Create instances on import of BP SQL
+
+In files exported from BridgePoint, instances of the Object Identifier (O_ID)
+class are only exported if there are attributes referencing the identifier.
+Code is added to iterate through all instances of Model Class (O_OBJ), and
+invoke the addIdentifiers operation on them.
+
+i384.6  Add action filtering
+
+Some menu entries should only be present at certain times.  For example, 
+the 'Remove Attribute from Identifier ...' menu entry should only be present
+if the attribute is part of an identifier.  Eclipse provides a mechanism
+to support this called 'action filters'.  
+
+i384.6.1  Add filters to metamodel
+
+Each class in the metamodel that needs an action filter has an operation 
+actionFilter(name: string, value: string): boolean added to it.  The operation
+activity returns true if the name-value pair describes a property for the 
+instance in question.  For example operation Attribute.actionFilter would
+return true for the pair "identifying" "some" if the attribute was part of
+at least one identifier.
+
+i384.6.2  Add architecture support for action filters
+
+When generating the getAdapter() method for classes in the metamodel, the
+architecture is changed to add a check if the requested adapter type is
+IActionFilter, if there is a actionFilter operation present for the class.
+The check will return the filter adapter class if it is requested.
+The filter adapter class is generated only if there is an actionFilter
+operation present.  The class name is <class>ActionFilter, and it is generated
+into the core source directory.
+
+i384.6.3  Add filter information to context menu model
+
+The context menu model is changed to add the class Menu Entry Filter, related
+to Context Menu Entry by relationship R2013(1-*).
+
+Menu Entry Filter (MEF) - This class specifies a condition when the menu
+entry is valid.  Menu entries without any filters are always available.
+
+Aside from the referential attributes, the class has two attributes, name and
+value, both of type string, that specify the name and value parameter to
+the actionFilter operation.
+
+i384.6.4  Add filter support to plugin generation
+
+The archetype that generates plugin.xml is changed to check menu entries 
+for related instances of the MEF class.  For each related instance, the 
+following is added to the object contribution:
+
+         <filter name="${filter.name}" value="${filter.value}" />
+
+i384.6.5  Add MEF instances 
+
+The MEF instances are added to the pre-existing instance file for the
+context menus.
+
+i384.7  Fix issue 541
+
+Issue 541 was discovered while working on this issue.  The fix for the issue
+is to make the combo box editor in the properties view readonly.  This is
+done by passing the style bit SWT.READ_ONLY to the combo box constructor.
+
+i384.8  Add not participating value color 
+
+MC-Java is modified to check a referential attribute for the parse keyword
+'Not_participating_value'.  If the keyword is present, its value is used to
+initialize the referential attribute on initialization and unformalizing.
+The O_ID.Oid_ID attribute is colored with a not participating value of -1.
+
+i384.9  Other changes to ooaofooa
+
+SM_EVT.initialize - Add code to create the SM_SEME instances
+
+SM_STATE.initialize - Add code to create the SM_SEME instances, remove code
+to create SM_SUPDT instance
+
+O_OBJ.newAttribute() - Change operation to return id of newly created attribute
+
+i384.10   Change MC-Java relationship implementation
+
+The implementation of Attribute.MoveUp and Attribute.MoveDown exposed a problem
+in MC-Java.  The code unrelates the instances from their neighbors in the 
+chain before changing the order.  The unrelates clear the Obj_ID referential
+attribute.  When the instances are re-related in a different order, the Obj_ID
+attribute value is still cleared, so it's never set back to the correct value.
+The only time the referential attribute values are needed is during import,
+so the architecture is changed to only use them then.
+
+i384.10.1   Change attribute read implementation for referential attributes
+
+The generated methods for reading the value of a referential attribute are
+changed to invoke the read accessor of the related to instance.  If the 
+related instance is null, then the method returns the not-participating value
+for the attribute.  
+
+The batchRelate functions still need to access the value
+stored in the private data member.  Each referential attribute has an
+accessor named get<Attr.Name>BatchRelateValue() generated for it.
+
+The attribute write function is no longer generated for referential attributes.
+
+The propagate attribute value functions are no longer needed, so they are 
+removed.
+
+i384.10.2  Change relate/unrelate model change notification
+
+The relate and unrelate functions no longer perform referential attribute 
+writes, they just update a pointer.  This means we need to add code to the
+relate and unrelate methods to generate a model changed message.  This change
+resolves issue 254.
+
+i384.10.3  Update hand-written code with changes
+
+The hand-written code in the system needs to change to accomodate the changes
+from section 10.1.  The changes are:
+
+- Use the get<Attr.Name>BatchRelateValue() in the import code as needed
+- Change all set referential attribute calls to relate invocations.
+
+i384.10.4  Unit test changes
+
+The canvas/plugin.xml file only defines the diagrams that Tiger supports.
+When importing models from BridgePoint, there are other diagrams that are
+not supported by Tiger that are imported, but not retained.  Previously, 
+these diagrams would be carried along into the .mdl files.  This no longer
+occurs, so the test data must be updated to remove this extra diagram data.
+
+Secondly, since the io.mdl and io.sql unit tests ran standalone, the 
+ModelSpecification and ElementSpecification instances from canvas/plugin.xml 
+were never loaded.   These tests are changed to run in an Eclipse workspace,
+so that the pre-existing instances are loaded from the plugin file.
+
+Work Required
+-------------
+
+i384.1    Create Context Menu Pre-existing Instances
+
+i384.1.1  Add wizard description text
+
+The attribute Context Menu Entry.WizardDescription (string) is added to
+context_menu.bak.
+
+i384.1.2  Add menu entries
+ 
+The instances are added to context_menu.pei.sql as described in the design.
+
+i384.2    Provide bodies for the CME functions
+
+i394.2.1  Add context menu functions
+
+The functions are added to cme_functions.sql as described in the design.
+
+i394.2.2  Add support operations to ooaofooa
+
+The operations are added to ooaofooa.bak as described in the design.
+
+
+i384.3    Rework the tree data to show attribute subtypes
+
+Nothing to do
+
+i384.4    Modify the workflow archetypes to support Wizards again
+
+i384.4.1  Modify context_menu model
+
+The context_menu.bak model is changed as described in the design.
+
+i384.4.2 Add '...' to menu entries with wizards
+
+The plugin generation archetype create_core_plugin.inc is modified 
+as described in the design.
+
+i384.4.3 Add extra imports and context for actions with wizards
+
+The object contribution action generation archetype create_object_action.inc 
+is modified as described in the design.
+
+i384.4.4  Add processing for USER::warning
+
+The archetypes wizard.inc and ui_processing.inc are modified as described in 
+the design.  
+
+i384.4.5  Add custom field labels
+
+The instances are added to context_menu.pei.sql as described in the design.
+
+i384.5    Create Object Identifier instances 
+
+i384.5.1  Create instances on class creation
+
+The changes are made to ooaofooa.bak as described in the design.
+
+i384.5.2  Create instances on import of BP SQL
+
+The change is made to gen_import_java.inc.
+
+i384.6  Add action filtering
+
+i384.6.1  Add filters to metamodel
+
+The operations are added to ooaofooa.bak as described in the design.
+
+i384.6.2  Add architecture support for action filters
+
+The changes are made to java.arc as described in the design.
+
+i384.6.3  Add filter information to context menu model
+
+The context_menu.bak model is changed as described in the design.
+
+i384.6.4  Add filter support to plugin generation
+
+The archetype create_core_plugin.inc is modified as described in the design.
+
+i384.6.5  Add MEF instances 
+
+The instances are added to context_menu.pei.sql as described in the design.
+
+i384.7  Fix issue 541
+
+The change is made to EnumPropertyDescriptor.java as described in the design.
+
+i384.8  Add not participating value color 
+
+The changes are made to java.arc as described in the design.
+
+The O_ID.Oid_ID attribute is colored with a not participating value of -1
+in ooaofooa.bak.
+
+i384.9  Other changes to ooaofooa
+
+The changes are made to ooaofooa.bak as described in the design.
+
+i384.10   Change MC-Java relationship implementation
+
+i384.10.1   Change attribute read implementation for referential attributes
+
+The changes are made to java.arc.
+
+i384.10.2  Change relate/unrelate model change notification
+
+The changes are made to referring.inc.  Issue 254 is marked as a duplicate
+of this issue to indicate that it is fixed by this issue.
+
+i384.10.3  Update hand-written code with changes
+
+The hand-written code in the following projects is updated to accomodate 
+the changes from section 10.1:
+
+com.projtech.bp.internal.io.sql
+com.projtech.bp.io.core
+
+i384.10.4  Unit test changes
+
+The projects are updated to accomodate the changes from section 10.1:
+
+com.projtech.bp.io.mdl.test
+com.projtech.bp.io.sql.test
+
+Unit Test
+---------
+
+- Test for assigning an imported class
+
+  _- Draw a new imported class in a model with one subsystem
+  _- Right click on the imported class and select Assign Class
+  _R The assign class box is shown
+  _R The drop down list contains no classes
+
+  _- Draw a new imported class in a model with more than one subsystem
+  _- Right click on the imported class and select Assign Class
+  _R The assign class box is shown
+  _R The drop down list contains all classes from other subsystems
+  _- Choose any class from the list 
+  _R The imported class is assigned to the chosen class and contains the exact
+     same data
+
+- Tests for formalizing/unformalizing associations
+
+  - Simple Association
+  
+  	- The following tests require testing different combinations of formalizing
+  	  and non-formalizing classes.  These combinations are listed below.
+  	  
+  	  OBJ - OBJ
+  	  OBJ - IOBJ
+  	  IOBJ - OBJ
+  	  IOBJ - IOBJ
+  	  
+  
+    _- Right click on a simple assoc, which can be formalized, and select
+  	   Formalize binary  
+    _R All identifying attributes from the non-formalized class exist in the
+       formalized class
+  
+    _- Right click on a formalized simple assoc and select Unformalize
+    _R All identifying attributes from the non-formalized class are removed from
+       the formalized class
+  
+    _- Right click on a formalized simple assoc, where the referential attribute
+       is used in another class, and select Unformalize
+    _R All identifying attributes from the non-formalized class, which are not
+       referenced by another class, are removed.
+    _R All identifying attributes from the non-formalized class, which are
+       referenced by another class, are left in the formalized class
+
+  - Reflexive Simple Associations
+
+  	- The following tests require testing different combinations of formalizing
+  	  and non-formalizing classes.  These combinations are listed below.
+  	  
+  	  OBJ
+  	  IOBJ	
+
+    _- Right click on a reflexive simple assoc, which can be formalized, and
+       select Formalize binary  
+    _R All identifying attributes from the non-formalized class exist in the
+       formalized class
+  
+    _- Right click on a formalized reflexive simple assoc and select Unformalize
+    _R All identifying attributes from the non-formalized class are removed from
+       the formalized class
+  
+    _- Right click on a formalized reflexive simple assoc, where the referential
+       attribute is used in another class, and select Unformalize
+    _R All identifying attributes from the non-formalized class, which are not
+       referenced by another class, are removed.
+    _R All identifying attributes from the non-formalized class, which are
+       referenced by another class, are left in the formalized class
+
+  - Linked Associations
+
+  	- The following tests require testing different combinations of formalizing
+  	  and non-formalizing classes.  These combinations are listed below.
+
+	  OBJ_OBJ - OBJ
+	  OBJ_IOBJ - OBJ
+	  IOBJ_IOBJ - OBJ
+	  OBJ_OBJ - IOBJ
+	  OBJ_IOBJ - IOBJ
+	  IOBJ_IOBJ - IOBJ
+	  
+	  Reflexive:
+	  OBJ_OBJ - OBJ
+	  OBJ_OBJ - IOBJ
+	  IOBJ_IOBJ - OBJ
+	  IOBJ_IOBJ - IOBJ
+  
+    _- Right click on a formalized associative link and select Unformalize
+       Association
+    _R All identifying attributes from the non-formalized class are removed from
+       the formalized class
+
+    _- Right click on a formalized associative link, where the referential
+       attribute is used in another class, and select Unformalize
+    _R All identifying attributes from the non-formalized classes, which are not
+       referenced by another class, are removed.
+    _R All identifying attributes from the non-formalized classes, which are
+       referenced by another class, are left in the formalized class
+  
+    _- Right click on an associative link and select Formalize binary
+    _R All identifying attributes from the non-formalized classes are added to
+       the formalized class 
+
+    - Subtypes/Supertypes
+    
+  	- The following tests require testing different combinations of formalizing
+  	  and non-formalizing classes.  These combinations are listed below.
+
+	  OBJ - OBJ_OBJ
+	  OBJ - OBJ_IOBJ
+	  OBJ - IOBJ_IOBJ
+	  IOBJ - OBJ_OBJ
+	  IOBJ - OBJ_IOBJ
+	  IOBJ - IOBJ_IOBJ     
+
+    _- Right click on a formalized supertype line select Unformalize
+    _R All identifying attributes from the non-formalized class are removed from
+       each subtype 
+
+    _- Right click on a formalized supertype, where the referential attribute is
+       used in another class, and select Unformalize
+    _R All identifying attributes from the non-formalized class, which are not
+       referenced by another class, are removed.
+    _R All identifying attributes from the non-formalized classes, which are
+       referenced by another class, are left in the formalized class as
+       identifiers
+
+    _- Right click on the supertype line and select Formalize Inh
+    _R All identifying attributes from the non-formalized classes are added to
+       the formalized class 
+
+- Tests for moving attributes
+
+  _- Right click on an attribute, which exists in a class by itself.
+  _R The menu entry for Moving Up/Down does not exist
+  
+  _- Right click on the first attribute, which exists in a class with more than
+     one attribute
+  _R The Move Up menu item does not exist
+  _- Select Move Down
+  _R The attribute is moved down in the order on the canvas
+  
+  _- Right click on the last attribute, which exists in a class with more than
+     one attribute
+  _R The Move Down menu item does not exist
+  _- Select Move Up
+  _R The attribute is moved up in the order on the canvas
+  
+  _- Right click on the middle attribute, which exists in a class with three or
+  	 more attributes
+  _R Both the Move Up and Move Down menu items are present
+  _- Select Move Up
+  _R The attribute is moved up in the order on the canvas
+  
+  _- Right click on the middle attribute, which exists in a class with three or
+  	 more attributes
+  _- Select Move Down
+  _R The attribute is moved down in the order on the canvas
+
+  _- Right click on an identifing attribute, which exists in a class with two or
+  	 more attributes and is located at the top of the attribute list
+  _- Select Move Down
+  _R The attribute is moved down in the order on the canvas
+  _- Formalize an association between the test class and another
+  _R The association is formalized
+  _R No null pointer exceptions are hit
+
+  _- Right click on an identifing attribute, which exists in a class with two or
+  	 more attributes and is located at the bottom of the attribute list
+  _- Select Move Up
+  _R The attribute is moved up in the order on the canvas
+  _- Formalize an association between the test class and another
+  _R The association is formalized
+  _R No null pointer exceptions are hit
+  
+- Tests for setting attributes as base or derived
+
+  _- Right click on a base attribute
+  _R The Set As Derived Attribute menu item exists
+  _R The Set As Base Attribute menu item does not exist
+  _R Open With->Activity Editor menu item does not exist
+  
+  _- Right click on a derived attribute
+  _R The Set As Base Attribute menu item exists
+  _R The Set As Derived Attribute menu item does not exist
+  _R Open With->Activity Editor menu item exists
+  _- Select Open With->Activity Editor
+  _R An activity editor for the attribute is displayed
+  
+  _- Right click on a base attribute and select Set As Derived Attribute
+  _R The attribute is changed to a derived attribute, displaying the {M} symbol
+  	 on the canvas
+  
+  _- Right click on a derived attribute and select Set As Base Attribute
+  _R The attribute is changed to a base attribute, removing the {M} symbol on
+  	 the canvas
+
+- Tests for adding/removing to/from identifier
+
+  _- Right click on a non-identifying attribute
+  _R The Add To Identifier menu item exists
+  _R The Remove From Identifier menu item does not exist
+  
+  _- Right click on an identifying attribute participating in one identifier
+  _R The Remove From Identifier menu item exists
+  _R The Add To Identifier menu item exists
+  
+  _- Right click on an identifying attribute participating in two identifiers
+  _R The Remove From Identifier menu item exists
+  _R The Add To Identifier menu item exists
+  
+  _- Right click on an identifying attribute participating in three identifiers
+  _R The Remove From Identifier menu item exists
+  _R The Add To Identifier menu item does not exist
+  
+  _- Right click on a non-identifying attribute and select Add To Identifier
+  _R The Add To Identifier box is shown
+  _R Identifiers 1-3 exist in the pull down menu
+  _- Choose the first identifier
+  _R The attribute is added to the first identifier and is displayed with {I} in
+     the canvas
+  _- Right click on the same attribute and select Add To Identifier
+  _R The Add To Identifier box is shown
+  _R Identifiers 2-3 exist in the pull down menu
+  _- Choose the second identifier
+  _R The attribute is added to the second identifier and is displayed with
+  	 {I,I2} in the canvas
+  _- Right click on the same attribute and select Add To Identifier
+  _R The Add To Identifier box is shown
+  _R Identifier 3 exists in the pull down menu
+  _- Choose the third identifier
+  _R The attribute is added to the third identifier and is displayed with
+  	 {I,I2,I3} in the canvas
+  _- Right click on the same attribute and select Remove From Identifier
+  _R The Remove From Identifier box is shown
+  _R Identifiers 1-3 exist in the pull down menu
+  _- Choose the first identifier
+  _R The attribute is removed from the first identifier and is displayed with
+  	 {I2,I3} in the canvas
+  _- Right click on the same attribute and select Remove From Identifier
+  _R The Remove From Identifier box is shown
+  _R Identifiers 2-3 exist in the pull down menu
+  _- Choose the second identifier
+  _R The attribute is removed from the second identifier and is displayed with
+  	 {I3} in the canvas
+  _- Right click on the same attribute and select Remove From Identifier
+  _R The Remove From Identifier box is shown
+  _R Identifier 3 exists in the pull down menu
+  _- Choose the third identifier
+  _R The attribute is removed from the third identifier and is displayed with
+  	 no {I}'s in the canvas
+
+  _- Right click on a non-identifying attribute and select Add To Identifier
+  _R The Add To Identifier box is shown
+  _R Identifiers 1-3 exist in the pull down menu
+  
+- Tests for Assigning/Removing Events
+
+  _- Right click on a transition with no event assigned
+  _R The Assign Event menu item exists
+  _R The Remove Event menu item does not exist
+  
+  _- Right click on a transition with an event assigned
+  _R The Assign Event menu item exists
+  _R The Remove Event menu item exists
+  
+  _- Right click on a transition with no event assigned and select Assign Event
+  _R The Assign Event window is shown
+  _- Select an event and click Finish
+  _R The selected event is assigned to the transition
+  _- Right click on the same transition and select Assign Event
+  _R The Assign Event window is shown
+  _R The currently assigned event does not exist in the pull down menu
+  
+  _- Right click on a transition with an event assigned and select Remove Event
+  _R The event is removed from the transition
+
+- Tests for ignoring an event and marking an event as Can't Happen
+
+  _- Right click on a state, which exists in a state chart where at least one
+     event is marked as Can't Happen
+  _R The Ignore Event menu item is present
+  
+  _- Right click on a state, which exists in a state chart where at least one
+  	 event is marked Ignore in State.
+  _R The Can't Happen menu item is present
+  
+  _- Right click on a state, which exists in a state chart where at least one
+     event is marked Ignore and one event which is marked Can't Happen
+  _R The Can't Happen and Ignore Event menu items are present
+  
+  _- Right click on a state, which exists in a state chart where at least one
+     event is marked as Can't Happen and select Ignore Event
+  _R The Ignore Event window is shown
+  _- Select an event and click finish
+  _R The event is marked as ignored
+  
+  _- Right click on a state, which exists in a state chart where at least one
+     event is marked as ignored and select Can't Happen Event
+  _R The Can't Happen Event window is shown
+  _- Select an event and click finish
+  _R The event is marked as Can't Happen
+  
+  _- Right click on an event, which exists in a state chart where at least one
+     event is marked as ignored and select Can't Happen in State
+  _R The Can't Happen in State Event window is shown
+  _- Select a state and click finish
+  _R The event is marked as Can't Happen in the selected state
+  
+  _- Right click on an event, which exists in a state chart where at least one
+     event is marked as Can't Happen and select Ignore in State
+  _R The Ignore in State window is shown
+  _- Select a state and click finish
+  _R The event is marked as ignored in the selected state
+
+- Tests for Adding/Removing a data item
+
+  _- Right click on an event w/o data items in a statechart that does not
+  	 contain data items
+  _R The Add Data Item menu item is not available
+  _R The Remove Data Item menu item is not available
+  
+  _- Right click on an event w/o data items, in a statechart that contains at
+     least one data item.
+  _R The Add Data Item menu item is available
+  _R The Remove Data Item menu item is not available
+
+  _- Right click on an event which contains at least one data item but not all
+     available data items
+  _R The Remove Data Item menu item is available  
+  _R The Add Data Item menu item is available
+  
+  _- Right click on an event which contains all available data items
+  _R The Remove Data Item menu item is available
+  _R The Add Data Item menu item is not available
+  
+  _- Right click on an event w/o data items and select Add Data Item
+  _R The Add Data Item window is shown
+  _R All data items in the statechart exist in the pull down menu
+  _- Select any data item and click Finish
+  _R The data item is added to the event in the tree
+  
+  _- Right click on an event with at least one data item and select Remove Data
+  	 Item
+  _R The Remove Data Item window is shown
+  _R All data items for the event are listed in the pull down menu
+  _- Select any data item and click Finish
+  _R The data item is removed from the event
+  
+  _- Right click on an event that is assigned to a transition, which is between
+     two states that have two transitions (w/o data items) between them going
+     the same direction.
+  _- Select Add data item
+  _R The Add Data Item window is shown
+  _- Select any data item and click Finish
+  _R A message is displayed, complaining about 'same data rule violation'    
+    
+End
+---
+
+$Log: i384.dnt,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.19  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.18.124.1  2008/12/31 16:10:26  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.18  2004/11/17 22:17:20  greg
+Job: 384
+Addressed review observations
+
+Revision 1.17  2004/11/16 23:57:23  greg
+Job: 384
+Add relate/unrelate changes
+
+Revision 1.16  2004/11/16 23:35:32  greg
+Job: 384
+Ready for review
+
+Revision 1.15  2004/11/16 23:10:47  greg
+Job: 384
+Add MC-java changes for ref attr reads
+
+Revision 1.14  2004/11/15 22:53:54  tlondon
+Job: 384
+
+Updated with new tests
+
+Revision 1.13  2004/11/12 15:48:14  tlondon
+Job: 384
+
+Added reflexive associative tests and added different combinations of formalizing/non-formalizing tests
+
+Revision 1.12  2004/11/11 16:21:32  greg
+Job: 384
+Most review observations addressed
+
+Revision 1.11  2004/11/04 19:39:15  greg
+Job: 384
+Ready for review
+
+Revision 1.10  2004/11/03 21:39:24  tlondon
+Job: 384
+
+Introducing completed unit test section
+
+Revision 1.9  2004/11/02 23:07:02  tlondon
+Job: 384
+
+Introducing partially complete unit tests
+
+Revision 1.8  2004/10/28 23:18:50  tlondon
+Job: 384
+
+Commiting partial unit tests
+
+Revision 1.7  2004/10/28 22:12:54  greg
+Job: 384
+Operations for ooaofooa defined
+
+Revision 1.6  2004/10/27 23:09:24  greg
+Job: 384
+Continued updates
+
+Revision 1.5  2004/10/27 00:30:53  greg
+Job: 384
+Added poly/non-poly event menu items
+Added action filter design
+
+Revision 1.4  2004/10/21 01:27:49  greg
+Job: 384
+More changes
+
+Revision 1.3  2004/10/14 22:49:23  greg
+Job: 384
+Initial introduction
+

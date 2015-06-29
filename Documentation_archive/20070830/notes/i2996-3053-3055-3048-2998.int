@@ -1,0 +1,390 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support terminations on drag and drop
+
+1. Abstract
+-----------
+This note describes implementation of support for termination on drag and 
+drop with respect to the required and provided interfaces of component diagrams.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2926
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2926
+[2] Bugzilla item 1687
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1687
+[3] <cvs>Documentation/internal/technical/notes/i1687.dnt
+    Design note for support of formal modeling of component diagrams.
+[4] Bugzilla item 3053
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3053
+[5] Bugzilla item 3055
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3055
+[6] Bugzilla item 3048
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3048
+[7] Bugzilla item 2998
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2998
+
+4. Background
+-------------
+The design note for introducing support in BridgePoint for formal modeling of 
+component diagrams [2] specifies that support for drag and drop of connectors 
+will be implemented.  This task [1] was broken out into a separate issue, and 
+its implementation is outlined in this note.
+
+5. Design
+---------
+5.1 Modify the Selection Tool ISM to watch for the case where a connector has 
+    been moved.
+5.1.1 This is done in the Saving Symbol Resize state.
+5.2 Determine if the connector that was moved was over white space.  If it was
+    over white space this tells us that it is a move that is of interest to us 
+    (it could be a drag and drop connection).
+5.2.1 This is done in Selection Tool.waypointMoved.
+5.3 Determine the location the connector being moved was dropped.
+5.3.1 This is done in Selection Tool.waypointMoved.
+5.4 Check the new position of the connector that was moved against all other 
+    connectors in the system to determine if the connector was dropped on top of 
+    another connector.  Connector.isOver is used to determine this.
+5.4.1 If it was not dropped on top of another connector, ignore the move.
+5.4.2 If it was dropped on top of another connector, determine if there is a 
+    termination rule on the waypoint that was being moved.
+5.4.3 Introduce a new bridge operation:
+    Boolean linkConnector(uuid to, boolean toIsImported)
+    in the ooaofooa connector classes.
+    The implementation of this operation is similar to the creation of a 
+    connector, and in fact it leverages the creation code as much as possible.
+5.4.3.1 The bridge operation is implemented in Provision, Requirement, Imported 
+    Provision, and Imported Requirement.
+5.4.3.2 The operation returns true if a connection is made between the source 
+    and the target, and false if no connection is made.
+5.4.4 If the connection between the source and target is made, the provided and
+    required interfaces are coupled together.  The coupling is done using the
+    same mechanism previously used to couple newly created connectors.  The
+    OAL in Connector Tool.finalize was moved "up" into 
+    Model Tool.finalizeConnector and refactored to allow it to handle both the
+    new connector case and this drag and drop case.
+
+6. Implementation Comments
+--------------------------
+6.1 Trigger the code to set graphical representation when reconciling.
+This was needed when restarting the tool with a diagram open that needs to 
+find a graphical element from another diagram.  The need for this change is 
+specified in bugzilla issue 2996 comment 1 [1].
+
+This issue was caused by the fact that the code uses the represents to get the 
+ooa id.  To resolve this, in GD_ARS.updateAllElements if the graphical 
+represents has not been set, it is set using  it using the 
+CL::getInstanceFromOOA_ID bridge operation.
+
+6.2 Bugzilla issue 3053 [4]
+R2098 was not being properly disposed.  The fix for this was a simple 4-line 
+change to Stack Frame.dispose() to unrelate the stack frame across R2928..  
+
+6.3 Bugzilla issue 3055 [5]
+This issue prevented us from creating a new system user defined type of type 
+component_ref.  The problem was that the component_ref type had not been added 
+to S_UDT.isAllowedCoreType.  It has now been added.  
+
+6.4 Bugzilla issue 3048 [6]
+When a project that has a component formalized to a domain is renamed, errors in 
+the model are shown in the problems view.
+This issue has been addressed in .../bp/core/OoaofooaBase.java as specifed in
+[6] comment 4.  This is being included to expidite promotion to head in order to 
+allow the team to begin testing for the looming R1_5_0 release.
+
+6.5 Bugzilla issue 2998 [7]
+Due to the timing constraints for R1_5_0 we are resolving this issue by creating
+the following additional associations:
+
+Component <-> Delegation
+Component <-> Satisfaction
+Component Package <-> Delegation
+Component Package <-> Satisfaction
+
+These new associations are used as an export path to the Delegation and
+Satisfaction classes. To facilite this, a new subsystem named "Persistence 
+Associations" has been added.  OAL has been added to create instances from this 
+new SS as needed and to setup and tear down the new relationships.   
+Additionally, and perhaps most importantly, the file_io.pei data has been 
+modified to persist the instances through the elements of this new subsystem 
+allowing the satisfaction to be persisted with the diagram instead of with the
+component.
+
+
+7. Unit Test
+------------
+7.1 The following matrix will be used to assure all drag and drop permutations
+    are tested.  Note that following this matrix is a description of how to 
+    create a test model that will allow the majority of the cells in this 
+    matrix to be tested.
+    
+P=Provision
+R=Requirement
+2=2nd occurance
+I=Imported
+f1=formalized to interface1
+f2=formalized to interface2
+s=satisified (Satisfied means the provision/requirement is linked together.  
+              They may or may not be formalized.)
+              
+                                                 Drag Source
+             P       R       R2      Pf1      IPf1      Pf2     IPf2     Rf1    IRf1    R2f1    IR2f1
+             ------------------------------------------------------------------------------------------
+     P       _R1     _R2     _R2     _R1      _R1       _R1     _R1      _R3      _R3     _R3     _R3 
+D    R       _R2     _R1     _R1     _R3      _R2       _R3     _R3      _R1      _R1     _R1     _R1 
+e    R2      _R1,4   _R1     _R1     _R1,4    _R1,4     _R1,4   _R1,4    _R1      _R1     _R1     _R1 
+s    Pf1     _R1     _R3     _R3     _R1      _R1       _R1     _R1      _R3      _R3     _R3     _R3 
+o    IPf1    _R1     _R3     _R3     _R1      _R1       _R1     _R1      _R3      _R3     _R3     _R3 
+i    Pf2     _R1     _R3     _R3     _R1      _R1       _R1     _R1      _R1      _R1     _R1     _R1 
+n    IPf2    _R1     _R3     _R3     _R1      _R1       _R1     _R1      _R1      _R1     _R1     _R1 
+a    Rf1     _R3     _R1     _R1     _R3      _R3       _R1     _R1      _R1      _R1     _R1     _R1 
+t    IRf1    _R3     _R1     _R1     _R3      _R3       _R1     _R1      _R1      _R1     _R1     _R1 
+i    R2f1    _R1,4   _R1     _R1     _R1,4    _R1,4     _R1,4   _R1,4    _R1      _R1     _R1     _R1
+o    IR2f1   _R1,4   _R1     _R1     _R1,4    _R1,4     _R1,4   _R1,4    _R1      _R1     _R1     _R1
+n    Rf2     _R3     _R1     _R1     _R1      _R1       _R3     _R3      _R1      _R1     _R1     _R1 
+     IRf2    _R3     _R1     _R1     _R1      _R1       _R3     _R3      _R1      _R1     _R1     _R1 
+     R2f2    _R1,4   _R1     _R1     _R1      _R1       _R1,4   _R1,4    _R1      _R1     _R1     _R1
+     IR2f2   _R1,4   _R1     _R1     _R1      _R1       _R1,4   _R1,4    _R1      _R1     _R1     _R1
+
+Expected Results:
+-----------------
+R1 = No satisfaction is made.  The source and destination remain uncoupled with
+     no effect on their interface names or formalization.
+R2 = Provision and requirement is satisified.  Right-clicking on each provision/
+     requirement shows the "formalize" option.
+R3 = The provision and requirement(s) is formalized.  Verify that there is only
+     one name displayed for the relationship, and right-clicking on each 
+     provision/requirement shows the "unformalize" option.
+R4 = After a provision has been satisified against a requirement, to add an 
+     additional requirement the source of the drag/drop operation must be the 
+     requirement, not the provision/requirement pair.
+
+Example of a test model that allows a lot of the permutations in the 
+table above to be exercised fairly quickly:
+_- Create an Interface Package
+_- Create an Interface named Interface1
+_- Create an Interface named Interface2
+_- Create a Component Package (CompPkg1)
+_- Create a Component named "CompPkg1Comp1"
+_- Create a Component named "CompPkg1Comp2"
+_- Create a Component named "CompPkg1Comp3"
+_- Draw a required and provided interface from each of the 3 components and
+   formalized each of these 6 interfaces to Interface1
+_- Draw a required and provided interface from each of the 3 components and
+   formalized each of these 6 interfaces to Interface2
+_- Draw a required and provided interface from each of the 3 components and
+   leave then unformalized.
+_- Create a Component Package (ImportPkg1)
+_- Create a Component in ImportPkg1 named Comp1
+_- Draw a required and provided interface from ImportPkg1 named Comp1 and 
+   formalize each of these interfaces to Interface1
+_- Draw a required and provided interface from ImportPkg1 named Comp1 and 
+   formalize each of these interfaces to Interface2
+_- Create a Component in ImportPkg1 named Comp2
+_- Draw a required and provided interface from ImportPkg1 named Comp2 and 
+   formalize each of these interfaces to Interface1
+_- Draw a required and provided interface from ImportPkg1 named Comp2 and 
+   formalize each of these interfaces to Interface2
+_- Open CompPkg1
+_- In CompPkg1 create an imported component and associated it with 
+   ImportPkg1:Comp1
+_- In CompPkg1 create an imported component and associated it with 
+   ImportPkg1:Comp2
+_R In CompPkg1 we now have a  combination of components and interfaces that 
+   allow the drag/drop permutations outlined in the matrix above to be 
+   exercised.  
+   Note: After each test (when a cell is tested) use undo to put the model back
+         into it's original state before moving on to the next test.
+
+7.2 Verify that graphical represents are set properly for referred-to diagrams.
+    This is done to verify that the issue specified in bug 2996 comment 1 has 
+    been resolved.
+_- Create a component
+_- Leave the diagram open for that component
+_- Restart the tool
+_- Draw a provision or requirement on the component
+_- Open the nested diagram of the component
+_R The provision or requirement was created on the edge of the container symbol.
+    
+7.3 Verify that R2098 is properly disposed (bugzilla issue 3053)
+_- Run the dogs model in Verifier.  The dogs model is found here:
+   <cvs>model_compilers/test/dogs.xtuml
+_- Open the error log
+_R No errors of the following form are found:
+   The following relationships were not torn down by the 
+   Stack Frame.dispose call: 2928
+
+7.4 Verify that the component_ref type can be used as a system user defined 
+    type (bugzilla issue 3055).
+_- Create a new System UDT of type component_ref
+_R The type is allowed
+
+7.5 Verify issue 2998.  Satisfactions and delegations should be written to the 
+    diagram's file, not the component's file.
+_- Draw a required interface so that it connects to the provided interface
+_- Open the component file of the provided interface
+_R There are no S_CF insert statements present
+_- Open the component package file where the provision and requirement were 
+   drawn
+_R The S_CF insert statement is present
+
+For delegation:
+_- Create a component with a provision
+_- Open the component's diagram
+_- Create a nested component with a provision
+_- Draw a delegation from the outer provision to the inner provision
+_- Open the component file (the one owning the diagram)
+_R The C_DG insert statement exists.
+
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    ooaofooa.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component/Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Provision/Imported Provision.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Requirement/Imported Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Packaging/Component Packaging.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Packaging/Component Package/Component Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Delegation/Delegation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Provision/Provision.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Requirement/Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Satisfaction/Satisfaction.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    User Data Type/User Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack Frame/Stack Frame.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Persistence Associations.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Delegation In Component/
+    Delegation In Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Satisfaction In Component/
+    Satisfaction In Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Satisfaction In Component Package/
+    Satisfaction In Component Package.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/OoaofooaBase.java
+
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Connector Tool/Connector Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Model Tool/Model Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Selection Tool/Selection Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Selection Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Auto Reconciliation Specification/
+    Auto Reconciliation Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/Waypoint/Waypoint.xtuml
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/Cl_c.java
+
+MC-Java/model_consistency_functions.inc
+MC-Java/model_consistency.inc
+
+
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.2  2007/08/17 20:26:17  rmulvey
+Job:2996
+Ficed a couple problems in cells of the test matrix
+
+Revision 1.1  2007/08/17 17:13:52  rmulvey
+Job:2996 3053 3055 3048 2998
+Renamed the note and updated to account for a couple more issues being added to the branch.  The list of code changes has been updated, and a test for issue 2998 was added.
+
+Revision 1.11  2007/08/16 21:18:51  rmulvey
+Job:2996
+Removed the old example test case.
+
+Revision 1.10  2007/08/16 21:16:09  rmulvey
+Job:2996
+Removed the IR and IR2 columns and rows in the test matrix.  They are not needed because the interface must be formalized in order to show up on the imported component.  Added variables f1 (formalized to interface1) and f2 (formalized to interface 2) instead of just "f".  This allows us to include tests that try to formalize to interfaces that do not match.  Outlined the steps to create a test model that can be used when filling in the test matrix.
+
+Revision 1.9  2007/08/16 19:13:11  tlondon
+Job: 2998
+
+Add comment for 2998.
+
+Revision 1.8  2007/08/16 18:58:08  rmulvey
+Job:2996 3048 2998
+Issues 3048 and 2998 are being added to this review branch.  Updated the note to account for this.
+
+Revision 1.7  2007/08/16 16:53:24  rmulvey
+Job:2996
+Fixed a typo and clarified R4 in the matrix
+
+Revision 1.6  2007/08/16 16:51:58  rmulvey
+Job:2996
+Completed the test matrix
+
+Revision 1.5  2007/08/16 16:01:32  rmulvey
+Job:2996
+As I really started testing drag/drop I realized there are a large number of test permutations to exercise.  I have replaced the prior list with a matrix.  The matrix is not
+totally filled-in, but I need feedabck on if this testing approach will work or not.
+
+Revision 1.4  2007/08/15 20:30:50  rmulvey
+Job:2996 3053 3055
+-Updated to account for review comments
+-Updated to account for final fix for the issue of setting graphical representation when reconciling.
+-Added the list of modified files
+
+Revision 1.3  2007/08/14 18:29:35  rmulvey
+Job:2996
+Corrected a typo
+
+Revision 1.2  2007/08/14 18:27:58  rmulvey
+Job:2996
+Corrected a typo
+
+Revision 1.1  2007/08/14 18:21:53  rmulvey
+Job:2996 3053 3055
+Introduced

@@ -1,0 +1,423 @@
+========================================================================
+
+File:      $RCSfile: syntax_highlighting-i223.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:28:36 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+Tiger Project Design Note
+Syntax Highlighting
+
+Abstract
+--------
+This document describes the design of the Syntax Highlighting schemes  
+for Tiger's action semantics editor.
+
+History
+-------
+Updated - syntax_highlighting-i223-062304-01
+Final   - syntax_highlighting-i223-062404-01
+
+Document References
+-------------------
+[1] bp.core/doc/internal/technical/Action_Semantics/action_semantics.dnt
+[2] bp.core/doc/internal/technical/Syntax_Highlighting/syntax_highlighting-i223.ant
+[3] bp.als.oal/bnf/oal.bnf
+[4] bp.als/mdl/grammar.bak
+[5] bp.als/sql/oal_grammar.sql
+
+Background
+----------
+See the analysis note.
+
+Design
+------
+SH1 - Generate the rule set from the grammar instances.
+
+SH1.1
+Create a class OALScanner that extends RuleBasedScanner class that uses 
+following rule instances
+    - EndOfLineRule for single line comment with // as starting pattern
+      and EOL as ending character.
+    - SingleLineRule for string with " character as starting and ending
+      pattern.
+    - LiteralRule for literal tokens (see SH1.2).
+      
+Create a class OALPartitionScanner that divide the document in two partition 
+types, Multiline comment and default.
+    - Use MultiLineRule for partition scanner that uses /* as starting
+      pattern and */ as ending pattern.
+
+SH1.2 - Create a archetype to generate the WordRule class
+
+SH1.2.1 - Identify OAL Grammar Keywords
+
+The OAL grammar has the following objects:
+
+Node
+  Non Leaf Node
+    Root
+    Rule
+    EBNF
+  Leaf Node
+    Rule Reference
+    Terminal
+
+All keywords are actually "Terminal" nodes and the Terminal.token_name 
+specifies the type of the terminal. We are interested to get the Terminals
+with token_name = "STRING_LITERAL". For such terminals Terminal.value provides
+the keyword string we require for the word rule. Further understanding of 
+the grammar can be taken from documents [1],[3],[4] and [5].
+
+SH1.2.2 - Create an archetype to extract OAL Keywords 
+
+The grammar constructs forces repetition of certain key words in different
+productions (rules) of the grammar, and hence an archetype needs to extract a 
+set of unique string literals from it.
+	
+The archetype arc/kw_utils.inc is created that has two functions: 
+1) contain_in_T_set
+Finds an instance variable of T (i.e. Terminal) in the instance 
+set of T based on the Terminal.value and returns the boolean result.
+2) make_set_unique
+Creates a new set of Terminals from a given set of all string literals
+in the grammar, that does not have repeating string literals.
+
+The kw_utils.inc is included in the arc/literal_gen.arc, that uses these two 
+functions to generate the list of keywords to be used as the tokens in WordRule.
+The keyWord.arc incorporates each keyword in the AddWord("<keyword>", Token); 
+function call, rest of the code is handwritten. The resultant file is 
+LiteralRule.java
+
+SH2 - Create Syntax Highlighting Preference Page
+
+Considering the need that further preference pages be added later on, 
+a generalized framework is designed. The main intent is to formalize one 
+standard method for writing preference pages. This framework is placed in 
+com.projtech.ui.preferences and moved to bp.core, so that other sub-projects can 
+use this framework. Special care is taken to make sure that it complies with 
+eclipse standard methods for writing preference pages at all times. Moreover a 
+generalized class TabbedPreferenceContainer is designed. This class can be used 
+by all preference pages to provide a tabbed preferences.
+
+Note: This framework separates the data from the user interface and uses the 
+word 'Model' to represent the preference data. Please do not confuse this 
+with the term 'Model' that is generally used to refer to a UML model.
+
+The framework is composed of:
+
+- IPreferenceModel
+  This defines a common interface for encapsulating all preference data. Every 
+  preference page has one instance of IPreferenceModel. The preference
+  page(s) and plugin component(s) share the same model. However the control of 
+  updating the preference model depends on when the updateModel() operation is 
+  invoked on IPreferenceModelEditor. 
+  
+  Following are the descriptions of methods that IPreferenceModel have:
+  
+  public IPreferenceModelStore getStore() - This returns the store that is 
+  associated with this preference model.
+  addChangeListener - This method allows you to add a preference model change 
+  listener.
+  removeChangeListener - This method removes a particular change listener.
+  synchronize - This method allows this preference model to synchronize with 
+  another preference model of same type.
+  
+  This interface also extends Clonable, which mandates that every preference 
+  model should implement deep copy to create a clone.
+  
+- IPreferenceModelEditor
+  IPreferenceModelEditor unifies the API for editing and updating preference 
+  models. All preference pages will implement this interface. update() method is 
+  called when PreferencePageContainer's Apply or OK button is clicked.
+  
+  Following are the descriptions of methods that IPreferenceModelEditor have:
+  
+  setModel - Allows one to set the preference model to edit.
+  update - This method updates the contained preference model. The 
+  implementation notifies all the listeners if preference model has been 
+  actually changed.
+
+- IPreferenceModelEditor.IChangeListener
+  This interface is defined to allow other classes to listen to changes in the 
+  preference model.
+  
+  modelChanged(IPreferenceModel model, String changeHint) - This method is 
+  invoked when preference model is changed. 'changeHint' provides a general 
+  textual hint that allows the event reciever to know what has been changed in 
+  the preference model. Since both preference model and any listeners associated 
+  with it will be provided by derived preference implementation, its up to 
+  implementor to define a contract describing how hints should be interpreted.
+
+- IPreferenceModelStore
+  This interface provides the unified method of loading, persisting and 
+  providing default data for the preference model. Following describes the 
+  functionality that each of its method provides:
+  
+  getModelClass - Returns the preference model class for which it provides the 
+  store.
+  saveModel - Persists the preference model.
+  loadModel - Loads the preference model.
+  restoreModelDefaults - Restore to preference model defaults.
+  
+- BasePlugin
+  This abstract class serves as base class for Plugins that intend to use this 
+  framework. It provides the registry of all preference models to allows lookup
+  by the name of a preference model class. The following describe its precise 
+  functionality.
+      
+  registerPreferenceStore - All implementations will use this "protected" 
+  method to register preference models. It also provides a parameter that allows
+  derived classes to mention whether they want lazy loading or startup loading. 
+  Lazy loading is done when getPreferenceModel is invoked for particular
+  preference model. Startup loading is done in the overridden method startup().
+  
+  initPreferenceModels - This abstract method enforces all implementers to 
+  place their preference registration code in this method.
+  
+  getPreferenceModel(String modelClassName) - Any extension point that needs 
+  access to a particular preference model will use method to get access to it.
+  
+- TabbedPreferenceContainer
+  This abstract class extends PreferencePage and implements 
+  IPreferencePageContainer and IWorkbenchPreferencePage. It adds all the 
+  PreferencePages in TabFolder as tabItems. (This functionality is formalized
+  by implementing IPreferencePageContainer). This class has two abstract 
+  methods.
+  
+  protected abstract IPreferencePage[] createSubPages() - Derived class will 
+  override this method to provide all instances of preference pages.
+  
+  protected abstract boolean willCreateDefaultAndApplyButton() - This method 
+  indicates whether this preference container should provide Default and Apply
+  button or each contained preference should display their own.
+
+Framework implementation for Syntax Highlighting
+
+- SyntaxHighlightingPreferencePage class that implements IPreferenceModelEditor. 
+  
+- SyntaxHighlightingPreferences class that implements IPreferenceModel and 
+  provides accessors for all required preference attributes. It also contains 
+  token types that require separate text attributes as specified in SH2.2[2].
+
+SH2.1 - SyntaxHighlightingPreferences has an attribute backgroundColor and its 
+accessors. A method named createBackgroundPaneContent contributes user interface 
+for Background color field in SyntaxHighlightingPreferencePage. 
+SyntaxHighlightingPreferencePage updates the backgroundColor attribute in update 
+method. 
+
+SH2.2 - SyntaxHighlightingPreferences contains all token types that need 
+separate coloring attributes. The list widget populates its items from 
+SyntaxHighlightingPreferences. The class SyntaxHighlightingPreferencesStore 
+initializes default color constants for each of these token types. These values 
+are hard coded in OALEditorConstants.
+
+SH2.3 - SyntaxHighlightingPreferencePage creates a clone of preference model and 
+uses it for caching the color values for all corresponding token types. Color 
+button listens to list widget to represent the color of selected item. Refer to 
+SH2.6.1 for generalized preferences hardening policy.
+
+SH2.4 - SyntaxHighlightingPreferences uses org.eclipse.jface.text.TextAttribute 
+to store the foreground, background and style, for each token type. 
+Bold checkbox listens to list widget to represent selected state of 
+corresponding selected item by checking style field of TextAttribute. Refer to 
+SH2.6.1 for generalized preferences hardening policy.
+
+SH2.5 - SyntaxHighlightingPreferences creates an instance of ActivityEditor, 
+obtains an instance of org.eclipse.jface.text.IDocument from editor's 
+DocumentProvider, sets the text to action language source code and makes the 
+editor to read-only. The cloned copy of SyntaxHighlightingPreferences is 
+associated with this particular instance of ActivityEditor. On Apply or OK 
+button, it updates the original copy of SyntaxHighlightingPreferences by 
+invoking synchronize method and passing the cloned copy.
+
+SH2.6 - The Eclipse preference page framework provides 'Restore Defaults', 
+'Apply', 'OK' and 'Cancel' buttons. So no more work is required.
+
+SH2.6.1 - This section has been split in to two parts. SH2.6.1.1 describes how 
+preview field reflects the preference changes before any changes are hardened.
+SH2.6.1.2 describes how activity editors in workspace are updated.
+
+SH2.6.1.1 - Instance of ActivityEditor that provides the preview, registers 
+itself to the cloned copy of SyntaxHighlightingPreferences to listen to 
+Preference model changes and repaint the view to reflect the changes. 
+
+SH2.6.1.2 - When Apply button is pressed, the original/common copy is 
+synchronized to the cloned copy. All instances of ActivityEditors (other then 
+previewer) register to one common instance of SyntaxHighlightingPreferences, 
+associated with BasePlugin, to listen to preference model changes and repaint 
+to reflect the changes.
+
+SH2.6.2 - performCancel() method releases the cloned copy. However the closing 
+of preference dialog is handled by Eclipse framework.
+
+SH2.6.3 - model.getStore().restoreModelDefaults is invoked on the cloned version 
+of SyntaxHighlightingPreferences. model.setModel is then invoked to update the 
+user interface to reflect the default values in the preference page.
+
+SH2.7 - Update the definition of preference page extension point in the 
+arc/create_plugin_xml.arc that generates plugin.xml file of 
+'com.projtech.bp.ui.text' plugin to define the correct location of preference 
+item in the hierarchy tree.
+
+SH3 - Eclipse syntax highlighting framework defines Token.UNDEFINED for any of 
+the tokens which are not recognized by the configured scanners. However you can
+configure a scanner to return a default token for any undefined tokens. Using 
+the same convention, SyntaxHighlightingPreferences provides default token 
+attribute, for "Others" category/token type. 
+
+Following are default colors that we are going to use. All default colors are 
+defined in OALEditorConstants. 
+
+Single-line comment : RGB(63, 127, 95);
+Multi-line comment  : RGB(63, 127, 95), BOLD;
+Keyword             : RGB(127, 0, 85), BOLD;
+String              : RGB(42, 0, 255);
+Other               : RGB(0,0,0);
+
+The decision of defining of default colors in a constant file has been taken 
+in lines with JDT strategy.
+
+Work Required
+-------------
+SH1 - Generate the rule set from the grammar instances.
+
+SH1.1 - Create classes OALScanner and OALPartitionScanner 
+
+SH1.2 - Create a archetype to generate the WordRule class 
+
+SH1.2.1 - Identify OAL Grammar Keywords
+SH1.2.2 - Create an archetype to extract OAL Keywords as described in Design 
+section.
+
+Create arc/kw_utils.inc and arc/literal_gen.arc to extract keywords from 
+als.gammmar to create LiteralRule.java
+
+SH2 - Create Syntax Highlighting Preference Page
+
+Create the following classes/interfaces:
+
+- IPreferenceModel
+  public Class getStoreClass();
+  public IPreferenceModelStore getStore();
+  public void synchronizeTo(IPreferenceModel model);
+  public void addModelChangeListener(IChangeListener listener);
+  public void removeModelChangeListener(IChangeListener listener);
+  public Object deepClone(); 
+   
+- IPreferenceModelEditor
+  public void setModel(IPreferenceModel model);
+  public IPreferenceModel updateModel();  
+  
+- IPreferenceModelStore
+  public Class getModelClass(); 
+  public void saveModel(IPreferenceStore store, IPreferenceModel model);
+  public IPreferenceModel loadModel(IPreferenceStore store, BasePlugin plugin);
+  public void restoreModelDefaults(IPreferenceModel model);
+  
+- BasePlugin
+  
+- TabbedPreferenceContainer
+  protected abstract IPreferencePage[] createSubPages()
+  protected abstract boolean willCreateDefaultAndApplyButton() 
+   
+- SyntaxHighlightingPreferencePage 
+
+- SyntaxHighlightingPreferences 
+
+SH2.1 - Modify SyntaxHighlightingPreferences and SyntaxHighlightingPreferencePage
+classes as mentioned in the design section.
+
+SH2.2 - Add the list widget and associated functionality in the 
+SyntaxHighlightingPreferencePage.
+
+SH2.2.1 - Create an interface OALEditorConstants that defines default color 
+constants
+
+SH2.3 - Implement user interface of Color field functionality as specified in 
+Design section.
+
+SH2.4 - Implement bold field functionality as specified in Design section.
+
+SH2.5 - Implement Preview functionality as specified in Design section.
+
+SH2.6 - Use the Eclipse Framework functionality.
+
+SH2.6.1 - Implement persistence hardening policy as specified in Design section.
+
+SH2.6.2 - Implement the Canceling facility as mentioned in Design Section.
+
+SH2.6.3 - Implement the Restore Defaults functionality as specified in Design 
+Section.
+
+SH2.7 - Update create_plugin_xml.arc to generate plugin.xml with correct 
+preferences location.
+
+SH3 - Implement text attributes for "Others" category in 
+SyntaxHighlightingPreferences as mentioned in Design section.
+
+SH4 Raise an issue that mandates other modules that generate preference 
+    pages to use same framework.
+    
+SH4.1 Move the framework classes to bp.core
+
+END
+---
+
+$Log: syntax_highlighting-i223.dnt,v $
+Revision 1.1  2009/09/03 18:28:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:21  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.162.1  2008/12/31 16:10:30  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2004/06/25 07:50:33  babar
+Job: 223
+Updated against syntax_highlighting-i223-062404-01
+
+Revision 1.6  2004/06/25 05:47:21  babar
+Job: 223
+Updated against syntax_highlighting-i223-062304-01.rvm
+
+Revision 1.5  2004/06/17 13:33:46  babar
+Job: 223
+Updated and re-organized log
+
+Revision 1.4  2004/06/17 13:29:24  babar
+Job: 223
+Removed minor mistakes
+
+Revision 1.3  2004/06/17 12:40:22  babar
+Job: 223
+Updated based on observation made in review meeting
+
+Revision 1.2  2004/06/16 12:27:14  siddique
+Job: 223
+Updated design note to synchronize it with updated analysis note
+
+Revision 1.1.3  2004/06/03 19:00:00  babar
+Job: 223
+Revision based on campbell feedback, SH1.1, SH1.3, SH1.4 
+-Hand Written
+
+Revision 1.1.2  2004/05/24 19:20:00  babar
+Job: 223
+Revised draft, SH1.1, SH1.3, SH1.4 
+-Hand Written
+
+Revision 1.1.1  2004/05/21 17:45:35  siddique
+Job: 223 
+Initial draft, SH1.1, SH1.3, SH1.4 
+-Hand Written

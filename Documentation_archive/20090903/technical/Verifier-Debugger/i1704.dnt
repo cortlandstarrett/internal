@@ -1,0 +1,217 @@
+========================================================================
+
+File:      $RCSfile: i1704.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Execution Control
+
+Abstract
+--------
+This note describes the requirements for execution control.
+
+History
+-------
+update /Documentation/internal/review_minutes/Verifier/i1704-040406-01.rvm
+update /Documentation/internal/review_minutes/Verifier/i1704.dnt-050506-01.rvm
+final  /Documentation/internal/review_minutes/Verifier/i1704-051106-01.rvm
+
+
+Document References
+-------------------
+[1] Bugzilla issue 1704
+[2] Documentation/internal/technical/Verifier-Debugger/i1704.ant
+
+Background
+----------
+See ref [2]
+
+Analysis
+--------
+See ref [2]
+
+Design
+------
+
+1. Add capability to halt
+
+The stop operation of the execution engine is modified to halt execution on all
+stacks. The operation halts execution by querying all stacks and setting their
+Run_State variable to Halted. In addition, stop no longer halts execution of 
+the thread that the execution engine runs in. Instead, the execution engine
+thread keeps running, querying all stacks in the Resuming or Running
+state to execute on. 
+
+2. Add capability to resume
+
+A resume operation is added to the execution engine. When this operation is 
+invoked, the running state of all halted stacks is set to Resuming. Whenever 
+the execution engine polls a stack that is resuming execution, execution resumes
+as described in ref[2]. 
+
+3. Add capability to step
+
+Operations (stepOver, stepIn, stepReturn) are added to the stack class to allow
+stepping on a stack instance. Stepping operations (stepOver, stepIn) are also 
+added to the instance class to allow stepping on an instance's event queue. A
+stepReturn operation is not necessary for the instance class because it is 
+handled by the stepReturn operation of the stack class. stepOver and stepIn 
+are also added to the model class class to allow stepping on a class based
+state machine.    
+
+
+Design Comments
+---------------
+
+* An association is created between stack and stack frame (R937). 
+The purpose of this association is to allow a stack to keep track
+of what stack frame it is executing in when halting and resuming. Since R937 is
+used only for keeping track of the executing stack frame when halting or
+resuming, the link is removed whenever the stack is in a running state.
+
+* An association is created between if statements and elif 
+statements (R690) and if statements and else statements (R692). The purpose of
+these associations is to "remember" where we were executing in an if, elif, 
+else sequence when resuming. 
+
+* The analysis note specified that step-in would be implemented for derived 
+attributes. Unfortunately, execution of derived attributes has not been 
+implemented yet. As a result, step-in for derived attributes will be 
+implemented in a later issue. 
+
+* The analysis note did not specify how step return would be implemented for
+states. Step return on states is a special case of stepping because the 
+state's action must be executed and the next event must be prevented from
+being dequeued. A boolean, stepping, is created for stack instances. 
+By setting stepping to true for a stack instance, the stack will not poll 
+the event queues of any instances. To step return on a state, we execute the
+state's action. Then, we set stepping to true in the stack we are executing 
+in to prevent any more events from being dequeued. 
+
+Work Required
+-------------
+No additional work is required
+
+Unit Test
+---------
+
+Below are the unit tests that are performed, followed by the JUnit test 
+methods that were created to perform the tests.
+
+1. Stop and Run
+
+	- Halt execution on a non-nested block of code and resume: testStepping()  
+	
+	- Halt execution on a nested block of code and resume: testHaltIf(), 
+	  testHaltElif(), testHaltElse(), testHaltMultiNest() 
+	
+	- Halt execution on a recursive call and resume: testHaltRecursion() 
+	
+	- Halt execution of a loop and resume: testHaltWhile(), testHaltFor()
+	
+	- Halt execution during event polling with pending events and resume: 
+	  testHaltEventPolling()
+	
+	- Halt execution during event polling without pending events and resume: 
+	  testHaltEventPolling()
+
+2. Stepping
+
+	- Action Context
+	
+		* Step over operation invocation: testStepOver()
+		
+		* Step over function invocation: testStepOver()
+		
+		* Step over statement that is not an invocation: testSingleStep(),
+		  testStepLastStatement()
+		
+		* Step over statements in a while loop for several iterations and exit: 
+		  testStepWhile()
+	
+		* Step over statements in a for loop for several iterations and exit: 
+		  testStepFor()
+		
+		* Step over statements in an if block: testStepIf()
+		
+		* Step over statements in an elif block: testStepElif()
+		
+		* Step over statements in an else block: testStepElse()
+		
+		* Step over statements in a multiple nested block of code: testStepMultiNest()  
+	
+		* Step into operation invocation: testStepIn()
+		 
+		* Step into function invocation: testStepIn()
+		
+		* Step into bridge invocation: testStepIn()
+		
+		* Step into statement that is not an invocation: testStepIn()
+		
+		* Step return on function invocation: testStepReturn()
+		
+		* Step return on operation invocation: testStepReturn()
+	
+	- Event Queue Context
+	
+		* Step into an event queue:  testSteppingOnEventQueue()
+		
+		* Step over an event: testSteppingOnEventQueue()
+		 
+End
+---
+
+$Log: i1704.dnt,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.16.1  2008/12/31 16:10:22  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2006/05/12 21:54:27  kurtb
+Job: 1704
+Addressed Observations
+
+Revision 1.7  2006/05/12 21:52:25  kurtb
+Job: 1704
+Addressed Observations
+
+Revision 1.6  2006/05/11 14:49:41  kurtb
+Job: 1704
+Re-introduce for Review
+
+Revision 1.5  2006/05/09 22:05:36  kurtb
+Job: 1704
+Addressed Observations
+
+Revision 1.4  2006/05/04 20:41:45  kurtb
+Job: 1704
+Introduced for Review
+
+Revision 1.3  2006/04/13 21:49:32  kurtb
+Job: 1704
+Addressed observations
+
+Revision 1.2  2006/04/04 17:58:36  kurtb
+Job: 1704
+Re-introduce for review
+
+Revision 1.1  2006/04/03 16:49:19  kurtb
+Job: 1704
+Introduce
+

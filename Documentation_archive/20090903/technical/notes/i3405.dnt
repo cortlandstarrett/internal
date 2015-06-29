@@ -1,0 +1,495 @@
+========================================================================
+
+File:      $RCSfile: i3405.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support Inter-component verification
+
+1. Abstract
+-----------
+This note describes the changes that allow for full component communication 
+verification.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3405 (Support Inter-component Verification)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3405
+[2] Bugzilla item 3099 (Support Intra-component Verification)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3099
+[3] CVS:Documentation/internal/technical/archive/20080606/i3099.ant
+[4] Bugzilla item 3415 (Implicit Component Addressing enforcement should be 
+    turned off when multiplicity  is one)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3415
+[5] Bugzilla item 3701 (Save launch configuration information in the meta model)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3701
+[5] Bugzilla item 2924 (Add new OAL syntax for Components)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2924
+[6] 2924-02.dnt (Support required Implicit Component Addressing preference)
+
+4. Background
+-------------
+Currently we support verification on domains, formal components, and component 
+interfaces, with the limitation that no communication outside of a component 
+is verified.  Issue 3099 was originally raised to cover full component 
+communication (including communication between components).  In order to follow 
+our team's mantra to deliver large pieces of functionality in small steps, 
+after analysis (and after work had begun based on that analysis) issue 3099 
+was modified to cover only communication inside a component.  At this point,
+work has progressed beyond the  requirements of the "baby-step" of the 
+intra-component verifier, but there is work remaining to complete full inter-
+component verification.  This note lays out the remaining work and a plan for
+completing these remaining tasks.
+
+5. Analysis
+-----------
+The analysis for this issue is provided in [3].
+
+6. Design
+---------
+In this section the tasks that remain are called out.  The work required 
+section will specify how these tasks are to be completed.
+
+6.1 Need to allow access to target component
+  
+In order to support communication between two or more components we must allow
+access to the target component in OAL which sends a message.  Access can be
+gained through any element which is typed to component_ref, or can be gained by
+the OAL keyword sender.
+
+6.2 Handle blocking and message queuing
+
+When executing a component operation we must block the originating thread until
+execution is complete.  
+
+Execution of both interface operations and signals shall occur as soon as any
+executing OAL in the destination component has completed.  The only exception to
+this is when the interface signal is mapped to a transition, in which case the
+signal shall be added to the event queue immediately.  Asynchronous 
+communications shall not block.  The sender places the event in the destination 
+component's queue and returns, 
+
+
+6.3 Allow multiplicity configuration in launch specification
+
+As specified in [3], we need to allow the user to launch as many instances of
+a component as necessary.  To support this, we shall create a checkbox tree
+table hybrid.  The checkbox tree shall allow selection of which component's are
+going to be available during verification.  The additional ability to allow
+multiple instances per selected component shall be handled in a table, which
+when selected draws a spinner box.  This spinner allows increasing and
+decreasing the instance count.  The allowed values in the spinner shall conform
+to that of the multiplicity specified in the model being verified (ie. If 
+multiplicity is one the value can not be changed, but if it is greater it can).
+
+6.4 Support initializer messages.  
+
+One initializer message shall be allowed per component (or component instance
+set).  This message may be selected by the user during the setup of a launch
+configuration.  To allow such a selection we must provide a table which displays
+the currently selected initializer message.  This table when selected provides
+a button which opens a selection dialog listing all available interface
+operations and signals.  Next to this table entry we shall provide a check box
+which indicates whether or not execution shall pause upon entry of the selected
+initializer method. 
+
+Once a debug configuration is completely launched (when all Execution Engines
+are initialized), we must execute the specified initializer message for each
+Execution Engine instance.
+
+6.5 Correctly display Imported Component icon in Debug Tree
+
+This is simply a bug that needs to be addressed.
+  
+6.6 Support execute with multiplicity
+
+If a user selects an interface operation or signal in Model Explorer, which is
+owned by a component that has more than one instance, we need to allow them to
+choose which instance should get the message.  Optionally, we can make all
+execution be done through the Session Explorer in which case we just need to
+disable the Execute menu item in Model Explorer.  We will remove the execute
+option from Model Explorer.
+   
+6.7 Correctly handle implicit component addressing when non-ambiguous [4]
+
+When OAL syntax for components was introduced [5] implicit component addressing
+was addressed by adding an option "Allow Implicit Component Addressing" to the 
+BridgePoint action language preferences [6].  During the parse of the OAL, if
+this option is disabled, a function is called to find the body being parsed and 
+verify that it is either a Provided Interface message or else is the body of a 
+class state machine state. If a state is found, the function also tests to 
+ensure that all in-bound transitions to the state in question bear only signals. 
+If a problem is found, it is indicated to the calling OAL with a non empty 
+string containing the error message. 
+
+With completion of this issue, it is possible to specify how many components 
+are launched and what message to send each component.  However, without the
+"Allow Implicit Component Addressing" preference checked, only OAL in the body
+of a message reference can send a message.
+
+This item is raised to modify the parser, so that components will be able to be 
+messaged from any activity using the implicit component addressing 
+syntax without the need to turn the preference on.
+
+6.8 Handle non-fully executed wirings (only one side of wiring launched)
+
+When invoking an interface operation or signal, which is not satisfied either
+via the model or by both sides of the satisfaction not being executed, the tool
+shall treat the call as "stub" OAL.  The behavior shall be exactly identical to
+that of what we have today, prior to this work.  See [3] for more analysis
+details.
+
+6.9 Handle communication across imported interfaces (wiring of imported
+    components)
+    
+An imported component may only communicate with the outside world (other
+components) via Imported References.  Verifier must conform to this limitation. 
+ 
+7. Design Comments
+------------------
+7.1 It may be useful, at some future time to capture the launch configuration 
+    data in the meta model for use by the model compiler.  Issue 3701 [5] is 
+    raised to investigate this.
+7.2 Note that in 6.7 above, the decision was made to remove the execute option 
+    from ME.  The original analysis and design outlined that the work would be
+    as need to provide for execution in both places.  To do this we would have 
+    to allow for selection of instances in ME which muddies the line between 
+    ME and SE.  Therefore we chose to remove the execute option from ME at 
+    this time.
+7.3 There was a requirement in the analysis note (in 5.1) to provide a 
+    checkbox in the launch data to allow for halting on entry of a component 
+    signal or operation specified as an initializer method.  Since a setting a 
+    breakpoint at this location can accomplish the same thing, this will not be 
+    implemented.
+
+
+
+8. Work Required
+----------------
+8.1 Need to allow access to target component
+  8.1.1 Make Runtime Value support references to Components
+        Subtype 'Simple Value' so that one subtype; 'Simple Core Value' has a
+        'value' attribute and the other; 'Component Reference Value' has an
+         association with Execution Engine (I_EXE). A later new subtype here
+         could be 'Instance Reference Value'.
+  8.1.2 Support 'sender' keyword.
+        Follow the OAL idioms used to support 'self' to create a pseudo
+        transient variable called 'sender'. This should only be created in the
+        scope of incoming message OAL. The runtime value for this must be set up
+        during transfer of control from the sending component.
+8.2 Handle blocking and message queuing
+  8.2.1 Message processing
+    8.2.1.1 Respond to message after currently executing action
+      8.2.1.1 Associate message stack across R2943, at end of set
+      8.2.1.2 Add signal event to pending event queue
+  8.2.2 Thread blocking
+    8.2.2.1 Block on send of interface operation
+      8.2.2.1.1 Add association between Stack and Stack Frame
+      8.2.2.1.2 Have BPThread wait while association is setup
+      8.2.2.1.3 Tear down association on disposal of Stack Frame
+      8.2.2.1.4 Wake up BPThread when tearing down association
+8.3 Allow multiplicity configuration in launch specification
+  8.3.1 Create spinner box cell editor
+    8.3.1.1 Create a new class which is a SWT spinner box
+    8.3.1.2 Allow integers in spinner value field
+    8.3.1.3 Add spinner box rules which prevent setting the multiplicity against
+            the model specified multiplicity
+    8.3.1.4 Modify launch configuration tree to be a check box tree table hybrid
+      8.3.1.4.1  Create columns for tree
+        8.3.1.4.1.1 Create multiplicity column
+      8.3.1.4.2  Make cell editor the spinner box upon selection of multiplicity
+                 column  
+8.4 Support initializer messages.
+  8.4.1 Create element chooser dialog
+    8.4.1.1 Create new ElementSelectionDialog instance
+    8.4.1.2 Show all interface operations and signals in the dialog
+    8.4.1.3 Show ports in the dialog
+    8.4.1.4 Only allow OK when an operation or signal is chosen
+  8.4.2 Create new column in launch configuration tree
+  8.4.3 When selecting the new column create a dialog cell editor
+  8.4.4 Open an element chooser dialog when editor button hit 
+8.5 Correctly display Imported Component icon in Debug Tree
+8.6 Support execute with multiplicity
+  8.6.1 Model explorer does not handle multiplicity of component instances,
+        therefore we shall prevent Execute from showing in Model Explorer.
+8.7 Correctly handle implicit component addressing when non-ambiguous [4]
+  Modify OAL Validation Functions::Message_invocation_end as follows:
+  8.7.1 The 'no 'to' clause block' near the bottom should be changed to test the
+        multiplicity of the target component. If it is '1' then the call to
+        ::is_valid_implicit_component_addressing() should not be made.
+  8.7.2 In the case where there is a 'to' clause, the Invocation::ACT_IOP and
+        ACT_SGN instances must be associated with a V_VAL (which must be of type
+        component_ref).
+  8.7.3  New associations will be needed for this in the Invocation subsystem.
+  8.7.4  The setupParameterValues() operation for ACT_IOP and ACT_SGN must be
+         modified to traverse these associations and initiate computation of the
+         runtime value to be used if necessary.
+8.8 Handle non-fully executed wirings (only one side of wiring launched)
+  8.8  If a target component cannot be determined, then execute the local OAL 
+       in the sending component interface.
+    8.8.1 This functionality is exactly what is existent today, just use the
+          existing code if non-fully executed wiring.
+8.9 Handle communication across imported interfaces (wiring of imported
+    components)
+  8.9.1 Locate target component across associations in Component Library SS
+  8.9.2 Allow access to sender component (same as 8.1, except make the
+        association with the imported component)
+8.10 Correctly set up the sender component_ref value
+  Modify OAL Validation Functions::Message_invocation_end as follows:
+  8.10.1 In the case where there is a 'to' clause, the Invocation::ACT_IOP and
+         ACT_SGN instances must be associated with a V_VAL (which must be of
+         type component_ref).
+  8.10.2  New associations will be needed for this in the Invocation subsystem.
+  8.10.3  The setupParameterValues() operation for ACT_IOP and ACT_SGN must be
+          modified to traverse these associations and initiate computation of
+          the runtime value to be used as the component_ref.
+
+9. Unit Test
+------------
+The i3099.dnt [2] contains an extensive unit test section.  Those tests were
+designed with full verification in mind.  Some of those tests fail today, 
+but they shall all succeed with the completion of this issue.Those tests 
+will be utilized.  These tests will be extended to exercise the following
+features:
+9.1 In [2 section 9.2 - 9.3] the tests will be extended to test inter-component 
+  execution.
+  
+  9.1.1 Test Execute action on Provided Signal Client/Server
+    _- Execute provided signal
+    _R Provided signal OAL is executed
+    _R Required signal OAL is not executed
+    
+  9.1.2 Test Execute action on Required Signal Client/Server
+    _- Execute required signal
+    _R Provided signal OAL is executed
+    _R Required signal OAL is not executed
+  
+  9.1.3 Test Execute action on Provided Signal Server/Client
+    _- Execute provided signal
+    _R Required signal OAL is executed
+    _R Provided signal OAL is not executed
+     
+  9.1.4 Test Execute action on Required Signal Server/Client
+    _- Execute required signal
+    _R Required signal OAL is executed
+    _R Provided signal OAL is not executed
+
+  9.1.5 Test Execute action on Provided Operation Client/Server
+    _- Execute provided operation
+    _R Provided operation OAL is executed
+    _R Required operation OAL is not executed
+    
+  9.1.6 Test Execute action on Required Operation Client/Server
+    _- Execute required operation
+    _R Provided operation OAL is executed
+    _R Required operation OAL is not executed
+  
+  9.1.7 Test Execute action on Provided Operation Server/Client
+    _- Execute provided operation
+    _R Required operation OAL is executed
+    _R Provided operation OAL is not executed
+     
+  9.1.8 Test Execute action on Required Operation Server/Client
+    _- Execute required operation
+    _R Required operation OAL is executed
+    _R Provided operation OAL is not executed
+
+  9.1.9 Test Execute action on Provided Signal assigned to transition
+        Client/Server
+    _- Execute provided signal
+    _R Required signal is not executed
+    _R Destination state OAL is executed
+
+  9.1.10 Test Execute action on Required Signal where Provided Signal assigned
+         to transition Client/Server
+    _- Execute required signal
+    _R Required signal is not executed
+    _R Destination state OAL is executed
+
+  9.1.11 Test Execute action on Provided Signal where Required Signal assigned
+         to transition Server/Client
+    _- Execute provided signal
+    _R Provided signal is not executed
+    _R Destination state OAL is executed
+
+  9.1.10 Test Execute action on Required Signal assigned to transition
+        Client/Server
+    _- Execute required signal
+    _R Provided signal is not executed
+    _R Destination state OAL is executed
+
+  9.1.11 Repeat tests above executing a function which sends the message
+         (Exclude those which break the direction rule as the parser prevents
+          this)
+  
+9.2 Test blocking
+  _- Send a message to a recipient
+  _R Recipient returns control before sender OAL execution is completed
+
+9.3 Test execution order
+  _- Send a message to a recipient which is currently executing OAL
+  _R Message is not responded to until recipient completes current OAL
+
+9.4 Test message direction parsing
+  _- Add OAL to send message from client to server where message is set to
+     Client/Server
+  _R No parser error
+  _- Add OAL to send message from server to client where message is set to
+     Client/Server
+  _R Parse error
+  _- Add OAL to send message from client to server where message is set to
+     Server/Client
+  _R Parse error
+  _- Add OAL to send message from server to client where message is set to
+     Server/Client
+  _R No parse error
+  
+9.5 Test Session explorer tree
+
+  Tree should show the following:
+  
+  - System
+    - Component Definition
+      - Component Instances
+        - Static Classes
+          - Class Instances
+            - Attribute Values
+              - (If structured type) Structure Member Values
+              - (If Array type) Array Values
+            - Instance states
+            - Pending Events
+          - Static class operations
+          - Class states
+        - Ports
+          - Interfaces
+            - Interface operations
+              - Interface operation parameters
+            - Interface signals
+              - Interface signal parameters
+        - Function Packages
+          - Functions
+
+9.6 Test Put in Spotlight for Class In Engine
+  _- Select a static class in Session explorer
+  _R The Put in Spotlight menu item is available
+  _- Execute the menu item
+  _R The static class is put into the spotlight view
+  _- Select the same class in the Spotlight view
+  _R The Remove from Spotlight menu item is available
+  _- Execute the menu item
+  _R The static class is removed from the spotlight view
+  
+9.7 Test arrays in spotlight view and variables view
+  _- Assert that array values are listed in both
+  
+9.8 Test structure member values in spotlight view and variable view
+  _- Assert that structure member values are correctly listed in both
+
+9.9 Test breakpoint setting pre-launch
+
+  _- Set a breakpoint in a function (line 1)
+  _- Set a breakpoint in the same function (line 2)
+  _- Launch the verifier session
+  _- Execute the function
+  _R The first breakpoint is hit
+  _- Remove the breakpoint from line 2 
+  _- Continue (Run)
+  _R Verifier does not stop on the line where the BP was removed.
+  _- Terminate Verifier
+  _- Re-launch
+  _- Execute the same function
+  _R Breakpoint on line 1 is hit
+  _- Continue
+  _R Verifier does not stop on the line where the BP was removed.
+
+9.10 TODO: Add test for 6.19 Binding with realized EEs
+9.11 TODO: Add test for 6.20 The Oaoofooa.eventMaskSemaphore...
+9.12 TODO: Add test for 6.18 Licensing
+9.13 TODO: Add test for 6.22 Transient arrays are not displayed correctly...
+9.14 TODO: Add test for 6.23 There is an NPE in the parser...
+9.15 TODO: Add test for 6.24 In order to support the new...
+
+End
+---
+
+$Log: i3405.dnt,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.14  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.13.2.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.13  2008/10/20 16:13:00  tlondon
+Job: 3405
+
+Add repeat section for testing.
+
+Revision 1.12  2008/10/17 18:44:58  tlondon
+Job: 3405
+
+Introduce initial test list.
+
+Revision 1.11  2008/10/01 11:55:26  rmulvey
+Job:3405
+Corrected relationship reference
+
+Revision 1.10  2008/09/17 20:15:12  rmulvey
+Job:3405
+Addressed review minutes.
+
+Revision 1.9  2008/09/16 05:04:08  campbell
+Job: 3405
+Added details on processing runtime values for component references.
+
+Revision 1.8  2008/09/15 17:36:09  rmulvey
+Job:3405
+Updated the unit test section.
+
+Revision 1.7  2008/09/15 16:47:32  tlondon
+Job: 3405
+
+Add 8.2
+
+Revision 1.6  2008/09/15 13:04:55  rmulvey
+Job:3405
+Fixed typos and added a small explanation to 6.5
+
+Revision 1.5  2008/09/12 21:25:02  tlondon
+Job: 3405
+
+Initial introduction of "meat" for design section and work required sections.
+
+Revision 1.4  2008/09/12 18:56:17  rmulvey
+Job:3405
+Fixed typos
+
+Revision 1.3  2008/09/12 18:49:01  rmulvey
+Job:3405
+Updated with information on remaining tasks.
+
+Revision 1.2  2008/08/06 15:48:34  rmulvey
+Job:3405
+Updated
+
+Revision 1.1  2008/07/14 22:13:56  rmulvey
+Job:3405
+Introduce
+

@@ -1,0 +1,322 @@
+========================================================================
+
+File:      $RCSfile: dts0100717929.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+First-step deliverable for support of intra-component instance reference 
+passing for classes
+
+1. Abstract
+-----------
+The analysis work done to introduce complete support for intra-component 
+reference passing introduced a test matrix that describes the problems that 
+must be resolved [3].  There is a large amount of work, therefore the work is 
+being broken-down in separate steps to allow useful intermediate deliverables.  
+This note describes the first deliverable. 
+
+2. History
+----------
+[1] review minutes dts0100717929.rvm
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100717929 
+[2] ClearQuest DEI dts0100703003
+    Support intra-component instance reference passing for classes.
+[3] dts0100703003.ant
+    Analysis note for supporting intra-component instance reference passing for 
+    classes.
+[4] InstRefVerifierMatrix.txt
+    This is the instance Reference test matrix. This matrix was created during 
+    analysis of [2].  This matrix describes the situations where instance 
+    references are used and test results
+    for each of those situations. 
+[5] dts0100720592 -  Instance Reference test
+	Manual Instance Reference test  
+
+	
+4. Background
+-------------
+See [2]
+
+5. Analysis
+-----------
+See [2].
+
+5.1 Based on the test matrix [3], there are four kinds of instance 
+    reference bugs: 
+5.1.1 Parser error that has workaround using transient variable.
+5.1.2 Verifier error that has workaround using transient variable.
+5.1.3 Parser error without workaround available.
+5.1.4 Verifier error without workaround available.
+ 
+5.2 This note will address only §5.1.4, the remaining issues §5.1.1, §5.1.2 and 
+    §5.1.3 will be addressed in the issue referenced in [2] that is 
+    assigned to the fall release. 
+
+
+5.3 In the matrix [3], there is only one cell that has a Verifier error
+    without workaround. The verifier error occurs in case of writing in  an 
+    attribute of an instance reference parameter.
+
+	There are two types of this verifier error : 
+	
+5.3.1 The first type occurs when assigning instance value to Instance Reference 
+      parameter :  
+      e.g. param.instRef = instance;
+      Executing this code will trigger the following error in the console view:
+      
+      Value:Value.setValue() error, data type not supported.
+      
+      Note that _instRef_ is passed by Reference. In case of passing the 
+      parameter by Value, the previous code line will trigger a parser error 
+      and the verifier will not execute the code.
+       
+      This issue will be addressed in this summer release.
+	       
+5.3.2 The second type occurs when assigning a simple value to an attribute
+	  referenced by Instance Reference parameter. 
+      e.g param.instRef.attribute = value;
+      This code line will cause the following parser error : 
+      
+       Parameter ->instRef<- is not passed by reference and is not assignable.
+	      
+      This issue will be addressed in this summer release.
+	 
+       
+6. Design
+---------
+6.1 To address the first error type, the AssignToMember.Execute() 
+    operation needs to support "Instance Reference" as a subtype for the root 
+    "Value" of type "ParameterValue".
+
+    - Currently, the AssignToMember.Execute() operation supports instance 
+    reference chain value: 
+ 			Value --R801--> InstanceReference.
+
+    - in addition to the previous chain, another chain value needs to be 
+    supported :
+            Value --R801--> Parameter Value --R833--> Operation Parameter 
+            --R3008--> Local --R3001--> LocalValue --R3010--> Value 
+            --R801--> Instance Reference
+		
+    - The previous chain value needs to consider the other possible subtypes of 
+    ParameterValue. Those are : Function Parameter, Bridge Parameter and 
+    Property Parameter. Note that The Property Parameter is associated with 
+    LocalValue directly.
+    
+    - This chain value will be added in AssignToMember.Execute() operation.
+    
+    - AssignToMember.execute() is extended to handle the various ParameterValue 
+    subtypes of Value. In this operation, the parameter values are traversed for, 
+    and if found, a select any statement finds a local instance.
+
+	At first glance, this appears to be unsafe in a recursive context, since 
+	different locals exist for different depths in the recursive call stack. 
+	However, the traversals are safe, because the local is merely used to 
+	determine what kind of copy strategy is to be followed for the value. If an 
+	Instance Reference is found, a copyValue strategy is followed. Since the 
+	type of a parameter cannot change during recursion, it follows that any 
+	local selected will produce the same result. Hence a select any is safe to 
+	use in this context.
+
+	Having selected the correct value copy strategy, the code which follows 
+	correctly uses the stack_frame_id to locate the correct source and target 
+	values on which to perform the assignment.
+
+
+6.2 To address the second error type, the operation OAL Validation Utility 
+	Functions::Param_root_value_validate() needs to allow assigning value for 
+	attributes as long as the parameter type is Instance Reference, regardless 
+	the reference indicator of that parameter.
+	
+	- Param_root_value_validate() function is only invoked in two locations, 
+	member_access_end() and member_access_loop11_end(). When writing in the 
+	parameter,	the member_access_end() is used for validation. But when writing
+	in an attribute referenced by the parameter, the member_acccess_loop11_end() 
+	is used for the validation.
+	
+	I.e. param.instRef = instance;   is validated by  member_access_end()
+	   param.instRef.attr = value;  is validated by memeber_access_loop11_end();
+	
+	The function parameter 'a4_isRootAccess' will be added to 
+	Param_root_value_validate(). This parameter will be set with 'true' in 
+	member_access_end() and with 'false' in member_access_loop11_end().
+	
+	This function parameter 'a4_isRootAccess' in Param_root_value_validate()
+	indicates whether it is invoked by member_access_end() or 
+	member_access_loop11_end().
+	
+	The boolean condition statement that indicates whether the write access is
+	valid or not is :(the following code within Param_root_value_validate())
+	val.isLValue and parm.By_Ref == 0 
+	
+	If user accesses an attribute referenced by instance reference parameter, 
+	an extra boolean condition is needed to exclude this case. 
+	This new added boolean condition shall be 'true' if the data type 
+	associated with parameter is NOT Instance Reference Datatype. Then the 
+	boolean condition is anded with the old expression in order to maintain the 
+	previous behavior of non Instance Reference Datatype.
+	i.e. val.isLValue and parm.By_Ref == 0 and ( new boolean expr) 
+	The complete truth table is :
+	
+		
+			irdt	|   a4_isRootAccess			| desired result  
+		--------------------------------------------------------
+			T		|			T				|		T
+					|							|	
+			T		|			F				|		F 
+					|							|
+			F		|			T				|		T
+					|							|
+			F		|			F				|		T
+		 
+	  Note: irdt represents the instance reference data type related with the 
+	 parameter. 
+	 If it is null , this means  False. 
+	 If it is Not_null, this means True.
+	
+	The abstracted boolean form for the above table is  
+	NOT( irdt AND NOT(a4_isRootAccess)) ---> 
+											NOT(irdt) OR a4_isRootValue
+
+	The final boolean expression will be : 
+	val.isLValue and parm.By_Ref == 0 and 
+								((empty irdt) or ( param.a4_isRootAccess))
+
+
+7. Design Comments
+------------------
+7.1 The fix described in §6.2 uncovered a Verifier execution problem which could 
+    not be reached before the fix was in place.
+	
+	By executing the example code in §5.3.2, the "Problem Occurred" window will
+	pop up with the following error message : 
+	An internal error occurred during: "Execute Debug Command".
+	java.lang.NullPointerException
+	
+	 Currently, the chain value of the Instance Reference  supports copying 
+	a value	into an attribute with only the following  chain  :
+	
+	 			Attribute Value Reference -> Value -> Instance Reference.
+	 			
+	This handling is implemented in the AttributeValueReference.setValue() 
+	operation.
+	
+	When an instance reference is passed as Parameter (e.g. operation 
+	parameter), the chain value will be: 
+	
+	     Attribute Value Reference --R807--> Value --R801--> 
+		 Parameter Value --R833--> Operation Parameter --R3008--> Local 
+		   --R3001--> Local Value --R3010--> Value --R801---> Instance Reference
+	
+	
+	Currently, the instance reference handling is done by
+	AttributeValueReference.setValue() operation.
+		
+	In order to allow generic handling for Instance Reference regardless of 
+	the chain value, an operation  'setValue()' will be added to Instance 
+	Reference model class. The functionality of AttributeValueReference.setValue() 
+	operation will be limited only to query on the next chain value 
+	(ParameterValue or InstanceReference), then invoking its setValue() operation. 
+	The rest of	AttributeValueReference.setValue() functionality handling the 
+	instance reference will be moved to InstanceReference.setValue(). 
+	This functionality is responsible for getting the right RuntimeValue 
+	instance that represents the corresponding referenced attribute.
+	
+	At the InstanceReference.setValue() operation, the corresponding 
+	AttributeValue needs to be resolved. For this AttributeValue to be resolved, 
+	the Attribute instance is required (which can be obtained from 
+	AttributeValueReference through R806).
+	
+	To prevent wasting process time to traverse backwards the chain value from 
+	Instance reference to AttributeValueReference to get the Attribute 
+	instance,an operation parameter 'member_id' needs to be added to all 
+	setValue() operations in all model classes in the chain value. This 
+	'member_id' parameter holds the target attribute id that represents the 
+	referenced attribute.
+		
+	The 'member_id' parameter will be assigned the value of attribute id in 
+	AttributeValueReference.setValue() operation. This attribute id value will 
+	be propagated through the consecutive setValue() operation calls.
+	The 'member_id' parameter will be set with NULL_UUID at the start of the 
+	chain value calculation.
+	E.g in AssignToMember.Execute() operation.
+	
+
+8. Work Required
+----------------
+The work required is fully outlined in the design section.
+
+9. Unit Test
+------------
+9.1 Run manual test [5].
+9.2 Run all JUnit tests.
+
+End
+---
+
+$Log: dts0100717929.dnt,v $
+Revision 1.11  2010/09/28 18:52:03  nmohamad
+job:dts0100679021
+Addressing review minutes.
+
+Revision 1.10  2010/09/23 20:07:48  nmohamad
+job:dts0100717929
+Merge 7.1 , 7.2  and 7.3 in single  section
+
+Revision 1.9  2010/09/23 18:04:44  nmohamad
+job:dts0100717929
+Add section at 6.1 about the lossy selection of Local instance associated with parameter.
+Also  reword the section 7.3 about   adding new operation parameter
+member_id  to give more info about why it is needed and how it will be used.
+
+Revision 1.8  2010/09/22 18:30:32  nmohamad
+job:dts0100717929
+Update the operation parameter  name from 'attr_id'  to 'member_id'  based on the renaming done in the design.
+
+Revision 1.7  2010/09/22 14:58:28  nmohamad
+job:dts0100717929
+Update the function parameter  value_isDirectAccess to  a4_isRootAccess in the design note.
+
+Revision 1.6  2010/09/21 14:51:41  nmohamad
+job:dts0100717929
+Reword some parts of the notes.
+
+Revision 1.5  2010/09/21 11:54:01  nmohamad
+job:dts0100717929
+Additional refining  and fix some alignments.
+
+Revision 1.4  2010/09/21 05:45:47  nmohamad
+job:dts0100717929
+refining..
+
+Revision 1.3  2010/09/21 05:34:53  nmohamad
+job:dts0100717929
+Addressing review minutes
+
+Revision 1.2  2010/09/16 17:36:39  nmohamad
+job:dts0100717929
+Update the design section and refine the note.
+
+Revision 1.1  2010/09/16 17:18:00  rmulvey
+job:dts0100703003 dts0100717929
+The full dts0100703003 can not be completed in this release cycle.  Therefore an intermediate deliverable was introduced (dts0100717929).  The dts0100703003.dnt that was previously introduced was renamed to dts0100717929.dnt and updated accordingly.
+
+Revision 1.2  2010/09/16 16:37:10  nmohamad
+job:dts0100703003
+add  Work Required section.
+
+Revision 1.1  2010/09/16 16:35:25  nmohamad
+job:dts0100703003
+creating the design note.
+

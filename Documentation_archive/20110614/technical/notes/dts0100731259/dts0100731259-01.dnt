@@ -1,0 +1,325 @@
+========================================================================
+
+File:      $RCSfile: dts0100731259-01.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Enhance sequence diagram support - Phase 1
+
+1. Abstract
+-----------
+This note describes what will be done to add the ability to formalize
+Components on a sequence diagram.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100731259 - Enhance sequence diagram support
+[2] cvs:/Documentation/internal/technical/notes/dts0100731259.ant
+[3] cvs:/Documentation/internal/technical/notes/dts0100631941-06.dnt - Migrate
+    away from specialized packages continuation.
+
+4. Background
+-------------
+A new revenue opportunity depends on showing some enhanced sequence diagramming
+behavior.
+
+5. Analysis
+-----------
+See [2]. For this specific note, we will address only the requirements set out
+in section 5.5 of [2].
+
+6. Design
+---------
+6.1 Add UI for Component Formalization
+
+6.2 Extend Message subsystem
+This is required to handle formalization of messages to component participants. 
+
+7. Design Comments
+------------------
+7.1 An existing defect is fixed where Component Participants were not shown in
+the Model Explorer tree when under a Communication Diagram.
+
+7.2 During test model construction it was noted that Communication Diagram
+message formalization was defective for all target message types. This was
+traced to the new graphics infrastructure being unable to adapt to ModelElement
+instances. The create_core_plugin archetype is modified to specify
+NonRootModelElement for heterogeneous selections.
+
+8. Work Required
+----------------
+The following changes are required:
+
+8.1 Changes to core
+8.1.1 getSystemId()
+It was found that there are many contexts in which a Component Participant can
+be drawn:
+
+  - In a system level Sequence or Communication diagram or nested under one.
+  - Directly under a Component or under a nested Component.
+  - Directly under a Domain.
+  - Under a Subsystem or nested Subsystem
+  - On Commmunication and Sequence Diagrams nested under a Generic package
+    This applies to pre-generic package models only. Since this is the case,
+    no explicit commitment of support for this use case is suggested.
+
+Accordingly, there are many possible paths that may be required to reach the
+system level. Since the requirement is that we search for components to
+formalize against anywhere in the project, we must find the System Model
+instance under which we have created the Component Participant.
+
+An infrastructure of operations is added to support this. To make it easy to
+follow, all operations added to provide this functionality are named,
+'getSystemId'. These operations recursively call each other until the top of the
+hierarchy is reached, whereupon they return the Sys_ID value found.
+
+Meta-model elements extended in this way are:
+Communication, Component, Component Package, Domain, Subsystem, Interaction
+Participant and Sequence.
+
+Generic packages already have this infrastructure present, so no additional
+changes are needed for these.
+
+8.1.2 Message subsystem
+Extensive enhancement of the message subsystem was added to allow messages to
+formalized component participants to be formalized.
+
+8.1.2.1 Two new sub-types of Message are required, Signal Message and
+Interface Operation Message. These are placed in the hierarchy below
+Synchronous Message and Asynchronous Message respectively. Two new associations
+are required, R1021 and R1022, to associate the two new sub-types with their
+formal counterparts. Signal Message is associated with Interface Signal across
+R1021 and Interface Operation Message with Interface Operation across R1022.
+
+Similarly a new sub-type of Message Argument, Executable Property Argument is
+required. It is associated with Property Parameter across new association R1023.
+
+8.1.2.2 The above extensions to the Message subsystem necessitate fall out
+changes to:
+
+  - Interface Operation.newParameter() to add new instances of Executable
+    Property Argument when a new parameter is added to an Interface Operation.
+  - Interface Operation.dispose() to dispose all associated messages found
+    across R1022.
+  - Interface Signal.newParameter() same as above.
+  - Interface Signal.dispose() same as above across R1021.
+  - Property Parameter.dispose() to locate and dispose Executable Property
+    Argument instances across R1023.
+  - Synchronous Message.dispose() to dispose the new sub-type.
+  - Asynchronous Message.dispose() as above.
+  - Message Argument.dispose() to dispose the new argument sub-type.
+
+8.1.3 Context Menu Entry Functions
+8.1.3.1 ::SQ_COP_SpecializedPackageFormalize()
+This function is added following the conventions established in [3, 6.4]. The
+function locates the component specified by the user and passes its id to the
+formalize operation described below[8.1.5.1].
+
+8.1.3.2 ::SQ_COP_Unformalize()
+This function is added following the conventions established in [3]. It calls
+the unformalize operation [8.1.5.2] on the participant selected by the user.
+
+8.1.3.3 ::MSG_SM_SpecializedPackageInterfaceOperationFormalize()
+This function is added following the conventions established in [3]. The
+function locates the component and interface operation specified by the user and
+passes its id to the formalize operation below[8.1.5.3]. Unformalization
+behavior is handled by modifying the existing unformalize operation [8.1.5.4]
+and so does not require a new function.
+
+8.1.3.4 ::MSG_AM_SpecializedPackageSignalFormalize()
+This function is added following the conventions established in [3]. The
+function locates the component and signal specified by the user and passes its
+id to the formalize operation below[8.1.5.5].  Unformalization behavior is
+handled by modifying the existing unformalize operation [8.1.5.6] and so does
+not require a new function.
+
+8.1.3.5 ::MSG_SM_SpecializedPackageCommunicationInterfaceOperationFormalize()
+This function does the same thing as 8.1.3.3 above except for Communication
+Diagrams.
+
+8.1.3.6 ::MSG_AM_SpecializedPackageCommunicationSignalFormalize()
+This function does the same thing as 8.1.3.4 above except for Communication
+Diagrams.
+
+
+8.1.4 Action filters
+8.1.4.1 ComponentParticipant.actionFilter()
+This does not currently exist for this element. It shall handle the "can" filter
+name with the following values:
+
+- "unform" true if the participant is formalized to a component.
+- "formComp spec pkg" - true if components exist and the participant is not
+  located in a generic package.
+- "formComp gen pkg" - true if components exist and the participant is located
+  in a generic package.
+
+8.1.4.2 ComponentParticipant.actionFilter()
+This does not currently exist for this element. It shall handle the "can" filter
+name with the following values:
+
+- "unform" true if the participant is formalized to a component.
+- "formComp spec pkg" - true if components exist and the participant is not
+  located in a generic package.
+
+adding support for generic package formalization is left for a later
+enhancement.
+
+8.1.4.3 Asynchronous Message.actionFilter()
+The following "can" filter values are added:
+- "formMsg spec pkg" - true if components exist and the participant is not
+  located in a generic package.
+- "formMsg generic pkg" - true if components exist and the participant is 
+  located in a generic package.
+- "formCommMsg spec pkg" - true if components exist and the participant is
+  located in a Communication package.
+The handler for these values calls a new operation on Component Participant,
+isFormalAndHasSignals() described below [8.1.4.6].
+
+8.1.4.4 Synchronous Message.actionFilter()
+The following "can" filter values are added:
+- "formMsg spec pkg" - true if components exist and the participant is not
+  located in a generic package.
+- "formMsg generic pkg" - true if components exist and the participant is 
+  located in a generic package.
+- "formCommMsg spec pkg" - true if components exist and the participant is
+  located in a Communication package.
+The handler for these values calls a new operation on Component Participant,
+isFormalAndHasIFOperations() described below [8.1.4.5].
+
+8.1.4.5 Component Participant.isFormalAndHasIFOperations()
+This operation does what its name suggests. It checks that the element is
+formalized across R955 and then checks that the formalized component has
+interface operations defined.
+
+8.1.4.6 Component Participant.isFormalAndHasSignals()
+This operation does what its name suggests. It checks that the element is
+formalized across R955 and then checks that the formalized component has
+signals defined.
+
+8.1.5 Formalize and Unformalize
+8.1.5.1 ComponentParticipant.formalize()
+This operation is added to locate the required component based on a passed
+identifier and relate it to the current instance across R955. If the participant
+is already formalized, it is unformalized first.
+
+8.1.5.2 ComponentParticipant.unformalize()
+This unrelates the participant from the already related component and discards
+any messages already formalized to it on the diagram.
+
+8.1.5.3 Synchronous Message.formalizeWithInterfaceOperation()
+This new operation is added to continue the pattern established with the already
+existing formalizeWith*() operations. It locates the Executable property
+selected by the user and confirms that it is an interface operation. It then
+creates a Interface Operation Message sub-type and migrates the message. It then
+adds the required parameter instances.
+
+8.1.5.4 Synchonous Message.unformalize()
+This operation is extended to cover the case where the sub-type is an Interface
+Operation Message.
+
+8.1.5.5 Asynchronous Message.formalizeWithSignal()
+This new operation is added to continue the pattern established with the already
+existing formalizeWithEvent() operation. It locates the Executable property
+selected by the user and confirms that it is a signal. It then creates a
+Signal Message sub-type and migrates the message. It then adds the required
+parameter instances.
+
+8.1.5.6 Asynchronous Message.unformalize()
+This operation is extended to cover the case where the sub-type is a Signal
+Message.
+
+8.1.5.7 Synchronous Message.prepareForFormalization()
+This operation removes the current sub-type ready for formalization. A check for
+the new Interface Operation Message sub-type is added so that migration happens
+correctly.
+
+8.1.5.8 Asynchronous Message.prepareForFormalization()
+This operation removes the current sub-type ready for formalization. A check for
+the new Signal Message sub-type is added so that migration happens correctly.
+
+8.1.6 UI support
+8.1.6.1 Asynchronous Message.Label
+This derived attribute has its OAL modified to allow the signal name to be shown
+in the label.
+
+8.1.6.2 Synchronous Message.Label
+This derived attribute has its OAL modified to allow the interface operation
+name to be shown in the label.
+
+8.1.6.3 Message Argument.Label
+This derived attribute has its OAL modified to allow message parameter names
+to be shown in the label.
+
+8.1.6.4 Context menu configuration
+New entries are required to enable the Formalize and Unformalize menu entries
+on Component Participants, Interface Operations and Signals. Filter
+specifications are required for same elements which correspond to the action
+filter changes[8.1.4].
+
+8.1.7 Modify CVS ignored file
+The cvsignore configuration in com.mentor.nucleus.bp.ui has 29 new entries
+added to ignore the classes generated from the context menu entry additions
+[8.1.3].
+
+8.1.8 Utilities
+The Utilities bridge selectionContainsValidParticipant has a native definition
+that is updated to accept a Component Participant as a valid element.
+
+8.1.9 OOA Hierarchy
+The ooaofooa_hierachy.pei.sql file is modified to introduce the Component
+Participant and new message sub-types into the hierarchy.
+
+8.2 Persistence changes
+The persistence hierarchy is extended to persist the new Message sub-types. This
+is done for both the file and stream support. Since the message persistence
+hierarchy at this level is common between specialized and generalized packages,
+no specific additional action is required for generic package persistence.
+
+9. Unit Test
+------------
+The following degrees of freedom need to be tested:
+- Location (possibilities enumerated under [8.1.1]).
+- Formalize and Unformalize Component, Interface Operation and Signal.
+- Communication and Sequence Diagrams.
+- Add and remove parameters.
+- Before and after tool restart.
+
+End
+---
+
+$Log: dts0100731259-01.dnt,v $
+Revision 1.6  2011/01/27 22:06:42  campbell
+Job: dts0100731259
+Address review issues and add late changes.
+
+Revision 1.5  2011/01/27 14:41:01  campbell
+Job: dts0100731259
+Address pre-review notes.
+
+Revision 1.4  2011/01/26 17:11:44  campbell
+Job: dts0100731259
+Ready for pre-review.
+
+Revision 1.3  2011/01/26 16:11:15  campbell
+Job: dts0100731259
+Updated with work in progress.
+
+Revision 1.2  2011/01/26 15:54:59  campbell
+Job: dts0100731259
+Updated with work in progress.
+
+Revision 1.1  2011/01/26 14:45:50  campbell
+Job: dts0100731259
+Introduced.
+

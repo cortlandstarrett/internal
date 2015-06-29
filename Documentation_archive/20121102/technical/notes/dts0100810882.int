@@ -1,0 +1,139 @@
+========================================================================
+
+File:      $RCSfile: dts0100810882.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Component References do not show on canvas after deleting and recreating a 
+  project with the same name
+
+
+1. Abstract
+-----------
+Sony reported an issue where an assigned component reference did not show the 
+interfaces on the canvas.  This note describes the isolation of the problem and
+the solution.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100810882
+
+4. Background
+-------------
+4.1 The issue was reported by a customer, reproduced in house, and determined to
+    be severe enough to warrant inclusion in the patch release after 3.4.0.
+
+4.2 In Auto Reconciliation Specification model operation updateAllElements
+      - On line 62, the CL::isContainedInSystem() call returns false in the 
+        error case, which causes updateAllElements() to skip connector 
+        auto-creation.
+      - Inside this call tree, the exact spot where it falls down in 
+        Cl_c.Iscontainedinsystem() on line 193 at the equality check:
+        
+        190 if(element instanceof NonRootModelElement) {
+        191    if(((NonRootModelElement)element).getRoot() != null
+        192        && ((NonRootModelElement)element).getRoot().
+        193                                             Get_ooa_id().equals(system_id))
+        194        return true;
+        195 }
+        
+        - At this point, the system_id is correct, it is the ID of the 
+          new/second project. But the UUID returned from 
+          element.getRoot().Get_ooa_id() is for the old/first project that is 
+          previously deleted.
+
+4.3 Further investigation and backtracing showed that the delete() function 
+    inside bp.core.OoaofooaBase.java was not being called when a project is 
+    deleted.  This meant that the HashMap of model root IDs "rootInstanceMap"
+    was having elements put into it that were never being removed when the user
+    performed deletion operations on model elements.
+4.3.1  The reason OoaofooaBase::delete() was not being called was because the
+       model change listener for deletion actions was only looking for model
+       roots of the Domain_c type.  It ignored all other possible model roots.
+       Here is the existing code:
+       
+        public void modelElementDeleted(ModelChangedEvent event, IModelDelta delta) {
+            Object modelElement = delta.getModelElement();
+            if (modelElement instanceof Domain_c) {
+                // delete this model-root from further use; 
+                // if we were to leave it around, its contents 
+                // would not be reloaded from disk the next time 
+                // it is retrieved from this class
+                delete();
+            }
+        }       
+        
+5. Design
+---------
+5.1  The modelElementDeleted() operation of the ModelChangeListener is updated
+     to handle other possible model roots.  If the listener sees the deleted
+     element is a SystemModel_c, it removes all model roots that are children of
+     the system model root.  Here is the new operation:
+     
+        public void modelElementDeleted(ModelChangedEvent event, IModelDelta delta) {
+            Object modelElement = delta.getModelElement();
+            // delete this model-root from further use; 
+            // if we were to leave it around, its contents 
+            // would not be reloaded from disk the next time 
+            // it is retrieved from this class
+            if ( (modelElement instanceof Domain_c) || 
+                    (modelElement instanceof DataTypePackage_c) || 
+                    (modelElement instanceof ComponentPackage_c) || 
+                    (modelElement instanceof InterfacePackage_c) || 
+                    (modelElement instanceof Activity_c) || 
+                    (modelElement instanceof Communication_c) || 
+                    (modelElement instanceof Package_c) || 
+                    (modelElement instanceof Sequence_c) || 
+                    (modelElement instanceof UseCaseDiagram_c) ) 
+            {
+                delete();
+            } else if (modelElement instanceof SystemModel_c) {
+                Ooaofooa[] roots = getInstancesUnderSystem(((SystemModel_c)modelElement).getName());
+                for(int i = 0; i < roots.length; i++) {
+                    roots[i].delete();
+                }
+                delete();
+            }
+        }       
+     
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+7.1  JUnits must pass
+
+7.2  Run the test called out in the issue [1], verify the interfaces *are* shown
+     on component references on the canvas after assigning the component.
+     
+8. Code Changes
+---------------
+Branch name: R3_4_3-SKB-dts0100810882
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core/OoaofooaBase.java
+
+
+End
+---
+
+$Log: dts0100810882.int,v $
+Revision 1.2  2011/11/08 20:39:54  kbrown
+job:dts0100810882
+Fixed note based on review mins.
+
+Revision 1.1  2011/11/07 21:55:32  kbrown
+job:dts0100810882
+Completed INT.

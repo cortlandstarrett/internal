@@ -1,0 +1,318 @@
+========================================================================
+
+File:      $RCSfile: i1733.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:48 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+MV:Engine, passing parameters by reference
+
+Abstract
+--------
+This note describes the design for passing bridge, function, and operation 
+parameters by reference. It also describes the design for assigning the values
+of parameters passed by reference.
+
+
+History
+-------
+final - i1694-051106-01.rvm
+
+
+Document References
+-------------------
+[1] Bugzilla issue 1733
+
+
+Background
+----------
+Parameters for bridge, function, and operation invocations can be passed either 
+by value or by reference. For parameters passed by value, the value of the 
+parameter is a copy of the value of the corresponding argument in the invocation 
+call. Any changes to the parameter value do not result in changes to the 
+argument value. For parameters by reference, the value of the parameter is 
+actually a reference to the argument value used in the invocation. In the scope 
+of the invocation, the local value for the parameter does not contain the value 
+of the parameter but instead has a reference to the argument value. 
+
+
+Analysis
+--------
+When bridge, function, and operation invocations are executed, for each 
+parameter of the invocation a new Local Value needs to be created in the 
+Stack Frame that the invocation will run in. The new Local Values are assigned
+the value of the argument used in the invocation call. This works for parameters
+passed by value but not for parameters passed by reference. To support passing
+parameters by reference the new local values created for parameters need to be
+associated with the Value of the argument used in the invocation. When a Value
+is set/get from the assignment/retrieval of a by reference parameter, the 
+set/get operations are passed the stack frame id of the previous stack frame. 
+
+Some additional work needs to be done to support passing parameters by 
+reference for any bridge that is either automatically wired to a domain function
+in a different domain or wired to a realized method.
+
+To support passing parameters by reference for bridges automatically wired to 
+a domain function in a different domain, an attribute is added to the Stack 
+Frame class. When the Stack Frame is created for the execution of the domain 
+function, its added attribute is set to be the stack frame id of the caller's 
+Stack Frame. This then allows passing the correct stack frame id to the set/get
+operations of a Value for a by reference parameter. This additional work is 
+needed because stack frame created for the execution of a domain function that is 
+wired to a bridge will not have any previous stack frame. Its previous Stack 
+Frame is actually the bridge caller's Stack Frame.
+
+To support passing parameters by reference for bridges wired to realized code, 
+some data type wrapper classes are going to be created. These wrapper classes 
+will need to be used as the parameter types in the realized methods when passing 
+the corresponding data type argument by reference in a bridge. The wrapper 
+classes will only provide get/set methods.
+
+Support for assigning the value of reference parameters also needs to be added 
+only for the subtypes of Value that can be passed by reference.
+
+
+Design
+------
+1.	Create association from Local Value to Value.
+
+	Add the association in the Local subsystem.
+
+2.	Instantiate the new association when setting up parameters passed by
+	reference.
+	
+	During the execution of invocation statements some setup is performed for 
+	the invocation. A new Stack Frame is created and the Local Values for any
+	parameters are created within that new stack frame context. For any 
+	parameters passed by reference, this setup will now need to associate the 
+	Local Value to the Value of the argument using the association created in 
+	step 1.	
+	
+3.	Use new association from Local Value to Value when getting and setting Local
+	Values for parameters passed by reference.
+	
+	A set operation needs to be added to the Local Value class. The get/set 
+	operations of the Local Value class will need to be updated to check if a
+	Value is associated with itself. If a Value is found then it should be
+	used for any get/set operations. If a Value isn't found then the internal
+	value should be used for get/set operations. A set operation on the Value 
+	class will also need to be added. The set operation on the Value class only
+	supports the subtypes of Value that can be passed by reference. These 
+	subtypes are defined in the bp.als.oal project in the function_import.sql
+	file, function is_readonly_value.
+
+4.	Add execution of Assign to Parameter statement.
+
+	The implementation of the execute() operation of the Assign to Parameter 
+	class will be simple. A stack frame id is passed into the operation. The
+	parameter associated with the statement is retrieved. Then the Local Value 
+	associated with the parameter is found using the stack frame id. If a Local 
+	Value is successfully found, its set operation is called passing in the 
+	Value associated with the statement.
+	
+Note:	When the steps above are completed, passing parameters by reference will 
+		be supported for domain functions, class operations, and bridges that
+		contain OAL code.
+
+5.	Add passing parameter by reference support for bridges that are 
+	wired to domain functions.
+	
+	Two attributes will be added to the Stack Frame class. One is a boolean 
+	indicating if the previous stack frame is a bridge invocation in a different
+	domain. The other is a unique id of a stack frame that is the bridge caller
+	in a different domain. The Stack Frame created for the execution of a domain
+	function wired to a bridge will need to have these attributes set. Then the
+	get/set operations in Local Value can use the attributes when determining
+	what the previous stack frame was for Value retrieval/modification.	
+	
+6.	Add passing parameter by reference support for bridges that are wired to
+	realized code.
+	
+	Limited support will be added for this. The VM_c class supports boolean, 
+	int, real, float, and String data types. For each of these, a wrapper
+	class will be created that only has get and set operations. Any user code
+	that is wired to a bridge will need to use the wrapper classes for any 
+	parameters passed by reference.
+	
+7.	Update the reset operation of the Execution Engine class to dispose of 
+	Stacks.	
+	
+	Disposal of all Stacks associated with an Execution Engine will be added
+	to the Execution Engine.reset operation.
+
+
+Design Comments
+---------------
+
+
+Work Required
+-------------
+1.	Create association from Local Value to Value.
+	
+	The Value class from the Value subsystem is imported into the Local 
+	subsystem. A conditional one to conditional one association is added from
+	Local Value to Value.
+	
+	The dispose() operations of the Local Value and Value classes are updated to
+	remove the new association as needed.
+	
+2.	Instantiate the new association when setting up parameters passed by
+	reference.
+	
+	The setupParameterValues operation in the Operation Value, Function Value, 
+	Bridge Value, Operation Invocation, Function Invocation, and Bridge 
+	Invocation classes need to be modified.	Where Local Values are created for 
+	parameters, if any parameters are passed by reference then the new 
+	association	created in step 1 should be instantiated. 
+	
+3.	Use new association from Local Value to Value when getting and setting Local
+	Values for parameters passed by reference.
+	
+	A setValue operation is added to the Local Value class. A stack_frame_id 
+	parameter is added to the getValue operation of the Local Value class.
+	The setValue and getValue operations are modified to search for an 
+	associated Value class. If there is an associated Value class, its getValue
+	and setValue operations are called. Otherwise, the getValue and setValue
+	operations of the Local Value class retrieve/modify the internalValue
+	attribute.
+	
+	A setValue operation is added to the Value class. It supports
+	only the Attribute Value Reference, Transient Value Reference, and Parameter
+	Value subtypes of Value. Each of these subtypes also has an added setValue
+	operation. In addition, the Operation Parameter, Function Parameter, and 
+	Bridge Parameters classes all need setValue operations.
+	
+	The addition of a parameter to the Local Value.getValue operation requires
+	some other operations to be modified. The other operations are Generate
+	Preexisting Event.execute(), Operation Parameter.getValue(),
+	Bridge Parameter.getValue(), Transient Value Reference.getValue()	
+
+4.	Add execution of Assign to Parameter statement.
+
+	An old implementation of Assign to Parameter.execute() is removed and a 
+	correct implementation is added. The Statement.execute operation is updated 
+	to support this statement.
+
+5.	Add passing parameter by reference support for bridges that are 
+	wired to domain functions.
+	
+	A boolean attribute, Created_For_Wired_Bridge, is added to the Stack Frame
+	class. A unique_id attribute, Bridge_Caller_Stack_Frame_ID, is also added
+	to the Stack Frame class. Body.createStackFrameForBridge is modified to set
+	these attributes in the Stack Frame that is created. The getValue() and 
+	setValue() operations in the Local Value use these new attributes when 
+	attempting to determine what the previous Stack Frame was.	
+	
+6.	Add passing parameter by reference support for bridges that are wired to
+	realized code.
+	
+	The VM_c supports the int, boolean, real, unique_id, and string OAL data 
+	types. For each of these a wrapper class, BP<type>, is created. Each class
+	will have a setValue and getValue method. Several pieces of code are changed
+	to use the new wrapper classes. They are:
+	
+	 - The various instance_to_<type> and <type>_to_instance bridges in the 
+	Ooaofooa's Utilities EE are modified to use the new data type wrapper 
+	classes.
+	
+	- In the VM_c class the Addargumentvalue and Getresult methods are updated 
+	to use the new data types.
+	
+	An additional parameter is added to the VM_c.addArgumentValue method.  This
+	is a boolean parameter that indicates if the argument is being passed by
+	reference. The method is also updated to pass arguments by reference to
+	realized code as needed.  
+	
+7.	Update the reset operation of the Execution Engine class to dispose of 
+	Stacks.
+	
+	A dispose() operation is added to the Stack class. The Execution 
+	Engine.reset() operation is updated to dispose of all Stacks that it is
+	associated with.
+
+
+Unit Test
+---------
+-	Call a domain function that takes a parameter by value and verify that the
+	expected value was passed in.
+	
+-	Call a domain function that takes a parameter by reference and verify that 
+	the expected value was passed in. Modify the argument in the domain 
+	function. Check that the original value is modified.
+	
+-	Call a class operation that takes a parameter by value and verify that the 
+	expected value was passed in.
+	
+-	Call a class operation that takes a parameter by reference and verify that 
+	the expected value was passed in. Modify the argument in the operation. 
+	Check that the original value is modified.
+	
+-	Call a bridge(with OAL statements) that takes a parameter by value. Verify
+	that the expected value was passed in. 
+	
+-	Call a bridge(with OAL statements) that takes a parameter by reference. 
+	Verify that the expected value was passed in. Modify the parameter. Check
+	that the original value is modified.
+
+-	Call a bridge(wired to a domain function in another domain)
+	that takes a parameter by value. Verify that the expected value was passed
+	in. 
+	
+-	Call a bridge(wired to a domain function) that takes a parameter by 
+	reference. Verify that the expected value was passed in. Modify the argument
+	in the domain function. Check that the original value is modified.
+	
+-	Call a bridge(wired to a realized method)
+	that takes some parameters by value. Verify that the expected values 
+	were passed in. 
+	
+-	Call a bridge(wired to a realized method) that takes some parameters by 
+	reference. Verify that the expected values were passed in. Modify the 
+	argument in the domain function. Check that the original value is modified.	
+	
+
+End
+---
+
+$Log: i1733.dnt,v $
+Revision 1.1  2009/09/03 18:20:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2006/06/09 18:39:18  jluebker
+Job: 1733
+Updated per review comments
+
+Revision 1.4  2006/06/09 14:51:03  jluebker
+Job:1733
+Corrected grammar errors
+
+Revision 1.3  2006/06/09 14:35:52  jluebker
+Job: 1733
+Completing design note
+
+Revision 1.2  2006/06/06 14:27:46  jluebker
+Job: 1733
+Corrected typos
+
+Revision 1.1  2006/06/02 20:59:34  jluebker
+Job: 1733
+Introduced
+
+

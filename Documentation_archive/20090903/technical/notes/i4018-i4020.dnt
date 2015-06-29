@@ -1,0 +1,208 @@
+========================================================================
+
+File:      $RCSfile: i4018-i4020.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Verifier hangs during inter-component signaling
+Pending events are not always being unlinked correctly
+
+1. Abstract
+-----------
+This note describes a race condition uncovered in the Verifier's pending event
+queue and the fix for this race condition.
+ 
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 4018
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=4018
+[2] Bugzilla item 4020
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=4020
+
+4. Background
+-------------
+
+5. Analysis
+-----------
+While running a multi-component model it was observed that events were not
+always being delivered as they should have been.    This behavior was sporadic,
+which meant it was not easily reproduced in a consistent manner.  However, in 
+each case that was observed it was determined that the pending event queue(s) 
+(R2945, R2947) had become corrupt.  In looking at the Instance SS, and thinking 
+about how the pending event queues were being used, it became apparent that 
+there was a race condition in the utilization of theses pending event queues.
+
+The Stack (I_STACK) removes elements from the queue as they are processed, and 
+the Invocation SS adds Pending Events (I_EVI) to the queue.  These operations
+may happen concurrently which causes contention on the elements in the pending
+event queue.  This contention creates a race condition that leads to corruption
+of the event queue.
+
+The solution to this problem is to synchronize the pending event queue.  There
+are 2 options considered:
+1) Introduce an Instance State Machine for the Pending Event class (I_EVI) and 
+   model behavior that is taking place.
+2) Introduce a lock in the Pending Event Class and acquire and release the lock
+   before accessing the queue.
+   
+Option 2 shall be taken because there are currently no state machines in the 
+ooaofooa and introducing them is beyond the scope of this issue.  Note that
+we regard to option 2, it is important to utilize a lock that is reentrant. 
+The reason being that to assure all places that access the queue are properly 
+synchronized we should acquire the lock in each place an access occurs.  These
+places can be found by simply locating all places where R2944 and R2946 are 
+navigated.   If the lock is not reentrant, a single thread could lock against
+itself by simply attempting to acquire the lock more then one time.  Without a
+reentrant lock it would be difficult, perhaps impossible, to determine places 
+that are not reentrant.
+
+
+6. Design
+---------
+6.1 Add a new UDT named ReentrantLock in ooaofooa's domain datatypes.  The type of
+    this shall be type inst_ref<Mapping>.
+6.1.1 In MC-Java/do_type.inc add support for the new UDT by mapping this type
+      to java.util.concurrent.ReentrantLock.
+6.2 Introduce queue semaphore attributes into Execution Engine (I_EXE).  These
+    shall be named EQE_Lock and SQE_Lock.  EQE_Lock shall be used 
+    to synchronize I_EQE and SQE_Lock shall be used to synchronize I_SQE.
+6.2.1 MC-Java/java.arc shall be modified to initialize the ReentrantLock UDT as 
+    follows:   
+    new ReentrantLock( )
+    
+6.2.2 Introduce a native operation named lockQueue(String queueName)
+    to acquire the queue lock.  This shall be marked as Translate:native and 
+    will be implemented as follows:
+	if (p_Queue_name.compareTo("I_EQE")==0) {
+		m_eqe_lock.lock();
+	} else if (p_Queue_name.compareTo("I_SQE")==0) {
+		m_eqe_lock.lock();
+	} else {
+		Exception e = new Exception();
+		e.fillInStackTrace();
+		CorePlugin.logError(
+				"Invalid queue name specified: " + p_Queue_name,
+				e);
+	}
+6.2.3 Introduce a native operation named unlockQueue(String queueName)
+    used to release the queue lock.  This shall be marked as Translate:native 
+    and will be implemented as follows:
+	if (p_Queue_name.compareTo("I_EQE")==0) {
+		m_eqe_lock.unlock();
+	} else if (p_Queue_name.compareTo("I_SQE")==0) {
+		m_eqe_lock.unlock();
+	} else {
+		Exception e = new Exception();
+		e.fillInStackTrace();
+		CorePlugin.logError(
+				"Invalid queue name specified: " + p_Queue_name,
+				e);
+	}
+6.2.3.1 Note that we shall never lock both queues in the same thread at the same 
+    time thus it is not possible to encounter deadlocks.
+	
+6.3 Modify the following places to acquire the queue lock 
+	before accessing queue and release it when done.
+	com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+		Class State Machine Execution/Class In Engine/Class In Engine.xtuml
+			takeEvent()
+			takeNextEvent()
+	com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+		Instance/Event Queue Entry/Event Queue Entry.xtuml
+			dispose()
+	com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+		Instance/Execution Engine/Execution Engine.xtuml
+			stop()
+			reset()
+			dispose()
+	com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+		Instance/Instance/Instance.xtuml
+			takeEvent()
+			takeNextEvent()
+	com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+		Instance/Pending Event/Pending Event.xtuml
+			dispose()
+			createInstance()
+			deliverAs()	
+			fireToClassSM()
+			fireToInstSM()	
+	com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+		Instance/Stack/Stack.xtuml
+			processEvent()
+			               
+6.4 The Timer class was considered as another possible place when there may be
+    contention.  However, investigation shows that the timer simply foes through 
+    the I_EVI.fireTo* routines, and those have now been synchronized, so Timer
+    is also now fixed because of this.
+
+7. Design Comments
+------------------
+7.1 The MC-Java meta-model was modified to include the elements of the Element
+    Packaging subsystem (EP_*).  These elements were introduced when the generic 
+    container type was introduced, but they were not needed until now in MC-Java
+    because there had been no modification to the ooaofooa datatype packages 
+    until now.
+    
+
+8. Work Required
+----------------
+This is specified in the design section.
+
+9. Unit Test
+------------
+9.1 Assure that verifier does not hang during inter-component signaling
+_- Use the model attached to bug 4018 [1]
+_- Execute both setup functions
+_- Execute Server:Server2Client
+_R The model executes without stopping
+_- Execute Client:Client2Client
+_R The model continues to execute without stopping
+
+
+
+End
+---
+
+$Log: i4018-i4020.dnt,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.2.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2008/12/17 03:39:15  rmulvey
+Job:4018 4020
+Updated the note to account for the fact that we need a queue locking mechanism that is
+Reentrant.  Prior to this the note said Semaphore would be utilized, and most Semaphore
+implementations are not reentrant.
+
+Revision 1.3  2008/12/15 21:21:09  rmulvey
+Job:4018 4020
+Updated note after review
+
+Revision 1.2  2008/12/15 16:01:57  rmulvey
+Job:4018 4020
+Added missing implementation to 6.6.1
+
+Revision 1.1  2008/12/15 15:49:13  rmulvey
+Job:4018 4020
+Introduced design note for this issue.
+

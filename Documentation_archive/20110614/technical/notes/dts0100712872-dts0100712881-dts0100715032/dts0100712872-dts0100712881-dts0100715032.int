@@ -1,0 +1,147 @@
+========================================================================
+
+File:      $RCSfile: dts0100712872-dts0100712881-dts0100715032.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Fix Verifier audit issues
+
+
+1. Abstract
+-----------
+This note describes fixes for three reported Verifier Audit issues.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100712872 - False positive 'already related' instance
+    population errors reported when multiple relates use relationship phrase.
+[2] ClearQuest DEI dts0100712881 - Verifier rule checking gives false errors
+    on super-sub type relate statements.
+[3] ClearQuest DEI dts0100715032 - Verifier rules fails checking associations
+    chains starting with a conditional and ending in an unconditional.
+[4] ClearQuest DEI dts0100654483 - Verifier must check xtUML rules. For example
+    Relationship condinationality and multiplicity.
+[5] ClearQuest DEI dts0100725736 - Extend Verifier audit testing.
+[6] ClearQuest DEI dts0100725737 - Consider additional Verifier Audit cases.
+
+4. Background
+-------------
+These audit issues were reported by SAAB against the functionality introduced by
+the work for [4].
+
+5. Design
+---------
+With the exception of [2], these errors got through to the field as a result of
+trimming the degrees of freedom covered by the test model as discussed in [5].
+The checking [2] is covered by the test model, but the 'exclusive or' property
+of subtype associations was ignored as an oversight and the model tested only a
+single subtype.
+
+5.1 Extend the test model
+The test model needs to be extended to cover at least the failure modes
+described in these issues. We also need to consider other cases that are in
+similar common usage categories so that we do not get further obvious failures.
+A separate issue [5] is raised to track this work.
+
+5.2 Fixes for reported failures
+5.2.1 Already related error (dts0100712872)
+This failure was due to the use of an association phrase in a relate statement
+on a non reflexive association. Verifier assumed that if an association phrase
+was present, that the association was reflexive. This is an unsafe assumption.
+Indeed, it was recently noted that members of the sales team are advising
+adopters to always put the association phrase into relate and select statements,
+even when they are non reflexive. The fix is to replace such tests with a call
+to Association.is_reflexive() instead. This operation uses a different method of
+determining reflexiveness which is not dependent on the association phrase. This
+change is made in three places, Relate.execute(), Relate Using.execute() and
+Select.execute().
+
+5.2.2 Subtype-supertype population error (dts0100712881)
+This failure was due to an oversight during the design process, which was then
+repeated during preparation of the test model. Subtype supertype traversals were
+previously checked the same way as regular associations. Obviously, in the case
+of a supertype to subtype traversal, not finding a subtype is expected. In other
+words, traversals in that direction should be treated as conditional. OAL is
+added to Select.execute() to check for the presence of a subtype traversal and
+to set the conditionality appropriately. The expected test results are updated
+to remove two cases where an error should not have been reported against the
+test model.
+
+Note that another potential audit error is implied by this loophole. Verifier
+could detect a case where no subtype of any kind is found. This is not included
+in this work because a) there is additional runtime overhead associated with
+this check and b) the error would be logged for every time the traversal is
+attempted, which could result in an error avalanche that the user might not find
+helpful. Accordingly, an issue [6] is raised to further consider whether this is
+a good idea (for example, the check could be made conditional on a preference).
+
+5.2.3 False population errors traversing multiple associations (dts0100715032)
+This false positive error is raised when we have an association chain which
+has a conditional association early in the chain followed by an unconditional
+association. Verifier continues to attempt to traverse all associations in the
+chain, even when the intermediate starting population is empty. This results in
+false empty populations being reported. The fix is to stop traversing when the
+starting population is empty. A 'not_empty selection_inst_refs' is added as an
+additional test on the while statement that controls association traversal
+during selection in Select.execute(). Since the number of traversals is reduced,
+this change also contributes a small Verifier performance gain as a side effect
+under some circumstances.
+
+It was noted that in a multiple association traversal, x-1..* - x-1, audit will
+only raise a problem if no instances are found at all. It does not check that
+the population across each instance of the second traversal is non zero. This is
+noted in the same issue raised for subtype instance population checking[6].
+
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+The existing Verifier unit tests must pass.
+
+8. Code Changes
+---------------
+Since this change is to be shipped in a patch release, it needs to be promoted
+into both HEAD and into a maintenance branch. Accordingly, two promotion
+branches are provided. The same changes are applied in each.
+
+Branch name: Review-R3_2_2-Verifier -> R3_2_2
+Branch name: Review-dts0100712872-dts0100712881-dts0100715032 -> HEAD
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Relate/Relate.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Relate Using/Relate Using.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select/Select.xtuml
+
+com.mentor.nucleus.bp.debug.ui.test/expected_results/verifier/
+    Warning_runAllTests.result
+
+End
+---
+
+$Log: dts0100712872-dts0100712881-dts0100715032.int,v $
+Revision 1.3  2010/10/22 13:17:14  campbell
+Job: dts0100712872
+Added change for test result.
+
+Revision 1.2  2010/10/22 11:31:15  campbell
+Job: dts0100712872
+Minor changes, ready for review.
+
+Revision 1.1  2010/10/22 11:23:21  campbell
+Job: dts0100712872
+Introduced.

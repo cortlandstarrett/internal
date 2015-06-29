@@ -1,0 +1,655 @@
+========================================================================
+
+File:      $RCSfile: i1872.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Adding Support for Relocatables
+
+
+Abstract
+--------
+This note describes the design for the reintroduction of relocatables 
+functionality within the product.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 1872
+[2] Documentation/external/requirements/SRS-119-A Relocatables.doc
+[3] Bugzilla issue 886
+[4] Bugzilla issue 873
+
+
+Background
+----------
+Relocatables were implemented in BridgePoint 6.1, but not in Tiger until now.
+
+Analysis
+--------
+See [2].
+
+Updating of references to a relocatable whose value has changed will not be
+performed in activities for which no relocatables tags have been created.  So, 
+if the user loads a legacy model and makes a change to a relocatable's value, 
+that change will not be reflected in any activities that have not yet been 
+opened in an editor.  This is the same behavior exhibited by BridgePoint 
+version 6.1, according to Greg.  
+
+Parsing all activities when a model loads, then running the tag creation code 
+on the result, was considered, but rejected as being too annoying to the user, 
+as the parse-all puts up a blocking progress dialog while it executes.  Making 
+the parse-all run in the background was also considered, but was rejected 
+as being unnecessary, as the need for parse-all's in the first place is soon 
+going to be greatly diminished, as there is an issue underway for persisting 
+the action-language model-element instances with their associated model.  
+Once this functionality is in place, the tag creation code may be invoked right 
+after those instances are loaded.
+
+The tag-creation code will be run as part of a manually-invoked parse-all 
+action, as a way for the user to quickly get relocatables tags added to 
+existing models. 
+
+The way that the model compilers deal with the presence of relocatables tags 
+is to preprocess the action semantics, replacing each tag with the string that
+is in the tag's last-known-good-value field.
+
+
+Design
+------
+1. Create new relocatables package
+
+A new Java package core.relocatables is created to hold the
+main portions of the tag creation and conversion code.  A new class 
+RelocatableTagCreationUtil is created in that package which holds methods
+that formulate the tags within a given activity text.  Another new class 
+RelocatableTagConversionUtil is added which holds methods for converting the 
+tags back into the relocatable values they reference.  A third class,
+simply named Relocatables, holds values used by both of the other classes, 
+and is also the place where relocatables code is placed which does not 
+directly concern tag creation or conversion.
+
+RelocatableTagCreationUtil has a public entry point method called 
+createRelocatableTags().  This method takes two parameters, one being the model 
+element associated with the activity for which tags are to be created, and the 
+other being a copy of the text of the activity without any tags present (as it 
+would appear in an editor).  The method calls helper methods within the same 
+class to process the hierarchy of action-language model-elements which 
+comprises the activity.  Tags corresponding to the mentions of relocatables 
+made by the action-language model-elements are substituted for the 
+relocatable values within the given copy of the activity text.  The return 
+value of the method is a new version of the given activity text, with tags 
+in place.
+
+RelocatableTagConversionUtil has a public entry point method called 
+convertRelocatableTags, which takes as parameters a tagged activity text, 
+and the model-root of the activity to which the text belongs.  This method
+iterates through the tags within the text, replacing each tag with the value 
+of the relocatable located using the IDs stored in the tag, or with the value 
+in the tag's last-known-good-value field if the relocatable cannot be located 
+within the model, as can happen when it has been deleted by the user.  
+
+The general format chosen for this issue's version of a relocatable tag is 
+
+${#@!type:ID1,ID2,...:last-known-good-value}
+
+where type is a descriptive string (such as "attributeName"), and the IDs 
+specify an implied protocol for model-element location between the methods of 
+RelocatableTagCreationUtil and those in RelocatableTagConversionUtil.  
+Currently, only one ID is used for each relocatable type, but support for
+the use of multiple IDs is there in case it becomes necessary in the future.
+
+The type-field value and lone associated ID for each relocatable type are as 
+follows:
+
+Type:								ID:
+attributeName						attr_id
+functionParameterName				sparm_id
+operationParameterName				tparm_id
+bridgeParameterName					bparm_id
+functionName						sync_id
+operationName						tfr_id
+bridgeName							brg_id
+modelClassKeyLetters				obj_id
+externalEntityKeyLetters			ee_id
+associationNumber					rel_id
+associationPhrase					oir_id
+stateMachineEventDerivedLabel		smevt_id
+stateMachineEventMeaning			smevt_id
+stateMachineEventDataItemName		smedi_id
+externalEntityEventDerivedLabel		eeevt_id
+externalEntityEventMeaning			eeevt_id
+externalEntityEventDataItemName		eeedi_id
+dataTypeName						dt_id
+enumeratorName						enum_id
+
+The above format, being different than that used in BridgePoint 6.1, will 
+require a small modification to existing model compilers, in that they
+will have to use a different query string for newer models to parse out the 
+last-known-good-value from each tag for substitution into the activities they 
+are compiling.  
+
+2. Add tag creation after activity parsing
+
+The run() method of the ParseRunnable inner class of ActivityEditor is 
+changed to call RelocatableTagCreationUtil.createRelocatableTags() after the
+parse is complete.  The results of this tagging are not stored directly into
+the model, however, as that would also store any changes the user has made
+to the activity, even though the save button was not pressed.  Instead, the 
+tagged editor content is stored in a new taggedContent field of the activity 
+editor.  When a save action is initiated, it is the contents of this field 
+which are saved to the model, rather than the editor's contents.  (The two
+are in sync, though, as the save waits for the current parse to complete before 
+executing.)
+
+If the parse the ParseRunnable is performing is not for an editor,
+but is instead part of a parse-all, then the results of the tagging are 
+stored directly into the model.
+
+3. Convert tags when loading activity into editor
+
+The getPropertyValue() method of ModelElementPropertyStorage is modified to 
+call RelocatableTagConversionUtil.convertRelocatableTags() on the action
+semantics of the target model element before returning them as its result.
+
+4. Add a model-change-listener to the activity editor
+
+A new ModelChangeListener derivative is added as an inner class of 
+ActivityEditor.  An instance of this new class is created for each such 
+editor.  When informed of a model change, the listener will call a method
+Relocatables.doesDeltaAffectRelocatable() to determine whether the change might
+concern the value of a relocatable, in which case it causes the retranslation 
+of the editor's taggedContents field into the editor.  In this way, a mention 
+of a relocatable whose value just changed will get updated with the new value 
+in the editor.  There is additional code added around this updating that 
+preserves the editor's caret and scroll positions, as well as code that keeps 
+the dirty flag from being set solely due to such an update (a method 
+setAsNotDirty() is added to DocumentProvider in support of this).  The text 
+is also reparsed afterwards to bring annotations such as error markers 
+up-to-date.
+
+5. Other activity editor changes
+
+When an activity editor is opened, its contents are now immediately parsed.  
+In this way, activities which have yet to be exposed to the relocatables code 
+will have tags created within them when they are opened, so that changes to 
+relocatables will get updated within them.  
+
+An unused field "ActivityEditor myEditor" is removed from the TolerantThread
+inner class.
+
+6. Add textual position attributes to ooaofooa classes
+
+In order for the methods of RelocatableTagCreationUtil to be able to map 
+action-language model-elements to their corresponding portions of an activity's
+text, attributes are added to many of those model elements to hold the line and
+column number at which they appear within that text.  These attributes are
+filled in by code added to the relevant parser validation routines in 
+als.oal's function_import.sql.  For those times when the parser supplies a
+validation routine with the sought-after textual position of a pertinent token 
+before the associated action-language element instance has been created, 
+scratchpad attributes are added to the Block class to temporarily store that 
+position in the block which represents the current scope, until the time the 
+instance is created.  
+
+7. Add Action_Semantics_internal attributes
+
+To those classes in the metamodel which possess an attribute for storing action
+semantics (which are: Bridge, Function, Operation, Action, and Dervied Base 
+Attribute) is added a attribute Action_Semantics_internal which is now the one
+that actually stores the activity text with relocatable tags present.
+The Action_Semantics attribute of each of the classes is changed to become
+a non-persistent, derived attribute which equals the return value of a new, 
+natively-implemented function called convertRelocatableTags(), with the value
+of the Action_Semantics_internal attribute supplied as a parameter.  This 
+function returns the result of calling RelocatableTagConversionUtil.
+convertRelocatableTags() on the given string.  
+
+The result of the above changes is the Action_Semantics attribute holds 
+the same value as it always has (that is, the activity text with no 
+relocatable tags present), such that dependent views don't need to change.
+
+Since the Action_Semantics_internal attribute is added to each of the classes
+just after the class's Action_Semantics attribute (in the order of the class's
+attributes), and since the latter is persistent while the former isn't, 
+the persistence format of the model files is not affected.  
+
+Code in als.oal.test's OalParserTest which calls setAction_semantics() 
+on model elements which contain an activity is modified to now call 
+setAction_semantics_internal(), since the former, now being non-persistent,
+no longer has a setter method.  A similar change (for the same reason) is 
+made to ActivityEditorInput.createStorage().
+
+A special case is added to MC-Java's schema_gen.arc so that 
+Action_Semantics_internal attributes are never added to the generated schema.  
+
+8. Add updating of action text in state diagram on relocatable change
+
+In the CanvasEditorListener's performDefault() method, the check for whether a 
+model-change event should cause the canvas to refresh is modified to call 
+Relocatables.doesDeltaAffectRelocatable() to determine whether the change
+involves a relocatable.  If it does, the refresh is not skipped, since action
+language displayed within a state diagram may need to be updated onscreen.
+
+9. Fix NPE when having two editors visible when starting Eclipse
+
+In CanvasEditor, null-checks are added to the methods of the editor's 
+mouse-listener before accesses of its actionContributor field.  Without such 
+checks, NPEs occur on restarts of Eclipse when a canvas editor splits the 
+editor portion of the workbench window with another editor, when the latter 
+is the one which receives focus.  Mouse events arrive to the listener when the
+canvas-editor is hovered over, but there is no action-contributor since the 
+editor has not yet been given focus.
+
+10. Fix bug with test.TestUtil.sleepWithDispatchOfEvents()
+
+This utility method is modified to make sure that at least a short sleep is 
+performed when the given duration is very small.
+
+11. Add core.util.EditorUtil.closeAllOpenEditors() utility method
+
+This method is used by the automated tests written for this issue.
+
+12. Add model navigation utility methods to core.util.OoaofooaUtil
+
+These methods capture what would otherwise be oft-duplicated code within this
+issue's automated tests for locating specific element instances within the test 
+model.
+
+
+Design Comments
+---------------
+1. Replace "In Properties" Keyword with "User_Visible"
+
+With the Action_Semantics attribute of activity-containing model elements now
+being non-persistent, while also needing to be displayed in the compare and
+properties views, use of the "Persistent" keyword to elide attributes from 
+display in those views no longer makes sense.  A new keyword "User_Visible"
+is used to indicate which attributes should display in these views, which 
+also obsoletes the "In Properties" keyword that was previously employed by the 
+properties plug-in for the same purpose.  Those attributes in the metamodel 
+which were marked with "In Properties:false" are changed to be marked with 
+"User_Visible:false".  The Action_Semantics_internal attributes, as well as the 
+"visited" attribute of Referential Attribute, are marked with 
+"User_Visible:false".
+
+Archetypes which are changed to now look at the User_Visible keyword (rather 
+than Persistent) are:
+
+compare: create_properties_file.inc
+compare.test: create_classes_with_attributes.inc, CreatePEITestFiles.arc,
+	createtree.arc
+ui.properties: BuildPropertySource.arc
+ui.properties.test: create_view_test.arc
+
+2. Refactoring in ModelRoot.ListenerMethodInvoker.run()
+
+A behavior-preserving change is made to improve the method's readability.
+
+3. Further ActivityEditor changes
+
+accessParseThread() is changed such that, in the case where there is already
+a current parse thread, that thread is interrupted, and the method waits until 
+it dies, then starts another one.  The method's previous behavior was to throw 
+out the given runnable and restart the wait until the current parse thread 
+runs.  This is potentially erroneous, as there is state associated with the
+given runnable that is (in certain cases) more up-to-date than that of the 
+current parse thread's runnable.
+
+Due to the above change, TolerantThread.run() is modified to no longer complain 
+(with an exception) when it's interrupted, as such interruption means we want 
+to start a newer parse thread.
+
+ParseRunnable.run() is modified to empty the editor's taggedContent field if 
+the parse does not complete or finds errors, since its contents in such cases
+would be out-of-date.  A containsProblems() method is added to 
+ActivityAnnotationModel to answer whether parse errors were indeed found.
+
+The dispose() method is modified to interrupt the currently running parse 
+thread, if there is one, since the parse is no longer necessary.
+
+A disposed field is added, which is set to true when the editor is closed.  
+The editor's parse thread, after waking up from its wait to run, can check the 
+value of this field to see if the parse is still necessary.
+
+ParseRunnable.run() is modified to no longer perform a parse if the model 
+element which owns the pertinent activity has been deleted during the 
+parse thread's wait-to-run period.
+
+A setter method is added to change the time that a parse thread has to wait 
+before running, that the value may be lowered by tests which seek to complete 
+more quickly.
+
+4. Change where activity text gets stored into the model element
+
+DocumentProvider.doSaveDocument() is modified to no longer get the changed 
+activity text saved into the model element, as that is now done in 
+ActivityEditor.doSave(), since the editor is the entity which stores what the 
+activity text is, with relocatable tags present.  ActivityEditor.doSave()
+calls ActivityEditorInput.doSaveDocument() to actually perform the storage.
+
+To preserve activity text storage into the model during a parse-all
+(given the above change), the doSaveDocument() method of AllActivityModifier 
+is modified to call ActivityEditorInput.doSaveDocument() directly.
+
+5. Change text.test.ParseActivity test
+
+validateActivityEditorParse() is modified to wait for the parse thread to 
+complete after the erroneous action language is removed from the editor.
+
+6. Change text.test.DuplicateRelationshipNumberParseAllTest
+
+testProblemsRemovedByParseAllAfterDuplicateRelationshipNumberChanged() is 
+modified to expect a different placeholder file name (one without a "0" added
+to its end) when it is the only test being run in a suite. 
+
+7. Add empty check to Block.clearCurrentScope()
+
+This metamodel operation is modified to check whether there is a current 
+context before proceeding, as there are times when a parse thread is 
+interrupted that this operation is called, and there is no such context.
+
+8. Change als.oal.test.TestLineNumbers
+
+In the tests of the class, line number and starting position values are 
+specified for the kinds of Value instances which now have those fields filled 
+in as part of the work for this issue.
+
+9. Update test results
+
+In the odms_ng.exp file of io.sql.test, the expected results are updated with
+calls to the new convertRelocatableTags() function.
+
+In the activity_editor_transaction.exp of core.test, the results are jibed
+with the action_semantics attribute of activity-owning classes becoming 
+action_semantics_internal.
+
+10. Have io.sql.test.IOTest compare entire result logs at once
+
+This makes it much quicker to determine what all the differences are.
+
+11. Make issue 886 [3] change
+
+In the metamodel, the full name of the ParseStatus.parseInitial enumerator is
+changed from "parse on apply set but never been parsed" to "Do parse", for 
+clarity, as well as for consistency with "Do not parse".
+
+Hard-coded duplications of the full names of ParseStatus enumerators that
+are specified in ui.properties.test.EnumRangeTest are jibed with the above
+change.
+
+12. Disallow spaces in many model element names
+
+Per comments [4] made by Eric under issue 873, in order to keep the user from
+getting into a situation where the relocatables functionality causes a
+large number of manual renamings to have to be performed, renamings of 
+instances of many model element types to include one or more spaces is 
+disallowed.  
+
+In core's create_rename_action.inc (which generates the RenameAction class), 
+an isNameValid() method is added which checks for illegal spaces in element 
+names.  A call to this method is added to RenameAction.getRenameQuery(), 
+which displays an error dialog (through a new showErrorDialog() utility method 
+in core.util.UIUtil) to the user if isNameValid() rejects the given name. 
+
+For renamings through the properties view, an instance of a new 
+ModelElementNameValidator class is assigned by the simple_attr_descriptors()
+function in BuildPropertySource.arc to be the validator for any properties cell 
+which is editing a "Name" or "Root-Nam" model element attribute value.  
+ModelElementNameValidator.isValid() calls the above RenameAction.isNameValid() 
+to check for illegal spaces in the edited cell value.   
+
+As part of creating the automated tests for this change, a new PropertiesUtil 
+class is added to ui.properties.test to hold utility methods that are employed 
+by the tests in that package.  To the class is added a getDescriptor() utility 
+method which returns the property-descriptor of a given ID from all those 
+that are associated with a given property-source.
+
+core's create_action_test.arc, which generates the RenameTest class, is 
+modified to no longer rename model elements to names containing spaces.  The 
+rename_transaction.exp expected test results in core.test are updated to 
+jibe with this change.
+
+
+Unit Test
+---------
+[These are the contexts within activities within which a relocatable may be 
+mentioned (for the next set of tests, below):]
+|
+~ in an if, else if, else, while, or for statement, the potential test value, 
+	and the controlled block 
+~ in an assign-to-attribute statement, the attribute and value being assigned 
+~ in an assign-to-transient statement, the value being assigned
+~ in an assign-to-parameter statement, the parameter name and 
+	value being assigned 
+~ in a select-from-instances statement, the key-letters of the model-class from
+	which to select instances
+~ in a select-from-instances-where statement, the key-letters of the 
+	model-class from which to select instances, and the where value 
+~ in a select statement, the model-class key-letters, association number and
+	potential association phrase in each chain link, and the potential where 
+	value
+~ in an invocation statement, the potential key-letters of the invocatee, 
+	the invocatee's name, and in each actual parameter, the parameter's label 
+	and assigned value
+~ in a return statement, the value being returned
+~ in a create or create-with-no-variable statement, the key-letters of the 
+	model-class of the instance	to create
+~ in an event-specification statement: the event's derived label and meaning;	
+	for each of its actual parameters, the parameter's label and assigned value; 
+	and the potential key-letters of the target model-class 
+~ in a generate-preexisting-event statement, the potential attribute value 
+	specified
+~ in a relate, relate-using, unrelate, or unrelate-using statement, the 
+	association number and potential phrase
+	
+[Where values are specified in the above contexts, these are the places within
+those values within which a relocatable may be mentioned:]
+
+~ in an attribute value, the attribute's name
+~ in an event datum value, the event data item's name
+~ in a parameter value, the parameter's label
+~ in a binary operation, the left and right operands
+~ in a unary operation, the lone operand
+~ in an invocation value, the invocation (as in an invocation statement, 
+	as mentioned above)
+~ in a selected-reference value, the name of the potential attribute accessed 
+	by the reference, or the value of the operation invoked by the reference
+~ in a literal enumerator value, the enumeration data-type's name and the
+	enumerator's name 
+
+For each of the above contexts:
+- open an activity which contains a mention of a relocatable in this context
+	- vary the kinds of relocatables chosen for this purpose (a list of them 
+		is given in [2])
+	- vary the kinds of activities chosen, between the different types: 
+		functions, bridges, operations, state actions, and derived attributes
+	- vary the kinds of values specified, from those in the above list
+- change the value of the relocatable
+R the mention of the relocatable in the open activity reflects the 
+	changed value
+
+[This tests that a parse-all on a model creates relocatable tags within
+the model's activities:]
+|
+- perform a parse-all on a model which hasn't yet been modified by the code
+	for this issue
+- change the value of a relocatable 
+- open an activity which contains a mention of the relocatable
+R the mention of the relocatable reflects the changed value
+		
+[This tests that an activity is parsed (and has relocatable tags created 
+for it) when it is first opened]
+|
+- open an activity contained by a model which hasn't yet been modified by 
+	the code for this issue
+- change the value of a relocatable mentioned in the activity
+R the mention of the relocatable reflects the changed value
+
+- open a state machine diagram
+- find within the display of one of the states on the diagram a mention of a 
+	relocatable 
+- change the value of the relocatable
+R the mention of the relocatable displayed within the diagram is updated to 
+	reflect the value change
+
+- open an activity containing a mention of a relocatable, but don't make any 
+	changes, such that the editor's dirty flag is not set
+- change the value of the relocatable
+R the mention of the relocatable reflects the changed value, but the editor's 
+	dirty flag is still not set
+
+[This tests that changes to activity text due either to 1) tags being 
+formulated after a parse, or 2) a change in the value of a relocatable, don't 
+get written into the model until the editor's save command is issued by the user:]
+|
+- open an activity containing a mention of a relocatable 
+- make some arbitrary change that gets the editor's dirty flag set
+- change the value of the relocatable, such that the mention of that
+	relocatable is updated to reflect the change
+- close the activity editor without saving the changes
+- reopen the activity
+R the arbitrary change made above does not appear in the activity
+
+- open a lengthy activity
+- move the editor's cursor to the last line of the activity, such that 
+	the activity's beginning has scrolled off the top of the editor
+- change the value of a relocatable mentioned in the activity
+R the mention of the relocatable reflects the changed value
+R the editor's scrollbar and caret positions, as well as what portion of the
+	activity is visible within the editor, do not change
+	
+[This tests that a tag's last known value for the value of a relocatable 
+is displayed when the model element associated with the relocatable cannot be 
+located using the IDs stored in the tag:]
+|
+- open an activity whose text already contains relocatables tags
+- delete a model element that is referenced by one of the tags
+- close, then reopen the activity
+R the last known value for the relocatable is displayed as the text for the
+	mention of it in the activity
+	
+[This tests that renaming a model element instance to contain a space in its 
+name does not succeed for model-element types which don't allow such spaces.]
+|
+- try to rename an attribute in the model explorer to contain a space in its 
+	name
+R an error dialog appears saying that the spaces aren't allowed in the 
+	model element's name
+R the attribute's name reverts to its original value	
+- repeat the above for other model element types which don't allow spaces in 
+	the names of their instances
+
+[This tests that inserting a space into the value of a name property does not 
+succeed for model-element types which don't allow such spaces.]
+|
+- select an attribute in the model explorer
+- in the properties view, edit the attribute's root-name property to contain 
+	a space
+R an error message appears in the status bar saying that spaces aren't 
+	allowed in the model element's name
+- press enter
+R the property reverts to its original value	
+- repeat the above for other model element types which don't allow spaces in 
+	the names of their instances
+
+	
+End
+---
+
+$Log: i1872.dnt,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.19  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.18.16.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.18  2006/07/03 18:27:33  jmather
+Job: 1872
+Corrected omissions in a design comment.
+
+Revision 1.17  2006/06/17 00:51:52  jmather
+Job: 1872
+Added a design comment.
+
+Revision 1.16  2006/06/16 20:02:37  jmather
+Job: 1872
+Added a design comment.
+
+Revision 1.15  2006/06/12 17:44:16  jmather
+Job: 1872
+Added more design comments.
+
+Revision 1.14  2006/06/08 21:58:51  jmather
+Job: 1872
+Added more design comments.
+
+Revision 1.13  2006/05/31 16:54:04  jmather
+Job: 1872
+Clarified some language.
+
+Revision 1.12  2006/05/31 00:52:19  jmather
+Job: 1872
+Addressed rest of review comments.
+
+Revision 1.11  2006/05/27 00:27:22  jmather
+Job: 1872
+Addressed most of review observations.
+
+Revision 1.10  2006/05/24 21:54:39  jmather
+Job: 1872
+Addressed pre-review comments.
+
+Revision 1.9  2006/05/24 00:10:04  jmather
+Job: 1872
+Ready for review.
+
+Revision 1.8  2006/05/23 23:11:00  jmather
+Job: 1872
+First draft complete.
+
+Revision 1.7  2006/05/23 00:27:41  jmather
+Job: 1872
+Added more to design section.
+
+Revision 1.6  2006/05/22 19:00:16  jmather
+Job: 1872
+Started design section.
+
+Revision 1.5  2006/05/19 17:44:48  jmather
+Job: 1872
+Made numerous corrections and rewordings.
+
+Revision 1.4  2006/05/19 00:09:12  jmather
+Job: 1872
+Made some corrections to the unit tests.
+
+Revision 1.3  2006/05/11 17:28:45  jmather
+Job: 1872
+Added more unit tests.
+
+Revision 1.2  2006/05/11 00:10:15  jmather
+Job: 1872
+Added more unit tests.
+
+Revision 1.1  2006/05/10 22:49:21  jmather
+Job: 1872
+Added some unit tests.
+

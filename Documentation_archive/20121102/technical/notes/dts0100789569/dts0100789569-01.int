@@ -1,0 +1,178 @@
+========================================================================
+
+File:      $RCSfile: dts0100789569-01.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Final changes made for issues found while testing the BridgePoint 3.4.0 
+release candidate.
+
+1. Abstract
+-----------
+Capture resolutions to small problems found in the final testing of
+BP3.4.0.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100789569
+[2] dts0100789569.int
+    This was the first note that was used to capture small changes made in the
+    final testing of BP3.4.0.  The issues from this note were reviewed and 
+    promoted.  The note you are reading now is for the same purpose but is
+    capturing items found after the promotion of items called out by 
+    dts0100789569.int.    
+[3] ClearQuest DEI dts0100806661 - Renaming a project causes BP to hang
+[4] ClearQuest DEI 807052 - Failure in dts0100709699: SystemC license not used 
+    when sysc arcs are present
+[5] ClearQuest DEI dts0100806914 - Component References with interfaces don't 
+    get unassigned properly after being copied and pasted
+
+4. Background
+-------------
+This note is being used to capture final changes made during the final manual
+test pass done on BridgePoint release 3.4.0.  Several different issues are 
+captured in this note.  
+
+As described in the description above of [2], this is actually the second 
+note created for this purpose.  The items called out in the first note [2]
+were reviewed and promoted.
+
+5. Design
+---------
+5.1 Renaming a project causes BP to hang [3]
+This issue was called out and addressed in [2].  However, there was a problem 
+that the new WorkspaceJob that was created was not scheduled so model change
+listeners never received notification of the rename and thus the rename was not
+happening for Model Explorer.  
+
+To resolve this, we now schedule the job in 
+ComponentResourceListern.java::triggerModelElementRename().  Additionally, in
+Transactionmanager.java::checkIfTransactionCanComplete() there is code that 
+interacts with revision control systems (RCS) to allows checks-out 
+ask the user about file modifications of read-only files.  This call is
+IWorkspace.validateEdit(IFile[], Object).  The second parameter in that call
+is a context that gives validateEdit() a UI context to communicate with the 
+user on.  The context we were using came from a call to 
+Display.getActiveShell() and that was throwing an exception because the 
+job is not running in the same thread as the UI thread.  The resolution
+was to watch for this situation where the job is not in the UI thread and for 
+this situation pass IWorkspace.VALIDATE_PROMPT instead of the result from
+Display.getActiveShell(). 
+    
+5.2  Use proper license for SystemC [4]
+We found an issue when running the SMA QA test dts0100709699.  When the systemc 
+arcs were put in place, the model compiler plug-in was invoking xtumlmc_build 
+with -l3s incorrectly.  It should be using -lSCs.
+
+To resolve this, we modified the mc3020 plugin to check for the t.sysc_main.c
+file under arc/specialized/ if it fails to find it in arc/.
+
+We now ship our arcs with the specialized folder.  We copy the arcs into a flat 
+structure under gen/code_generation/arc.  The latter are what we use for the 
+build. But since that won't exist for a new project, we have to look at the 
+originals under the plug-in when we're checking for sysc arcs.
+
+5.3 Resolve component reference paste issues
+
+All the problems were related to the reconciler.  There is OAL in
+AutoReconciliationSpecification.updateAllElements() that moves a connector that
+is attached to another that is being deleted such that it ends up attached to
+the host shape (of the deleted connector).  This was incorrectly performing this
+change to connectors which could not, by definition, bw attached to the host shape.
+This is resolved by only performing the change if the connector can terminate on
+the shape.
+
+Another problem was related to an NPE that caused creation of a connector to be
+incomplete.  The problem was a call to getGlobal, which passed in a subtype's
+id.  This is the same problem that PackageableElement and its subtypes have,
+where you must locate the supertype then navigate down to the subtype of
+interest.  The logic in GraphEdge.setConnectorPosition() is modified to do this
+by locating the supertype DiagramElement via getGlobal.
+
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+7.1 Test for [5]
+7.1.1
+This is covered in Core Suite II.  Therefore, CoreSuite II, CoreSuite II
+Generics, UseGlobals CoreSuite II, and UseGlobals CoreSuite II Generics must
+be rerun.
+7.1.1 Manual test
+_- Create an xtuml project
+_- Add a domain
+_- Open the C/C++ perspective
+_- Build the project
+_R build is Successful.
+_- Rename the project
+_R Project is renamed in Resource Navigator
+_- Switch to ME
+_R Project is renamed in ME
+_- Open the C/C++ perspective
+_- Build the project
+_R build is Successful.
+
+7.2 Test for [4] is handled by the original SMA QA test that found the issue.
+ 
+     
+8. Code Changes
+---------------
+8.1 [3]
+Branch name: Review-dts0100806661
+>com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    ComponentResourceListener.java
+>com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    TransactionManager.java
+
+8.2 [4]
+Branch name: R3_4_0-SKB-dts0100807052
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020Nature.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MCBuilderArgumentHandler.java
+
+8.3 [5]
+Branch name: Review-dts0100806914
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Auto Reconciliation Specification/
+    Auto Reconciliation Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/UML 2.0 Diagram Interchange/GraphEdge/GraphEdge.xtuml
+    
+End
+---
+
+$Log: dts0100789569-01.int,v $
+Revision 1.5  2011/10/13 21:40:01  rmulvey
+job:dts0100789569
+Review complete
+
+Revision 1.4  2011/10/13 17:51:05  tlondon
+Job: dts0100806914
+
+Add changes to note
+
+Revision 1.3  2011/10/13 17:35:56  kbrown
+job:dts0100789569
+Updated -01 int with changes for another fixed issue.
+
+Revision 1.2  2011/10/13 17:26:55  rmulvey
+job:dts0100789569
+Updated the note with code changes
+
+Revision 1.1  2011/10/13 17:16:50  rmulvey
+job:dts0100789569
+Introduced a new implementation note for changes being made during  the final BP3.4.0 testing.
+

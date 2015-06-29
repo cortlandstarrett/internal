@@ -1,0 +1,309 @@
+========================================================================
+
+File:      $RCSfile: automated_test_creation-i1094.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:19 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Generate model recreation WinRunner test scripts
+
+Abstract
+--------
+This note describes the implementation of recreating any model drawn in Tiger
+using the data captured in them to produce WinRunner scripts.  The WinRunner
+scripts shall then reproduce the models exactly as they were.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 1094
+[2] automated_test_creation-i1094.ant
+
+Background
+----------
+See [2].
+
+Design
+------
+1. Create model to define model recreation
+
+A new model was introduced, ModelRecreation.xtuml.  This model has the following
+classes which are all subtypes of the Model Change Test class:
+
+The Model Change Test class stores the path, in a WinRunner format, to the
+element's parent in the Model Explorer view.  It also stores the name of the
+element in question.
+
+Attribute Value Change Test - This class represents a change to a model entry's
+															user-modifiable attribute.
+
+The AVCT requires the following attributes to determine what WinRunner needs for
+modifying the values in the properties view:
+
+Attr_Name  -  Represents the string value of the attribute which requires the
+							modification.
+Attr_Value -	Represents the value for which the attribute needs to be set to.
+X 				 -	Used only if a graphical element needs to be selected for the
+							properties to be displayed. Represents the x coordinate for the
+							center of a segment.
+Y					 -  Same as the X attribute only it represents the y coordinate.
+EditorType -  This attribute stores which type of editor is required to make the
+							change, possible values are: In Place, Editor (Activity Editor,
+							Description Editor), and Pull Down (pull down menu);
+Advanced   -  The value determines whether or not the Advanced Properties must
+							be enabled for an attribute to be shown in the Properties view.							
+							
+Creation Test By Wizard - This class represents the creation of a model element
+													using a wizard.
+
+The CTBW requires the following attribute in order to identify what wizard shall
+be used:
+
+Key_Lett   -  This attribute stores the Key Letters of the element needing to be
+							created.
+
+
+Shape Creation Test - This class represents the creation of a shape in a model.
+
+The SCT requires the following attributes to determine what WinRunner needs for
+creating a shape exactly as it was in the original model:
+
+positionX  -  This attribute represents the x coordinate of the NW corner of a
+							shape.
+positionY  -  This attribute represents the y coordinate of the NW corner of a
+							shape.
+width      -  This attribute represents the width of a shape.					
+height     -  This attribute represents the height of a shape.
+ToolString -  This attribute represents the string used by WinRunner to select
+							the correct tool of the shape being created.
+							
+Connector Creation Test - This class represents the creation of an association.
+(The connector creation test class is related to one or many of the Segment
+Creation Test class which represents the test for creating each segment in a
+connector.)
+
+The CCT requires the following attributes to determine what WinRunner needs for
+creating a connector exactly as it was in the original model:
+
+ToolString -  This attribute represents the string used by WinRunner to select
+							the correct tool of the connector being created.
+
+The Segment CT requires the following attributes in order to reproduce each
+segment as they existed originally:
+
+positionX     -  This attribute represents the x coordinate of the start
+								 position.
+positionY     -  This attribute represents the y coordinate of the start
+								 position.
+end_positionX -  This attribute represents the x coordinate of the end position.
+								 This is only used for the initial drag from the start point,
+								 once that drag is done each following segment creation is done
+								 by a single click at the end coordinates.  This value is then
+								 set to -1.
+end_positionY -  This attribute represents the y coordinate of the end position.
+								 This is only used for the initial drag from the start point,
+								 once that drag is done each following segment creation is done
+								 by a single click at the end coordinates.  This value is then
+								 set to -1.
+								 
+Creation Test By Menu - This class represents the creation of a model element
+												using the context menu.
+
+The CTBM requires the following attribute to determine which menu entry to
+invoke for creating the element:
+
+ContextMenuEntry
+												
+Link From Menu Test - This class represents changing a model element's
+											properties via the context menu.  An example of this is to
+											set an attribute as derived.
+
+The LFMT requires the following attribute to determine the menu entry used in
+the linking:
+
+Type										
+											
+Link Using Wizard Test - This class represents linking two elements using a
+												 wizard, i.e, Assign Event.
+
+The LUWT requires the following attributes in order to correctly link each
+element in a model:
+
+Type         			-  This attribute represents the type of linking needed.  It
+										 also represents the menu entry used to initialize the
+										 wizard.
+Element			 			-	 This attribute represents the element to select on the
+									   first page of a wizard, i.e, the class used to formalize an
+										 association.
+x						 			-  This attribute represents the x coordinate of the center of
+										 a segment or a shape.
+y						 			-  This attribute represents the y coordinate of the center of
+										 a segment or a shape.
+SecondPageElement -  This attribute represents the first element to select on
+									   the second page of a wizard.
+SecondPageElement -  This attribute represents the second element to select on
+									   the second page of a wizard.
+									   
+2. Create archtype to populate test model.
+
+The archetype, generate_recreation_db.arc is created.  The archetype traverses
+the ooaofooa_hiearchy model to get a child parent tree.  For each element in a
+model the necessary ModelRecreation instances are created.  The model elements
+are processed in the following order:
+
+Creation, Attribute Setting, Linking.
+
+3.  Create archetype to generate WinRunner script
+
+A new archetype, generate_test_script.arc is created.  The archetype processes
+the pre-existing instances database that is setup by the archetype described in
+section 2.  For each type it creates a call to a WinRunner function that is
+written outside of the archetypes, passing all the necessary arguments.
+
+This archetype handles the ordering of attributes by storing the order from the
+original model in a WinRunner array which will then be processed by the
+orderAttrs function created in the WinRunner function file kept outside of this
+archetype.  The archetype also handles setting the prefix and prefix mode for
+all referential attributes at the end of execution as they do not exist until
+the formalizations occur.
+
+4. Create common WinRunner functions for model recreation
+
+The following functions shall be implemented outside of the archetypes:
+
+create_new_domain (system_name, model_name)
+createShape (path, posx, posy, endx, endy, toolstring)
+change_value_in_properties(path, element_name, attr_name, attr_value, type, x, y
+													, editor_type, advanced)
+drawSegment(path, posx, posy, endx, endy, realx, realy)
+createElementFromMenu(path, menu_entry)													
+linkFromMenu(path, element_name, type, value)
+linkUsingWizard(path, element_name, type, first_element, x, y, sp_element1,
+                sp_element2)
+setPfxMode(path, attr, prefix_mode)
+setPfx(path, attr, prefix)
+orderAttrs(path, class, attribute)                
+
+5. Use 3020 test suite with new models
+
+The 3020 test suite will be initiated from the ModelRecreation WinRunner test
+script.  It will start as soon as the last model was created.
+
+Implementation Comments
+-----------------------
+In order to correctly draw connectors with less work, the ooaofgraphics model
+was modified to have the shape.isOver test check return true if a connector is
+equal to or greater than the edge of a shape.
+
+The following attributes were marked as read-only in the ooaofooa model as they
+cannot be modified by a user:
+
+IOBJ.Obj_Name
+IOBJ.Obj_KL
+EVT.Srv_Lbl
+
+In order to remove a dependency on bash, three new ant tasks were written:
+
+GeneratorImportTask 			- This task simply calls gen_import with the given
+														import file and the given db file.
+GeneratorGenTask    			- This task simply calls gen_file with the given
+														archetype	and the given db file.
+GenerateRecreationScripts - This task will call all nested GeneratorImportTask's
+														then call the import task on the current file in a
+														nested fileset, and finally call the given nested
+														gen_file task.
+
+In order for builds to work correctly the compile target for these new tasks was
+put in generate.xml and a second ant script, generate_after_compile.ant, was
+created that contains all the generation specific targets.  The generate.xml
+script calls the necessary targets from the second archetype after compilation.
+
+The pre-existing instances file for ooaofooa_hiearchy expects data to be
+received in the parent -> child direction.  If you go the other way there can
+be multiple parents causing the archetype to get stuck in a loop.  Temporarily
+a copy of the pei file is placed in the sql folder which has these unneeded
+parents removed.
+
+The ooaofooa_hiearchy was modified to support an attribute named ID_Lett which
+represents the ooa_id attribute of each model element.  This is used in the
+archetypes for selecting graphical representations.
+
+A $t function was added to libTRANS, which appends a \ character right before
+each \n character.  This allows the generated WinRunner script to treat multiple
+line strings correctly.
+														 
+Unit Test
+---------
+_- Run all existing unit tests
+_R All tests pass
+
+_- Using Model Compare, compare each recreated model to the original
+_R All models are identical, except unique ids
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core/models/ooaofooa_hierarchy.xtuml
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+
+system_test/Test_Readme.txt
+system_test/.externalToolBuilders/Model
+system_test/.externalToolBuilders/Model
+system_test/arc/.cvsignore
+system_test/arc/generate_recreation_db.arc
+system_test/arc/generate_test_script.arc
+system_test/models/ModelRecreation.xtuml
+system_test/sql/.cvsignore
+system_test/sql/ooaofooa_hierarchy.pei.sql
+system_test/src/GenerateRecreationScripts.java
+system_test/src/GeneratorGenTask.java
+system_test/src/GeneratorImportTask.java
+system_test/wr_scripts/.cvsignore
+system_test/wr_scripts/BridgePoint.gui
+system_test/.classpath
+system_test/.cvsignore
+system_test/.project
+system_test/build.properties
+system_test/generate_after_compile.xml
+system_test/generate.xml
+system_test/wr_scripts/ModelRecreation/*
+
+libTRANS/libTRANS.c
+libTRANS/libTRANS.dll
+
+End
+---
+
+$Log: automated_test_creation-i1094.int,v $
+Revision 1.1  2009/09/03 18:21:19  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.30.1  2008/12/31 16:10:18  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/09/07 17:57:04  tlondon
+Job: 1094
+
+Updated int with 3020 specs and $t additions
+
+Revision 1.1  2005/08/25 23:23:46  tlondon
+Job: 1094
+
+Initial

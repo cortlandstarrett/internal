@@ -1,0 +1,280 @@
+========================================================================
+
+File:      $RCSfile: matlab_interface_prototype.dnt,v $
+Version:   $Revision: 1.1 $
+Modified   $Date: 2009/09/03 18:25:39 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Pre-Project Design Note
+Matlab Interface Prototype
+
+Abstract
+--------
+This document discusses how integration with Matlab will be 
+implemented in the Eclipse based toolsuite.
+
+History
+-------
+
+Document Reference
+------------------
+[1] The Jacob Project http://danadler.com/jacob/
+
+Background
+----------
+Lockheed Martin has a requirement to run BridgePoint in close
+integration with the Mathworks Matlab product. This note describes how
+this will be supported in tiger. There are two aspects to this work,
+a short term demonstration product and a longer term product development
+proposal
+
+Analysis
+--------
+It is not the purpose of this note to define a requirement for the 
+interface to Matlab, but rather to set out the possible functionality
+packages that could be implemented for both the short and longer term
+work. The suggested packages are:
+
+Short Term
+mi.1 - Mark functions and operations as defined elsewhere as an M-file.
+mi.2 - Store M-file source in the Action semantics attribute of the
+       metamodel.
+mi.3 - Launch a Matlab editor on some M-file source, either stored in
+       the model or held elsewhere.
+mi.4 - Provide a Matlab console embedded in the tiger environment.
+mi.5 - Provide a means to integrate model compiler output with Matlab
+       generated code.
+
+Some of the above capabilities (mi.1 mi.2 & mi.3) could also be added
+to the existing BridgePoint Builder product using the Matlab engine
+C++ interface (see below) directly. This carries with it the usual risk
+associated with modifying the BridgePoint source.
+
+Long Term
+mi.6 - Reimplement the above capabilites using the Matlab engine as
+       opposed to using COM (se below).
+mi.7 - Provide Verifier integration so that functions and operations
+       specified as containing or referencing M-file source are
+       passed to Matlab for evaluation and the results returned to
+       verifier for use by action language.
+mi.8 - Enhance the action language to allow functions and operations
+       to be specified with instance reference and instance set
+       arguments. The complimentary instance reference and set
+       parameters are also added at this time. Provide a means to map
+       attribute values of references and sets as mapped to Matlab
+       array elements for both input and output (the latter requirement
+       can be supported by using existing 'by reference' settings for
+       reference and set arguments).
+mi.9 - Provide a Matlab syntax aware highlighting editor.
+
+Generally, the copious Matlab documentation covers the subject of
+external interfacing to Matlab rather poorly. Visual Basic is well
+covered, followed by C and Fortran, then C++. There is almost no Java
+interfacing coverage.
+
+A number of possible interfaces were considered:-
+
+Use the Matlab JVM environment
+Matlab allows Java access to its runtime data by providing its own Java
+Virtual Machine in which Java programs may be written and run.
+Unfortunately as far as can be discovered, this environment is far more
+suited to running Java functions called from Matlab than the other way
+around. Also, even though this support is distributed with Matlab, very
+little documentation is provided. This approach is not investigated
+further.
+
+Use the Matlab Runtime Server
+This is a variant of the standard Matlab product that contains the same
+computational and graphical capabilities but is designed to run stand-
+alone applications that are based on Matlab. This approach is not
+considered viable since it does not recognize M-files, only MEX-files
+and runtime P-files. This approach is not investigated further.
+
+Use the Matlab Engine
+The Matlab Engine Library is a set of routines that allows Matlab to be 
+called from C or Fortran programs. On UNIX, the Matlab Engine uses pipes
+to communicate with a separate Matlab process. On Windows, the Component
+Object Model (COM) is used for the same purpose. Since the engine
+library does not directly support Java, this approach would be viable if
+we were to extend the existing Builder tool. It is also possible to use
+the Java native interface (JNI) to provide Java wrapper functions so
+that exactly the same interface is provided in a Java environment. This
+technology is recommended for the final implementation of the interface
+because it represents the most efficient way of communicationg with
+Matlab and because the solution would provide Solaris support if it is
+ever required. However, this technology requires significant infra-
+structure work in the research  and creation of the necessary JNI
+function wrappers and associated C++ code. This approach is therefore
+not recommended for the demonstration product required in the short
+term.
+
+Use ActiveX/COM/DDE
+Control over Matlab was achieved using this approach in under 2 man days
+of effort including research. Because of the Microsoft policy of
+providing COM support in Java only in their proprietary MSJ Java
+compiler, a third party library, JACOB (JAva COm Bridge)[1] was used for
+the prototype. This removed the need to create a C or C++ based COM
+interface and then provide a JNI wrapper. This library allows the
+establishment of a COM link with an invisible Matlab process. Commands
+with a single string argument and returning a string result were able to
+be passed to the Matlab process and executed. This technology offers a
+number of possible functionality packages.
+
+Design
+------
+To support this requirement and others, either:
+
+Overload the Suc_Pars attribute carried by all action semantics
+containing metamodel entities to specify the language type contained in
+the action semantics attribute. The existing meanings of Suc_Pars are
+retained for backwards compatibility with existing BridgePoint models
+and model compilers. The Suc_Pars attribute name is similarly retained
+for backwards compatibility. Each language plugin defines its own range
+of enumerated meanings for this attribute. At startup, bp.core stores a
+reference to the editor to be used for each range found in Suc_Pars. If
+overlapping ranges are found by bp.core an error is placed in the log
+and only the first plugin will be enabled. 
+
+or,
+
+Create a new metamodel attribute for the same entities specified above
+called action_language_type. At startup, bp.core stores a reference to
+the editor to be used for each language type. If multiple plugins define
+editors for the same type, no error is raised. Instead, the editor marked
+as 'Default' is launched on an Open command and the others are available
+under the 'Open With >' submenu.
+
+This proposal supports multiple language handling in addition to meeting
+the Matlab integration requirements set out above. Specifically, this
+technology is used to meet the Matlab requirements in the following ways:
+
+mi.1 - An enumeration (i.e. Suc_Pars range or action_language_type) is
+       reserved for M-file source that is stored outside of the tiger
+       model database. The action semantics field contains a URL or path
+       to the specified M-file. The editor provided by this is simply
+       a file chooser that allows the user to specify the location of
+       the file.
+mi.2 - An enumeration is reserved, indicating that the contents of the
+       action semantics attribute is itself valid M-File source. An
+       internal default tiger editor is used to view and modify the
+       source, but no syntax highlighting or validation is performed.
+mi.3 - The editor plugins proposed for mi.1 and mi.2 additionally
+       launch the external Matlab editor on a double click or Open in
+       Eclipse.
+mi.4 - Provide a plugin that Defines a special ConsoleView that echoes
+       typed commands, passes them to Matlab via a COM link and displays
+       the returned results. This would be exactly the same as typing in
+       a Matlab session but without the screen clutter of an additional
+       application on the desktop. This capability is particularly
+       useful in the context of Model Debugger and Verifier integration
+       with Matlab, since it allows the user to control the environment
+       in which the M-files called from BridgePoint run.
+mi.5 - The model compiler must be enhanced to read the language type
+       enumeration and generate the appropriate wrapper code to map
+       action language arguments onto Matlab generated code parameters.
+mi.6 - Build C++ interface and deliver as small dll in the plugin. Build
+       the require JNI wrappers. Rewrite the previous 5 packages to use
+       the JNI as opposed to the raw COM interface.
+mi.7 - Integration with Verifier needs to use the Matlab Engine inter-
+       face because parameter and argument values must be passed back
+       and forth. This is problematic for the generic COM interface.
+mi.8 - This is planned as an enhancement to the action language in the
+       medium term and is outside the scope of this document. To 
+       leverage this capability for Matlab, both Verifier and the model
+       compilers need to extend the parameter mapping capabilities
+       specified in mi.5 above to handle instance references and sets.
+mi.9 - By far the best outcome here is for Mathworks to develop and
+       maintain this plugin. We will open a dialog with them on this
+       topic.
+
+Appendix 1
+----------
+Experimental Java code using JACOB for COM support:
+
+/*
+ * Created on Sep 25, 2003
+ *
+ */
+package com.projtech.bp.io.ml;
+
+import com.jacob.com.*;
+import com.jacob.activeX.*;
+
+/**
+ * @author campbell
+ *
+ */
+public class MatlabInterface {
+  /**
+   * 
+   */
+  public MatlabInterface() {
+    super();
+  }
+  public static void main(String[] args) {
+    ActiveXComponent ml = new ActiveXComponent("Matlab.Application");
+    Object mlo = ml.getObject();
+    try {
+      ml.setProperty("Visible", new Variant(false));
+      Variant arguments[] = new Variant[1];
+      arguments[0] = new Variant("surf(peaks)");
+      Variant result = ml.invoke("Execute", arguments);
+      System.out.println(result);
+      arguments[0] = new Variant("a = 1");
+      result = ml.invoke("Execute", arguments);
+      System.out.println(result);
+      arguments[0] = new Variant("magic(2)");
+      result = ml.invoke("Execute", arguments);
+      System.out.println(result);
+      arguments[0] = new Variant("open surf");
+      result = ml.invoke("Execute", arguments);
+      System.out.println(result);
+//      This causes an NPE in JACOB, no complex parameter
+//      values can therefore be exchanged at this time
+//      Variant mtxArgs[] = new Variant[4];
+//      mtxArgs[0] = new Variant("GetFullMatrix");
+//      mtxArgs[1] = new Variant("base");
+//      mtxArgs[2] = new Variant(new Variant[9][9]);
+//      mtxArgs[3] = new Variant(0.0d);
+//      result = ml.invoke("Execute", mtxArgs);
+//      System.out.println(result);
+    } catch (Exception e) {
+      e.printStackTrace();
+    }
+  }
+}
+
+End
+---
+
+$Log: matlab_interface_prototype.dnt,v $
+Revision 1.1  2009/09/03 18:25:39  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:49  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.166.1  2008/12/31 16:11:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2003/10/20 18:28:30  campbell
+Job: 91
+Introduced.
+
+Revision 1.3  2003/09/29 23:39:14  campbell
+Job: 91
+Added reference to Builder.
+
+Revision 1.2  2003/09/29 19:08:28  campbell
+Job: 91
+Added sample Java code appendix.

@@ -1,0 +1,178 @@
+========================================================================
+
+File:      $RCSfile: i327.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Canvas display should center when item is selected in Outline
+
+Abstract
+--------
+This note describes the design for enabling the changing of the scroll position
+so that the an item is centered in the canvas when it is selected in the outline 
+view.  
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 327
+
+Background
+----------
+When a selection is made in the outline, other editors, such as the java editor, 
+change scroll position to center the selected item. Currently, the tiger 
+canvases do not do that. They should do the same.
+
+Analysis
+--------
+The ModelContentOutlinePage class should have its selection change listener 
+method changed to bring about this functionality.  The code is posted on the
+bug discussion.  There was a comment about making sure that code is not
+duplicated.  A check was made to ensure that code is not duplicated. Various
+search keywords taken from the code posted in the bug discussion were used to
+see if similar code already exists. An example of a search keyword used was
+ptCanvas.getScrollxpos(). The only matches are in CanvasEditor.java, and those 
+matches are not duplicates.
+
+Design
+------
+i327.1  Create operation Model.scrollTo(element: Object):boolean in OAL 
+
+The OAL code is shown below:
+
+curX = self.ScrollXPos;
+curY = self.ScrollYPos;
+minSelX = 8000;
+minSelY = 6000;
+maxSelX = 0;
+maxSelY = 0;
+scroll = false;
+select many elems related by self->GD_GE[R1];
+for each elem in elems
+	if (elem.represents == param.elem)
+	  minX = 0;
+	  minY = 0;
+	  maxX = 0;
+	  maxY = 0;  
+	  select one shp related by elem->GD_SHP[R2];
+	  if (not_empty shp)
+	     minX = shp.NW_X;
+	     minY = shp.NW_Y;
+	     maxX = shp.SE_X;
+	     maxY = shp.SE_Y;
+	     
+	     if (minX < minSelX)
+	       minSelX = minX;
+	     end if;
+	     
+	     if (minY < minSelY)
+	       minSelY = minY;
+	     end if;
+	     
+	     if (maxX > maxSelX)
+	       maxSelX = maxX;
+	     end if;
+	     
+	     if (maxY > maxSelY)
+	       maxSelY = maxY;
+	     end if;
+	     self.ScrollXPos = minSelX + (maxSelX - minSelX);
+	     self.ScrollYPos = minSelY + (maxSelY - minSelY);
+	     scroll = true;
+	  end if;
+	end if;
+end for;
+return scroll;
+
+The return method of this operation is boolean because the selectionChanged
+method in ModelContentOutlinePage processes code based on whether or not
+the selected element is found.
+
+i327.2  Modify selectionChanged method in ModelContentOutlinePage 
+
+The code is shown below:
+
+public void selectionChanged(SelectionChangedEvent event) {
+      boolean scrollTo = false;
+      super.selectionChanged(event);
+      Selection.getInstance().setSelection(event.getSelection());
+      if (ed.ptCanvas != null) {
+        Iterator it = ((StructuredSelection)event.getSelection()).iterator();
+        while (it.hasNext()) {
+            Object seln = it.next();
+            scrollTo = ed.ptCanvas.Scrollto (seln);
+            if (scrollTo) {
+                Rectangle area = ed.swtCanvas.getClientArea();
+                int clientCenterX = area.width / 2;
+                int clientCenterY = area.height / 2;
+
+                ed.ptCanvas.setScrollxpos(ed.ptCanvas.getScrollxpos() - 
+                (int)(clientCenterX / ed.ptCanvas.getZoomfactor()));
+                ed.ptCanvas.setScrollypos(ed.ptCanvas.getScrollypos() - 
+                (int)(clientCenterY / ed.ptCanvas.getZoomfactor()));
+                ed.swtCanvas.getHorizontalBar().setSelection
+                (ed.ptCanvas.getScrollxpos());
+                ed.swtCanvas.getVerticalBar().setSelection
+                (ed.ptCanvas.getScrollypos());
+                ed.swtCanvas.redraw();
+           }
+        }        
+      }
+}  
+  
+
+Work Required
+-------------
+i327.1  Create operation Model.scrollTo(element: Object):boolean in OAL 
+
+The change is made to ooaofgraphics as described in the Design.
+
+i327.2  Modify selectionChanged method in ModelContentOutlinePage 
+
+The change is made to selectionChanged method as described in the Design.
+
+Unit Test
+---------
+- Open a subsystem in a model with two classes x and y.  Click on x.  Then
+  click on y.
+R The scroll position is changed so that y is centered.
+
+- Open a subsystem with classes w, x, y, and z.  Click on w.  Then, select x, y, 
+  and z.  
+R The scroll position is changed so that x is centered.
+
+End
+---
+
+$Log: i327.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.38.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/04/14 19:34:14  svenkat
+Job: 327
+Addressed review comments
+
+Revision 1.1  2005/03/28 22:00:56  svenkat
+Job: 327
+Introduced
+

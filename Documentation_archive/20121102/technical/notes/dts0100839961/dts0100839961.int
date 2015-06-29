@@ -1,0 +1,191 @@
+========================================================================
+
+File:      $RCSfile: dts0100839961.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Prebuilder does not export all required OAL with Generic packages
+
+ 
+1. Abstract
+-----------
+ Prebuilder does not export all required OAL with Generic packages
+ Exporting a generic packages model doesn't export all the OAL instances
+
+
+2. History
+----------
+A customer reference model fails to translate properly when converted to generic 
+packages.
+Examination of the sql file exported by the prebuilder reveals a different 
+number of ACT_BLK instances; 144 as opposed to 1386 for the specific package
+case.
+
+The problem is located inbp.ui.text.AllActivityModifier, in the method
+initializeBodies(). This method does not account for the changes made for issue 
+dts0100631941 to support parsing in generic packages.
+
+The changed initializeBodies() method addresses the problems
+The significant changes are:
+
+- Components within a package must be recursively visited, because they each 
+  have their own model root.
+- Calls added to the Body.associateWithContainer() operation. If these are not 
+  made, some parsing validation that expects R640 to be present will fail and no 
+  OAL instances are output for the activity. 
+ 
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100839961 Prebuilder does not export all required OAL 
+[2] ClearQuest DEI dts0100792093 "Instance data for model elements under generic 
+                                  packages are not being properly exported"
+[3] ClearQuest DEI dts0100801024 "Combine Pre-builder and Verifier parser 
+                                  invocation infrastructure as much as possible"    
+[4] ClearQuest DEI dts0100844582 "Licensing policy for systemLevel license in 
+                                  generic packages"
+[5] ClearQuest DEI dts0100844913 "Verifier function execution not always working
+                                  in HEAD."
+
+4. Background
+-------------
+
+
+5. Design
+---------
+ 5.1 Steps to reproduce the issue :
+     _- Import integration project into workspace 
+     _- In the BridgePoint preferences select the option to export OAL and turn 
+        off the option to export graphics
+     _- Export a  SP model (spec.xtuml)
+     _- Import the model and select convert to generics
+     _- Export the new generic package model (generic.xtuml)
+     _- Look at the sizes
+     _R The won't be identical but they should be very close
+     _- Open the Two Models using NotePad++
+     _- Count the various OAL instances                
+     _R The counts must be identical in both files 
+ 
+5.2 There were two separate paths to collect the parsable elements one is 
+    followed by the prebuilder and the other is followed when exporting the
+    xtuml models. 
+    The first path used by the prebuilder, uses the method 
+    CoreExport.getParsableElementsInSystemModel(SystemModel_c sys) this method 
+    retrieves all the elements to be parsed in the systemLevel.
+    The other path used when exporting xtuml models uses the method 
+    getElementsToParse(NonRootModelElement[] pSelectedElements).
+    So To Have a unified Path for collecting the elements to be parsed the 
+    following design is applied :
+    
+5.2.1 The Method getParsableElementsInSystemModel(SystemModel_c sys) is modified
+      to just call the getElementsToParse(NonRootModelElement) and pass the 
+      system instance then return the output of this method.
+      
+5.2.2 The Method getElementsToParse(NonRootModelElement[] pSelectedElements)
+	  modified to loop by all the elements in the pSelectedElements and call 
+	  the method getElementsToParse(NonRootModelElement) for each of them 
+	  then return the result of all the loop iterations
+	  
+5.2.3 A new Method is added  getElementsToParse(NonRootModelElement 
+                                                               pSelectedElement)
+      This method takes as an input a passes parameter of type 
+      nonRootModelElement then retrieve the elements nested under it.
+      At first the method checks if the passed element is of type system model
+      then it returns the list of nonFormalized Domains, components that live in
+      component packages, all packages in the systems and all the components 
+      that live inside them.                                                            	  
+      
+      And if the passed nonRootModelement is not a SystemModel_c instance
+      if it's a Domain_c,Component_c or Package_c instance it's then added to 
+      the result list
+      
+      If it's ComponentPackage_c instance then the components that live under it
+      are added to the resultList
+      
+      And if it's a Package_c, then all the nested packages and nested components
+      that live under these packages or nested under themselves are retrieved 
+      and added to the result list using the method getNestedElements()
+       
+5.3 To enable collecting all the nested packages and components that live under
+    a nonRootModelElement element the method  getNestedElements() is added 
+    where it recursively retrieve the nested packages and components that live
+    inside the passed element.
+
+
+
+6. Implementation Comments
+--------------------------
+6.1 According the issue addressed in [5] initializeBodies() behavior needs to be
+    modified, This modification would influenced by the following points :
+     - initializeBodies() should be called with the top level elements ? or with 
+       the full list of elements including the nested ones?
+     - initializeBodies() should/shouldn't descend the hierarchy ?
+
+6.2 The output returned by the method CoreExport.getParsableElementsIn
+                                                  SystemModel(SystemModel_c sys)  
+    is used to determine weather a systemLicence is needed or not. The
+    length of the output list is checked if it's more than one then a 
+    systemLicense is needed.
+    In Specialized package context the policy depends on counting the  
+    components on the system Level.
+    In the generic packages context the policy needs to get clearly determined  
+    A separate issue is raised to address this [4].
+ 
+ 
+ 
+7. Unit Test
+------------
+7.1
+     _- Import integration project into workspace 
+     _- In the BridgePoint preferences select the option to export OAL and turn 
+        off the option to export graphics
+     _- Export a  SP model (spec.xtuml)
+     _- Import the model and select convert to generics
+     _- Export the new generic package model (generic.xtuml)
+     _- Look at the sizes
+     _R The won't be identical but they should be very close
+     _- Open the Two Models using NotePad++
+     _- Count the various OAL instances                     
+     _R The counts are identical in both files
+     
+7.2  _- Create new JUnit test That automates (7.1)
+     _- Back out changes Listed in the design section 
+     _- Run the new test
+     _R The test fails because the model created by the prebuilder is missing 
+        data in the same way that model export is missing data
+     _- Put the changes Listed in the design section back in
+     _- Run the test again
+     _R The new JUnit test passes     
+       
+7.3 Run the JUnit tests
+
+8. Code Changes
+---------------
+Branch name: R3_4_5-HKA-dts0100801024 (Branch)
+
+com.mentor.nucleus.bp.io.core/src/com.mentor.nucleus.bp.io.core/CoreExport.java
+
+
+End
+---
+
+$Log: dts0100839961.int,v $
+Revision 1.3  2012/01/09 17:20:00  hkhaled
+job:dts0100839961
+expand the int to include the work for dts0100801024, dts0100792093 too
+
+Revision 1.2  2012/01/09 16:53:54  hkhaled
+job:dts0100839961
+expand the int to include the work for dts0100801024, dts0100792093 too
+
+Revision 1.1  2011/12/29 23:59:18  hkhaled
+job:dts0100839961
+ missing oal instances during export for generic packages implementation note

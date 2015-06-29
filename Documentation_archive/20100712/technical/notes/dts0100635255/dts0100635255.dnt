@@ -1,0 +1,219 @@
+========================================================================
+
+File:      $RCSfile: dts0100635255.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Implementation of AUTOSAR Virtual Functional Bus ( VFB ).
+
+1. Abstract
+-----------
+Update MC-3020 to support Virtual Functional Bus VFB communication model
+to allow a virtual integration ( communication ) and testing of Software 
+Components in early development phase instead of using RTE generated code.
+
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100635255 - Implementation of AUTOSAR Virtual 
+    Functional Bus ( VFB ).
+[2] ClearQuest DEI dts0100580443- BP AUTOSAR
+[3] ClearQuest DEI dts0100639208- Ship the AUTOSAR standard header 
+    files with the VFB generator
+[4] xtUML to AUTOSAR transformations document
+    http://beta.wv.mentorg.com/tenmile_svn/tenmile/trunk/documentation/notes/   
+    dts0100581974/xtUML_AUTOSAR_transformations.doc
+[5] AUTOSAR_SWS_CompilerAbstraction.pdf 
+	30_Release3.0\01_Standard\AUTOSAR_SWS_CompilerAbstraction.pdf
+[6] AUTOSAR_SWS_StandardTypes.pdf
+	30_Release3.0\01_Standard\AUTOSAR_SWS_StandardTypes.pdf
+
+4. Background
+-------------
+
+4.1 In order to fulfill the goal of relocatability, AUTOSAR Software Components 
+    are implemented independently from the underlying hardware.
+
+4.2 The independence is achieved by providing a communication abstraction model
+    to AUTOSAR Software Components by allowing for a strict separation between
+    applications and infrastructure . This enables a virtual integration of 
+    AUTOSAR Software Components. This integration process can be done in much 
+    earlier design phases compared to today's development processes.
+
+4.3 At system design level the AUTOSAR Runtime Environment (RTE) acts as 
+    a communication center for inter- and intra-ECU information exchange.
+
+4.4 The AUTOSAR Runtime Environment RTE provides a communication abstraction 
+    to AUTOSAR Software Components ( which are application dependent ) attached 
+    to it by providing the same interface and services whether inter-ECU 
+    communication channels are used (such as CAN, LIN, Flexray, MOST, etc.) 
+    or communication stays intra-ECU.
+
+4.5 The RTE needs to be tailored. It is therefore very likely, that the main 
+    parts of RTE will be generated to provide desired communication services. 
+	In addition some parts of the RTE software may be tailored via configuration.
+	Thus, the resulting RTE will likely differ between one ECU and another, also 
+	may differ between an application and another or even same application with 
+	different configurations.
+
+
+4.6 Currently the code generated for AUTOSAR Software Components ( <component>_ports 
+    files which use Rte_Call, Rte_Write, and Rte_Read APIs ) is dependent on the 
+    generated RTE . 
+
+
+5. Analysis
+-----------
+5.1 The AUTOSAR generated code ( <compnent>_ports files ) use Rte_Call, Rte_Write, 
+    and Rte_Read APIs which are implemented by generated RTE . So, these APIs' 
+    calls will be kept as they are, VFB files will be generated  that virtually 
+    implement the communications between components instead of the RTE. 
+
+5.2 Modify the metamodel by adding VFB boolean attribute to TM_SYSTAG class to
+	enable\disable VFB generation through it. 
+
+5.3 Implement VFB enable mark function ( VFBEnable() ) and invoke it in the , 
+	system.mark file So the generated code of only <component>_ports files will support  
+	AUTOSAR and VFB instead of invoking AUTOSAR mark function :
+	( EnableTasking( "AUTOSAR", "", number_of_Components) ).
+
+6. Design
+---------
+6.1      The main strategy is to keep <Component>_ports.c [standard] files supporting 
+         AUTOSAR codes as they are without any changes, and generate VFB file to 
+         accommodate with these AUTOSAR <Component>_ports files, take into consideration  
+         the #include statements, macro, and some other functions that are existed in  
+         case of Rte, and OS files existence (that will not be existed with the project's  
+         files ) to generate VFB dummy header files and functions to accommodate with  
+         the original AUTOSAR Component_ports files.
+
+6.2      Generate the implementation of Rte_Call, Rte_Write, and Rte_Read APIs, keep 
+         their original declaration signature as they are [4], ( which are the only 
+         supported AUTOSAR APIs in the VFB at this moment ) in <Component>_ports_vfb 
+	     files.
+
+6.2.1    For interface Operations, Rte_Call API body simply takes parameters and 
+         invokes a function in the opposite (server) component which represents the 
+         runnable in case of OS, and Rte codes existence, so the parameters are passed 
+         to the opposite (server) component by invoking this function.
+
+6.2.2    For interface Signals, Rte_Write API body simply takes parameters, saves
+         them, and invokes a function in the opposite (server) component that represents 
+         the runnable in case of OS, and Rte codes existence. This function invokes   
+         Rte_Read API whose body in turn retrieve the parameters saved by the Rte_write
+         API in the first component.
+
+6.3      Generate VFB files:
+
+6.3.1    Rte_co_<Component>.h [standard] ( which is already #included in the  
+	     <Component>_ports.c files if generated RTE files is existed to meet the  
+	     standard files' naming ) to declare APIs that AUTOSAR uses ( Rte_Write,   
+	     Rte_Call, Rte_Read APIs, and functions that represent runnable in  case 
+	  	 of external RTE files existence see [5] ).
+	  
+6.3.2    <Component>_vfb.c to implement APIs, and functions that is declared in the  
+         corresponding Rte_co_<Component>.h .
+	  
+6.3.3    Functions_vfb.h to declare some (empty) function ( TIM_update,
+         ooa_loop, and Escher_xtUMLmain)  that are invoked in runnables in  
+         <Component>_ports.c files when Rte, and OS files are existed .
+         
+6.3.4    Functions_vfb.c to implement functions declared in the corresponding
+         header file (Functions_vfb.h).
+
+6.3.5    target.h that is #included in <Component>_ports.c [standard] files   
+         to Keep them in generated code as if RTE and OS files are existed .
+
+6.3.6    Rte_Type.h [standard]( as generated with generated RTE  ), in which define   
+         some used AUTOSAR data types in the VFB:
+
+6.3.6.1  dt_xtUMLSignal defined as boolean types ( See [4] ).
+
+6.4	     Force the precompile option (AUTOSAR_ENABLED) in sys_user_co.h
+         ( where this is exactly done in normal AUTOSAR (with RTE) code ) 
+         to enable AUTOSAR code in <Component>_ports.c [standard] files to   		 
+	  	 be compiled.
+
+7. Design Comments
+------------------
+7.1    The Queued Communication is not supported, So Rte_Send, Rte_Receive APIs 
+       are not supported.
+	
+7.2    Consider to supply AUTOSAR standard header files that provides RTE data 
+	   types and some macro definitions ( ship them  with VFB generator [3] ):
+
+7.2.1  Rte_Instance type simply defined here as pointer to integer.
+	   AUTOSAR standard defines it as CONSTP2CONST ( see [5] section 9.3.4 )
+		 
+7.2.2  Std_ReturnType defined as unsigned char ( see [6] section 8.1.1 ).
+
+7.2.3  A compiler abstraction macro for functions' declaration:
+	   FUNC ( ReturnType, RTE_CODE ) ( see [5] section 9.2.1 ).  
+	
+7.3    VFB generation is based on BridgePoint xtUML project, 
+	   so, to make the project portable to VSI project ( with RTE ),
+	   the all above mentioned VFB generated files ( must ) be 
+	   removed from the project files.
+	
+
+8. Work Required
+----------------
+1.  The work required is spelled out in the Design section above
+	which require to edit some MC files:
+1.1 Edit in archetype files related to the components' ports and
+1.2 Edit m.system.arc to add VFB enable mark function.
+2.  Edit metamodel sql file ( xtumlmc_schema.sql ) to add VFB generator 
+    enable\disable switch in TE_SYSTAG class.
+
+9. Unit Test
+------------
+
+9.1   use SeatHeater model, enable VFB, and run it. 
+9.2   use the Ticker\Tickee model with some modifications to allow
+      testing for test cases.
+9.2.1 Signal with multi-parameters.
+9.2.2 Operation with multi-parameters
+9.2.3 Operation with a return data type.
+9.3   Disable VFB then build and run .
+9.4   Enable VFB and run the Test Model
+9.5   Check if the sent and received data is the same.
+
+End
+---
+
+$Log: dts0100635255.dnt,v $
+Revision 1.6  2010/01/05 04:31:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.5  2009/12/03 09:27:04  irefaat
+job:dts0100635255
+updated design note after review
+
+Revision 1.4  2009/12/01 14:57:32  irefaat
+job:dts0100635255
+updated design note
+
+Revision 1.3  2009/11/19 19:57:41  irefaat
+job:dts0100635255
+VFB design note
+
+Revision 1.2  2009/11/18 21:43:56  irefaat
+job:dts0100635255
+VFB design note
+
+Revision 1.1  2009/11/18 21:30:46  irefaat
+job:dts0100635255
+VFB design note
+

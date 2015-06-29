@@ -1,0 +1,243 @@
+========================================================================
+
+File:      $RCSfile: i1608.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+PLCM containers (Component Root Model Elements) need to be treated as folders.
+
+Abstract
+--------
+This note describes the changes required to treat Package Model Elements as 
+folders while keeping file based operations intact.
+
+History
+-------
+final - i1608-030206-01.rvm
+
+Document References
+-------------------
+[1] Issue 1608
+
+Background
+----------
+Currently all component root model elements adapt to an IFile, except the System
+Model, which adapts to the IProject interface as an adapter for IResource. This 
+leaves the model explorer to show only file based team operations for component 
+root model elements. The PLCM project requires that both  folder and file based 
+team operations be available.  This issue has been raised to assure file and 
+folder-based Team operations are available.
+
+Analysis
+--------
+Two options were considered when determining how to provide both folder and 
+file-based Team operations to the user.  
+
+The first option that was considered was to introduce an option that would flip 
+the "personality" of the package element (from file to folder).  After 
+discussion it was determined that this approach would result in an interface 
+that was not intuitive for the user.
+
+The second option, which has been selected as the best option, is to have each
+package element represented by two Model Explorer elements.  The following 
+statements will be true in this implementation:
+
+1. Each component root model element will be represented by two tree items 
+   where one of these will be a child of the other. The parent will allow the 
+   folder-based team operations, and the child will allow file based team 
+   operations.
+
+2. There will be no difference of icons between the two tree items representing 
+   the same model element.
+
+3. Operations other than team, which were previously available, will be same for 
+   both of the items. 
+
+4. When 'Link with Editor' is enabled the following behavior will occur:
+4.1 Selection from the editor will result in the selection of the parent 
+    tree item representation.  
+4.2 The Selection of either of items from model explorer will result in the 
+    selection of its representation in the focused editor.
+
+5. The following is the prototype for the Model Explorer tree that allows both 
+   folder and file based team operations.
+
++ SS >AssignRemoveEvent
+|  | SS AssignRemoveEvent: Class Diagram 1.2.3.4 [phoenix.azt.mentor.com]
+|  + C >Test Class 1
+|    | C >Test Class 1: Class Properties 1.3.5.4 [phoenix.azt.mentor.com]
+|    | o current_state
+|    + i >Instance State Machine
++ SS Bar
+
+6. File Tree Item Label
+   If a component root model element contains a diagram, its label will be 
+   'ElementName: Diagram Type' otherwise it will be 'ElementName: ElementType 
+   Properties'
+
+Design
+------
+1. Wrapper Class
+   In order to differentiate the two representations of same model element, a 
+   wrapper class named ModelElementFileFacade will be created.  This wrapper 
+   class will be used to set data for the tree item that allows the file based 
+   operations.  The parent item will contain the original model element as it 
+   did previously and will provide folder based operations. This wrapper class 
+   holds a reference to the model element it represents. Model Elements having a
+   Wrapper object will keep a reference of it. A question was raised 
+   'why we need a reference at all'. 
+   Answer is; it is due to the delayed decoration behavior of the label
+   decorator. The Label Decorator maintains a list of decoration and decorated 
+   object into a map. Label Decorator looks up this list and returns decoration  
+   when queried. So we need to keep a reference of object to get decoration from
+   delayed decoration map.
+   The following statements will be true for this wrapper class:
+   
+1.1 It has no child in the tree.
+
+1.2 It implements IAdaptable and returns IFile adapter of the encapsulated 
+    model element. This provides availability of menu options that are meant 
+    for a file. 
+ 
+2. MC-Java
+   java.arc will be changed so that the getAdaptor() method of component root 
+   model elements returns an instance of IFolder, where it was previously 
+   returning an instance of IFile.
+
+3. ui.explorer archetype changes
+   The archetype will be changed for all the component model root elements to
+   generate code to support the wrapper object as a child.
+
+4. Selection changes
+   Selection class has been changed slightly. These changes will eliminate wide
+   spread changes required elsewhere to support Wrapper class. This keeps the 
+   code path the same for both the wrapper and wrapped objects.
+   We have two methods for getting current selection.
+   
+   a) Selection.getSelection()
+      This is the standard method defined by ISelectionProvider. This method 
+      will return a raw selection and will not be used in BP source.  This will 
+      be marked as deprecated for BP source code.
+   b) Selection.getStructuredSelection()
+      This method will be changed to return model elements rather then the raw 
+      selection. This means that if a selection contains any wrapper object then
+      getStructuredSelection() will return the wrapped element only.
+  
+   Both methods are being used in BP source to get the current selection. 
+   However, after these changes BP source should use 
+   Selection.getStructuredSelection() to obtain the current selection.
+
+5. File Tree Item Label
+   For label calculation the same logic will be used that is used to calculate 
+   the canvas editor title. Labels of elements having no diagram will be 
+   straight forward.
+   
+Work Required
+-------------     
+1.   Create ModelElementFileFacade Class as a wrapper for model elements as
+     specified in the design section. 
+2.   Update getAdapter() in java.arc for all package model elements that 
+     implement the IAdaptable interface to return IFolder when the queried 
+     adapter is IResource.
+3.   Update ui.explorer archetype as specified in design section.
+4.   Change the bp.core.Selection class as specified in the design section.
+4.1. Change all files that are calling function Selection.getSelection() to 
+     Selection.getStructuredSelection().
+5.   Modify create_label_provider.arc to provide 'File Tree Item Label'.
+5.1. Extract utility method from CanvasEditorInput class to get editor title.
+5.2. Use extracted method to calculate label.
+6.   Unit Tests needs fix
+6.1. MultipleReload.testRenameAndReload()
+6.2. TigerNatureTest.testNewDomainWithProjectSelectedBadTemplate()
+6.3. ExplorerTest.testProjectOpenThenClose()
+6.4. ExplorerTest.checkDomainNoLongerInModelExplorer()
+6.5. PkgCMBaseTest.findRootTreeItemFor()
+6.6. PkgCMBaseTest.findTreeItemInMEFor()
+
+Unit Test
+---------
+
+_- Checkout 'CVS Test Project' project from the CVS
+_R There exists one tree node under System node with text 'CVS Test Project: 
+   SystemModel Properties 1.1 (Binary)'. This is the first child node and has no
+   child.
+_- Expand testDomain
+_R There exists one tree node under Domain node with text 'testDomain: Domain
+   Package Diagram 1.3 (Binary)'. This is the first child node and has no
+   child.
+_- Select node 'testDomain: Domain Package Diagram 1.3 (Binary)' and rename it
+   to testDomain_
+_R Its label changes to '>testDomain_: Domain Package Diagram (Binary)'.
+_R Its parent node text changes to '>testDomain_'.
+_R Its Resource is not managed by CVS (? appears in tree item icon).
+_- Select node 'testDomain_: Domain Package Diagram (Binary)' and rename it
+   back to testDomain
+_R Its Resource is again managed by CVS (Disk appears in tree item icon).
+_R Its label changes to '>testDomain: Domain Package Diagram 1.3 (Binary)'.
+_- Replace its resource with latest from head.
+_R It is not CVS dirty (team decoration ">" disappears).
+
+End
+---
+
+$Log: i1608.dnt,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.9.28.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.9  2006/03/07 10:39:40  araza
+Job:1608
+Updated history and removed steps no more needed after review.
+
+Revision 1.8  2006/03/06 06:56:49  araza
+Job:1608
+Addressed review minutes.
+
+Revision 1.7  2006/03/02 12:02:47  araza
+Job:1608
+Added Unit Tests required fix after this issue.
+
+Revision 1.6  2006/03/01 12:21:30  rmulvey
+Job:1608
+Minor grammar and formatting changes.  Ready for review.
+
+Revision 1.5  2006/03/01 11:57:01  araza
+Job:1608
+Added missing label calculation information.
+
+Revision 1.4  2006/03/01 10:12:34  araza
+Job:1608
+Addressed TODOs and Made some grammatical corrections.
+
+Revision 1.3  2006/02/28 18:39:58  rmulvey
+Job:1608
+Corrected grammar and formatting.  I marked places that Asif needs to address before the review with "TODO".
+
+Revision 1.2  2006/02/28 16:40:20  babar
+Job:1608
+Rephrased to provide more clarifications. Added some missing sections.
+
+Revision 1.2  2006/02/28 14:31:46  araza
+Job:1608
+Made some grammatical corrections.
+
+Revision 1.1  2006/02/28 13:14:05  araza
+Job:1608
+Introduced.

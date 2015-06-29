@@ -1,0 +1,849 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support interface message verification
+
+1. Abstract
+-----------
+This note describes the changes that allow for intra-component verification.
+This includes adding support for verification of component interfaces, with the
+limitation that no communication outside of a component will be verified.  The
+work to allow full communication verification will be done by [3].
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3099
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3099
+[2] CVS:/Documentation/internal/technical/notes/i3099.ant 1.8
+[3] Bugzilla item 3405
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3405
+
+4. Background
+-------------
+See [2].
+
+6. Design
+---------
+6.1 Add support for choosing all component types for verification
+
+Currently verifier will filter all components which are not formalized with a
+domain.  The tool also does not currently support imported components or nested
+components.
+
+The debug.ui plug-in shall be changed to properly list all component types in
+the launch configuration chooser tree.
+
+The Launch Verifier menu entry shall be available when any component type is
+selected.  The same menu entry shall also exist when selecting a component
+package.  If a component package is selected, all child elements shall be
+executed as well.
+
+A new association between a component and an execution engine shall be added.
+This association shall be used to capture the fact that a component is being
+executed.  All places in code that select an execution engine related to a
+domain shall be modifed to search for the execution engine related to a
+component parent when applicable.  The Debug view shall indicate that a
+component is being verified.
+
+For this work it will be possible to select a component as well as all of the
+Imported Components which represent the component.  When this occurs the
+component will be associated with many execution engines.  A new operation shall
+be added to the Execution Engine class which will return the engine's number.
+The number is determined by the order in which the execution engine was
+associated with the component.
+
+In order to execute component level OAL the parse all behavior shall be modified
+to parse all interface messages.
+
+6.2 Add Execute operation support for component elements
+
+At this point you can select a function that is within an executing domain and
+select Execute.  This same support needs to exist for interface signals and
+interface operations.
+
+The debug.ui plug-in definition shall be modified to include the Execute menu
+entry when selecting interface signals and interface operations.
+
+Filtering through the action filter mechanism shall be added to prevent showing
+the Execute menu entry when the owning component is not being executed.
+
+Currently class based operations do not have the Execute menu entry available.
+This shall be added as part of this work.
+
+6.3 Support execution of interface messages
+
+Breakpoint support shall be added for the interface signal activity editors.
+
+The following path shall be used when displaying a signal in the debug view:
+
+PortName::InterfaceName::SignalName
+
+Message parameters shall show in the Variables view.
+
+When selecting the Execute action on a selected interface message, the behavior
+shall be the same as if a wired component had called the message.  For this work
+the direction of the executed message will not matter as the OAL in the
+destination will always get executed (treated as stub OAL).  The only time this
+is not true is when the message is a signal that is assigned to a transition, in
+which case a Pending Event is created and added to the event queue.  See 6.3.1
+below for details on signal events.
+
+To support the execution of message invocations the classes Interface Operation
+Invocation and Signal Invocation were already added to the Invocation subsystem.
+These classes were incorrectly associated with the definition classes and not
+the implementation classes.  The subsystem shall be modified to associate the
+Interface Operation Invocation class with the Provided Operation and Required
+Operation classes.  It shall also be modified to associate the Signal Invocation
+class with the Provided Signal and Required Signal classes.  The dispose
+operation for each of these classes shall be updated to tear down these new
+associations.  The parser shall also be modified accordingly to setup these new
+associations when an Interface Operation Invocation or Signal Invocation
+instance is created.
+
+To support invocation of interface operations the following operations shall be
+added to the Interface Operation Invocation class:
+
+execute, setupParameterValues
+
+These operations shall create a stack frame and setup the necessary parameter
+values to allow execution of the interface operation's body.  The current
+infrastructure will see this newly created stack frame and proceed to execute
+the operation's body.  The next paragraph explains how execution will be
+supported when dealing with an interface operation which returns a value.  The
+current infrastructure expects a different code path in this case.
+
+To support execution of an interface operation with a return value the class,
+Message Value, was already added to the Value subsystem.  This class was
+incorrectly associated with the definition class for an interface operation.
+The subsystem shall be modified to associate the Message Value class with the
+Required Executable Property and Provided Executable Property classes.  The
+dispose operation shall be updated to tear down these new associations.  The
+Message Value class represents the return value for an interface operation.  All
+existing OAL which selected the associated Executable Property shall be modified
+to find the Executable Property across the new associations.  In order to
+compute the value of an interface operation's return, the Value.computeValue
+operation shall be modified to check for a message value and call its getValue
+operation.  The Value.getDimensions operation shall also have support added to
+check for a property parameter in the case of a Parameter Value.  This support
+was simply missing.
+
+The getValue operation mentioned above shall be added to the Message Value
+class.  This operation shall be created to behave exactly as the
+Operation Value.getValue operation.  Which is to execute the action in the
+interface operation, and setup a Runtime Value for relating to the Message
+Value.  To properly execute the action in the interface operation the
+operation's parameter values must also be setup.  This shall be done by adding
+a new operation, setupParameterValues, which is very similar to the
+Operation Value.setupParameterValues operation.  This operation shall create
+runtime values for all of the parameters passed in along with the
+interface operation invocation.
+
+To support invocation of an interface signal the following operations shall be
+added to the Signal Invocation class:
+
+execute, setupParamterValues
+
+These operations shall do exactly as the Interface Operation Invocation
+operations, with the exception of the cases listed below in section 6.3.1 and 
+6.3.2.
+
+Currently all parameters and transient variables are associated with the Local
+Value class for execution.  The same association needs to exist for a Property
+Parameter.  To allow this the Property Parameter class shall be imported into
+the Local subsystem and associated with the Local Value class.  The dispose
+operation for both classes shall be updated to tear down this new association.
+
+To support handling setting and getting interface message parameter values
+during execution the following operations are added:
+
+Property Parameter.getValue
+Property Parameter.setValue
+
+These operations shall be called during execution to do as their name suggests.
+They shall be called by the existing Property Value operations which are named
+identically.  They shall acheive this through their associated Local Value
+instances.  The Local Value class already has the support for getting and
+setting its value.
+
+  6.3.1 Support executing signals that are assigned to a transition
+
+  When a signal is assigned to a transition it shall be treated just like an
+  event that is assigned to that transition.  Given this requirement the signal
+  shall be added to the normal event queue.  This shall be done by creating a
+  Pending Event instance and associating it with the Signal Event that is
+  associated with the signal.  In order for access to the parameter values at
+  the time of processing the Pending Event associated with the signal shall
+  require an association with the signals parameters.  To do this the Property
+  Parameter class shall be imported into the Instance subsystem and associated
+  with the Data Item Value class.  When the signal event is fired a data item
+  value shall be created for each signal parameter.  The Data Item Value and
+  Property Parameter dispose operations are updated to tear down the new
+  association.
+
+  6.3.2 Support executing signals that are not assigned to a transition
+
+  When a signal is not assigned to a transition it shall have a new stack and 
+  stack frame created.  The new stack shall be associated across the R2936
+  association.  This association is used to hold a stack for later execution.
+  The created stack frame shall be executed at the next possible opportunity,
+  that is when a currently executing action has completed.  To do this the code
+  shall take the created stack frame and simply associate it with the
+  destination's executing stack.  The current infrastructure will take care of
+  the actual execution.
+
+  6.3.3 Support executing operations
+  
+  For this work operations will be executed no differently than class
+  operations, which includes returning a default value when no OAL exists.  The
+  required blocking behavior associated with a synchronous call is provided 
+  because caller and called stack frames share the same stack. For
+  intercomponent execution, an explicit blocking mechanism will be required.
+  This shall be provided by the work for [3]
+
+6.4 Add new elements to session explorer
+
+The session explorer tree shall be modified such that it is the same as the
+layout described in [2 - Section 5.4].  In addition to the new layout above
+functions and class based operations shall be added to the tree.
+
+6.5 Get associated execution engine
+
+In many places today the execution engine is found by using a select from
+instances.  This was fine when only domains were executable.
+
+All places where such a select was used shall be modified to get the proper
+execution engine.
+
+6.6 Disable delete and rename support in session explorer
+
+Currently a user is able to delete model data (not instance data) in the session
+explorer view.  This is not valid functionality for the session explorer view,
+modification shall only be allowed on instance data.  This work shall disable
+the two actions in the session explorer view.
+
+6.7 Correct signal assignment for transitions
+
+The signal assignment for a transition was incorrectly using the defintion
+classes which are not unique among interface references.  When selecting the
+signal for assignment the Provided Signal and Required Signal classes must be
+used.
+
+To use the correct classes during the selection of signals the context menu
+entry function for assigning a signal shall be changed to pass in the id of the
+Interface Reference that the user selected to the State Machine.canAssignSignal
+and Transition.addSignal operations.  This allows for a selection that can
+uniquely identify the correct Required Executable Property or Provided
+Executable Property for assignment.
+
+6.8 Remove incorrect whitespace in Signal Event text
+
+The operation Signal Event.get_event_text currently adds a space between the
+signal name and the interface which provides or requires the signal.
+
+The operation shall be changed to remove this undesired space.
+
+6.9 Remove unused associations
+
+The Instance subsystem has the following associations that are only called out
+in dispose operations:
+
+R2925, R2926, R2927
+
+These associations shall be removed.
+
+6.10 Change select from instances
+
+Currently most of the OAL uses select from instances, which was fine when a
+single domain was all that was executable.  Now we must select the appropriate
+elements across an association.
+
+All places that used a select from instances shall be examined and updated
+accordingly.
+
+The Instance class has no possible path, unless being monitored, to avoid a
+select from instances.  To repair this problem a new association between the
+Instance class and the Execution Engine class shall be added.  Each classes
+dispose operation shall be updated to tear down this new association.  All
+places that an instance of the Instance class is created shall be modified to
+associate the instance with the proper execution engine.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+8.1 Add support for choosing all component types for verification
+
+The VerifiableElementComposite class shall be modified to remove all filtering
+related to formal components.  It shall also be changed to show imported
+components in the tree.
+
+The LaunchVerifierAction class shall be modified to support showing the menu
+entry when selecting any type of component or a component package.
+
+The LaunchShortcut, BPDebugUtils, and BPDebugTarget classes shall be modified to
+setup and launch the newly launchable elements.
+
+The Instance subsystem shall import the Component class.  A new association
+between the Execution Engine class and the imported Component shall be added.
+The two class's dispose operations shall be modified to handle tearing down this
+new association.
+
+The BPDebugModelPresentation class shall be modified to show the component icon
+when the execution engine is executing a component.
+
+The BPThread class shall be modified to name the thread according to the element
+associated to the Execution Engine class.  If the associated element is a
+component and more than one instance of the component is being verified, then
+the engine number shall be appended to the displayed text.
+
+The file debug.ui/plugin.xml shall be modified to add the Launch Verifier action
+for all component types and component packages.
+
+8.2 Add Execute operation support for component elements
+
+The ExecuteAction class shall be modified to show the menu entry when any of the
+following is selected and the owning component or domain is being executed:
+
+Class Based Operations
+Interface Signals
+Interface Operations
+
+It shall be modified to create a stack, which will be queued for execution, for
+interface signals that are not assigned to a transition.
+
+It shall be modified to add a pending event to the event queue for interface
+signals that are assigned to a transition.
+
+For interface operations and class based operations it shall be modified to
+execute the action body in the same way that functions are executed today.
+
+The file debug.ui/plugin.xml shall be modified to add the Execute action for
+the new elements.
+
+8.3 Support execution of interface messages
+
+The classes BPBreakpoint and BPLineBreakpoint shall be modified to add
+breakpoint support in interface messages.
+
+The ModelElementLocation class shall be modified to return the path to interface
+messages.
+
+The BPVariable and BPStackFrame classes shall be modified to allow showing
+operation and signal parameters in the Variables view.
+
+The ooaofooa model shall be greatly modified to acheive what the design calls
+for.  The files will not be listed out here.
+
+8.4 Add new elements to session explorer
+
+The UITree.pei.sql file shall be modified to include the newly required elements
+as well as add the necessary parent child traversals.
+
+8.5 Get associated execution engine
+
+All places where a select from instances is used to find an execution engine
+shall be searched for.  In each case a path to the associated execution engine
+shall be determined and used.
+
+8.6 Disable delete and rename support in session explorer
+
+The create_SessionExplorer_view.inc archetype shall be modified to disable the
+delete and rename actions.  This includes removing them from the context menu as
+well as from the eclipse menu bar.
+
+8.7 Correct signal assignment for transitions
+
+The following files shall be modified to use the correct classes when choosing
+a signal for assignment:
+
+Transition.xtuml
+State Machine.xtuml (class)
+Context Menu Entry Functions.xtuml
+
+8.8 Remove incorrect whitespace in Signal Event text
+
+The file Signal Event.xtuml shall be changed to correct this problem.
+
+8.9 Remove unused associations
+
+The file Instance.xtuml shall be changed to remove the associations.
+
+8.10 Change select from instances
+
+There are many files that shall be modified for this change.  Each one should be
+easy to relate with the change so listing here does not provide any benefit.
+
+9. Unit Test
+------------
+9.1 Test support for choosing all component types for verification
+
+  9.1.1 Test launch config tree
+  
+    _- Create a new project
+    _- Create a new component package (cp)
+    _- Create a new component (c1)
+    _- Create a new nested component (nc1)
+    _- Create a new imported component (cp::c1)
+    _- Create a new formal component (fc1)
+    _- Create a new domain (domain)
+    _- Open the Debug launch configuration dialog
+    _- Expand all under the new project
+    _R All elements show in the tree
+    _R All elements can be selected for verification
+    
+  9.1.2 Test Launch Verifier action
+  
+    _- Select a component package in ME
+    _- Right click
+    _R The Launch Verifier menu item exists
+    _- Click the Launch Verifier item
+    _R All of the packages children are launched and show in the Debug view
+    _- Select a component in ME
+    _- Right click
+    _R The Launch Verifier menu item exists
+    _- Click the Launch Verifier item
+    _R The component and its children are launched and show in the Debug view
+    _- Select an imported component that is assigned to a component
+    _- Right click
+    _R The Launch Verifier menu item exists
+    _- Click the Launch Verifier item
+    _R The component assigned to is launched and shows in the Debug view
+    _- Select an imported component not assigned to a component
+    _- Right click
+    _R The Launch Verifier item does not exist
+    
+  9.1.3 Test Debug view tree after launch
+    
+    _- Open the Debug launch configuration dialog
+    _- Select all elements listed in 9.1.1
+    _- Hit Debug
+    _R The following is listed in the Debug view
+      _R domain
+      _R c1 - 1
+      _R c1 - 2
+      _R nc1
+      _R fc1
+      
+9.2 Test Execute action
+
+  9.2.1 Test Execute action for class based operation
+
+    9.2.1.1 With OAL
+      
+      _- Launch verifier on a domain with a class based operation that has OAL
+         but no parameters         
+      _- Select the class based operation in ME
+      _- Open the operation and set a breakpoint at the first line
+      _- Right click on the operation in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+      
+    9.2.1.2 With no OAL
+      
+      _- Launch verifier on a domain with a class based operation that has no
+         OAL and no parameters
+      _- Select the class based operation (with no OAL) in ME
+      _- Right click
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The console displays this message:
+         "User invoked operation: operation failed, no statements to execute.
+          Check for OAL problems."
+    
+    9.2.1.3 With parameters
+ 
+      _- Launch verifier on a domain with a class based operation that has
+         parameters and OAL
+      _- Select the class based operation in ME
+      _- Open the operation and set a breakpoint at the first line
+      _- Right click on the operation in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+      _R The Variables view shows that a default value was used for the
+         parameters
+ 
+  9.2.2 Test Execute action for signal assigned to transition
+    
+    9.2.2.1 With OAL
+    
+      _- Launch verifier on a component that has a signal (With OAL) assigned to
+         a transition
+      _- Select the signal in ME
+      _- Open the destination state of the assigned to transition and add a
+         breakpoint at the first line
+      _- Right click on the signal in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+      
+    9.2.2.2 With no OAL
+    
+      _- Launch verifier on a component that has a signal (Without OAL) assigned
+         to a transition
+      _- Select the signal in ME
+      _- Open the destination state of the assigned to transition and add a
+         breakpoint at the first line
+      _- Right click on the signal in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+          
+    9.2.2.3 With parameters
+
+      _- Launch verifier on a component that has a signal (With OAL and
+         parameters) assigned to a transition
+      _- Select the signal in ME
+      _- Open the destination state of the assigned to transition and add a
+         breakpoint at the first line
+      _- Right click on the signal in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+      _R The Variables view shows that a default value was used for the
+         parameters
+    
+  9.2.3 Test Execute action for signal not assigned to transition
+    
+    9.2.3.1 With OAL
+
+      _- Launch verifier on a component that has a signal (With OAL and no
+         parameters) not assigned to a transition
+      _- Select the signal in ME
+      _- Open the signal and set a breakpoint at the first line
+      _- Right click on the signal in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+         
+    9.2.3.2 With no OAL
+
+      _- Launch verifier on a component that has a signal (With no OAL) not
+         assigned to a transition
+      _- Select the signal in ME
+      _- Right click on the signal in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The console displays this message:
+         "User invoked interface message: signal failed, no statements to
+          execute. Check for OAL problems."
+      
+    9.2.3.3 With parameters
+    
+      _- Launch verifier on a component that has a signal (With OAL and
+         parameters) not assigned to a transition
+      _- Select the signal in ME
+      _- Open the signal and set a breakpoint at the first line
+      _- Right click on the signal in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+      _R The Variables view shows that a default value was used for the
+         parameters
+         
+  9.2.4 Test Execute action for interface operation
+
+    9.2.4.1 With OAL
+
+      _- Launch verifier on a component that has an operation (With OAL and no
+         parameters)
+      _- Select the operation in ME
+      _- Open the operation and set a breakpoint at the first line
+      _- Right click on the operation in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended
+
+    9.2.4.2 With no OAL
+
+      _- Launch verifier on a component that has an operation (With no OAL)
+      _- Select the operation in ME
+      _- Right click on the operation in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The console displays this message:
+         "User invoked interface message: operation failed, no statements to
+          execute. Check for OAL problems."
+
+    9.2.4.3 With parameters
+ 
+      _- Launch verifier on a component that has an operation (With OAL and
+         parameters)
+      _- Select the operation in ME
+      _- Open the operation and set a breakpoint at the first line
+      _- Right click on the operation in ME
+      _R The Execute menu item is available
+      _- Click the Execute item
+      _R The breakpoint is hit and execution is suspended 
+      _R The Variables view shows that a default value was used for the
+         parameters
+ 
+9.3 Test execution of interface messages
+
+  Note:  These tests assume that a model exists which has enough data for the
+         test.  They also assume the required component is already launched.
+
+  9.3.1 Test execution of signal assigned to transition
+    9.3.1.1 With OAL
+      
+      _- Execute an interface operation that sends the test signal
+      _R The state machine receives the event and transitions to the new state
+         as a result
+         
+    9.3.1.2 With no OAL
+    
+      _- Execute an interface operation that sends the test signal
+      _R The state machine receives the event and transitions to the new state
+         as a result
+             
+    9.3.1.3 With no other events queued
+
+      _- Execute an interface operation that sends the test signal
+      _R The state machine receives the event and transitions to the new state
+         as a result
+         
+    9.3.1.4 With other events queued
+
+      9.3.1.4.1 Left in bad state
+        
+        _- Start a looping state machine, which when the signal arrives breaks
+           the loop
+        _- Execute an interface operation that sends the test signal
+        _R All other currently queued events are processed
+        _R The state machine is in a state where the signal can't happen
+        _R The state machine receives the event and issues the can't happen
+      
+      9.3.1.4.2 Left in good state
+
+        _- Start a looping state machine, which when the signal arrives breaks
+           the loop
+        _- Execute an interface operation that sends the test signal
+        _R All other currently queued events are processed
+        _R The state machine is in a state where the signal can happen
+        _R The state machine receives the event and transitions out of the loop
+           to the new state
+        
+    9.3.1.5 With parameters
+    
+       _- Repeat test 9.3.1.4.2 (replacing the signal with one that has
+          parameters) with a breakpoint set at the first line of the
+          new state
+       _R The breakpoint is hit and execution is halted
+       _R The Variables view indicates that the paramaters have the same value
+          as passed in by the interface operation executed
+          
+  9.3.2 Test execution of signal not assigned to transition
+
+    9.3.2.1 With OAL
+
+      _- Set a breakpoint at the first line of the test signal
+      _- Execute an interface operation that sends the test signal
+      _R The breakpoint is hit and execution is suspended
+
+    9.3.2.2 With no OAL
+    
+      _- Set a breakpoint at the first line of an operation that sends the test
+         signal
+      _- Execute the operation
+      _R The breakpoint is hit and execution is suspended
+      _- Step past the line which sends the signal
+      _R The code steps through without halting (Note the signal is setup but
+         processed with nothing to do so there is no good way to tell that it
+         was actually processed)
+      
+    9.3.2.3 With currently executing action
+    
+      _- Start a looping state machine
+      _- Set a breakpoint at the first line of the test signal
+      _- Execute an interface operation that sends the test signal
+      _R The current action being processed is completed
+      _R The breakpoint is hit and execution is suspended
+               
+    9.3.2.4 With parameters
+
+      _- Set a breakpoint at the first line of the test signal
+      _- Execute an interface operation that sends the test signal
+      _R The breakpoint is hit and execution is suspended
+      _R The Variables view indicates that the paramaters have the same value
+         as passed in by the interface operation executed
+    
+  9.3.3 Test execution of interface operation
+
+    9.3.3.1 With OAL, void return
+
+      _- Set a breakpoint at the first line of the test operation
+      _- Execute another interface operation that calls the test operation
+      _R The breakpoint is hit
+      _- Step through the test operation's action
+      _R Eventually the current execution line is returned to the calling
+         operation
+
+    9.3.3.2 With OAL, non-void return
+
+      _- Set a breakpoint at the first line of the test operation
+      _- Execute another interface operation that calls the test operation
+      _- Step through the test operation's action
+      _R Eventually the current execution line is returned to the calling
+         operation
+      _R The called operation returns an expected value
+
+    9.3.3.3 With no OAL, void return
+    
+      _- Set a breakpoint at the first line of the operation which will call the
+         test operation
+      _- Execute the operation that calls the test operation
+      _R The breakpoint is hit
+      _- Try to step into the call to the test operation
+      _R The call to the test operation is stepped over as there is no OAL to
+         execute
+
+    9.3.3.4 With no OAL, non-void return
+
+      _- Set a breakpoint at the first line of the operation which will call the
+         test operation
+      _- Execute the operation that calls the test operation
+      _R The breakpoint is hit
+      _- Try to step into the call to the test operation
+      _R The call to the test operation is stepped over as there is no OAL to
+         execute
+      _R The test operation returns a default value
+
+    9.3.3.5 With currently executing action
+
+      _- Start a looping state machine
+      _- Set a breakpoint at the first line of the test operation
+      _- Execute the test operation
+      _R The current action being processed is completed
+      _R The breakpoint is hit
+
+    9.3.3.6 With parameters, non-void return
+
+      _- Set a breakpoint at the first line of the test operation
+      _- Execute another interface operation that calls the test operation
+      _R The breakpoint is hit
+      _R The Variables view indicates that the paramaters have the same value
+         as passed in by the interface operation executed
+
+    9.3.3.7 With parameters, void return
+
+      _- Set a breakpoint at the first line of the test operation
+      _- Execute another interface operation that calls the test operation
+      _R The breakpoint is hit
+      _R The Variables view indicates that the paramaters have the same value
+         as passed in by the interface operation executed
+ 
+9.4 Test session explorer tree
+
+  - Assert that the following are viewable in Session Explorer
+
+  9.4.1 Test Component in tree
+    9.4.1.1 Test Component instance in tree
+      9.4.1.1.1 Test Port in tree
+        9.4.1.1.1.1 Test Provision in tree
+          9.4.1.1.1.1.1 Test Provided Operation in tree
+            9.4.1.1.1.1.1.1 Test Property Parameter in tree
+          9.4.1.1.1.1.2 Test Provided Signal in tree
+            9.4.1.1.1.1.2.1 Test Property Parameter in tree
+        9.4.1.1.1.2 Test Requirement in tree
+          9.4.1.1.1.2.3 Test Required Operation in tree
+            9.4.1.1.1.2.3.1 Test Property Parameter in tree
+          9.4.1.1.1.2.4 Test Required Signal in tree
+            9.4.1.1.1.2.4.1 Test Property Parameter in tree
+  
+9.5 Test disabled Delete and Rename actions
+
+_- Right click on a deletable element in Session Explorer
+_R The Delete menu item does not exist
+_- Right click on a renamable element in Session Explorer
+_R The Rename menu item does not exist
+
+9.6 Test transition signal assignment
+
+_- Create a new project
+_- Add an interface package (ip) and interface (i)
+_- Add an interface operation (clientserverop)
+_- Add an interface operation (serverclientop)
+_- Set the operation (serverclientop) to direction Server to Client
+_- Add an interface signal (clientserversig)
+_- Add an interface signal (serverclientsig)
+_- Set the signal (serverclientsig) to direction Server to Client
+_- Add a component package (cp)
+_- Add a component (c)
+_- Add a new domain (c)
+_- Formalize the component against (c)
+_- Add a provided interface to (c)
+_- Formalize the interface to (i)
+_- Add a required interface to (c)
+_- Formalize the interface to (i)
+_- Add a subsystem (ss) with a class (cl)
+_- Add a class based state machine to (cl)
+_- Add a new state (state)
+_- Add a reflexive transition to (state)
+_- Right click on the transition
+_R The Assign Signal... menu item is available
+_- Select the menu item
+_R The Assign Signal > Interface pull down menu includes both ports
+   (port1(i) and port2(i))
+_- Select port1(i) and click Next
+_R The Signal pull down menu includes only the clientserversig signal
+_- Click Back
+_- Select port2(i) and click Next
+_R The Signal pull down menu includes only the serverclientsig signal
+_- Click Finish
+_R The serverclientsig signal from port2 is assigned to the transition
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:20  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.2  2008/02/08 00:17:47  tlondon
+Job: 3099
+
+Adjust according to review minutes
+
+Revision 1.1  2008/02/07 15:26:04  tlondon
+Job: 3099
+
+Rename document, as a new issue is used to perform part two of this work.
+Add reference to new issue for second part of work.
+Reword the Abstract to mention new issue.
+
+Revision 1.2  2008/02/06 20:02:38  tlondon
+Job: 3099
+
+Add test section.
+
+Revision 1.1  2008/02/05 22:57:32  tlondon
+Job: 3099
+
+Introduce
+

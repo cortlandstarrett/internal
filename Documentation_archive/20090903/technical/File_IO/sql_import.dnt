@@ -1,0 +1,282 @@
+========================================================================
+
+File:      $RCSfile: sql_import.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:36 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+Tiger Drop 1 Design Note
+Add import sql from BridgePoint format
+
+Abstract
+--------
+
+This document describes the addition of the ability to import
+an sql file for a domain in the format BridgePoint 6.1 exports it.
+
+History
+-------
+
+update sql_import-072203-01.rvm
+final  sql_import-072303-01.rvm
+
+Document Reference
+------------------
+
+bp.core/doc/internal/technical/File_IO/sql_export.dnt
+
+Background
+----------
+
+We need the ability to import SQL files exported from BridgePoint.
+The tool can only have one domain loaded at a time.
+
+Design
+------
+
+SI.1 Create Import Wizard classes
+
+SI.1.1 Add Import Wizard to plugin
+
+We add an Import Wizard extension to the com.projtech.bp.io.sql/plugin.xml
+file.  This makes the Import Wizard available in the workbench.
+The extension description is "Import model data from a BridgePoint 6.1 SQL file".
+
+SI.1.2  BPSQLImportWizard
+
+The class com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/BPSQLImportWizard.java
+extends the Wizard class. It overrides the following functions: 
+
+addPages() - create an instance of BPSQLImportPage
+getWindowTitle() - returns "Import SQL"
+performFinish() - 
+ 1- Asks the user 'Are you sure?', since this will delete everything
+    currently in the database.
+ 2- Invokes ImportBPSql.doLoadSql()
+
+SI.1.3  BPSQLImportPage
+
+The class com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/BPSQLImportPage.java
+extends the WizardImportResourcesPage class. The page is laid out like any
+other Eclipse import page.  It has a text entry field to enter the 
+source file name, and a Browse button that brings up a file browser to 
+locate a file.  It has a non-functional destination folder text entry
+field and browse button.
+
+The class publishes the function getSourceFilePath(), which returns
+the value in the source file text field.
+
+The page name is "BridgePoint 6.1 SQL Import".
+
+SI.2  Create grammar for SQL input file
+
+SI.2.1 An Antlr grammar is created to describe the contents of an SQL file
+exported by BridgePoint.  The file contains insert statements of the
+form:
+
+insert into <table> values ( <value> [ , <value> ]* )
+
+The grammar file is com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/sql_insert.g
+
+SI.2.2  Each time a <value> is parsed, the function ImportBPSql.processValue
+is invoked.  The function has the following arguments: 
+  table - the value of <table>
+  col_num - a count (zero-based) of how many values have been processed
+            for this insert statement so far
+  value - the value of <value>
+  
+The function returns a string that is the Tiger version of the value.
+
+Initially, the only change needed is for boolean values to be
+changed from 0 and 1 to false and true.
+
+SI.2.3 The grammar builds a vector that contains the values returned
+by ImportBPSQL.processValue(). When a complete statement is parsed, 
+the table name, the vector of values, and the number of values are
+passed to ImportBPSql.processStatement().
+
+SI.3  Generate code from IO Model
+
+SI.3.1 The file gen_import_java.arc is created to generate
+the class ImportBPSql.  The class implements the following functions:
+
+processValue(): The body of this function will look for 
+attributes that are boolean, and if they are, change the
+value from "0" to "false" and "1" to "true".
+
+processStatement(): If persistence is enabled, an SQL statement
+is created and executed against the database.  If persistence is
+disabled, then the in-memory instances are created and initialized
+from the parameters.
+
+doLoadSql(): Has one parameter, the name of the file to import.
+Returns true if successful, false otherwise.  Does
+the following:
+
+ 1- Clears the database (via Ooaofooa.clearDatabase()).
+ 2- Invokes a parser to read the data from the file.
+ 3- If there is no persistence, invoke batchRelateAll() for 
+     all classes that could be imported from the SQL.
+ 4- Creates a System Model (S_SYS) instance.
+ 5- Call setRoot() (see below) with the new System Model instance.
+ 6- Relates the System Model instance to the Domain instance.
+
+The class file is
+com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/ImportBPSql.java
+
+SI.4  Changes to MC-Java
+
+SI.4.1 The Ooaofooa class has the following methods added:
+
+void setRoot( SystemModel_c );
+Object getRoot();
+
+A private data member (of type SystemModel_c) is added to 
+store the value of the root.  The file ooaofooa_package_spec.inc
+is modified to add the following attributes, so that the
+above class name isn't hard coded:
+
+  .assign attr_root_class_name = "SystemModel_c"
+  .assign attr_root_class_accessor = "SystemModelInstance"
+
+
+SI.4.2 The generation of the function Ooaofooa.clearDatabase() 
+is added to Java.arc.  If persistence is enabled, the function 
+will directly invoke the SQL to delete all instances from 
+all tables.  It will always clear all in-memory instances, 
+by calling clearInstances for each class.  It also calls
+setRoot() passing null.
+
+SI.4.3  Add a static operation to each class generated by 
+Java.arc named clearInstances(), that clears the in-memory
+list of instances.
+
+SI.4.4  Add a static operation to each class generated by 
+Java.arc named batchRelateAll(), that formalizes all relationships
+for all instances that are present.
+
+SI.5  Infrastructure.
+
+SI.5.1  A script file is needed to automate the generation of
+the ImportBPSql.java file.
+
+SI.5.2  The Import... menu in bp.ui.explorer is changed so
+that when invoked, the Import Wizard defined in section SI.1
+is displayed.
+
+SI.5.3 The Explorer view class is changed to use the Ooaofooa
+getRoot() method to determine the root of the tree.  Each time
+a model changed message is recieved, we check that the 
+root is still the same.  If it isn't, we change the tree
+viewer's input source to the new root.  The old code assumed that
+there was always an instance of the root present, and that
+it never changed.  This is no longer true.
+
+
+Work Required
+-------------
+
+SI.1  Add an import wizard
+
+SI.1.1  Add Extension to plugin
+
+The following is added to com.projtech.bp.io.sql/plugin.xml:
+
+   <extension
+         point="org.eclipse.ui.importWizards">
+      <wizard
+            name="BridgePoint SQL"
+            class="com.projtech.bp.io.sql.BPSQLImportWizard"
+            icon="../com.projtech.bp.core/icons/green-bp.gif"
+            id="com.projtech.ImportWizard1">
+         <description>
+            Import model data from a BridgePoint 6.1 SQL file
+         </description>
+      </wizard>
+   </extension>
+
+SI.1.2  BPSQLImportWizard
+
+Create class as designed.
+
+SI.1.3  BPSQLImportPage
+
+Create class as designed.
+
+SI.2  Create grammar for SQL input file
+
+The grammar file is created as described.
+
+SI.3  Generate code from IO Model
+
+SI.3.1 The file gen_import_java.arc is created per the design.
+
+SI.4  Changes to MC-Java
+
+SI.4.1 Change the generation of the Ooaofooa class 
+to add the new methods and data.  Modify ooaofooa_package_spec.inc
+
+SI.4.2 Add generation of Ooaofooa.clearDatabase() to Java.arc.
+
+SI.4.3 Add generation of clearInstances() to Java.arc.
+
+SI.4.4 Add generation of batchRelateAll() to Java.arc
+
+SI.5  Infrastructure.
+
+SI.5.1  Create the build file gen_import_java.bat
+
+SI.5.2  Hook up to menu
+
+This work was done with the export menu work, so no further
+effort is needed.
+
+SI.5.3  Change create_explorer_view.inc as specified.
+
+---
+End
+
+$Log: sql_import.dnt,v $
+Revision 1.1  2009/09/03 18:20:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.168.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2003/07/23 19:29:17  greg
+Job: 61
+Add history entry
+
+Revision 1.5  2003/07/23 19:28:34  greg
+Job: 61
+Changes from review
+
+Revision 1.4  2003/07/22 23:24:01  greg
+Job: 61
+Changes from review
+
+Revision 1.3  2003/07/22 14:26:16  greg
+Job: 61
+Changed parameters to processStatement
+
+Revision 1.2  2003/07/21 21:15:37  greg
+Job:61
+Added background
+
+Revision 1.1  2003/07/21 21:11:22  greg
+Job: 61
+Initial introduction
+
+

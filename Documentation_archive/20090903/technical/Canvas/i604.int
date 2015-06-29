@@ -1,0 +1,408 @@
+========================================================================
+
+File:      $RCSfile: i604.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Add communication support
+
+Abstract
+--------
+In this section, give a summary of the implementation that this note aims to
+describe.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 604
+[2] Documentation/internal/technical/Canvas/i604.dnt
+
+Background
+----------
+There is currently no support for communication diagrams.
+
+Design
+------
+
+1. Extend metamodel to support communication diagrams
+
+The file, ooaofooa.xtuml, is modified to include the following new elements:
+
+- Communication
+- Communication in Communication
+- Participant in Communication
+- Message in Communication
+- Communication Link
+
+2. Extend trees
+
+The persistence tree, file_io.pei.sql, was modified so that all of the new
+elements are persisted.
+
+Since a message is free-floating on a communication diagram they're are children
+of the communication until formalized.  Once they're formalized they become a
+child of the participant for which they are destined.  In order to prevent
+duplicate exports the association between a message and the communication is
+setup when a message is informal and torn down when the message is formal.
+
+The hiearchy is modified so that all new elements will work in compare as well
+as in ui.properties.
+
+The explorer tree is modified so that a Communication shows Interaction
+Participants, and Messages.  When a message is formal it is shown under the
+participant, when informal it is shown directly under the communication.
+
+3. Define graphical symbols
+
+The following elements have symbol definitions added:
+
+- Communication
+- Communication Link
+- Synchronous Message on Communication
+- Asynchronous Message on Communication
+- Return Message on Communication
+
+The message required a separate definition then those used with the sequence as
+they terminate on whitespace at both ends.  Since the OOA Type is an identifier,
+new types are added to represent these communication messages.  The editor
+schema, com.projtech.bp.core.editors.exsd, is updated to allow setting the type.
+
+4. Add operations required by graphical client
+
+All the necessary operations for displaying the symbols are added to
+ooaofooa.xtuml.
+
+5. Allow moving connectors starting and ending on whitespace
+
+The operation Connector.move() is modified so that if the connector starts and
+ends on whitespace it will be moved rather than have a waypoint created.
+
+The operation, Connector Tool.determineMouseUpValidity, is modified to allow for
+creation of connectors which start and end on whitespace.
+
+The states, Selection Tool.Dragging Symbols and Selection Tool.Starting
+Transaction for Dragging Selected Symbols, are updated so that the element in
+move uses the start waypoint instead of the DIM_GE positional values as they are
+zero when dealing with connectors.  This change allows for movement to work
+correctly as the calculated values before this change are very high and cause
+the connector to get away from the mouse.
+
+6. Add context menu actions
+
+Actions for renaming and deleting Communications are added to the
+context_menu.pei.sql file, and the actual functions are added to
+cme_functions.sql.  The Communication Link only has a delete action added.
+
+In order to support formalizing messages on communications the user must select
+the message as well as the target for which they'd like to formalize against.
+Eclipse expects a common class in order to support multiple selection context
+menu entries, which are filtered.  At that point eclipse asks all elements in
+the selection whether the entry should be filtered.
+
+The context_menu model is modified so that the Context Menu Entry class has the
+following attributes added:
+
+requiredSelectionCount
+requiresHeterogeneousSelection
+
+The create_core_plugin.inc archetype is modified to use the new attributes
+added.  If it finds an entry which requires multiple selection it will generate
+code that uses the common class ModelElement.
+
+The formalize entries for messages on communications are setup to use the new
+attributes.
+
+Two special menu entries are added which are used when the user does not have
+a target selected.  In order to show extra text in a menu entry the context
+menu model is modified so that a Context Menu Entry has an attribute to capture
+this text.  This is required so that we can add: (No Target Selected) to the
+Formalize entry.  The two entries work on synchronous messages and asynchronous
+messages, and when selected display an information dialog which explains that
+a target must be selected.
+
+In order to filter on selection a new External Entity is added: Selection.  This
+EE contains two bridge operations, getCurrentSelectionCount and clearSelection.
+The filters for these messages are setup to filter the entry if the selection
+does not contain exactly two entries.  The clearSelection is used so that after
+formalizing everything becomes unselected.  This prevents unwanted movement.
+
+The filter operations are extended further to check that a valid participant is
+contained within the selection.  In order to allow this two bridge operations
+are added to the Utilities EE.  They are: selectionContainsValidParticipant and
+getCommunicationInstance.  The first bridge operation checks that the selection
+contains an instance of any of the valid participants.  The second bridge
+operation is used to convert the Communication's instance to the correct
+instance datatype.  This is required to prevent allowing formalization with a
+participant which is not shown on the same diagram.
+
+Two menu entries are created which are used to toggle the start and end
+visibility of communication links.
+
+7.  Add reflection between communication link and association
+
+The operation, Association.dispose(), is modified to unrelate itself from any
+communication link.
+
+Implementation Comments
+-----------------------
+
+Whenever new elements are added to the metamodel, the second metamodel found in
+MC-Java must be updated to reflect these additions.  All new elements for both
+the sequence diagram and the communication diagram are added.
+
+Currently MC-Java returns duplicates when calling a getMany operation.  This
+happens when a class inbetween two classes has a many and the destination does
+not.  It will return the destination twice.  This was causing the same
+association to show twice in the link formalize wizard when formalizing to a
+reflexive association.  The archetype, referred_to.inc, is modified to filter
+duplicates.
+
+The generate.xml file in compare.test is modified so that a clean does not rely
+on a build.
+
+The existing message icons are updated to better show what they are.
+
+Unit Test
+---------
+See design note [2].
+
+The following test classes were added to capture the unit tests:
+
+bp.core.test/.../CommunicationTests.java
+bp.core.test/.../CommunicationLinkTests.java
+bp.core.test/.../CommunicationMessageTests.java
+
+bp.ui.canvas.test/.../FreeFloatingConnectorTests.java
+
+All of the new expected results are added.
+
+The compare test was updated to include the new sequence and communication
+elements.
+
+The properties test model was updated to include the new communication elements.
+
+The context menu test model was updated to include the new communication
+elements.
+
+The core rename test model was updated to include the new communication
+elements.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.compare.test/expected_results/testOAL1.txt
+com.mentor.nucleus.bp.compare.test/models/test.xtuml
+com.mentor.nucleus.bp.compare.test/generate.xml
+
+com.mentor.nucleus.bp.core/arc/create_core_plugin.inc
+com.mentor.nucleus.bp.core/arc/create_object_action.inc
+com.mentor.nucleus.bp.core/icons/newasyncmessage.gif
+com.mentor.nucleus.bp.core/icons/newcommunication.gif
+com.mentor.nucleus.bp.core/icons/newreturn.gif
+com.mentor.nucleus.bp.core/icons/newsyncmessage.gif
+com.mentor.nucleus.bp.core/icons/metadata/AsynchronousMessage.gif
+com.mentor.nucleus.bp.core/icons/metadata/Communication.gif
+com.mentor.nucleus.bp.core/icons/metadata/CommunicationLink.gif
+com.mentor.nucleus.bp.core/icons/metadata/ReturnMessage.gif
+com.mentor.nucleus.bp.core/icons/metadata/SynchronousMessage.gif
+com.mentor.nucleus.bp.core/models/context_menu.xtuml
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.core/schema/com.projtech.bp.core.editors.exsd
+com.mentor.nucleus.bp.core/sql/cme_functions.sql
+com.mentor.nucleus.bp.core/sql/context_menu.pei.sql
+com.mentor.nucleus.bp.core/sql/ooaofooa_hierarchy.pei.sql
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/.cvsignore
+
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_1/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_1/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_10/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_10/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_2/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_2/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_3/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_3/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_4/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_4/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_5/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_5/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_6/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_6/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_7/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_7/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_8/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_8/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_9/2-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationLinkTest_9/
+    2-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_1/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_1/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_10/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_10/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_11/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_11/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_12/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_12/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_13/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_13/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_14/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_14/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_15/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_15/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_16/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_16/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_17/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_17/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_18/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_18/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_2/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_2/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_3/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_3/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_4/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_4/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_5/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_5/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_6/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_6/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_7/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_7/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_8/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_8/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_9/
+    1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationMessageTest_9/
+    1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_1/11-1
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_1/11-1.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_2/1-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_2/1-105.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_3/1-5
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_3/1-5.jpg
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_4/3-105
+com.mentor.nucleus.bp.core.test/expected_results/CommunicationTest_4/3-105.jpg
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    CommunicationLinkTests.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    CommunicationMessageTests.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    CommunicationTests.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    CoreTestResultCreator.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    SequenceTests.java
+com.mentor.nucleus.bp.core.test/generate.xml
+
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasPlugin.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/Cl_c.java
+com.mentor.nucleus.bp.ui.canvas/plugin.xml
+
+com.mentor.nucleus.bp.ui.canvas.test/src/CanvasTestSuite.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    ConnectorsAsAnchorsTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    FreeFloatingConnectorTest.java
+
+com.mentor.nucleus.bp.ui.explorer/sql/UITree.pei.sql
+
+com.mentor.nucleus.bp.ui.properties.test/models/testProp.xtuml
+com.mentor.nucleus.bp.ui.properties.test/src/com/mentor/nucleus/bp/ui/
+    properties/test/EnumRangeTest.java
+
+com.mentor.nucleus.bp.ui.text/arc/create_util.inc
+
+MC-Java/ooa_schema.sql
+MC-Java/referred_to.inc
+
+Models/models/CommunicationTestModel.xtuml
+Models/models/FreeFloatingConnectorTestModel.xtuml
+
+End
+---
+
+$Log: i604.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/05/16 16:17:28  tlondon
+Job: 604
+
+Add section for no target menu entry
+
+Revision 1.2  2006/05/15 22:01:25  tlondon
+Job: 604
+
+Add compare.test generate.xml change.
+Add message icon change.
+
+Revision 1.1  2006/05/15 21:56:28  tlondon
+Job: 604
+
+Initial

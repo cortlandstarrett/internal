@@ -1,0 +1,265 @@
+========================================================================
+
+File:      $RCSfile: i1018.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:28:16 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+
+Model Consistency Checker
+
+Abstract
+--------
+
+A tool is needed to check metamodel consistency.  
+
+History
+-------
+
+ Documentation/internal/review_minutes/R1_1_0_M1/i1018-071205-01.rvm
+
+Document References
+-------------------
+
+[01] Bugzilla 1018
+
+[02] Analysis note: i1018.ant
+
+[03] Tiger metamodel Association subsystem
+
+[04] Tiger metamodel Subsystem subsystem
+
+Background
+----------
+
+As described in the Background section of the Analysis Note [02]. 
+
+Analysis
+--------
+
+As described in the Analysis Note [02].
+
+Design
+------
+
+i1018.1 Re-analyze the metamodel as described in the Analysis Note.
+
+A meeting of three engineers was held to review and discuss possible changes to
+the metamodel.  It was decided that no changes were needed.
+
+i1018.2 Create a model consistency checking tool as described in the Analysis
+Note.
+
+For each meta model class two operations, checkClassConsistency and 
+checkConsistency shall be generated.  The operation checkClassConsistency shall
+be a class-based operation that will select each instance of the class and
+invoke it's checkConsistency instance-based operation.  The
+checkClassConsistency operations shall be called from a domain function in a
+similar manner as the clearDatabase function calls the clearInstances operation
+for each metamodel class.
+
+Two methods for generating the checkConsistency operations were considered.  One
+is to modify MC-Java to generate the operations as Java code.  The second was to
+create an archetype that would generate for each metamodel class an operation
+rendered as action language in an insert into O_TFR that could be imported into
+the Tiger generation database.  The former solution was chosen over the latter
+because although it is a less portable solution, it is simpler and thus could be
+implemented in a more timely manner.
+
+Note: for the following discussion it may be helpful to refer to the Tiger
+metamodel Association subsystem [03] and Subsystem subsystem [04].
+
+     .2.1 Check the consistency of identifiers
+     
+Each checkConsistency operation shall check each identifier of the metamodel
+class.  The operation shall test that each identifier shall identify exactly one
+instance of the metamodel class.  
+
+     .2.2 Check the consistency of referring classes
+     
+Each checkConsistency operation shall check each place where the class instance
+is the referring class in an association.  A referring class instance is either
+a formalizer (R_FORM), link (R_ASSR), or a subtype (R_SUB). 
+
+For each formalizer instance the consistency of its counterpart participants is
+checked.  If the participant is unconditional a check is made that there is not
+zero participant instances.  If the participant is unconditional and the
+multiplicity is one, a check is made that there is not more than one instance
+of the participant. 
+
+For each link instance the consistency of its counterpart one sides and other
+sides is checked.  Checks are made to assert if they are unconditional that
+there are not zero instances.  Also, if they are unconditional and the
+multiplicity is is one, that there is not more than one instance of one side or
+other side, as the case may be.
+
+For each subtype instance a check is made such that it refers to exactly one
+supertype instance.
+
+     .2.3 Check the consistency of referred to classes
+     
+Each checkConsistency operation shall check each place where the class instance
+is the referred to class in an association.  A referred to class instance is
+either a participant (R_PART), a class as associated one side (R_AONE), a class
+as associated other side (R_AOTH), or a supertype (R_SUPER).
+
+For each participant instance the consistency of its counterpart formalizers
+is checked.  If the formalizer is unconditional a check is made to assert that
+there are not zero participant instances.  If the formalizer is unconditional
+and the multiplicity is one, a check is made to assert that there is not more
+than one instance of formalizer.
+
+For each associated one side and associated other side a check is made to assert
+that the number of links referring to it is not zero.  Also, if the multiplicity
+of the link is one, that the number of links referring to it is not more than
+one.
+
+For each supertype instance a check is made to assert that it is referred to by
+exactly one subtype.
+
+     .2.4 Report inconsistencies to the error log
+
+Any metamodel inconsistency detected by a checkConsistency operation shall be
+reported as an entry in the error log.
+
+     .2.5 The inclusion of the consistency checker shall be dependent on the
+type of release being build.  Production releases shall not include the checker.
+
+Design Comments
+---------------
+
+As per observation 14 of design review i1018-071205-01.rvm, a section shall be
+added to this document describing how the Consistency Checker is included, or
+not, in a build.  Paragraph i1018.2.5 is added to the Design section of this
+document to address observation 14. 
+
+Work Required
+-------------
+
+i1018.1 No work required
+
+i1018.2 Create a model consistency checking tool
+     
+For each metamodel class create the checkClassConsistency and checkConsistency
+operations.  Also, create a domain level function, checkDomainConsistency, to
+call each metamodel class' checkClassConsistency operation.
+ 
+     .2.1  Each metamodel checkConsistency operation shall check that each
+identifier is unique.
+
+     .2.2 Each metamodel checkConsistency operation shall check each case where
+the metamodel class is a referring class in an association.
+
+     .2.3 Each metamodel checkConsistency operation shall check each case where
+the metamodel class is a referred to class in an association.
+
+     .2.4  Inconsistencies detected by the checker shall be written to the
+     error log.
+
+     .2.5 Add a process for conditionally including the Consistency Checker.
+
+     .2.5.1  Add a check surrounding all of the archetype code that generates
+the Consistency Checker.  The check shall be for the non-existance of an
+environment variable that will exist when a release build is being created.  Non
+release builds shall include the Consistency Checker.  Release builds shall not. 
+     
+     .2.5.2 Add a check to the release build script.  If the build is a release
+build, define an environment variable, PTC_RELEASE_BUILD.
+     
+Unit Test
+---------
+
+1) The core.test plugin shall be extended to create a consist test domain.  The
+domain shall contain simple examples of simple, link, and super/subtype
+associations.  A new core unit test class, ConsistencyTest, shall test for the
+following inconsistencies:
+
+  a) A test model shall be created that has two instances of an object with the
+same primary identifier, two instances of an object with the same secondary
+identifier and two instances of an object with the same tertiary identifier.
+
+  b) A test model shall be created that has two instances of an unconditional,
+multiplicity 1 participant.
+
+  c) A test model shall be created that has zero instances of an unconditional,
+multiplicity 1 participant.
+
+  d) A test model shall be created that has two instances of an unconditional,
+multiplicity 1 formalizer.
+
+  e) A test model shall be created that has zero instances of an unconditional,
+multiplicity 1 formalizer.
+
+  f) A test model shall be created that has two instances of an unconditional,
+multiplicity 1 one side.
+
+  g) A test model shall be created that has zero instances of an unconditional,
+multiplicity 1 one side.
+
+  h) A test model shall be created that has two instances of an unconditional,
+multiplicity 1 other side.
+
+  i) A test model shall be created that has zero instances of an unconditional,
+multiplicity 1 other side.
+
+  j) A test model shall be created that has two instances of a multiplicity one
+link.
+
+  k) A test model shall be created that has zero instances of a multiplicity one
+link.
+
+  l) A test model shall be created that has a subtype instance that refers to
+  two supertype instances.
+
+  m) A test model shall be created that has a supertype instance that is
+  referred to by two subtypes.
+
+2) To test that the checker is not finding inconsistencies that are not really
+there.  A unit test shall be created that imports and checks each of the MC-2020
+test models.  The checker should not report any inconsistencies.
+
+End
+---
+
+$Log: i1018.dnt,v $
+Revision 1.1  2009/09/03 18:28:16  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:39  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.30.1  2008/12/31 16:10:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/08/10 16:24:04  pablo
+Job: 1018
+Address review observations
+
+Revision 1.4  2005/08/03 23:39:48  pablo
+Job: 1018
+Add design requirement for conditional inclusion of consistency checker
+
+Revision 1.3  2005/07/22 00:09:14  pablo
+Job: 1018
+incremental checkin
+further address review observations
+
+Revision 1.2  2005/07/18 22:37:07  pablo
+Job: 1018
+Start addressing design review observations
+
+Revision 1.1  2005/07/11 23:06:02  pablo
+Job: 1018
+introduce
+

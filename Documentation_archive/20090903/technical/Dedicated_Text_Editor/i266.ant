@@ -1,0 +1,212 @@
+========================================================================
+
+File:      $RCSfile: i266.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:29 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Tiger Relocatables
+
+Abstract
+--------
+This note specifies the requirements for automated action language update
+support for the Tiger activity editor.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue i266
+[2] doc/internal/technical/Canvas/canvas.ant
+
+Analysis
+--------
+
+Requirements
+
+The Tiger activity editor is required to perform the same functions as the
+BridgePoint Builder action language editors. Specifically, once a block of
+action language has been entered and parsed, all references to client model
+names are automatically kept up to date whenever the model changes.
+
+The stored relocatable mechanism shall not interfere with the existing parsing
+functionality in any way. For example, if a user deletes an attribute from a
+model, the name of the attribute shall be retained by the relocatable data
+structures. If the activity is subsequently parsed, an error shall be flagged
+because the referred to attribute is no longer in the model. If the user adds
+the attribute back and reparses the activity, the flagged error shall be removed
+because the parser works only with the text rendered for the activity from the
+relocatable data structures.
+
+When the model changes, all open editors shall automatically render their
+contents if necessary. To avoid excessive performance overheads, the activity
+editor shall compare the change message delta member against its list of meta-
+model references. If a match is found, that reference shall be re-rendered in
+the text visible to the user and all marker positions adjusted as required.
+User modifications shall not be overwritten without warning, so if the existing
+text to be rendered does not match the value obtained from the 'before' member
+of the model delta, a dialog warning the user that their change will be over-
+written shall be shown. This dialog shall have a 'don't warn me again' checkbox.
+
+User modifications shall never be overwritten because of a re-rendering
+operation, except in the explicit case above where the user has changed the
+text of a reference as described. Even then, the dialog described above shall be
+shown unless disabled by the user. It shall be possible to disable and re-enable
+the warning dialog from the user preferences.
+
+There is no requirement for relocatable data to be read from or written to file
+at any time. All required data is created at runtime as a result of running the
+parser.
+
+Suggested Design 
+A complete list of the syntactic elements that must be covered by the
+relocatable behavior is determined by following the spanning relationships
+between the Activity subsystems and the original OOA of OOA subsystems. This
+list shall be determined, validated and presented in the design. The method or
+methods used to validate the list shall also be presented in the design
+document.
+
+BridgePoint Builder achieves this behavior by encoding references to the client
+model elements in data structures called 'relocatables'. The Tiger parser, on
+the other hand, already captures all the required reference information during
+analysis of the entered action language. This information is stored as instances
+in the activity subsystems. We shall leverage this stored information by
+cacheing only a reference to the activity subsystem instance corresponding to
+the parsed reference.
+
+The parser is generated using data captured by the Abstract Syntax domain.
+This is in turn used by the Textual User Interface (TUI) domain. The TUI and the
+sister GUI domain exist at the same level on the domain chart. To reflect this
+fact, the client domain reference shall be called 'represents', mirroring the
+equivalent bridging reference found in the GUI in the Model and 
+Graphical Element instances[2].
+
+The 'represents' reference shall be stored in a data structure populated during
+parsing and rendered whenever the editor receives a command to refresh
+(triggered by an installed ModelChangeListener). The generated parser shall be
+modified to create the TUI domain instances and to cache the already created
+activity subsystem instances in the TUI domain 'represents' attribute where
+required. This modification shall be made by marking the oal.bnf language
+description to indicate which of the syntactic elements represent references to
+metamodel elements. This coloring shall be read by the archetype
+grammar_enhancer.arc and used to create the TUI instance with a valid represents
+cache value. Token position information shall be used to populate fixed text TUI
+instances that shall render the user typed text between the meta-model
+references.
+
+The data structure (or rather, the instance types) shall be generated from the
+Abstract syntax domain. It shall store both blocks of literal text and
+interspersed references to client domain elements via the previously discussed
+'represents' attribute. This has the already user defined type of 'instance'
+(which maps to a java Object).
+
+The string used to render the client domain instance shall be obtained from the
+represents attribute by calling the method get_reference() using the java
+reflection API. Each client domain reference shall cache the value last
+successfully obtained from the client model. If the get_reference() call fails,
+the cached value shall be used instead. This way, a piece of OAL can never be
+corrupted because a model element was deleted or cut from the model (of course,
+if a parse is carried out after such a deletion, an error shall be flagged
+because the referred to metamodel element is no longer found).
+
+As it is currently, each time the user changes the OAL, the parser shall be re-
+run. However, both the action language subsystem instances and the new data
+structure shall be disposed and repopulated with each change.
+
+The action semantics instances shall be held under a separate model root until
+the user saves the contents of the editor. At this point, the old action
+semantics instances held in the model shall be disposed and the new action
+semantics instances shall be transferred from the separate root to the users
+model. During parsing, no model change messages shall be sent. The act of saving
+the editor shall trigger a model change message.
+
+When an editor is closed, the new data structure instances are no longer needed
+and shall be disposed. Each time an editor is opened, the parser shall be re-run
+and the data structure instances recreated. It will be neccessary to hook up the
+data structure instances with the existing user model action semantics instances
+or else dispose them and reconstruct everything (the second option should also
+disable model change messages until parse is complete).
+
+Work Required
+-------------
+i266.1 Define new data structure
+       This shall be quite simple. There are two kinds of block; plain text and
+       reference. Blocks follow one another linearly. Reference blocks have two
+       attributes (other than identifiers), 'represents' (discussed above) and
+       'type' (see below).
+       
+i266.2 Generate new data structure instance types
+       These enumeration values are derived from the Abstract Syntax domain
+       instances.
+
+i266.3 Modify the parser
+       Change the parser to instantiate and dispose the data structure
+       instances as described in the analysis. 
+
+i266.4 Modify the dedicated text editor infrastructure
+       Change the infrastructure to traverse the populated the data structure
+       and recreate the edited text and load into the editor text buffer without
+       disturbing the cursor position or current selection.
+
+Acceptance Test
+---------------
+1      Create OAL functions that refer all OOA of OOA entities that have names,
+       meaning attributes or any other information presented to the user in an
+       action language statement. Ensure the OAL is parsed successfully, then
+       change each name/attribute in turn. Ensure that the OAL updtes
+       automatically in every case. Repeat with the activity editors open and
+       closed.
+
+End
+---
+
+$Log: i266.ant,v $
+Revision 1.1  2009/09/03 18:24:29  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.94.1  2008/12/31 16:10:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2004/12/03 14:07:35  campbell
+Job: 266
+Clarified that user changes shall never be lost because
+of the relocatable rendering process.
+
+Revision 1.5  2004/11/30 13:53:16  campbell
+Job: 266
+Clarified that the validation methods are also to be
+presented in the design.
+
+Revision 1.4  2004/11/30 13:51:46  campbell
+Job: 266
+Clarified that producing the validated list of references
+is to be presented in the Design.
+
+Revision 1.3  2004/11/29 19:49:30  campbell
+Job: 266
+Specified how syntactic elements can be found.
+
+Revision 1.2  2004/11/29 16:23:52  campbell
+Job: 266
+Separated analysis section into requirements
+and suggested design.
+
+Revision 1.1  2004/11/17 14:07:04  campbell
+Job: 266
+Introduced.
+

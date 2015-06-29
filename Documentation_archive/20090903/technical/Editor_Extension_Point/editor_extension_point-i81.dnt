@@ -1,0 +1,211 @@
+========================================================================
+
+File:      $RCSfile: editor_extension_point-i81.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:29:28 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Drop 1 Design Note 
+Editor Extension Point
+
+Abstract
+--------
+This document describes how the Eclipse extension point infrastructure
+is leveraged to allow editors to register themselves.
+
+History
+-------
+
+Document References
+-------------------
+[1]   The Java Developers Guide to Eclipse, Shavor et al., Addison-Wesley
+                                    2003, ISBN 0-321-15964-0, pp 457-474
+[2]   Bugzilla Issues 77, 81
+
+Background
+----------
+Eclipse uses a concept known as an extension-point to permit decoupled
+extension possibilities. One plugin declares an extension point and others
+then extend this point, adding new functionality. Multiple plugin editors
+must have access to core. This mechanism is the ideal way to achieve it.
+
+Design
+------
+We need a way so that the BridgePoint Editors can register themselves.
+
+This is for two basic reasons:
+
+- Some Editors need to create files which must be kept in sync
+  with changes to the model. They must therefore be able to
+  register a model listener as soon as core starts.
+- Some views can launch an editor using the Eclipse 'Open' protocol.
+  These views must know what editors are installed in order to select 
+  the appropriate one to launch.
+
+Another advantage is that third parties can add their own editors to
+the tool.
+
+The steps required to do this (from the Eclipse Developers Guide[1])
+are :-
+
+i81.1 - Choose the existing code to extend
+i81.2 - Declare the extension point
+i81.3 - Define the expected interfaces
+i81.4 - Add plug-in registry processing
+i81.5 - Invoke the required methods
+  
+In addition we need to:
+
+i81.6 - Modify the existing views to launch the registered editor
+
+Note that this change also removes the coupling observed in issue 77[2].
+
+Work Required
+-------------
+i81.1   - The extension point is chosen to be com.projtech.bp.core.editors
+          It would have been nice to combine this and the 
+          org.eclipse.ui.editors extension point, but that would require an
+          extension inheritance mechanism which Eclipse doesn't currently
+          provide.
+          
+i81.2   - Declare the core extension point
+i81.2.1 - Create a new entry in bp.core/arc/create_core_plugin.inc
+          file:
+
+         <extension-point 
+               id="editors" 
+               name="BridgePoint Editors" 
+               schema="schema/com.projtech.bp.core.editors.exsd"/>
+
+          Since the entry is generic, no special archetype code is
+          required.
+          
+i81.2.2 - Create the extension point schema
+          This defines the required elements and attributes of the
+          extension. An example piece of markup for this extension
+          is:
+          
+   <extension
+         point="com.projtech.bp.core.editors"
+         id="com.projtech.bp.ui.text.editors"
+         name="Text Editors">
+      <editor
+         class="com.projtech.bp.ui.text.ActionEditor"
+         input="com.projtech.bp.ui.text.ActionEditorInput"
+         listenerClass="com.projtech.bp.ui.text.EditorListener">
+         <defaultFor class="com.projtech.bp.core.SynchronousService_c"/>
+         <defaultFor class="com.projtech.bp.core.DerivedBaseAttribute_c"/>
+      </editor>
+      <editor
+         class="com.projtech.bp.ui.text.DescriptionEditor"
+         input="com.projtech.bp.ui.text.DescriptionEditorInput"
+         listenerClass="com.projtech.bp.ui.text.EditorListener">
+         <defaultFor class="com.projtech.bp.core.NewBaseAttribute_c"/>
+      </editor>
+   </extension>
+
+          point         - identifies the extension point to use.
+          id            - a unique identifier for this extension (optional)
+          name          - a name for the extension (optional)
+          
+          Multiple 'editor' elements are allowed.
+          
+          class         - the editor class to launch when an element is opened.
+          input         - the EditorInput class to launch
+          listenerClass - a class to use for the purpose of listening for model
+                          changes
+          
+          Multiple 'defaultFor' elements are allowed.
+          
+          class         - the model class for which the enclosing editor will
+                          be launched as default when the Eclipse 'Open'
+                          behavior is initiated.
+
+          If more than one default entry exists for a given model class, the 
+          first one found will be used. If none are found, the users open 
+          command is ignored.
+
+          The schema com.projtech.bp.core.editors.exsd is created to formalize
+          the rules above.
+
+i81.3   - Define the expected interfaces
+          From the <editor> markup above, the classes specified in the following
+          attributes must meet the specified interfaces:
+          
+          <editor>.class must implement EditorPart.
+          <editor>.input must implement IEditorInput.
+          <editor>.listenerClass must implement java.lang.Runnable.
+
+i81.4   - Add plug-in registry processing
+          In the class CorePlugin, modify the constructor to read the extension
+          point registry and iterate over the extensions found.
+
+i81.5   - Register an editor listener
+          In the CorePlugin constructor, inside the loop created by i81.4, 
+          create and run the extension plugin provided classes. Handle and
+          report on the necessary possible exceptions.
+
+i81.6   - Allow the existing views (Explorer and Outline) to use the
+          registration data to launch the correct default editor.
+          
+i81.6.1 - In both create_explorer_view.inc and ModelContentOutlinePage.java
+          add a new method 'handleOpen' which does the following:
+          
+            - Get the registry
+            - Get all the plugins that have extended bp.core.editors
+            - Repeat for each extension until we find a suitable default editor
+               - Find the <editor> elements
+               - if the current selection is in the <defaultFor> list
+                  - Get the class supplied for the input
+                  - Dynamically create the setInput method
+                  - Invoke the method, passing the current selection as an
+                    argument.
+                  - Pass the resulting input instance to the Eclipse editor,
+                    along with the editor class name supplied by the extending
+                    plugin. (Eclipse takes care of instantiating the editor
+                    itself)
+
+i81.6.2 - Call handleOpen from the appropriate actions.
+
+          In both create_explorer_view.inc and ModelContentOutlinePage.java,
+          modify the 'Open' actions introduced by the Model_Explorer-
+          Outline_View task to call 'handleOpen'.
+
+i81.6.3 - Remove unneeded dependencies
+          Modify bp.ui.explorer/plugin.xml to remove the <requires> element
+          that references the bp.ui.text plugin.
+
+End
+---
+
+$Log: editor_extension_point-i81.dnt,v $
+Revision 1.1  2009/09/03 18:29:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:14:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.168.1  2008/12/31 16:12:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2003/08/19 23:36:28  campbell
+Job: 81
+Finalized.
+
+Revision 1.2  2003/08/19 21:24:19  campbell
+Job: 81
+Finalized.
+
+Revision 1.1  2003/08/19 21:11:49  campbell
+Job: 81
+Introduced.

@@ -1,0 +1,179 @@
+========================================================================
+
+File:      $RCSfile: id_assignment.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger MC-Java Design Note
+Unique Id compatibility with BridgePoint
+
+Abstract
+--------
+This document describes the MC-Java unique_id design and 
+the modifications for backward compatibility with BridgePoint 6.1.
+
+History
+-------
+
+final id_assignment-072503-01.rvm
+
+Document References
+-------------------
+
+core/doc/internal/technical/Architecture/id_assignment.ant
+core/doc/internal/technical/File_IO/sql_import.dnt
+Bugzilla issue 62
+
+Background
+----------
+
+See analysis note.
+
+Design
+------
+
+A1.1 Only generate needed id assigners
+
+A1.1.1 In pg_schema_gen.arc the code is changed to check if
+an attribute of type unique_id is not referential before
+creating an id assigner column for it in the id assigner table.
+
+Note that the code for initializing unique id values 
+when creating an instance only initializes 
+non-referential attributes already.
+
+A1.1.2  Change Java.arc to only generate the uniqueId()
+function if the class actually needs it.  Change the
+function to be private.  Change the initial value of
+the id assigner to zero.  The analysis states that the
+initial value should be one, but given that the code treats
+the value as the last identifier allocated, zero is a better
+value.  This way the first value allocated will be one,
+just like BP 6.1.
+
+A1.2 Save id values on import.
+
+A1.2.1 The import code is changed so that the processValue
+function checks if the value is for a non-referential attribute
+of type unique_id.  If it is, then the function setUniqueId()
+is called for the class that has the attribute.
+
+There are non-referential attributes of type unique_id
+in the BridgePoint 6.1 schema that should be ignored.
+
+The following attributes should have a type of integer:
+
+    S_DOM.Config_ID
+    S_SS.Config_ID
+    
+These classes already have one non-referential unique_id
+attribute.  A second one doesn't make sense.  Note that
+SM_SM.Config_ID is already of type integer.
+    
+The following attributes are only present in BP 6.1
+for backwards compatibility, and should be removed
+from Tiger:
+
+    SM_NLEVT.polySMspd_ID 
+    SM_CRTXN.SMspd_ID
+    SM_NETXN.SMspd_ID
+
+When the attributes are removed from the Tiger schema,
+the export SQL code will need to be changed to output
+dummy values for these attributes.
+
+
+A1.2.2 The function setUniqueId() is generated for each class
+that needs it.  The function takes the new unique id value.
+If the value is greater than the current id assigner value,
+then the id assigner is updated.  If persistence is enabled,
+and the value is updated, then the database is updated as well.
+
+A1.3 Change id assigner initial value
+
+A1.3.1 In pg_schema_gen.arc change the initial value for the 
+id assigners to zero.
+
+A1.3.2 In the clearInstance() functions, reset the id assigner
+value to zero.
+
+Work Required
+-------------
+
+A1.1 Only generate needed id assigners
+
+A1.1.1 The change to pg_schema_gen.arc is made.
+The id assigners are ordered in the table in ascending
+order by object number.
+
+A1.1.2  In Java.arc, the uniqueId() is only generated
+as needed.
+
+A1.2 Save id values on import.
+
+A1.2.1.1 In gen_import_java.arc, change the generation of the
+processValue function to update id assigners when a unique
+id is read in.   Ignored attribute values do not update
+the id assigner.  If persistence is enabled, the assigner id value
+is updated after the import is complete, by using the
+select MAX(<id attr>) from <table> sql statement.
+Only the lower 19 bits of the id values are used.
+
+A1.2.1.2 Update the Tiger application model review issue (47) to
+include the following:
+
+Attributes that are present in the BP schema but not
+in the Tiger schema need to be dealt with when exporting
+BP 6.1 SQL.  A suggested way to deal with this is 
+in the File IO model, add the class 'Deprecated Column',
+similar to the 'Enhancement Column'. The archetype that 
+generates the export code can use this information to
+export the values for the deprecated columns.
+
+A1.2.2 In Java.arc, generate the function setUniqueId() 
+as needed.
+
+A1.3 Change id assigner initial value
+
+A1.3.1 Change pg_schema_gen.arc as described in the design.
+
+A1.3.2 Reset id assigner in clearInstance()
+
+In Java.arc, the generated function clearInstances(), if the
+class has an id assigner, set the in-memory value to zero.
+If persistence is enabled, also update the database.
+
+
+End
+---
+$Log: id_assignment.dnt,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:17  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.168.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2003/07/25 18:57:59  greg
+Job: 62
+Made review changes
+
+Revision 1.1  2003/07/24 22:28:09  greg
+Job: 62
+Initial introduction
+
+
+

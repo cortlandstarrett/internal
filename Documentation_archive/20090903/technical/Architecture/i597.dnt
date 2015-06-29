@@ -1,0 +1,375 @@
+========================================================================
+
+File:      $RCSfile: i597.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Detection of dangling references and unsafe variable access
+
+Abstract
+--------
+This note describes the changes that are necessary to MC-Java in order to
+generate code which will detect dangling references.  The note also describes
+the changes necessary to MC-Java to print warnings about unsafe variable usage.
+
+History
+-------
+final - i597-021405-01.rvm
+
+Document References
+-------------------
+[1] Issue 597
+[2] MC-Java.test/Verify_Select_test/TestVariations.txt
+
+Background
+----------
+
+Unsafe access to any variable is a potential bug in the product.  To prevent the
+chance of these types of bugs, MC-Java will provide warnings for any unsafe
+access to a variable.  The detection of dangling references will prevent runtime
+related bugs, i.e, memory leaks, by giving a warning when a relationship is not
+torn down correctly.
+
+Analysis
+--------
+
+1. Check for untorn down associations
+
+The archetype which generates the delete methods for java code shall be
+modified to check if there are any untorn down associations.  The code shall
+try and access all classes that the containing class is associated with.  If it
+can access any it shall log a trace warning.
+
+2. Archetype for scanning oal
+
+An archetype needs to be created which shall scan all oal of any model for
+dangerous access to a variable.  Dangerous access to a variable will only be
+checked if the variable is selected across a conditional association.  The
+archetype must recurse through all blocks contained in the action block being
+processed.  The archetype shall then print a warning for any variable access
+that is found to be dangerous.
+
+Design
+------
+
+1. Create archetype for scanning oal for dangerous variable usage
+
+An archetype is created which shall process each action in a model, searching
+it for select statements that are made across a conditional association.
+Dangerous access to the variables from the conditional selects are searched
+for in that action.  If any are found the archetype prints a warning.  More
+detailed information is gathered in a string and written to a file named by the
+following convention: <domain>_verify_selects_output.txt.
+
+If the archetype finds the variable in a unary operation which contains the
+not_empty operator the following block is marked as ignored and is not
+processed.  The not_empty operator can be contained in a unary operation, a
+binary operation, and a parenthesized expression.  The archetype checks all
+of the possibilities.
+
+If the archetype finds an empty operator with the variable being processed it
+marks the following else, if one exists, as being ignored.
+
+In order for the archetype to work as designed the association between an if
+statement and its elif and else statements must be setup.  The rop for the
+associations are added to the schema along with the If_Statement_Id attribute to
+the ACT_E and ACT_EL table entries.  The archetype then selects all ACT_E and
+ACT_EL instances from the model.  For each of them it traverses the reflexive
+association on ACT_SMT until it finds an if statement, it then places the if
+statement's Statement_ID value into their If_Statement_Id attribute.
+
+The association, R808, between an instance reference and its referred to
+variable needs to be established in order for the archetype to work.  This is
+done by modifying fragment.inc so that the variable's Var_Id is set in the
+instance reference. 
+
+An error about a generate pre-existing event was thrown during the work for this
+issue.  The problem was a typo in fragment.inc, which caused the block id to not
+be set in the E_GPR instances.  The typo is fixed.
+
+All blocks are processed in the model through recursive design.
+
+2. Create a utility function to process select statements for conditionality
+
+A utility function is created which will take a select and determine the
+conditionality of that selects chain.  If it finds a conditional association any
+where in the chain it marks that select is conditional.  This function processes
+all subtypes of an association.  It also processes reflexive associations.
+
+In order for this archetype to work as designed the association between an
+Instance or an Instance set to its referred to Model Class must be setup.  This
+is done by adding a rop between both V_INT and V_INS to O_OBJ.
+
+3. Modify model compiler to add delete checking
+
+It was determined during a meeting that the finalize method shall not call any
+of the generated delete methods.  It causes clean up on instances that have
+already been removed.  The generation of the finalize method is removed from
+java.arc.
+
+The archetype responsible for creating a model's classes is modified to find all
+associations associated with the class being processed.  For each one it will
+add a select across that association after the point at which the class should
+be deleted.  If that select returns anything but null the association was not
+torn down properly and a warning is logged to the trace output.
+
+4. Move utility function, get_last_link_in_chain, to utils archetype
+
+The get_last_link_in_chain function found in statement.inc is moved to
+arch_utils.inc for availability.
+
+5. Modify fragment.inc to support setting the block id in values
+
+The rop for the association between a Value and its containing block is added to
+the ooa_schema.  The table entry for a Value is modified to include the Block_Id
+attribute.  The get_blck_id function is used every place there is a V_VAL
+reference in fragment.inc.  The blck_id attribute is added to all generated
+V_VAL insert statements.
+
+6. Modify get_blck_id function to store previous block id
+
+When a block is first processed by blck_begin, a file is written with the
+current block's block id.  The get_blck_id function reads this file and then
+holds the value in the blck_id attribute.  Since fragment.inc processes each
+block recursively the block id of the next block's id is always stored in the
+file.  This causes a problem when fragment.inc is processing an inner block and
+then returns to finish an outer block, because get_blck_id at this point would
+return the inner block's id.
+
+The blck_begin function is modified to store the previous block id in an
+attribute, calling get_blck_id for the value.  The blck_end function is modified
+to place the previous id into the file which is read by get_blck_id.
+
+All action begin functions are modified to write the default value of "0" into
+the blck_id file.  This was needed because the blck_begin function calls
+get_blck_id, which if the blck_id file does not exist will throw an error.
+
+7. Modify model compiler schema to have correct multiplicity
+
+The multiplicity of the following associations are modified from 1C to MC
+respectively:
+
+R634 ACT_DEL -> V_VAR
+R615 ACT_REL -> V_VAR
+R616 ACT_REL -> V_VAR
+R617 ACT_RU  -> V_VAR
+R618 ACT_RU  -> V_VAR
+R619 ACT_RU  -> V_VAR
+R620 ACT_UNR -> V_VAR
+R621 ACT_UNR -> V_VAR
+R622 ACT_URU -> V_VAR
+R623 ACT_URU -> V_VAR
+R624 ACT_URU -> V_VAR
+R613 ACT_SEL -> V_VAR
+R629 ACT_AI  -> V_VAR
+R706 E_CEI   -> V_VAR
+R667 ACT_TFM -> V_VAR
+R805 V_TVL   -> V_VAR
+R807 V_AVL   -> V_VAR
+R808 V_IRF   -> V_VAR
+
+Each variable may have multiple instances of the left side objects.
+ 
+Design Comments
+---------------
+The utility function responsible for determining a chain's conditionality
+supports compositional associations.  Tiger does not support compositional
+associations therefore a unit test is not written for these types of
+associations.
+
+After creating a test model for the first analysis comment above, it was found
+that the variable self, must have a V_VAR and a V_INT setup in fragment.inc.
+The var_declare_self_obj_inst_ref function is modified to add these for the self
+variable.  The block_var_out_of_scope function is modified to capture an
+attribute which determines if the function was called previously on self.  This
+prevents the function from running three times on the self variable.
+
+In order to check the functions from both als and core's cme_actions the
+generate.xml file is modified to call verify_selects on the functions.
+
+The following variables are set in each project's generate.xml to turn the
+verification on and off:
+
+If generating java with MC-Java:
+
+<property name="verify_selects" value="true" />
+
+If generating with special archetypes:
+
+Use CHECK_FUNCTIONS_ONLY to trigger the verify_select archetype to only process
+functions.
+
+	<exec vmlauncher="false" failonerror="true" executable="${bp_bin_dir}\pt_gen_file" >
+		<env key="OS_CACHE_SIZE" value="64000000" />
+    <env key="PTC_MC_ARC_DIR" value="${mcj_path}" />
+		<env key="VERIFY_SELECTS" value="true" />
+		<env key="CHECK_FUNCTIONS_ONLY" value="true" />
+		<arg value="sql/cme_menus.gen" />
+		<arg value="${mcj_path}/verify_selects.arc" />
+	</exec>
+
+Work Required
+-------------
+
+1. Create archetype for scanning oal for dangerous variable usage
+
+The archetype is created in MC-Java as verify_selects.arc, other changes are
+made to ooa_schema.sql and fragment.inc according to the design.
+
+2. Create a utility function to process select statements for conditionality
+
+The function is added to arch_utils.inc.
+
+3. Modify model compiler to add delete checking
+
+The changes are made to java.arc according to the design.
+
+4. Move utility function, get_last_link_in_chain, to utils archetype
+
+The changes are made according to the design.
+
+5. Modify fragment.inc to support setting the block id in values
+
+The changes are made according to the design.
+
+6. Modify get_blck_id function to store previous block id
+
+The changes are made to fragment.inc according to the design.
+
+7. Modify model compiler schema to have correct multiplicity
+
+The changes are made to ooa_schema.sql according to the design.
+
+Unit Test
+---------
+
+A new project, MC-Java.test is created which will be used for the automated
+testing of MC-Java.  A new folder is added, Verify_Select_Test, which will
+provide the automated testing for this issue.
+
+The test folder contains a model which has the following actions:
+
+Function
+Bridge Operation
+Derived Attribute
+State Action
+Class Operation (Instance based and Class Based)
+
+Each action contains a select across a conditional association, then uses the
+variable in the following oal:
+
+operation invocation
+delete 
+assign to attribute
+select
+create event instance
+generate event
+generate pre-existing event
+relate one
+relate other
+relate using one
+relate using other
+relate using as link
+unrelate one
+unrelate other
+unrelate using one
+unrelate using other
+unrelate using as link
+
+Dangerous and safe accesses using the above variable are added inside of the
+statement test variations found in document reference [2].
+
+Another model is added to the project which contains the following
+conditional/unconditional selects, testing the utility function for finding a
+chains conditionality:
+
+Conditional Associations that should trigger variable check
+
+Simple Association
+Reflexive Simple Association
+Associative Link
+Reflexive Associative Link
+Subtype/Supertype Association
+
+Unconditional Associations that should not trigger a check
+
+Simple Association
+Reflexive Simple Association
+Associative Link
+Reflexive Associative Link
+Subtype/Supertype Association
+
+Each model is built using MC-Java with an ant build script.
+
+A new class is added to the tools directory which is an ant task which will
+compare two files.
+
+The output from both models is compared to the output found in the
+expected_results folder.
+
+Unit test for analysis 1.
+
+A new folder is added to MC-Java.test named, Delete_Check_test.
+
+This folder contains a model with a known good delete operation, and a known
+bad delete operation.  Code is generated for the model and then run using the
+java ant task.  The output is captured in a file and compared with the expected
+results found in Delete_Check_test/expected_results.
+
+_- Run all existing unit tests
+_R All tests pass
+
+End
+---
+
+$Log: i597.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.30.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/08/11 17:12:22  tlondon
+Job: 597
+
+Added comment about switch for turning on and off verification
+
+Revision 1.4  2005/02/18 17:11:11  tlondon
+Job: 597
+
+Added section for unit test of analysis 1
+
+Revision 1.3  2005/02/18 16:54:28  tlondon
+Job: 597
+
+Fixed according to review minutes
+
+Revision 1.2  2005/02/14 17:52:49  tlondon
+Job: 597
+
+Added instance base and class base to types of operation tests
+
+Revision 1.1  2005/02/09 17:49:19  tlondon
+Job: 597
+
+Completed design note and removed incorrectly checked in i579.dnt file
+
+Revision 1.1  2005/02/08 22:54:16  tlondon
+Job: 597
+
+Initial Introduction

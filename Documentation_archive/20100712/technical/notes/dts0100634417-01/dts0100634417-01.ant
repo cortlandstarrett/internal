@@ -1,0 +1,209 @@
+========================================================================
+
+File:      $RCSfile: dts0100634417-01.ant,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Implement Simulated Real Time in Verifier
+
+
+1. Abstract
+-----------
+Verifier can currently use only 'wall clock' time. This note describes how we
+will begin to virtualize time for Verifier.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100634417 - Implement simulated real time in Verifier
+[2] http://en.wikipedia.org/wiki/Discrete_event_simulation
+
+
+4. Background
+-------------
+Verifier is currently criticized for using only 'wall clock' time; it's timers
+expire against real world time. While a useful execution mode, this is a major
+problem for those users that wish to simulate systems running much faster than
+Verifier's emulation can achieve. To address this, we must allow selection of a
+virtual time model, where time does not progress constantly, but advances in
+discrete increments according to the chronological sequence of arriving events.
+This is known as 'Discrete event simulation'[2].
+
+
+5. Analysis
+-----------
+5.1 Verifier will retain its wall-clock simulation mode.
+This mode is demonstrable useful for some purposes. It also demonstrates well.
+Verifier shall retain this execution mode, but add a virtual time mode
+selectable in the launch configuration.
+
+5.2 Limitations of pure discrete event simulation
+In the simplest view of discrete event simulation, execution is considered to
+take zero time. An event is accepted from a chronologically ordered queue, Qt,
+and is processed to completion. Processed to completion is defined as being the
+state where no further new activity is scheduled for immediate (undelayed)
+execution. At this point, time is advanced to the scheduled time for the next
+event in Qt and the execution process repeats until no events remain in Qt.
+
+In the case of xtUML models, this simple view cannot work in all cases, because
+it is legal to create models in which the thread of control started by some
+stimulus (e.g. an event or signal) never completes. This can happen through non
+exit of activity loops (in the limit, 'while (true)'), but it can also happen
+where a class, instance, component or a group of any of these mutually send
+undelayed events or signals to each other.
+
+5.3 A hybrid solution
+One approach to the limitations outlined above[5.2] is to specify that only
+models that process all events to completion may use the Verifier virtual time
+mechanism. An alternative solution is to implement a simple virtual processing
+time consumption model. In this first simple time mechanism, each statement
+consumes one unit of virtual time. By accumulating time in this way, even models that do
+not process to completion can be executed, because time advances for each
+executed statement. This proposal is a hybrid approach because in the case where
+processing does proceed to completion, the time rules outlined above[5.2] are
+applied. Thus for models which process to completion, there is no difference in
+behavior from a pure discrete event simulation.
+
+5.4 User selectable time units
+The hybrid execution proposal above[5.3] proposes that one unit of time is
+consumed for each executed statement. It purposely avoids specifyintg the value
+of that unit. The reason for this is that the time span for user models is
+unbounded. The concept of virtual time is valuable to modelers that need to deal
+in both short and long tiome scales. Some user models need to simulate in the
+pico-second range, while others might conceivably execute over years, decades or
+even centuries of virtual time. The proposed solution shall allow the user to
+set the unit of simulation. To cover all possible bases, available units shall
+range from 10^-24 to 10^24 in 10^3 steps. For continuity with previous Verifier
+implementations and with the TIM interface, the default value shall be 10^-6
+(microSeconds, muS).
+
+5.5 Show elapsed time value in the console.
+This shall be controlled by a launch configuration checkbox. In line with the
+range proposed above[5.4], the output units shall show as follows:
+
+Y yotta (10^24), Z zetta (10^21), E exa (10^18), P peta (10^15), T tera (10^12),
+G giga (10^9), M mega (10^6), k kilo (10^3), (10^0), m milli (10^-3),
+mu micro(10^-6), n nano (10^-9), p pico (10^-12), f femto (10^-15),
+a atto (10^-18), z zepto (10^-21), y yocto (10^-24)
+
+Time is special. Most humans would rather read '1 year' than 31.536 Ms (mega-
+seconds). For large values of unit time, Verifier shall therefore divide the
+displayed value down and show the value as minutes, hours, days and years as
+required.
+
+5.6 Future enhancements
+This work shall be revisited several times to provide enhancements to Verifier's
+virtual time implementation. Enhancements envisioned are:
+
+- statements do not all take the same length of time to execute.
+- select and select where statements execution time varies by instance extent
+  size.
+- sets of statement resource consumption data are stored as named profiles.
+- statement blocks, whole activities and/or whole components may be marked as
+  using different resource consumption profiles. This will be useful to allow
+  heterogeneous multi processing implementations to be simulated. Since the unit
+  of time may be anything from a atto-second to a century, this capability
+  supports mixed hardware and software simulation.
+- tally multiple resource profiles simultaneously. Doing this allows other
+  resources than time to be simulated. Important resources for many customers
+  include current consumption and heat dissipation. This introduces the concept
+  of a resource type, which may have many profiles. Each resource type has a
+  name and a unit (e.g. time will have the unit name 'second').
+- create profile data by running calibration models on the target hardware.
+
+
+6. Work Required
+----------------
+The work will be done in two stages:
+
+1) Implement simple discrete event simulation
+2) Implement simple activity time consumption
+
+6.1 Discrete event simulation
+6.1.1 Verifier model changes required
+At the modeled simulation level, the only part of Verifier that is aware of the
+passage of time is the Timer class. Even the Timer class receives its time in
+discrete increments. No modification to the modeled part of Verifier is
+therefore required for this first step.
+
+6.1.2 Provide alternate time support classes 
+Virtual time can therefore be implemented by providing alternate hand written
+time implementation classes for virtual and real (wall clock) time. The choice
+made by the user in the launch window shall dictate which implementation is
+used by Verifier.
+
+6.1.2.1 Wall clock time implementation
+Wall clock time is tracked using the java System.nanoTime method. This is
+periodically read in its own java thread which is awakened approximately every
+30 milliseconds. The time elapsed since the last call is then passed to each
+timer instance by calling Timer::tick(milliseconds: integer). This need not be
+changed. The existing TIM implementation will be extended to cache the time
+since the beginning of the simulation. A new static method will be provided to
+read this data.
+
+6.1.2.2 Virtual time implementation
+With virtual time, we will still call Timer::tick(microseconds: integer).
+However, the TIM implementation will work rather differently. The hand written
+model execution thread shall inform the virtual TIM implementation when it
+becomes idle and again when it exits its idle state. This can be done by static
+method invocation. On being signaled that the last running Component instance
+has gone idle, the virtual TIM implementation will find the next (by expiry
+time) event in any component and will call Tick(microseconds: timeLeft) on the
+owning Timer. Each time the virtual TIM implementation does this it will add the
+time increment to a time cache analogous to that described for the wall clock
+implementation[6.2.1.1]. A static method identical to the one described for the
+wall clock TIM implementation shall be provided.
+
+6.1.3 Console implementation
+Each time anything is output to the Verifier simulation console, the elapsed
+time since simulation start shall be obtained from whichever TIM implementation
+is in use. If the launch preference is set appropriately, this time shall be
+converted to human readable form[5.5] and put in the console before the
+simulation output. The time value shall be formatted so that all simulation
+output begins in the same console column, regardless of the time value display
+length.
+
+6.2 Activity time consumption
+A new method shall be added to the virtual TIM implementation. This call shall
+indicate that the calling Component is busy. It shall carry a java double
+floating point value indicating the number of time units consumed since the last
+call to the busy method or the last idle state. The realized java virtual TIM
+implementation shall update its cached time value and will scan its timers to
+see if any would have expired given the time elapsed. If any have, they are
+fired in chronological order.
+
+7. Acceptance Test
+------------------
+TBD.
+
+End
+---
+
+$Log: dts0100634417-01.ant,v $
+Revision 1.4  2010/01/05 04:32:09  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.3  2009/12/10 10:22:31  campbell
+Job: dts0100634417
+Clarify the meaning of not running to completion.
+
+Revision 1.2  2009/12/08 17:40:57  campbell
+Job: dts0100634417
+Updated with work required.
+
+Revision 1.1  2009/12/08 11:27:36  campbell
+Job: dts0100634417
+Introduced.
+

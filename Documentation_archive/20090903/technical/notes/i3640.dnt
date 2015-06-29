@@ -1,0 +1,368 @@
+========================================================================
+
+File:      $RCSfile: i3640.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support import/export of EMF data
+
+1. Abstract
+-----------
+This note describes the changes required to support importing and exporting EMF
+data.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3640 - Add support to export an EMF compatible model
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3640
+[2] Bugzilla item 3641 - Support containment associations
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3641
+[3] http://www.devx.com/Java/Article/29093/0/page/2
+[4] Bugzilla item 3640 comment 43
+    http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=3640#c43
+    This contains an attachment which is the AUTOSAR meta model (ECore format).
+																									 [Site explaining dynamic EMF]
+4. Background
+-------------
+Many tools, specifically the VSx tool chain, use EMF data serialization to pass
+models along the tool chain.  In order for BridgePoint to be a viable solution
+for designing useful models in any AUTOSAR chain, we must be able to import and
+export EMF models.  Additionally this support will allow BridgePoint to work
+with any EMF model as well as allow users to work with a BridgePoint model in
+EMF.
+
+5. Analysis
+-----------
+The EMF metamodel (ecore), is a small subset of the UML 2 metamodel.
+BridgePoint supports a much wider subset of the UML 2 metamodel, which includes
+almost all of the ecore subsets.  The missing artifacts in the BridgePoint
+metamodel are EAnnotations and containment associations.  All other metamodel
+artifacts in ecore can be mapped to an element or set of elements in the
+BridgePoint metamodel.
+
+5.1 BridgePoint ecore mapping
+
+Listed below is a direct mapping between elements in the BridgePoint metamodel
+and the ecore metamodel
+
+ecore         BridgePoint
+-----         -----------
+
+EPackage      Domain, Subsystem, Package
+EClass        Model Class
+EDataType     User Data Type
+EEnum         Enumeration Data Type
+EReference    Association (inheritence hierarchy mapped via EClass)
+EAttribute    Attribute (no support of referential)
+EOperation    Operation
+EParameter    Operation Parameter
+EEnumLiteral  Enumeration
+
+5.1.1 Support missing artifacts
+
+As stated in 5, EAnnotations and containment associations are not supported in
+BridgePoint.
+
+5.1.1.1 Support EAnnotations
+
+To support EAnnotations we will store ecore entries in the description of any
+element's description.  The format shall be as follows:
+
+<ecore:EAnnotation xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" source="TaggedValues">
+  <details key="key" value="value"/>
+  ...
+</ecore:EAnnotation>
+
+A special annotation shall be used to capture ecore sepcific data that is not
+otherwise supported in BridgePoint.  This annotation shall have a uniquely
+identifiable source value.
+
+5.1.1.1.1 Support code in model
+
+The first step to support hand written code in a model is to allow hand written
+code for the body of operations.  This is supported by setting the parse status
+to 'Do Not Parse', and simply entering the code.  Note that at this time there
+will be no error reporting for hand written code, as at a later time we will
+support OAL instead of hand written code.  MC3020 supports code in models with
+the presence of the #inline comment.  When we support OAL we shall also support
+this comment, allowing the user to use hand written code or OAL.  During export
+we simply need to create an EAnnotation detail where the key is 'body' and copy
+the operation's Action_Semantics attribute value to the detail's value.  During
+import we need to find all of the EAnnotation details which have a key of 'body'
+and copy their source value to the associated operations. 
+
+5.1.1.2 Support containment associations
+
+The work to support containment associations will not be done with this work.
+The issue which covers the work to add them to BridgePoint [2] shall also do the
+work to setup containment EReference instances.  Until such work is created the
+EReference attribute containment may be set in the description using the method
+stated in 5.1.1.1.
+
+Issue 3641 is raised to handle this work.
+
+5.2 Import/Export
+
+5.2.1 Export
+
+In order to output a valid ecore data file from a BridgePoint model, we need to
+create memory instances of the various ecore elements.  Once we have the in
+memory ecore model, we simply use the EMF persistence to output the model.  [2]
+explains how to create memory instances for ecore data.
+
+Using the mapping in 5.1, we shall create the BridgePoint equivalent ecore
+instances and set all available data (that is data which is stored in the
+BridgePoint model).
+
+Considering that the ecore metamodel only supports elements which we deem design
+level, only domains shall be convertible to ecore models.  The UI to support
+outputting ecore models shall be an export wizard.  This wizard shall have a
+check box tree view, which will show only domains and their ecore related
+children.  With the previous as an exception the wizard shall match the current
+BridgePoint model export wizard.
+
+We shall also provide a pre-builder similar to the current export pre-builder.
+
+All packages created in ecore shall have their nsURI value copied from the 
+source model.  All natural BridgePoint elements shall have a path derived from
+the element in the model, using the same syntax as a standard nsURI in ecore.
+
+5.2.1.1 Domains
+
+Domains shall be mapped to EPackages.  They shall have their name set to the
+domain name.
+
+Their children will be all direct subsystems which have been mapped to
+EPackages.
+
+5.2.1.2 Subsystems
+
+Subsystems shall be mapped to EPackages.  They shall have their name set to the
+subsystem name.  Their children shall be nested subsystems (also mapped to
+EPackages) and Model Classes.
+
+5.2.1.3 Model Classes
+
+Model Classes shall be mapped to EClasses.  They shall have their name set to
+the Model Class name.
+
+Their children will be all Attributes and Operations.
+
+During the mapping of Associations hierarchy will be determined.  At that point
+all supertype and subtypes will be setup accordingly.
+
+5.2.1.4 Attributes
+
+Attributes shall be mapped to EAttributes.  They shall have their name set to
+the Attribute name.
+
+Before the type is set for the EAttributes all User Data Types and Enumerated
+Data Types shall be mapped to EDataType elements.  This will allow the Attribute
+mapping to correctly set the EAttribute type.
+
+An EAttribute may have an EAnnotation associated with it, this allows supporting
+mathematically derived attributes.  If a derived attribute is found, then an
+EAnnotation shall be created, having it's source attribute set to the
+Action_Semantics attribute value.
+
+Attributes which are of the type, unique_id, shall have the EAttribute.iD value
+set to true.
+
+5.2.1.5 Operations
+
+Operations shall be mapped to EOperations.  The Operation name shall be copied
+into the EOperation.
+
+As stated in 5.2.1.4 the data type mapping must be complete before the operation
+type can be mapped.  Given this the necessary EDataType (mapped from the
+BridgePoint data types) shall be set as the operation return type.
+
+EOperations have EParameters as children, these children map directly to
+Operation Parameters in BridgePoint.
+
+5.2.1.6 Operation Parameters
+
+Operation Parameters shall be mapped to EParameters.  The Operation Parameter
+name shall be copied into the EParameter.
+
+As stated in 5.2.1.4 the data type mapping must be complete before the operation
+parameter type can be mapped.  Given this the necessary EDataType (mapped from
+the BridgePoint data types) shall be set as the operation parameter type.
+
+5.2.1.7 Associations
+
+Associations shall be mapped to EReferences.  In BridgePoint all associations
+are considered bi-directional.  To support bi-directional associations in EMF
+there must be two EReference instances.  Each EReference must have the EOpposite
+attribute set to the other EReference in order to capture the bi-directional
+specification.  An EReference therefore shall be created for the Class As
+Participant and the Class As Formalizer BridgePoint instances.  For the Class As
+Participant the EReference shall have the Model Class associated with the Class
+As Formalizer set as the EType, and visa-versa for the Class As Formalizer
+EReference. The necessary bounds shall be set according to the BridgePoint
+multiplicity attributes and conditionality attributes.  The direct mapping of
+BridgePoint multiplicity and conditionality is supported with the following
+bounds:
+
+BridgePoint        ecore
+-----------        -----
+0..1               Lower Bound = 0, Upper Bound = 1
+1                  Lower Bound = 1, Upper Bound = 1
+0..*               Lower Bound = 0, Upper Bound = -1 
+1..*               Lower Bound = 1, Upper Bound = -1
+
+ecore supports any integer value for either bound.  This allows for setting
+multiplicities and conditionalities as follows:
+
+1..2, 2..1000, etc.
+
+In order to properly support importing ecore data, BridgePoint will need to
+support the same bounding.  Issue 3642 is raised to handle this work.
+
+Additionally supertype/subtype specifications must be determined during this
+mapping.  When a supertype/subtype association is found the necessary classes
+shall have the supertype and subtype associations setup.  In ecore this is held
+in lists for each of the classes, for instance the supertype class has a list of
+subtypes.
+
+5.2.1.8 Data Types
+
+The data type package containing any data types shall be mapped to an EPackage,
+this package shall have the same name as the data type package.  The package
+shall live directly under the top level package.
+
+Enumerated Data Types shall be mapped to EEnums.  The Enumerated Data Type name
+shall be used as the EEnum's supertype's, EDataType, name.  Each Enumeration
+under the Enumerated Data Type shall be matched to a EEnumLiteral, having the
+Enumeration name copied.  The value attribute of EEnumLiteral shall be set
+according to the order of the Enmerations in BridgePoint, where 0 equals the
+first enumeration.
+
+Instance Reference Data Types shall be ignored, as all EClass elements are
+treated as an available type.
+  
+User Data Types shall be mapped to EDataTypes.  The type of the EDataType is set
+using the Instance Type Name attribute.  This attribute shall be set according
+to the Core Type associated with the User Data Type, and shall match the
+provided ecore java language types.
+
+The unique_id core type shall be exported as a new EDataType, with its
+instanceClassName attribute set to java.util.UUID.
+
+5.2.2 Import
+
+In order to properly create a BridgePoint model from an ecore data file we need
+to first load the ecore file using the EMF persistence API.  Once loaded we need
+to create the mapped BridgePoint elements using the ecore data.  Note that
+graphical elements are not stored in the ecore data, therefore no graphics will
+exist once imported.
+
+Packages shall be treated specially, in that the top level package shall be
+created in BridgePoint as a domain.  And the packages which are one level above
+a class shall be created as subsystems.
+
+6. Design
+---------
+6.1 Export Wizard
+
+A new plug-in shall be added, com.mentor.nucleus.bp.io.ecore.  The export wizard
+shall be created in this new plug-in.  The export wizard shall create the
+necessary ecore elements from the selected elements in the wizard.  After
+creating the necessary ecore mapped elements, the EMF persistence API shall be
+used to write the ecore file to the specified location.
+
+This plugin shall also provide a pre-builder, which will automatically export a
+BridgePoint model on build.
+
+6.2 Import Wizard
+
+The import wizard shall be created in the new plug-in specified in 6.1.  This
+wizard shall load the file specified by the user using the EMF persistence API.
+Once loaded all ecore elements are available for use.  The ecore elements shall
+be used to create BridgePoint elements as specified in 5.2.2.
+
+7. Design Comments
+------------------
+In order to support parameter exporting, we need a description.  Issue 365 will
+be handle as part of this issue.
+
+8. Work Required
+----------------
+
+9. Unit Test
+------------
+_- Open the Export Ecore Model wizard
+_R All domains are listed in the tree
+_R All domain children (which can be mapped to ecore) are shown
+_- Select a domain and hit Finish
+_R An ecore file is created at the specified location
+_- Import the ecore file into a new EMF project
+_R The entire model is available
+
+_- Open the Import Ecore Model wizard
+_- Select an ecore file for import
+_- Click finish
+_R The entire model is available in Model Explorer
+
+_- Import AUTOSAR_MetaModel [4]
+_- Export AUTOSAR_MetaModel
+_R The models are structurally identical
+
+End
+---
+
+$Log: i3640.dnt,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.2.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2008/08/05 20:45:24  rmulvey
+Job:3640
+Added a note about where to find the ECore meta model.
+
+Revision 1.5  2008/07/15 15:45:47  tlondon
+Job: 3640
+
+Update according to review.
+
+Revision 1.4  2008/07/03 17:41:44  tlondon
+Job: 3642
+
+Add more description to bounding support.
+
+Revision 1.3  2008/07/03 11:52:59  cstarret
+job:3640
+added reference to containment associations issue and described uuid->long
+
+Revision 1.2  2008/07/03 03:18:37  tlondon
+Job: 3640
+
+Add user data type specification.
+
+Revision 1.1  2008/07/02 22:09:16  tlondon
+Job: 3640
+
+Work in progress
+

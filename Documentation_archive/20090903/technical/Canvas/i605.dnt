@@ -1,0 +1,571 @@
+========================================================================
+
+File:      $RCSfile: i605.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Activity Diagram
+
+Abstract
+--------
+This note describes changes to add an Activity Diagram to Tiger.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 605 - Activity Diagrams
+[2] Marketing_Documentation/internal/requirements/MRDs/MRD124.doc
+[3] Issue 368 - Cl_c.getOoaIdfromInstance should be reworked
+[4] com.mentor.nucleus.bp.core/models/ooaofooa.xtuml, revision 1.118.6.3
+
+Background
+----------
+Currently there is no support for activity diagrams in BridgePoint.
+
+Analysis
+--------
+See [2]
+
+Design
+------
+
+1. Extend metamodel to support activity diagrams
+
+1.1  Add new classes
+
+A new subsystem, Activity, is added to the ooaofooa model. The subsystem 
+contains the following classes:
+
+Activity
+Activity In Activity
+Activity Node
+Activity Edge
+Activity Partition
+
+Action Node
+Object Node
+Control Node
+
+Initial Node
+Activity Final Node
+Flow Final Node
+Decision Node
+Fork Join Node
+
+Generic Action
+Accept Event
+Send Signal
+
+The metamodel shall also be extended to allow drawing activity diagrams in the
+following locations:
+
+Domain, Subsystem, Activity
+
+See [4] for details
+
+1.2  Add operations to support graphics interactions
+
+All new classes have the operations dispose() and get_ooa_id() added.
+
+1.2.1  Shapes that can be drawn have the following operations added:
+get_ooa_id, get_style, get_text_style, get_compartments, get_entries, 
+get_compartment_text.
+
+1.2.2  The Activity Edge, Activity Partition, and Fork Join Node classes
+(represented as connectors) have the following operations added:  get_style,
+get_connector_text.
+  
+1.2.3  The Activity class also has the following operations:  newForkJoin,
+newInitialNode, newActivityFinalNode, newFlowFinalNode, newDecisionMergeNode,
+newGenericAction, newObjectNode, newAcceptEventAction, newSendSignalAction,
+newAcceptTimeEventAction, newActivity, newActivityEdge, newActivityPartition.
+newActivityEdge, newActivityPartition and newForkJoin all return a boolean, as
+required by the graphics domain.
+
+1.2.4 The Activity Node class has the following operations: numIncomingEdges,
+numOutgoingEdges, incomingEdgeAllowed, outgoingEdgeAllowed.  The operations
+incomingEdgeAllowed, outgoingEdgeAllowed are also defined for all subtypes
+of Activity Node.  These operations are used by newActivityEdge to determine
+if an edge can be legally drawn into/out of a node.
+
+1.2.5  The Domain and Subsystem classes have the operation newActivity added.
+Their dispose() operations are updated as well to handle related Activity
+instances.
+
+1.3  Add icons
+
+Icons for all toolbar actions and classes in trees are added.
+
+2.  Add support for symbols to Canvas domain
+
+2.1 Support fixed size symbols
+
+- Add GD_ES.isFixedSize attribute
+- Update CanvasPlugin.java to parse "fixedSize" attribute from plugin.xml
+- Add code for drawing Style::FilledCircle in Shape.draw
+- Add check for isFixedSize in Shape Tool.ISM.DrawingShape
+- Add check for isFixedSize in Shape Tool.ISM.CreatingElement
+- Add check for isFixedSize in Selection Tool.ISM.Checking for Hotspots
+
+2.1.1 Support shapes with no interior color
+
+Some shapes have no interior color (Initial Nodes, for example), so there
+should be no preference allow the user to select one.
+
+- Add GD_ES.hasNoInteriorColor attribute
+- Update CanvasPlugin.java to set GD_ES.hasNoInteriorColor to true if the
+    symbol definition doesn't have a color definition
+- Modify CanvasEditorPreference to query hasNoInteriorColor before showing
+    a preference for a shape
+
+Also the lists in the preference windows have scroll bars added to them, 
+to indicate when there are more elements to select.
+
+2.1.2 Support layering of symbols
+
+The Activity Partition element must be drawn behind all other elements.
+Support for two layers of drawing is added.
+
+- Add GD_ES.layer (integer) attribute with a default value of 1
+- Update CanvasPlugin.java to parse "layer" attribute from plugin.xml
+- Add operation GD_GE.getLayer()
+- Update GD_MD.draw() to draw all layer zero elements before all layer
+   one elements
+
+2.1.3 Add support for drawing arbitrary shapes
+
+Several shapes need to be drawn that are not rectangles.  The following
+bridge operations are added to the ooaofgraphics GR external entity:
+
+  startPoly( numVert: integer ): instance
+     - Create a data structure that will hold the polygon data
+     
+  polyAddPoint( poly: instance, x: integer, y: integer ): void
+     - Add the point (x,y) to the set of points that are the part of the
+     polygon data.  The vertices of the shape are supplied in the order
+     they are to be drawn in.
+     
+  polyDraw( context: GCDelegate, poly: instance ): void
+     - Draw the polygon defined by poly on the context
+
+2.1.4 Add support for drawing elements using anti-aliasing
+
+To support drawing circles that look smooth, the anti-alias support in SWT is
+used.
+
+- Add GD_ES.antiAliased (boolean) attribute
+- Update CanvasPlugin.java to parse "antiAliased" attribute from plugin.xml
+- Update GD_MD.draw() to enable anti-aliasing for those symbols which have the
+  antiAliased attribute set to true
+- Add bridge GR::setAntialias (context, boolean) to set anti-aliasing support
+- Add bridge GR::setAdvancedGraphics (context, boolean) to turn on and off
+  advanced graphics support
+  
+Due to the current performance of the tool, anti-aliasing is only added for the
+following symbols:
+
+Creation Transition, Initial Node, Flow Final Node, Activity Final Node, and
+Actor Participant.
+
+There seems to be a bug in the advanced graphics support in SWT with respect to
+printing (no elements are printed).  Once the anti-aliasing support has been
+turned on something gets enabled in the SWT advanced graphics subsystem.  At
+this point the only way to prevent the printing bug is to turn off the advanced
+graphics.  If a hard copy is being drawn the advanced graphics are turned off.
+
+2.1.5 Add support for xml width definition for connectors
+
+The defaultWidth attribute is overloaded to define the width that a connector
+shall be drawn at.  At this point the only connector which uses this is the
+Fork/Join which is set to 3.
+
+- Add GD_CON.getWidth operation, used to return the width defined in the
+  corresponding element specification.  If the value is 0 a width of 1 is used.
+- Update GD_CON.draw() to set the width determined by GD_CON.getWidth.
+
+2.2 Support floating text outside of shapes
+
+The graphical representation of the Accept Time Event class requires a text box
+that is outside of the shape.  This is implemented by associating the Shape
+class with an instance of Connector Text.
+
+- Add R27 from GD_SHP (0..1) to GD_CTXT (0..1) in ooaofgraphics.  Formalize
+    in GD_CTXT, and combine with conn_elementId
+- Add End::Floating to ooaofooa and ooaofgraphics
+- Add Justification::Floating to ooaofooa and ooaofgraphics
+- Add GD_ES.hasFloatingText attribute
+- Update CanvasPlugin.java to parse "floatingText" attribute from plugin.xml
+- Add code for drawing Floating text in Shape.draw
+- Update Shape.isOver, isOverVertex, isOverNE, isOverNW, isOverSE, isOverSW
+- Add GD_CTXT.isOverVertex
+- Refactor GD_CTXT.isOver to work for both parents
+- Redo Connector.getVertexUnder, isOver
+- Redo Model.enableTextMoveUnder
+- Update GD_GE.getEndUnder
+- Refactor GD_CTXT.resizeToText
+- Update EIR.finish()
+- Update Shape.move, Shape.moveVertex
+- Update file_io.pei.sql to export GD_CTXT instances that belong to GD_SHP
+    instances
+
+2.3 Bullseye
+
+- Add code for drawing Style::BullsEye in Shape.draw
+
+2.4 Circle Cross
+
+- Add Style::CircleCross to ooaofooa and ooaofgraphics
+- Add code for drawing Style::CircleCross in Shape.draw
+
+2.5 Diamond
+
+- Add Style::Diamond to ooaofooa and ooaofgraphics
+- Add code for drawing Style::Diamond in Shape.draw
+
+2.6 Add bridge to get minumum shape size
+
+- Refactor: Add GD::getMinShapeSize() bridge
+
+2.7 IncomingFlow
+
+- Add Style::IncomingFlow to ooaofooa and ooaofgraphics
+- Add code for drawing Style::IncomingFlow in Shape.draw
+
+2.8 OutgoingFlow
+
+- Add Style::OutgoingFlow to ooaofooa and ooaofgraphics
+- Add code for drawing Style::OutgoingFlow in Shape.draw
+
+2.9 Hourglass
+
+- Add Style::Hourglass to ooaofooa and ooaofgraphics
+- Add code for drawing Style::Hourglass in Shape.draw
+
+3. Update canvas plugin with diagram and symbol data
+
+The ui.canvas/plugin.xml is updated to add the information for the new 
+symbols on the Activity diagram.  The editor for the activity diagram 
+(defaultFor) is defined. The legal terminators for the Activity Edge symbol
+are defined as well.
+
+The ModelType enumeration data type in ooaofgraphics has the ActivityDiagram
+enumerator added.
+
+The OOAType enumeration data type in ooaofgraphics has the following
+enumerators added: 
+
+Activity 
+ActivityEdge
+Partition
+InitialNode
+ActivityFinalNode
+FlowFinalNode
+DecisionMergeNode
+ForkJoin
+ObjectNode
+GenericAction
+AcceptEventAction
+AcceptTimeEventAction
+SendSignalAction
+
+
+4. Extend trees
+
+The following trees shall be extended to include activity diagram support:
+
+ooaofooa_hierarchy
+UITree
+file_io
+
+5.  Changes for context menus
+
+5.1 A delete context menu action shall be added for the following classes:
+
+Activity
+Activity Edge
+Activity Partition
+Object Node
+Initial Node
+Activity Final Node
+Flow Final Node
+Decision Node
+Fork Join Node
+Generic Action
+Accept Event
+Send Signal
+
+5.2 A rename context menu item shall be added for the following classes:
+
+Activity
+Activity Edge
+Activity Partition
+Object Node
+Fork Join Node
+Generic Action
+Accept Event
+Send Signal
+Decision Node
+
+6.  Implement issue 368
+
+The work for issue 368 is done to ease the maintenance needed when adding
+all the new symbols.  The changes suggested in issue 368 are implemented.
+
+6.1  Change Getinstancefromooa_id
+
+The static data member typeMap (of type HashMap) is added to the Cl_c class.
+It maps values from the OOAType enumeration to the corresponding class in
+bp.core.  Getinstancefromooa_id uses the passed in Ooa_type value to get
+the class in the map.  It then uses that class to search the model root
+for an instance of that class that has the same ooa_id.  The operation 
+Get_ooa_id() is added to the NonRootModelElement class, so that the 
+ClassQueryInterface_c instance that does the search doesn't need to know
+the specific type that is being searched.
+
+Note that this still requires a change to Cl_c.java each time a new 
+OOAType is added, but the change is a single line in the initializer for
+the typeMap data member.
+
+6.2  Change Getooa_idfrominstance
+
+The method is changed to cast the passed element to a NonRootModelElement and
+call the overridden Get_ooa_id method.  The following classes need to have the 
+get_ooa_id operation added:
+
+Data Type
+Communication Path
+Access Path
+State Machine
+
+7. Allowing drawing connectors to center of shapes in all cases
+
+In order for a connector to connect to a shape in at the center of all of the
+shape's edges the grid-snap increment for a connector must be half of the shape
+grid-snap increment.
+
+The graphics model is changed to return 6 (half of the shape increment) when
+dealing with connectors.
+
+8. Fix existing issues
+
+8.1 Modify import code to test for waypoint positions instead of
+    DIM.Graphconnector positions
+   
+The work for sequence diagrams added a link between a segment and a graph
+connector.  To update existing data (associative links and supertype/subtype
+associations) a test was added to see if a graph connector's position was over
+a given segment, relating it to the segment across the added link if true.  The
+problem with this was that not all graph connectors positions were correctly
+stored in previous versions of the tool.  To alleviate the problem of a segment
+not being found for a given graph connector, the is over test is changed to use
+the connecting segment's waypoint positions (as we know these are correct or the
+display would be incorrect).
+
+These changes are made to io.core/src/.../ImportHelper.java
+
+8.2 Make Use Case tooltips consistent (Issue 2170)
+
+When Use Case support was added, the diagram symbol representing a use case
+diagram was named: Use Case Package.  This is inconsistent with the rest of the
+diagrams.  The Use Case Container class is changed to Use Case Diagram, and the
+information in ui.canvas/plugin.xml is updated to use the name Use Case Diagram.
+This has the affect of displaying Use Case Diagram throughout the tool.
+
+8.3 Change getIntersect to return closest point if isOver passes
+
+The work done for Sequence diagrams changed the GD_LS.getIntersect operation so
+that if an intersect was not found, an isOver test was performed to see if the
+point is within the allowed distance.  This can cause a problem if no actual
+intersect is possible (segments are parallel) as the operation would return a
+point of 0,0 for the intersect.
+
+The operation is updated to find the end point of the anchor connector closest
+to the connecting segments start/end points and use that location as the
+intersect found.
+
+8.4 Make Sequence tooltips consistent
+
+The following sequence elements originally had "Imported" in their name:
+
+Class, External Entity, and Function Package
+
+In the sequence diagram these are not actually "imported", they are either
+formal or informal.  Therefore the names should not include the imported string.
+The names of these symbols in the ui.canvas/plugin.xml file are changed to
+remove "Imported".
+
+9. Update MC-Java schema to include activity elements
+
+The ooa_schema in MC-Java has the new activity elements added.
+
+Design Comments
+---------------
+
+- Rework model_consistency*.inc in MC-Java. Previous changes were overly
+aggressive in removing checks for instances that are stored in the default
+modelRoot.  Added back checks for classes that have PEI:true, which are 
+stored in the default modelRoot.  A parameter was added to 
+create_test_class_select to pass in the root class name (Ooaofooa or 
+Ooaofgraphics) to simplify the code.
+
+- During testing of this work, it was found that movement was not quite right at
+high zooms for free-floating connectors.  This was due to
+Selection Tool.ISM.Dragging Symbols needing to un-scale the given value for
+shapes.  The code which moves segments of a connector expects the given value to
+be scaled.   The operation GD_CON.move is changed to re-scale the values before
+calling the segment move operation.
+
+- When actor symbols are drawn with text for a name, the text extent is
+calculated.  If the extent is greater than one quarter of the shape's height the
+name is not displayed and the actor is drawn to fill the shape compartment.  If
+a name is not given the actor symbol is currently drawn with room left for the
+name.  This looks bad and is changed so that if the name is empty the actor
+symbol is drawn to fill the shape compartment.
+
+Work Required
+-------------
+All work required is described in the design section
+
+Unit Test
+---------
+- In bp.core.test/arc/create_action_test.arc, in the function 
+create_rename_action_test, add special case code for A_FJ, A_DM and A_E.  Their
+naming attributes are not named 'Name'.
+
+- In ui.properties.test/arc/create_view_text.arc, in the function get_ref_value,
+add special case code for A_FJ, A_DM and A_E, for the same reasons as above.
+
+- Fix io.mdl.test/testExportOdmsWithGraphicsAccessError to actually work.
+
+- Add checks for existence of "actual_results" folders (and create them if 
+they don't exist) so that the user doesn't have to create them by hand.
+
+- Activity diagram data is added to ui.properties.test/models/testProp.xtuml,
+Models/models/ContextMenuTests.xtuml, bp.core.test/models/testRename1.xtuml, and
+bp.compare.test/models/test.xtuml.
+
+- Run all existing unit tests
+R All tests pass
+
+- Update CanvasCreationTest to draw Activities on Domain, Subsystem and
+Activity diagrams.
+
+- Add Activity diagram data to canvastest.xtuml and SymbolTest.java
+
+- Test Fixed size symbol
+
+_- Draw symbol using mouse drag larger than fixed size
+R_ Symbol is fixed size
+_- Try to resize fixed size symbol
+R_ Resize not available
+
+- Test Floating text
+
+_- Draw a symbol with floating text
+_- Click on floating text
+R_ Symbol and text are selected
+_- Drag text
+R_ Text is repositioned, but symbol stays put
+_- Drag symbol
+R_ Symbol and text are repositioned
+_- Resize the text
+_R The text is resized properly
+_R The shape is not resized
+
+Repeat the following for each corner of the text box (manual test)
+_- Hover over upper left resize handle on text
+R_ Mouse changes to correct resize icon
+_- Resize text box
+R_ Text box and text resizes correctly
+
+- Test moving free-floating connector at high zoom
+
+_- Draw one free-floating connector
+_- Select and use zoom to selection
+_- Move the connector a small distance (one grid snap)
+_R The connector is moved one grid-snap
+
+- Existing grid-snap tests will test that connector's snap appropriately
+
+- Test for drawing actor symbol to full extent with no name
+
+_- Draw an actor such that the name is displayed
+_- Remove the name
+_R The actor fills the shape compartment
+
+End
+---
+
+$Log: i605.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.12  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.11.16.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.11  2006/06/06 21:27:08  tlondon
+Job: 605
+
+Fix according to review minutes
+
+Revision 1.10  2006/06/05 21:05:55  tlondon
+Job: 605
+
+Add note about manual test
+
+Revision 1.9  2006/06/05 17:39:47  tlondon
+Job: 605
+
+Add connector width changes.
+Add ooa_schema changes.
+
+Revision 1.8  2006/06/05 16:42:18  tlondon
+Job: 605
+
+Update with anti-alias support, grid-snap change for connectors, and partitions and Fork/Join nodes as connectors.
+
+Revision 1.7  2006/04/25 22:53:37  greg
+Job: 605
+Interim checkin
+
+Revision 1.6  2006/04/19 22:53:13  greg
+Job: 605
+Ready for review
+
+Revision 1.5  2006/04/19 19:58:29  greg
+Job: 605
+Interim checkin
+
+Revision 1.4  2006/04/13 17:42:31  greg
+Job: 605
+Interim checkin
+
+Revision 1.3  2006/04/11 00:14:33  greg
+Job: 605
+Interim checkin
+
+Revision 1.2  2006/04/08 00:09:08  greg
+Job: 605
+Interim checkin
+
+Revision 1.1  2006/04/07 00:15:25  greg
+Job: 605
+Interim checkin
+

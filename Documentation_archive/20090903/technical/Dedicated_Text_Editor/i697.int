@@ -1,0 +1,211 @@
+========================================================================
+
+File:      $RCSfile: i697.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Bookmark icon doesn't appear in left hand margin
+
+Abstract
+--------
+Bookmark icon is not shown in the left hand margin of the Activity Editor. This 
+note describes the solution to resolve this problem.
+
+History
+-------
+ final - i697-021105-01.rvm
+
+Document References
+-------------------
+
+[1] Bugzilla Issue 697
+[2] Documentation/internal/technical/Dedicated_Text_Editor/i252.dnt
+
+Background
+----------
+
+Annotation types for an Activity Editor are handled by the 
+ActivityMarkerAnnotation class that also implements IAnnotationPresentation. 
+This class uses IWorkbenchAdapter to get ImageDescriptor for a given type of 
+marker. Its internal implementation returns null image for marker of type 
+'bookmark', thus causing this error. This problem occurred after the shift from 
+eclipse 2.1 to eclipse 3.0. The Problem markers require special handling, 
+as done in ActivityMarkerAnnotation class, to gray out when required (Specified 
+in i252.dnt [2]).  But the Bookmarks and Task markers do not need any special 
+handling, and hence should be handled by the default implementation provided by 
+eclipse. This issue separates out handling of bookmark and task markers from 
+problem markers for activity editors.
+
+Design
+------
+
+i697.1  Log error if an image of an annotation is not found
+
+Currently in ActivityEditor bookmarks are not drawn because their respective 
+image is not found by the ActivityMarkerAnnotation.getNormalImage() without 
+giving any error. ActivityMarkerAnnotation.paint() method is modified to log an 
+error if an image to be drawn is not found.
+
+i697.2  Handle bookmark and task markers using Eclipse default implementation
+
+The ActivityAnnotationModel currently creates an ActivityMarkerAnnotation for 
+all types of markers. Whereas the special handling of images is only required 
+for a problem marker. Therefore the method 
+ActivityAnnotationModel.createMarkerAnnotation(IMarker) is modified to return 
+instance of ActivityMarkerAnnotation for a marker of type IMarker.PROBLEM. And 
+default instance of MarkerAnnotation returned by super implementation for other
+marker types. 
+
+Also ActivityAnnotationModel.getPreviousMarkers() method is updated to 
+include instanceof IActivityProblemAnnotation check where it was directly type 
+casting an annotation into IActivityProblemAnnotation. This is done to 
+avoid ClassCastException in case of bookmark and task markers. This now, also, 
+implies that removeIrrelevantMarkers() does not need the same instanceof test 
+before its cast because getPreviousMarkers() always returns annotation instances 
+of type ActivityMarkerAnnotation.
+
+All implementation in ActivityMarkerAnnotation that also considered bookmarks 
+and tasks is removed. Following methods are modified:
+. ActivityMarkerAnnotation(IMarker)  //Constructor
+  Removed code to check for Marker type.
+. isProblem()
+  Shall always return true.
+
+Work Required
+-------------
+
+i697.1  Log error if an image of an annotation is not found
+        Modify ActivityMarkerAnnotation.java as described in the design section.
+
+i697.2  Handle bookmark and task markers using Eclipse default implementation
+        Modify ActivityAnnotationModel.java as described in the design section.
+
+Implementation Comments
+-----------------------
+- ui.text.test/UITextTest.java is updated. Following methods are added to be 
+  used by the I697OpenActivityEditorFromMarker.java test case:
+  . public static void openActivityEditorUsingMarker(IMarker marker)
+    Opens an ActivityEditor associate with the given Marker.
+  
+  . public static IMarker createNewMarker(final IFile file, int line, String 
+                                                           message,String type) 
+    Creates and returns a new marker with passed information for 'file'.
+    
+Unit Test
+---------
+
+i697-UT.1  
+
+_- Load Tiger and import any model
+_- Open activity editor for any model element
+_- Add Bookmark
+_R Bookmark is added and its icons are shown in both, left and right, margins.
+_- Add Task
+_R Task is added and its icons are shown in both, left and right, margins.
+_- Write OAL with errors
+_R Problem markers appear in both, left and right, margins.
+_- Check error Log.
+_R No error is reported.
+
+**Note**  The tests written above are already present and will not be 
+implemented here. The work done under i697.1 will ensure failure of test in 
+case an icon is not shown.
+
+i697-UT.2  Test Editor open from bookmark
+           (I697OpenActivityEditorFromMarker.java)
+
+Since these tests use the model 'testDescrip1.mdl' hence this suite is added in 
+ActivityEditorTestSuite prior to the ProcessAllActivitiesTest test suite.
+           
+i697-UT.2.1 testOpenAcitivityEditorFromBookmark()
+
+_- Open an activity Editor.
+_- Add a Bookmark.
+_R Bookmarks added to the bookmark view.
+_- Close the editor.
+_- Double click on the bookmark.
+_R The respective editor is opened.
+_- Remove the bookmark
+
+i697-UT.2.2 testOpenAcitivityEditorProblem()
+_- Introduce OAL error.
+_R Error is reported and error marker added in the Problems view
+_- Close the editor.
+_- Double click on the error in Problems view
+_R The respective editor is opened.
+_- Remove the OAL error
+
+i697-UT.2.3 testOpenAcitivityEditorTask()
+_- Add a task
+_R A task is added in the Tasks view.
+_- Close the editor
+_- Double click on the Task in Tasks view.
+_R The respective editor is opened.
+_- Remove the Task 
+
+Code Changes
+------------
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityAnnotationModel.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/annotation/ActivityMarkerAnnotation.java
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/UITextTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/activity/ActivityEditorTestSuite.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/activity/I697OpenActivityEditorFromMarker.java
+
+
+End
+---
+
+$Log: i697.int,v $
+Revision 1.1  2009/09/03 18:24:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:41  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.46.1  2008/12/31 16:10:55  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2005/02/14 16:55:57  siddique
+Job:697
+Updated unit tests. Added code changes section.
+
+Revision 1.6  2005/02/14 09:34:31  siddique
+Job:697
+Review observations addressed.
+
+Revision 1.5  2005/02/09 17:56:26  siddique
+Job:697
+Updated to include changes made to ActivityMarkerAnnotation.
+Other cosmetic changes made.
+
+Revision 1.4  2005/02/09 11:48:03  siddique
+Job:697
+Updated as per campbell's comments.
+
+Revision 1.3  2005/02/08 12:40:05  siddique
+Job:697
+Minor changes.
+
+Revision 1.2  2005/02/08 12:13:56  siddique
+Job:697
+Updated text in background for further clarity.
+
+Revision 1.1  2005/02/08 11:30:03  siddique
+Job:697
+Introduced.
+
+

@@ -1,0 +1,99 @@
+========================================================================
+
+File:      $RCSfile: dts0100685924.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Remove static cross-component checking for lazy loading code
+
+1. Abstract
+-----------
+This note describes the changes required to generate loading code for all
+association traversals.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100685924
+
+4. Background
+-------------
+MC-Java checks the static pei data found in io.mdl to determine when an
+association traversal will potentially cross PMC boundaries.  The problem with
+a static approach is that you cannot cover the case where a traversal crosses
+PMC boundaries into the same component root type.  
+
+5. Analysis
+-----------
+In order to properly determine traversals that cross PMC boundaries the runtime
+PMCs for each element would need to be checked.  This however would not work in
+the case of many side traversals as you would not have any runtime PMCs to
+check.  Rather than try and come up with a way to check runtime instances we are
+going to simply generate load code for every traversal.  This will have the
+effect of loading too much at certain times, but will guarantee that things are
+loaded when necessary.  Effectively, lazy loading after these changes will not
+be functioning.  Performance shall be considered with this work.
+
+6. Design
+---------
+6.1 Generate load code for all association traversals
+
+In MC-Java/mfp_utils.inc, change the isCrossComponentAssociation function to
+always return true unless either end of the association is not persistent.
+This function when returning true will add load code for the traversal code
+being generated.
+
+6.2 Prevent type existence checking for ooaofgraphics instances
+
+In PersistenceManager.findAllComponents(), code exists that will throw an error
+if no component root types are found for the given element.  In the case of
+ooaofgraphics instances types will never be returned.  Instances from the
+ooaofgraphics at this point will never require cross-component support.  The
+code is changed to only throw an error if dealing with ooaofooa instances.  In
+the ooaofgraphics case an empty list is returned.
+
+6.3 Performance
+
+With the above changes the total Model Explorer expansion time for bp.core is
+just over 300 seconds.  This is a good deal slower than before these changes
+were applied.  Profiling data shows that a good deal of the time is spent in
+the PersistenceManager.findAllComponents method.  A rework of this method could
+prove to greatly reduce the total loading time.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design.
+
+9. Unit Test
+------------
+_- Create a model with two imported interface references
+_- Leave the diagram containing the two imported interface references opened
+_- Restart the tool
+_R The cup and ball of the imported interface references are present
+
+End
+---
+
+$Log: dts0100685924.dnt,v $
+Revision 1.1  2010/06/11 12:51:33  rmulvey
+job:dts0100685924
+Moved the design notes into this issues folder so all documentation for the issue is in the same place.
+
+Revision 1.1  2010/05/05 15:24:14  tlondon
+Job: dts0100685924
+
+Introduce note
+

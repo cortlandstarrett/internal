@@ -1,0 +1,200 @@
+========================================================================
+
+File:      $RCSfile: dts0100561826.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Degraded Generator Performance
+
+
+1. Abstract
+-----------
+The generator performance has been reported by customers as having serious 
+degradation between BridgePoint releases 2.0.3 and 2.1.1.  This note describes
+the work that was done to analyze the situation and get some speed back.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100561826
+[2] Documentation_archive/20090903/technical/notes/i3609.[adi]nt
+      MC PEIs Reborn in Verifier
+[3] Process Explorer.  
+      http://technet.microsoft.com/en-us/sysinternals/bb896653.aspx
+
+4. Background
+-------------
+Ericsson claims and severe slowdown in generator between BridgePoint 2.0.3 and 
+2.1.1.  Robert Rice confirmed he saw a (less severe) slowdown as well.  We need
+to investigate and find out what can be done to improve performance.  As part
+of this issue, we need to stop building generator on developer machines and
+start building it on our svr-azt-eng-01 build server.
+
+5. Analysis
+-----------
+5.1  Version numbers
+5.1.1  BP 2.0.3, released  6/08, contained generator 1.34
+5.1.2  BP 2.1.1, released 12/08, contained generator 1.36
+
+5.2  Binary code differences
+5.2.1  File sizes of shipped gen_erate.exe
+        2.0.3: 4,136,960 bytes
+        2.1.1: 4,476,928 bytes
+        
+        Keith M4400:
+            2.0.3: 4,833,280 bytes (Release)
+                   5,804,136 bytes (Debug)
+            2.1.1: 4,829,184 bytes (Release)
+
+        Keith D600:
+            2.0.3: 4,136,960 bytes (Release)
+            2.1.1: 4,136,960 bytes (Release)
+                   5,800,040 bytes (Debug)
+          
+        Bob D800:
+            2.1.1: 4,145,152 bytes (Release)
+                   5,828,720 bytes (Debug)
+                     
+5.3  Source code differences
+5.3.1  Generator
+5.3.1.1  The only non-whitespace diff between the "model_compilers/generator" 
+         source trees of the two versions is the version number change.
+5.3.2  MC-3020
+5.3.2.1  The changes to MC-3020 between 2.0.3 and 2.1.1 were for BZ3609 "MC PEIs
+         Reborn in Verifier" [2].  This change touched the following files:
+            mc3020/arc/bridge.arc
+            mc3020/arc/domain.arc
+            mc3020/arc/obj_factory.arc
+            mc3020/arc/pei.arc
+            mc3020/arc/sys_util.arc
+            mc3020/arc/template.sys_factory.c
+            mc3020/schema/colors/domain.mark
+            mc3020/schema/sql/xtumlmc_schema.sql
+5.3.3  MC-2020
+5.3.3.1  No differences.
+      
+5.4  Computer differences
+5.4.1  There is no record of who or where the generator EXE is built.  It was 
+       either built by Bob or Keith on a local machine, not the build server.
+5.4.2  Keith got his M4400 laptop in October 2008.  This is in-between releases
+       and raises a flag about being a contributing factor. If Keith built the
+       2.0.3 generator it was done on his D600 laptop.  However, if Keith built
+       the 2.1.1 generator it could have been done on either machine.
+5.4.3  Bob got his M6400 laptop in January 2009, so if he built the generator it
+       was on his D800 laptop.
+       
+         
+6. Design
+---------
+6.1  Configured the build server svr-azt-eng-01 with MS Visual Studio Pro and 
+     Visual Studio Service Pack 6
+     
+6.2  Configure the build server for building the generator.  Build it.
+
+6.3  Performance Analysis
+6.3.1  Use two of the "generator teaching exercise" archetype files to test the
+       performance of the generator alone without the model compilers playing a 
+       role.  We tested the model compiler run from the command line and did not
+       have eclipse running at all.  Processing and memory results were captured
+       using the "Process Explorer" utility [3].
+       
+       Note how HEAD test of Ericsson model is 4.087s run time for ex10.arc. 
+       This beats the BP 2.0.3 generator (5.288s) and blows prior BP 3.1.5 
+       generator out of the water (10.249s, 2.5x slower).  The results do 
+       confirm a serious slowdown between 2.0.3 and 2.1.1.
+
+6.4  Put the new generator into the nightly build at tucson:/arch1/products/
+        tiger/extra_files_for_build.  Back up the prior version to old_files/.
+        
+6.5  Put the new generator into use on the build server by putting it in
+        c:\utilities\bp_build_tools\bridgepoint
+
+Results Matrix
+---------------
+HEAD = generator 1.57 that was built on the build server (and now in the nightly build as of 9/20). Comes from MS Visual Studio 6 Pro with Service Pack 6.
+
+
+Generator   Model               Arc         CPU Total   VM Peak     VM Page     RAM Peak
+                                Time                Private Bytes   Faults      Working Set
+---------------------------------------------------------------------------------------------
+HEAD        im2.sql             ex6.arc     0:00:01.170 96,192K     20,576      79,216K
+HEAD        dogs.sql            ex6.arc     0:00:00.686 60,212K     12,280      43,748K
+HEAD        MicrowaveOven.sql   ex6.arc     0:00:00.764 64,496K     13,276      47,796K
+HEAD        uCPP_SYST_FUNC.sql  ex6.arc     0:00:03.837 358,712K    86,531      340,784K
+
+HEAD        im2.sql             ex10.arc    0:00:00.967 96,168K     20,707      79,440K
+HEAD        dogs.sql            ex10.arc    0:00:00.765 58,108K     11,711      41,572K
+HEAD        MicrowaveOven.sql   ex10.arc    0:00:00.733 64,524K     13,274      47,800K
+HEAD        uCPP_SYST_FUNC.sql  ex10.arc    0:00:04.087 365,724K    88,258      347,816K
+
+                                
+3.1.5       im2.sql             ex6.arc     0:00:02.215 96,364K     21,214      79,584K
+3.1.5       dogs.sql            ex6.arc     0:00:00.998 58,184K     11,710      41,588K
+3.1.5       MicrowaveOven.sql   ex6.arc     0:00:01.154 64,504K     12,801      47,792K
+3.1.5       uCPP_SYST_FUNC.sql  ex6.arc     0:00:10.358 358,628K    86,507      340,688K
+
+3.1.5       im2.sql             ex10.arc    0:00:02.386 103,260K    22,998      86,664K
+3.1.5       dogs.sql            ex10.arc    0:00:00.951 58,160K     11,703      41,584K
+3.1.5       MicrowaveOven.sql   ex10.arc    0:00:01.185 64,632K     13,306      47,992K
+3.1.5       uCPP_SYST_FUNC.sql  ex10.arc    0:00:10.249 363,484K    88,252      347,680K
+
+
+2.1.1       im2.sql             ex6.arc     0:00:02.167 99,264K     21,446      80,524K
+2.1.1       dogs.sql            ex6.arc     0:00:00.920 58,372K     11,241      39,752K
+2.1.1       MicrowaveOven.sql   ex6.arc     0:00:01.294 65,084K     12,912      46,436K
+2.1.1       uCPP_SYST_FUNC.sql  ex6.arc     0:00:09.859 359,084K    86,144      339,300K
+
+2.1.1       im2.sql             ex10.arc    0:00:01.934 96,968K     20,767      78,048K
+2.1.1       dogs.sql            ex10.arc    0:00:00.904 58,368K     11,235      39,716K
+2.1.1       MicrowaveOven.sql   ex10.arc    0:00:01.076 65,116K     12,899      46,404K
+2.1.1       uCPP_SYST_FUNC.sql  ex10.arc    0:00:10.280 365,700K    87,759      345,776K
+
+
+2.0.3       im2.sql             ex6.arc     0:00:01.154 96,848K     20,833      78,120K
+2.0.3       dogs.sql            ex6.arc     0:00:00.873 58,764K     11,343      40,156K
+2.0.3       MicrowaveOven.sql   ex6.arc     0:00:00.936 65,256K     12,943      46,572K
+2.0.3       uCPP_SYST_FUNC.sql  ex6.arc     0:00:05.148 359,276K    86,135      339,268K
+
+2.0.3       im2.sql             ex10.arc    0:00:01.419 100,676K    21,817      82,012K
+2.0.3       dogs.sql            ex10.arc    0:00:00.780 58,764K     11,321      40,072K
+2.0.3       MicrowaveOven.sql   ex10.arc    0:00:00.936 65,248K     12,942      46,540K
+2.0.3       uCPP_SYST_FUNC.sql  ex10.arc    0:00:05.288 365,892K    87,788      345,884K
+
+6.6  It is my opinion that the many configuration variables between the various 
+     developer machines (OS service pack level, MS Visual Studio version, MS
+     Visual Studio service pack level) has led to some less than optimal builds
+     of the generator.  The results show that our build server setup (MS Visual
+     Studio Pro with MSVS SP6) produces a small and speedy generator.
+
+7. Unit Test
+------------
+7.1 Use the new generator and the prior generator.  Build MicrowaveOven and GPS
+    Watch sample projects.  Compare the output source and verify no differences.
+    
+7.2 Use the new generator and the prior generator.  Build bp.core in the devel-
+    opment environment.  Compare the output java source code and verify no
+    differences.
+    
+End
+---
+
+$Log: dts0100561826.int,v $
+Revision 1.1  2010/09/22 19:45:40  kbrown
+job:dts0100561826
+Completed INT.
+
+Revision 1.1  2010/09/19 03:36:24  kbrown
+job:dts0100561826
+work in progress checkin
+

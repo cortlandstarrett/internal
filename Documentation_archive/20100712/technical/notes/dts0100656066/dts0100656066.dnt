@@ -1,0 +1,199 @@
+========================================================================
+
+File:      $RCSfile: dts0100656066.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Fix the Welcome test
+
+ 
+1. Abstract
+-----------
+The bp.welcome.test is listed as "Broken, untestable until this test is 
+rewritten"
+Step 1: Remove this test from the Unit test template
+Step 2: Fix the test
+
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100656066
+
+
+4. Background
+-------------
+4.1 WelcomeTestSuite has two tests WelcomePageTestGPS and WelcomePageTest
+4.2 WelcomeTestSuite has 0 Errors and 2 Failures
+4.2.1 com.mentor.nucleus.bp.welcome.test.WelcomePageTestGPS 
+      junit.framework.AssertionFailedError:
+                                    Project: GPS does not exist.
+4.2.2 com.mentor.nucleus.bp.welcome.test.WelcomePageTest
+      junit.framework.AssertionFailedError: 
+                                    Project: MicrowaveOven does not exist.
+
+5. Analysis
+-----------
+5.1 WelcomePageTestGPS
+
+5.1.1 To create the GPS project the function  
+      com.mentor.nucleus.bp.welcome.gettingstarted.GPSGettingStartedAction
+                                              .runXtUMLProjectWizard()is called. 
+      This function creates a NewSystemWizard then it gets a 
+      WizardNewProjectCreationPage from the starting page of the 
+      new system wizard.  Then the WizardNewProjectCreationPage is used to set
+      the property of isPageComplete to true ,however this doesn't set that 
+      property for the pages of the Delegating wizard that they remain false.
+    
+      For the function runXtUMLProjectWizard() to return the created project it
+      calls the function DelegatingWizard.canFinish()which checks for the 
+      isPageComplete property of the pages of the delegating wizard as well
+      and since they were not set to true the function returns false.
+      consequently the function runXtUMLProjectWizard() doesn't return the 
+      created project which causes the assertion failure.
+    	
+5.1.2 After creating the "GPS" Project to verify it the function 
+      verifyProjectCreated() is called and it checks if the project contains 
+      certain files : 
+5.1.2.1 expectedXtUMLFiles
+        -"Configuration 0/Output/GPS.exe",
+	    -".xpj",
+	    -".externalToolBuilders/MC-3020 Model Compiler.launch"
+	    But since the "GPS" project is just created but not built yet
+	    the first two files don't exist yet.
+	    
+5.1.2.2 MC3020Files :
+        -"registry.mark"  
+          this file does not exist
+        -"sys_factory.c"
+        -"sys_user_co.c",
+        -"sys_user_co.h",
+          They don't exist as it's not built yet
+        -"tracking_class.mark",
+        -"tracking_domain.mark",
+        -"tracking_event.mark",
+          only class.mark ,domain.mark and event.mark exist because no built yet
+    
+    
+5.2 WelcomePageTest
+ 
+5.2.1 To create the MicrowaveOven project the function  
+      com.mentor.nucleus.bp.welcome.gettingstarted.GettingStartedAction
+                                              .runXtUMLProjectWizard()is called. 
+      This function creates a NewSystemWizard then it gets a 
+      WizardNewProjectCreationPage from the starting page of the 
+      new system wizard.  Then the WizardNewProjectCreationPage is used to set
+      the property of isPageComplete to true ,however this doesn't set that 
+      property for the pages of the Delegating wizard that they remain false.
+    
+      For the function runXtUMLProjectWizard() to return the created project it
+      calls the function DelegatingWizard.canFinish()which checks for the 
+      isPageComplete property of the pages of the delegating wizard as well
+      and since they were not set to true the function returns false.
+      consequently the function runXtUMLProjectWizard() doesn't return the 
+      created project which causes the assertion failure.
+ 
+
+5.2.2 After creating the "MicrowaveOven" Project to verify it the function 
+      verifyProjectCreated() is called and it checks if the project contains 
+      certain files : 
+5.2.2.1 expectedXtUMLFiles
+        -"Model_Debug/Output/MicrowaveOven.exe",
+	    -".externalToolBuilders/MC-3020 Model Compiler.launch"
+	    But since the "MicrowaveOven" project is just created but not built yet
+	    the first file does not exist yet.
+	    
+	    -"Model_Debug/Output/MicrowaveOven.xml",
+	     this file doesn't exist yet.
+	    
+5.2.2.2 MC3020Files :
+        -"MicrowaveOven_domain.mark"  
+          this file does not exist
+
+
+6. Design
+---------
+6.1 According to [5.1.1] the pages of the Delegating wizard needs to be set to 
+    complete before canFinish() is called  as stated in [8.1]
+6.2 According to [5.1.2] the arrays of the expected files needs to be updated
+    with the correct file names as stated in [8.2]  
+6.3 According to [5.2.1] the pages of the Delegating wizard needs to be set to 
+    complete before canFinish() is called  as stated in [8.1]  
+6.4 According to [5.2.2] the arrays of the expected files needs to be updated
+    with the correct file names as stated in [8.3]  
+
+
+        
+7. Design Comments
+------------------
+
+		
+8. Work Required
+----------------
+8.1 The following code should be added to set the DelegatingWizard pages 
+    complete before canFinish() is called.
+	if (nsw.getDelegatingWizard().getPages() != null) {
+				IWizardPage[] Pages = nsw.getDelegatingWizard().getPages();
+				for (int i = 0; i < Pages.length; i++) {
+						((WizardPage)Pages[i]).setPageComplete(true);
+				}
+			}
+		
+8.2 The arrays of the expectedXtUMLFiles and MC3020Files 
+    should be updated like the following 
+     
+	private String[] expectedXtUMLFiles =  
+	           {".externalToolBuilders/MC-3020 Model Compiler.launch", 
+				"models/GPS/GPS.xtuml"};
+	
+	private String[] MC3020Files = {
+	            markingFolder + "bridge.mark",
+	            markingFolder + "datatype.mark",
+	            markingFolder + "system.mark",
+	            markingFolder + "class.mark",
+	            markingFolder + "domain.mark",
+	            markingFolder + "event.mark",
+	            };
+
+8.3 The arrays of the expectedXtUMLFiles and MC3020Files 
+    should be updated like the following 
+     
+	private String[] expectedXtUMLFiles =
+	           {".externalToolBuilders/MC-3020 Model Compiler.launch",
+	         	"models/MicrowaveOven/MicrowaveOven.xtuml"};
+	
+	private String[] MC3020Files = {
+	        markingFolder + "bridge.mark",
+	        markingFolder + "datatype.mark",
+	        markingFolder + "system.mark",
+	        markingFolder + "class.mark",
+	        markingFolder + "domain.mark",
+	        markingFolder + "event.mark",
+	        };
+
+
+9. Unit Test
+------------
+9.1 _-Run WelcomeTestSuite
+	R-0 Errors 0 Failures are found
+ 
+
+End
+---
+
+$Log: dts0100656066.dnt,v $
+Revision 1.4  2010/05/17 14:56:43  hkhaled
+job:dts0100656066
+committing modifications to dts0100656066.dnt
+

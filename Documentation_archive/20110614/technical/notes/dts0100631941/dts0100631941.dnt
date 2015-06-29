@@ -1,0 +1,704 @@
+========================================================================
+
+File:      $RCSfile: dts0100631941.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Migrate away from specialized packages
+
+1. Abstract
+-----------
+This note describes the design for allowing BridgePoint to stop enforcing the
+use of single purpose, specialized packages.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+[2]  dts0100631941.ant
+[3] ClearQuest DEI dts0100650964
+    Refactor ecore as needed to account for the move away from specialized 
+    packages (dts0100631941)
+[4] Documentation/internal/technical/notes/dts0100631941/cmtSpecPkgOAL.pl
+    This is a perl script used to locate all places in ooaofooa action language
+    that navigate across specialized package.  For each location found it
+    adds a comment (a "TODO"). 
+[5] dts0100631941.tnt - Generic Package Work Outstanding
+        
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Phase 1 Promotion
+6.1.1 Meta-model changes 
+The steps below (6.1.1.1 -6.1.1.x) detail a generic procedure for adding 
+existing meta-model elements to the generic package.  This must be repeated for 
+each of the following elements:
+
+	Note that this breaks-down the diagrams into the packages they exist in in 
+	the current version of the tool.
+
+    DataType Package:
+		x- User Data Type
+		x- Structured Data Type
+		x- Enumeration Data Type
+		x- Constant Specification
+	Interface Package:
+	    x- Interface
+	Component Package:
+		x- Component
+		x- Component Reference
+		x- Provided Interface
+		x- Required Interface		
+	Sequence/Communication Diagram (shared):
+		x- Actor
+		x- Component
+		x- Instance
+		x- External Entity
+		x- Class
+		x- Communication Line
+		x- Timing Mark
+		x- Time Span
+	Sequence:
+		x- Synchronous Message
+		x- Asynchronous Message
+		x- Return Message
+	Communication:	
+		x- Synchronous Message
+		x- Asynchronous Message
+		x- Return Message
+		x- Link
+	Use Case Diagram:
+		x- Use Case
+		x- Actor
+		x- Association
+		x- Generalization
+		x- Include
+		x- Extend
+	Activity Diagram:
+		x- Activity Partition (self)
+		x- Action
+		x- Object Node (activity node)
+		x- Accept Event Action
+		x- Send Signal Action
+		x- Accept Time Event Action
+		x- Activity Edge (self)
+		x- Fork/Join Node (activity node)
+		x- Decision/Merge Node (activity node)
+		x- Initial Node (activity node)
+		x- Activity/Final Node (activity node)
+		x- Flow Final Node (activity node)		
+	Class Diagram:
+		x- Class
+		x- Association
+		x- Imported Class
+		x- Associative Link
+		x- SuperType
+		x- Subtype
+	External Entity:
+	    x- External Entity
+	Function Package:
+	    x- Function
+		
+6.1.1.1 Ensure all completed changes are checked in
+This allows the Team interface to help guide later work.
+
+6.1.1.2 Select the correct model element for changes
+In many cases, the element to be added does not participate in any subtype
+associations as a subtype. If this is the case, then the element to be selected
+is the one for addition. If there is a supertype, the chances are that it is the
+supertype class that needs to be worked on in the following sections. For
+example, when adding Actor symbols (which represent 'Actor Participant' meta-
+model elements), the correct metamodel element to work on is the supertype,
+'Interaction Participant' which itself has no supertype. Doing this simplifies
+the work for adding the other subtypes of 'Interaction Participant', because
+most of the steps below need not be repeated [specifically, 6.1.1.3 through
+6.1.1.8].
+
+6.1.1.3 Add sub-type of Packageable Element
+In the Packageable Element subsystem, import the meta-model element to be added
+to the generic package. Add a subtype association between the imported class and
+Packageable Element. This will cause the imported element to be marked dirty by
+Team because the subtype association has a new identifier, Element_ID added to
+it.
+
+6.1.1.4 Fix up the elements identifier
+Select the metamodel element to be added. That is, select the element itself,
+not its imported reference. In the Properties view, drill down to the
+referential portion of Element_ID and change the Referred to Mode from 'Referred
+to Attribute' to 'Local Attribute'. Now fill in the 'Attribute Root Name' to
+match the original primary id for the element. For example when adding
+'Data Type' this field should be set to 'DT_ID'. Add the new attribute to
+whatever identifiers the original identifier was participating in. Move the new
+attribute up until it is just below the original identifier (which should still
+be present at this stage). The two attribute entries should look the same,
+except the new lower one will show an additional reference formalizing R8001 on
+the right hand side of the compartment.
+
+6.1.1.4.1 Migrate the Element_ID that was added to be part of id*1 
+Select the metamodel element to be added, and select the attribute that was 
+modified in the previous step (for example DT_ID).   Select 
+'Add to identifier...' and choose *1, then again select the same attribute and 
+choose 'Remove from Identifier...' and choose *2.
+
+6.1.1.5 Fix up the fall out
+You will now find that all metamodel classes that had a reference to the meta-
+model element being worked on will have had a new referential attribute added to
+them which bears the same name as the one given in 6.1.1.4 above. These new
+attributes will be at the bottom of the attribute compartment. Move the new
+attribute up so that it lies just below the original referential (you can
+identify the correct one by the association number which will match the one
+listed against the new attribute. Add any prefixes the original referential
+had. After this the new attribute entry should be immediately below - and look
+identical to - the original attribute. Repeat this for all referring classes.
+The Team interface will have marked all of these dirty, so it makes them easy to
+find.
+
+6.1.1.6 Remove the original identifying attribute
+Return to the meta-model element being added and delete the original identifier
+attribute.
+
+6.1.1.7 Revisit all referring classes
+In many cases, there is no additional action required, but if the referring
+class is _itself_ referred to, BridgePoint leaves an unwanted copy of the
+identifying in place. This should be removed (be sure you select the correct
+one, it will be the one with _no_ association listed on the right. Review in
+particular the sub type hierarchy, BP does not remove identifiers that are
+themselves referred to, so expect to find additional identifiers left behind
+lower in the hierarchy. This is also true of all identifiers, so if any of the
+attributes are referred to in other association types they will also be left
+around. All of these extra identifiers must be removed.
+
+6.1.1.8 Compare the affected subsystems with HEAD
+As a last quality assurance task, compare the affected subsystems by eye. Each
+subsystem will contain the same classes. Each class will end up with the same
+attributes in the same order as it had before. You cannot use the BP compare
+feature to assure this because the underlying referential data has changed.
+
+6.1.1.9 Add a 'new' operation to the Package class
+Locate the 'new' operation that created instances of the meta model class in its
+specific package. Create a new operation in the Package class and copy the OAL
+from the original. Most of it should pass the syntax check, except for the parts
+referring to 'self'. This is to be expected, since we are now implementing the
+new operation in a different host class. Immediately below the OAL which creates
+the meta-model element being added, add the following OAL:
+
+// create Packageable Element supertype and hook up to this package.
+create object instance pe of PE_PE;
+relate <insert your newly created instance name here> to pe across R8001;
+relate pe to self across R8000;
+
+You can then remove the OAL lines that contain references to 'self' which are
+giving the parse errors. The resulting operation should now be clear of parse
+errors. Finally, rename the new operation to 'new??????' so that the name
+exactly matches the original operation. If you misspell the name, the canvas
+plugin will be unable to locate the correct method to call to create the new
+metamodel class. Consequently, a 'dead' rectangle will result when attempting to
+draw the new symbol.
+
+6.1.1.10 Handle element disposal
+Add the new element to Packageable Element.dispose() using OAL of the form:
+
+select one <elem handle> related by self-><element keyletters>[R8001];
+if not_empty <elem handle>
+  unrelate <elem handle> from self across R8001;
+  <elem handle>.dispose();
+end if;
+
+The dispose operation should already exist.
+
+6.1.2 Add the new symbol to canvas
+Locate the "Package Diagram" 'defaultFor' element in the bp.ui.canvas/plugin.xml
+file. Add a new 'validSymbol' element to this element with the name matching
+the name of the already existing 'symbol' element that declares your symbol for
+use in its generic package. If you are unsure of the name, look in the original
+specific package declaration. The correct symbol declaration will have a 'class'
+field that matches the generated java class name for the worked on meta-model
+element.
+
+6.1.3 Persistence
+6.1.3.1 file_io.pei.sql
+You need to add a new subtree to the persistence specification under the Package
+element. This is done in the file bp.io.mdl/sql/file_io.pei.sql.
+
+The tree begins with the EO identifier 23. At the bottom of this data block, you
+will see entries beginning 23.10.1. These are the entries added to persist the
+elements added under the generic package. Make a copy of the last entry in the
+block and increment the last digit to create a new unique id. Copy the same
+value into the third value of the previous line, so that the persistence branch
+is linked in. Change the human readable name to the name of the new class you
+are adding. Find another entry in the file with the same name and copy the
+second value into the second value of the line just added to handle any children
+that must also be written.
+
+If a super type was identified in 6.1.1.2, then linking correctly to this should
+cover persistence for all the other sub types too. You need to carefully check
+for this, since linking the same class into the persistence hierarchy more than
+once will result in bad generated persistence code.
+
+6.1.3.2 stream.io.pei.sql
+Repeat the above procedure for stream io which enables export and copy paste.
+This file is found in the same folder and the procedure is the same, except that
+the block of interest has the high order identifier value 24 rather than 23.
+
+6.1.4 Explorer
+This requires modification of the file bp.ui.explorer/sql/UITree.pei.sql.
+
+Add a navigation from Package down through the Packageable Element to the _leaf_
+class being worked on. For example, to add persistence for an Actor symbol, the
+entry is:
+
+INSERT INTO T_TPS VALUES (81,50,    '->PE_PE[R8000]->SQ_P[R8001]->SQ_AP[R930]');
+
+In all cases, the first id will be 81 (Package), the second will be the TNS
+identifier value (the first value) for the element being worked on. The
+navigation specification is from the package, down through the Packageable
+Element to the leaf class. Notice the intermediate SQ_P entry in this example,
+this is because 'Actor Participant' is a subtype of 'Interaction Participant'.
+
+6.2 Phase 2
+6.2.1 Implement copy/paste functionality
+6.2.2 Introduce namespace support
+6.2.3 Fix problems found during phase I outlined in [§8.1]
+6.2.4 Write a perl script that will identify OAL that contains use of
+      of any specialized package.  When it find such OAL, it adds a comment 
+      to it.  The comment is:
+      // TODO: PE_PE navigation is present (isInGenericPackage).  Do not remove this comment.\n";
+      Each of these places will be examined and fixed, and the "TODO:" shall be
+      removed, but the rest of the comment left behind to allow us to easily 
+      find all the places that were modified.
+6.2.5 For each OAL action body modified to account for the possible new 
+      location of model elements under EP_PKG, the following procedure is 
+      followed where possible.
+6.2.5.1 Determine if the element is located under a generic package at the 
+      beginning of the routine, before modifying any OAL.  Leave the existing 
+      OAL in place by creating a conditional expression [§6.3.4.1]            
+      This introduces a lot more OAL, but helps assure that the existing  
+      functionality is not broken.
+6.2.6 Introduce support for copy paste of model elements into from any location
+      in the model into EP_PKG.
+6.2.6.1 Add support for copy/copy of all elements to canvas.      
+6.2.6.2 For every new* operation introduced in [§6.1.1.9] create a 
+        paste* operation.
+6.2.6.3 Add the following to each paste* operation that was introduced:
+          select any <elementPasted> from instances of <pasted_element_type> 
+                     where (selected.<pasted_element_id> == param.id);
+          if(not_empty <elementPasted>)
+            // TODO
+          end if;
+6.2.7 Start working through some of the TODOs introduced in [§6.2.4] and 
+      [§6.2.6.3]
+        
+6.3 Phase 3
+6.3.1 Add support to the parser for generic packages
+6.3.2 Add support to verifier for generic packages
+6.3.3 Complete implementation of the paste* operation introduced by 
+      [§6.2.6.3].
+6.3.3.1 Following is a general procedure to following to implement the 
+        paste* operations:
+	_- Open the paste* operation.  If there is a "TODO" comment present replace it 
+	   with the following OAL.
+	   
+  create object instance pe of PE_PE;
+  relate <elementPasted> to pe across R8001;
+  relate self to pe across R8000;
+  <elementPasted>.rename(new_name: ::getUniqueInitialNameInParent(instance:<elementPasted>.convertToInstance(),
+				name:actor.Name, parent:self.convertToInstance()));
+	
+	_- If the element being pasted is a subtype of PE_PE then
+       replace <elementPasted> with the name of the element pasted.  This is 
+       the variable found in the select statement on line 1 of the operation.
+	_- If element being pasted is NOT a subtype of PE_PE then the you must add
+	   creates for the elements in the hierarchy between the pasted element and
+	   PE_PE. To find what these elements are, open the EP_PKG.new* operation
+	   that exists for the same model element.  It will show you how to navigate
+	   to the PE_PE subtype associated with this element. Adjust the relate
+	   across R8001 accordingly. Add relates for the elements in the chain 
+	   **AFTER** the relate across R8001.  This is vitally important because the
+	   relate to R8001 will adjust the identifying attribute that is propagated
+	   down the chain, so this relate must be done first.
+         E.g.: in pasteUseCaseParticipant the completed paste with these 
+               additions is:
+	   
+	   select any ucp from instances of IA_UCP where (selected.Part_ID == param.id);
+       if(not_empty ucp)
+         create object instance pe of PE_PE;
+         create object instance participant of SQ_P; // additional code
+         relate participant to pe across R8001;
+         relate self to pe across R8000;
+         relate participant to ucp across R930;      // additional code
+       end if;
+
+	_- If there are parse errors on the rename line, then determine if this 
+	   model element should be renamed when there is a duplicate name.  You 
+	   can do this by looking at the new* operation in the specialized package.  
+	   If duplicate names are allowed, then remove the rename operation.  If 
+	   duplicate names are not allowed, then resolve the parse errors so the 
+	   rename is allowed.
+	_- Open the associated paste* operation in the specialized package and 
+	   look to see if there are any special things for this particular model 
+	   element that need to be considered.
+6.3.4 Complete implementation of the TODOs introduced by [§6.2.4]
+6.3.4.1 Following is a general procedure to following to resolve the TODOs at
+      these locations:
+		_- From the Model Explorer view, select:
+           com.mentor.nucleus.bp.core
+		_- Search > Search... > File Search
+		_- In "Containing Text:" enter: "// TODO: PE_PE"
+		_- In "File name patterns:" enter: "*.xtuml"
+		_- For the "Scope" make sure "Selected resources is selected
+		_- Select "Search"
+		_R All places in OAL that must be examined [§6.2.4] are listed
+		   in the search view.
+		_- Note that because of bug dts0100677868 we can not simply 
+		   double-click results in the search view.  
+
+        _- For each result found, repeat the remaining steps below:
+		_- Determine which operation the search result is in.
+		   There are 2 options for this:
+		   1) Select the file the result is in in the search view, right click, 
+		      and select "Open With" > Text Editor.  
+		      Then search for "TODO: PE_PE" in the file and look at the name of 
+		      the operation in the insert statement.  
+		   2) From ME, expand the class that the Search result indicates that 
+		      the result is in.  Then open each operation one at a time until 
+		      you see the "// TODO: PE_PE..." comment (it is ALWAYS on the 
+		      first line in the OAL action body).
+		_- When modifying OAL follow the rule that we will ALWAYS duplicate 
+		   OAL rather then risk breaking existing functionality. To assure 
+		   this, here is a template to use:
+		   
+isInGenericPkg = false;
+select one pkg related by self->PE_PE[R8001]->EP_PKG[R8000];
+if (not_empty pkg)
+  isInGenericPkg = true;
+end if;
+
+if (isInGenericPkg)
+  // new OAL goes here
+else
+  // ALL the existing OAL (without any modification) goes here
+end if;   
+        _- See 6.3.4.1.1 for common situations that you may encounter.
+        _- After you are satisfied that the OAL has been addressed, remove the
+           "TODO: " from the comment on the first line of the OAL action body.
+           NOTE!! Only remove "TODO: ", LEAVE the rest of the comment.
+        _- Save the change
+
+6.3.4.1.1 Here are common situations encountered while addressing the comments:
+		   1) OAL does NOT need to be modified.
+		      If the OAL is in an operation that lives inside a specialized 
+		      package, then it is likely that there is nothing that needs to be 
+		      done.  The reason is that in this case, the OAL will never be 
+		      called when dealing with elements created under generic packages 
+		      because specialized packages are not allowed to exist under 
+		      generic packages.
+		      To quickly find the list of these subsystems, look at the
+		      @subsystem_prefixes variable in the cmtSpecPkgOAL.pl script [4].
+		   2) OAL requires navigation to the associated system model.
+		      It is quite common that OAL navigates through an existing 
+		      specialized package to find the associated S_SYS.  This 
+		      navigation must be modified to account for the fact that the 
+		      model element may now be in a generic package instead of a 
+		      specialized package. The navigation to do this is likely this:
+		      select one system related by self->PE_PE[R8001]->EP_PKG[R8000]->S_SYS[R1405];
+		      
+		      An example that shows this situation being resolved can be seen here:
+		      C_IO.initialize()
+            3) In the CME functions, look for a pattern similar to pattern 1 
+               above, when the CME is performed against an operation in one of 
+               the specialized packages, that operation will not need to be
+               modified. 
+            4) In dispose operations of model elements that may now be
+               persisted under the generic package.
+               _- Assure the existing dispose code will not cause an NPE
+                  when the element is NOT in the specialized package.
+               _- Add OAL to unrelate across R8001 if the element is inside 
+                  the generic package.  For example:
+select one pe related by self->PE_PE[R8001];
+if (not_empty pe)
+  unrelate self from pe across R8001;
+  pe.dispose();
+end if;
+            5) OAL requires navigation to a data type, follow the recommended
+               pattern:
+select one packageableElem related by self->PE_PE[R8001];
+select one package related by packageableElem->EP_PKG[R8000];
+select one component related by packageableElem->C_C[R8003];
+isInGenericPkg = not_empty package or not_empty component;
+if (isInGenericPkg)
+  id = packageableElem.resolveDataTypeRelativeToSelf(default_name:<string for default>,
+                                                          expected_name:name);                                                          
+  select any resolvedDT related by packageableElem->EP_PKG[R8001]->S_SYS[R1405]->SLD_SDINP[R4402]->S_DT[R4401]
+                                   where (selected.DT_ID == id);
+  if (empty resolvedDT)
+    select any resolvedDT related by packageableElem->EP_PKG[R8001]->S_SYS[R1405]->EP_PKG[R1405]->PE_PE[R8000]->S_DT[R8001]
+                                   where (selected.DT_ID == id);
+  end if;
+  if(not_empty resolvedDT)
+    relate resolvedDT to self across <appropriate relationship>;
+  end if;
+else
+...
+end if;                      
+
+      
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+8.1 Issues that are outstanding are captured in [5]
+
+8.2 Issues here have been found and fixed during development.
+8.2.1 The prefixes used on the identifiers formalizing R1401 and R1405 are
+     backwards.  
+	[1:52:41 PM] Campbell McCausland: The Attribute name Direct_Sys_ID is 
+	             formalizing 1405 wheras 1401 is the direct link to a system.
+	[1:53:19 PM] Campbell McCausland: The two Sys_ID names should be reversed 
+	             (not in position, but the prefix should be swapped).
+	[1:54:08 PM 1:54:20 PM] Campbell McCausland: Just compare the names 
+	             with text phrases on the corresponding assocs and you'll see 
+	             what I mean.        
+8.2.2  S_EE and S_SYNC persistence is not working.
+     A special case was added to 
+     io.mdl/arc/create_persistence_meta_data.arc:generate_nav_to_parent to 
+     handle persistence of EE's and Function where there are both specialized 
+     packages and generic.
+8.2.3 Association 
+   EP_PKG.newAssociation handle both the Use Case Association and the class 
+   diagram association.  This will be confusing for the user. We will have to 
+   resolve this.
+8.2.3.1 The palette introduced with the updated BridgePoint graphics  seperates
+   these, making it clear for the user.
+       
+9. Unit Test
+------------
+                   
+End
+---
+
+$Log: dts0100631941.dnt,v $
+Revision 1.48  2010/04/28 15:08:30  rmulvey
+job:dts0100631941
+Moved the count of the remaining TODO: PE_PE places to resolve into dts0100631941.tnt and updated the count.
+
+Revision 1.47  2010/04/26 19:37:07  kbrown
+job:dts0100631941
+Make the dnt reference the tnt.
+
+Revision 1.46  2010/04/09 22:01:28  rmulvey
+job:dts0100631941
+8.1.16 In Cl_c.java::supportsCopy a hack was added to allow any element to
+      be copied.  This was done to facilitate testing of copy/paste.  This
+      broke the following test:
+      ui/canvas/test/CanvasCopyTests.java::testCutCopyNotAllowedOnBuiltInUDT()
+
+      Code in that test was commented-out with a TODO:FIXME comment.  When
+      CL_c.supportsCopy is properly addressed, this test must be restored.
+
+Revision 1.45  2010/04/09 02:57:11  rmulvey
+job:dts0100631941
+Fixed a numbering issue.
+
+Revision 1.44  2010/04/09 02:53:59  kbrown
+job:dts0100631941
+Updated with some more work to be done.
+
+Revision 1.43  2010/04/08 03:56:36  rmulvey
+job:dts0100631941
+Updated the TODO:PE_PE count (99 out of 550).
+
+Revision 1.42  2010/04/07 16:24:04  kbrown
+job:dts0100631941
+Updated with some more work to be done.
+
+Revision 1.41  2010/04/07 04:45:29  rmulvey
+job:dts0100631941
+Updated to account for the introduction of packageableElem.resolveDataTypeRelativeToSelf().
+
+Revision 1.40  2010/04/07 03:34:06  rmulvey
+job:dts0100631941
+Updated the TODO:PE_PE count.
+
+Revision 1.39  2010/04/02 04:37:16  kbrown
+job:dts0100631941
+fix typo
+
+Revision 1.38  2010/04/02 04:35:05  kbrown
+job:dts0100631941
+Updated DNT with info about extra supertype traversal and hookup in paste operations.
+
+Revision 1.37  2010/04/01 20:58:16  rmulvey
+job:dts0100631941
+Fixed the template for the dispose) operations, it needed to call pe.dispose().  Added a TODO to prevent pasting of specialized packages into a C_C_  when the C_C is in a EP_PKG.  Updated the count of TODOs.  It is now 167 out of 550.
+
+Revision 1.36  2010/03/30 16:54:46  campbell
+Job: dts0100631941
+Add rule for locating data type.
+
+Revision 1.35  2010/03/29 21:44:42  rmulvey
+job:dts0100631941
+Updated the TODO: PE_PE counter (214 out of 551)
+
+Revision 1.34  2010/03/26 18:46:38  rmulvey
+job:dts0100631941 dts0100633469
+Added another common pattern for TODO: PE_PE replacement.
+
+Revision 1.33  2010/03/26 16:37:08  rmulvey
+job:dts0100631941
+Added another pattern to watch for when working through  "TODO: PE_PE" comments
+
+Revision 1.32  2010/03/26 14:11:41  rmulvey
+job:dts0100631941
+Add total count to the TODO counter.
+
+Revision 1.31  2010/03/26 13:38:22  rmulvey
+job:dts0100631941
+Updated the TODO counter
+
+Revision 1.30  2010/03/25 20:26:37  rmulvey
+job:dts0100631941
+Updated 6.3.4 to further define the procedure for examining and resolve the "TODO: PE_PE" entries in the OAL.
+
+Revision 1.29  2010/03/25 16:21:42  rmulvey
+job:dts0100631941
+Added a note in the work required section to assure we address the problem that  specialized packages are currently allowed to be created inside components when the component  is in an generic package.
+
+Revision 1.28  2010/03/25 15:30:16  rmulvey
+job:dts0100631941
+Added a date to the TODO: PE_PE count being tracked in section 9.1 to make it easier to follow over time (don't have to look at the resource history to see it change).
+
+Revision 1.27  2010/03/25 15:21:13  rmulvey
+job:dts0100631941
+Added a count of the remaining TOD: PE_PE entries that have to be examined/modified.  We will update this total daily to watch its delta.  It is 452 right now.
+
+Revision 1.26  2010/03/17 20:27:33  rmulvey
+job:dts0100631941
+Update the note to account to the recent phase 2 promotion and work going on now in phase 3.
+
+Revision 1.25  2010/02/22 14:27:24  campbell
+Job: dts0100631941
+Adding persistence issue.
+
+Revision 1.24  2010/02/22 14:12:09  campbell
+Job: dts0100631941
+Adding issue with Component Diagram right click selection.
+
+Revision 1.23  2010/02/18 22:48:51  rmulvey
+job:dts0100631941
+A small update to the list of model elements added under the PE_PE tree to reflect the fact that most elements are shared between the Communication and Sequence Diagrams but a few, while named the same,
+behave a bit differently, so their new* method must account for the differences.
+
+Revision 1.22  2010/02/18 15:52:43  rmulvey
+job:dts0100631941
+Updated to show that remaining model elements have been added 7.1.10 is fixed.  I am working on adding copy/paste support, so I put my name on that item in this note.
+
+Revision 1.21  2010/02/17 17:53:15  campbell
+Job: dts0100631941
+Add comment about outstanding work in function_body.inc.
+
+Revision 1.20  2010/02/05 00:15:11  rmulvey
+job:dts0100631941
+More documentation updates for the phase 1 promotion.
+
+Revision 1.19  2010/02/04 19:17:37  rmulvey
+job:dts0100631941
+Added several more items to the design comment's TODO section.
+
+Revision 1.18  2010/02/04 09:02:29  rmulvey
+job:dts0100631941
+Added a item to remove the special case added to io.mdl/arc/create_persistence_meta_data.arc:generate_nav_to_parent to
+handle persistence of EEs and Functions where there are both specialized
+packages and generic.
+
+Revision 1.17  2010/02/04 02:13:58  rmulvey
+job:dts0100631941
+Added support for drawing the following elements under PE_PE:
+        _- Function (S_SYNC)
+        _- External Entity (S_EE)
+
+Revision 1.16  2010/02/01 20:06:26  rmulvey
+job:dts0100631941
+The root EP_PKG which is created by SystemModel_c.newPackage is currently
+not hooked up across R8001.  This should be hooked up, but to make that
+change persistent we much also change the persistence build data to
+persist from system down through PE to the package.
+
+Revision 1.15  2010/01/28 21:36:30  rmulvey
+job:dts0100631941
+Added a note to enhance the Cut Copy Paste tests to handle EP_PKG
+
+Revision 1.14  2010/01/28 19:08:19  rmulvey
+job:dts0100631941
+Added the formal EE to the note.  It was missed.
+
+Revision 1.13  2010/01/28 01:06:11  rmulvey
+job:dts0100631941
+Updated the note to reflect the latest progress and added a couple known issues to the design comments.
+
+Revision 1.12  2010/01/27 15:53:45  campbell
+Job: dts0100631941
+Updated with some observations.
+
+Revision 1.11  2010/01/27 03:54:29  rmulvey
+job:dts0100631941
+Updated the note to reflect the latest progress.
+
+Revision 1.10  2010/01/26 23:17:00  rmulvey
+job:dts0100631941
+Updated the note to reflect the latest progress and added a note to resolve the duplicate Association symbol.
+
+Revision 1.9  2010/01/26 06:01:35  rmulvey
+job:dts0100631941
+Updated to show which metamodel elements have been moved into EP_PKG.
+
+Revision 1.8  2010/01/22 20:34:05  rmulvey
+job:dts0100631941
+Moved step 6.1.1.3.1 to 6.1.1.4.1 so the referentials get updated with the new base name applied in 6.1.1.4.
+
+Revision 1.7  2010/01/20 17:51:13  rmulvey
+job:dts0100631941
+Raised a separate issue for the ecore work.
+
+Revision 1.6  2010/01/20 17:25:37  rmulvey
+job:dts0100631941
+Added an item to ensure we refactor bp.io.ecore as part of this work.
+
+Revision 1.5  2010/01/20 15:41:08  rmulvey
+job:dts0100631941
+Updated the Meta-model changes section and added a checklist of the
+elements to add to the generic package.  I marked the ones that are currently completed.
+
+Revision 1.4  2010/01/19 17:49:51  campbell
+job:dts0100631941
+Add dispose update step.
+
+Revision 1.3  2010/01/15 16:27:31  rmulvey
+job:dts0100631941
+Added a step, 6.1.1.3.1, to migrate the Element_ID that was added to be part of id*1.  After this step, all referring elements will be marked dirty.
+
+Revision 1.2  2010/01/12 14:24:29  campbell
+Job: dts0100631941
+Fix typo.
+
+Revision 1.1  2010/01/12 14:23:50  campbell
+Job: dts0100631941
+Introduced.
+

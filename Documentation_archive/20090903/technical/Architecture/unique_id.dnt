@@ -1,0 +1,117 @@
+========================================================================
+
+File:      $RCSfile: unique_id.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Multi-file id assigner
+
+Abstract
+--------
+This note describes the design of changes to the id assignment process when 
+multiple files contain the data for one domain.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 1225
+[2] Bugzilla issue 845: this issue's parent
+
+Design
+------
+1. 
+A class bp.core.common.IdAssigner is introduced.  Each instance of this class
+assigns ID's to instances of a single client, which is a model-element class.
+The methods in java.arc for handling ID assignment that were previously 
+generated for each model-element class are moved into this class.  Unlike 
+those previous methods, IdAssigner tries to ensure that the ID's it generates
+are unique across a system, rather than just a domain, by storing the highest
+ID values known (so far) for the former and not the latter.  That is, when asked
+to assign an ID to an element of a given model-root, the IdAssigner will 
+increment the highest ID value known for the associated system.  When there 
+is no such system, the IdAssigner will default to incrementing the highest ID 
+value known for the model-root.
+
+When the highest ID value for a system is increased, IdAssigner stores the
+resulting value as a persistent property of the project file associated 
+with the system.  When the IdAssigner is first asked to assign an ID for 
+an element of a particular system, it reads in this property as its starting
+value for that system.  In this way, the highest ID values persist across
+executions of Eclipse.  
+
+1.1
+At the end of the clearInstances() method that is generated for each model
+element class in java.arc, the call to clearUniqueId(modelRoot) is removed,
+as the call's execution would now reset the highest ID value for the entire
+system containing the model-root's domain, rather than just for the domain 
+itself.  Instead, IdAssigner provides a static method resetAllInstances() 
+that will reset the highest ID values just for a given model-root.  This
+method will likely only be called by legacy test cases that were depending 
+on the effects of the clearUniqueId() call taking place.  In particular, 
+the doTest() method of io.mdl.test's IOMdlTest is changed to include calls 
+to this method at its end, so that the highest ID values will be reset when 
+the next model is loaded for the succeeding test.  Similarly, the 
+testImportEEIntoEmptyDomain() and testEmptyDomainDPD() tests of 
+internal.io.sql.test's InternalIOTest are changed to include calls to 
+this method at their beginning, to wipe out the IdAssigner-caused side effects 
+of earlier tests in that class.
+
+1.2
+To store a highest ID value as a persistent property, IdAssigner has to 
+store with it the name of the core plugin.  Since the bundle from which the 
+plugin's name is normally queried is not always available during the plugin's 
+initialization, sometimes a hard-coded default name has to be used instead.  
+The code that captures this policy in CorePlugin's logError() method is 
+extracted to be its own method in that class, getName(), so that it may also 
+be called by IdAssigner.
+
+Unit Test
+---------
+- open two models in the same project
+- create a subsystem in each model
+R the id's of the new subsystems are sequential
+
+- restart Eclipse
+- create a new subsystem in one of the two models edited above
+R the id of the new subsystem is one more than the higher of the id's
+	of the two subsystems created above
+
+End
+---
+
+$Log: unique_id.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.30.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/09/16 23:10:18  jmather
+Job: 1225
+Addressed review comments.
+
+Revision 1.2  2005/09/16 17:39:10  jmather
+Job: 845
+Reworked to comply with analysis note that was created after the previous version of this design note.
+
+Revision 1.1  2005/09/06 19:00:12  greg
+Job: 845
+Introduce
+

@@ -1,0 +1,185 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Allow deletion of orphaned graphics
+
+
+1. Abstract
+-----------
+We have worked hard to ensure that graphics do not get orphaned. However, there
+are still failure modes where this can occur. Also, Team operations can cause
+this to happen in normal use.
+
+Currently orphaned graphics are read only. The user can do nothing with them, so
+they are doomed to be left on the diagram indefinitely. This is understandably
+unpopular with our users.  This note describes how we will support deleting
+orphaned graphics.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2585
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2585
+
+4. Background
+-------------
+Orphaned graphics are a nuisance to the user.  They are just annoying to have
+laying around on a model.  Users hate them.
+
+5. Analysis
+-----------
+5.1     The deletion will be wrapped in a transaction that corresponds to the
+        ability to undo/redo the delete.
+
+6. Design
+---------
+6.1     Change CL::addToSelection() to the following:
+
+        GraphicalElement_c ge = (GraphicalElement_c) Element;
+        if(ge.getRepresents() == null) {
+            Selection.getInstance().addToSelection(Element);
+        } else {
+            Selection.getInstance().addToSelection(ge.getRepresents());
+        }
+
+6.2     Change CL::removeFromSelection() to the following:
+
+        GraphicalElement_c ge = (GraphicalElement_c) Element;
+        if(ge.getRepresents() == null) {
+            Selection.getInstance().removeFromSelection(Element);
+        } else {
+            Selection.getInstance().removeFromSelection(ge.getRepresents());
+        }
+
+6.3     Deleting elements will now be wrapped in a transaction.  Create a
+        constant for the string "Delete" in the Transaction class that is the
+        name for the transaction.
+
+6.4     bp.ui.canvas.CanvasEditor.java needs to override the default delete
+        behavior.  Once it is determined that the elements are delete-able, it
+        will delete all graphical elements in the selection, then pass on to the
+        core delete action if the selection is still not empty. This entire
+        behavior should be wrapped in the named transaction specified in 6.3.
+6.4.1   The TransactionUtil function startTransactionsOnSelectedModelRoots()
+        uses this corresponding name to avoid starting another transaction if
+        the deletion transaction is already running.
+
+6.5     Add new logic that determines when "Delete" should be enabled on the
+        context menu.  Elements that are graphics only (bad elements) are always
+        deleteable.  Therefore, we need to check the selection to see if the
+        elements with non-null represents (good elements) are deleteable.  We
+        can do this by removing the graphics-only elements from the selection,
+        calling the original delete check method, then add the bad elements back
+        into the selection.  This code should be added to CanvasEditor.java.
+
+6.6     Graphical Element::isSelected() needs to check for itself in the
+        selection in the case where the represents is empty.  Previously, if
+        the represents member was empty, the function always returned that the
+        element was not part of the selection.
+
+6.7     In order to support function calls that now pass "this", a
+        convertToInstance() non-translated native function needs to be added to
+        Graphical Element (GD_GE).
+
+6.8     Graphical Element::toggleSelect() needs to call its own isSelected
+        method instead of the Client (CL) EE version.
+
+6.9     Add code to CanvasCopyAction.isSelectionCopiable() to ignore elements
+        that have null represents.
+
+6.10    Because a selection may now contain elements that are not part of the
+        meta-model, we need to be extra careful when handling selections.  We
+        need to find every place that a selection is accessed to ensure that all
+        of these accesses are robust when the selection does not contain a
+        meta-model element.
+6.10.1  The following packages access a Selection:
+            - core.common
+            - core.util
+            - core
+            - debug.ui.actions
+            - debug.ui.launch
+            - ui.canvas
+            - ui.explorer
+            - ui.properties
+            - ui.session.views
+            - ui.text.activity
+            - ui.text.description
+6.10.2  These cases were verified safe by code inspection and testing question-
+        able scenarios.
+
+6.11    Canvas Editor's mouseDown() function needs to be modified to handle the
+        case when the represents is null when button 3 is clicked.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is described in section 6.
+
+9. Unit Test
+------------
+9.1     All JUnit test suites must pass
+
+9.2     Retrieve the Ericcson sample model from [1]
+9.2.1   Create a new project using the model
+9.2.2   Verify the empty boxes on the Domain Package Diagram can be deleted
+9.2.3   Use Undo to restore the boxes
+9.2.4   Use Redo to delete the boxes again
+9.2.5   Export the model
+9.2.6   Create a new project using the newly exported model
+9.2.7   Verify the new model is clean of unwanted graphics
+
+9.3     Retrieve the mc3020-meta sample model from [1]
+9.3.1   Create a new project using the model
+9.3.2   Verify the unconnected relationships lines on the Translation Extensions
+        Subsystem Diagram can be deleted
+9.3.3   Use Undo to restore the lines
+9.3.4   Use Redo to delete the lines again
+9.3.5   Export the model
+9.3.6   Create a new project using the newly exported model
+9.3.7   Verify the new model is clean of unwanted graphics
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.3  2007/05/25 20:57:18  kbrown
+Job:2585
+Completed design review changes.
+
+Revision 1.2  2007/05/24 19:54:00  kbrown
+Job:2585
+Lots of updates to the design note.
+
+Revision 1.1  2007/05/21 16:08:02  kbrown
+Job:2585
+Checking in design note that was started last week.
+

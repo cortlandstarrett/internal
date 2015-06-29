@@ -1,0 +1,298 @@
+========================================================================
+
+File:      $RCSfile: i3094.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Unable to assign parameter SDT to local variable in interface signal
+
+
+1. Abstract
+-----------
+This note describes the changes required to make SDTs and system-level datatypes
+accessible in interface messages.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 3094
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3094
+[2] i3094 Design Note. <CVS>/Documentation/internal/technical/notes/i3094.dnt
+[3] <CVS>/Documentation/internal/test_results/R1_5_2/i3094
+
+4. Background
+-------------
+This issue started as a simple problem where a structured datatype could not be
+accessed in an interface message.  As the bug fix progressed, it became clear
+that we had a more general issue that, in some cases, datatypes were not being
+searched for at the system level when they were not found at the domain level.
+
+The majority of the work of this issue was to find and fix all places where the
+system datatype search needed to be performed.  In the end, problematic
+locations were only found in the parser (OAL Validation [Utility] Functions).
+
+5. Design
+---------
+5.1		The ability to access an SDT parameter to an interface message was lack-
+		ing due to missing code in the OAL Validation Utility Function
+		param_validate and Value::setEndPosition.  The missing code was filled
+		out with the appropriate code.
+
+5.2     [2, 6.3.4] called for the analysis of each place where datatypes were
+        attempted to be located in the domain to determine if an explicit
+        system select was required as a failsafe or not.
+
+5.2.1	Analysis results.  The numbers in braces are for footnotes explaining
+		the resolution.  Footnote {8} represents places where new system-
+		searching code was added
+
+        OAL Validation Functions
+        ------------------------
+        Local_variable_validate() (3 places) - OK {8}
+        Create_event_statement_end() - OK {8}
+        Return_statement_end() - OK {9}
+        Terminal_tok_fraction_validate() - OK {8}
+        Terminal_tok_number_validate() - OK {8}
+        Terminal_tok_string_validate() - OK {8}
+        String_literal_true_validate() - OK {8}
+        String_literal_false_validate() - OK {8}
+        Member_access_end() (2 places) - OK {8}
+        Member_access_loop11_end() - OK {8}
+        Data_types_compatible() (2 places) - OK {8}
+        Binary_operator_create() - OK {8}
+        Unary_operation_validate() - OK {8}
+        Array_length_validate() - OK {8}
+        Is_valid_message() - OK {8}
+        Sender_validate() - OK {8}
+
+
+        Core Classes
+        ------------
+        Attribute
+            - initialize(), OK {1}
+            - isAllowedType(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Bridge
+            - initialize(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Bridge Parameter
+            - initialize(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Datatype
+            - Dispose(), OK {2}
+            - IsAllowedReturnType(), OK {10}
+            - IsAllowedParameterType(), OK {10}
+
+        Datatype In Domain
+            - generated delete(), OK {3}
+
+        Datatype Package
+            - newDatatype(), OK {4}
+
+        Domain
+            - associateChildrenWithSuppressedDatatypes(), OK {5}
+
+        Function
+            - initialize(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Function Parameter
+            - initialize(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Model Class
+            - create_sm(), OK {1}
+
+        Operation
+            - initialize(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Operation Parameter
+            - initialize(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Referential Attribute
+            - setDatatype(), OK {1}
+
+        State Machine Event Data Item
+            - initialize(), OK {1}
+            - resolveDatatype() (2 places), OK {2}
+
+        Structured Data Type
+            - newMember(), OK {4}
+
+        Structure Member
+            - changeType(), OK {4}
+            - resolveDataType() (2 places), OK {2}
+
+        System Model
+            - pasteComponentPackage, OK {6}
+
+        User Data Type
+            - changeCoreType(), OK {2}
+            - resolveCoreDatatype() (2 places), OK {2}
+
+        Value In Stack Frame
+            - coerceTo(), OK {7}
+
+
+        Core Test Classes
+        -----------------
+        Dispose Test
+            - setup() {4 places}, OK {3}
+
+
+        IO Model Classes
+        ----------------
+        ExportModelComponent
+            - export_DatatypeInDomain(), OK {3}
+
+        ExportModelStream
+            - export_DatatypeInDomain(), OK {3}
+
+
+        {1} This class must always exist in a domain.  The core type searched
+            for will be found in the domain, or if not, core types migrated to
+            the system level are associated with the domain via R14.  So this
+            search is OK.
+        {2} Handles searching for arbitrary type in the system.
+        {3} The usage here is inside an internal generated function, not OAL.
+            The datatype does not have to be searched for in the system if it
+            fails.
+        {4} Searches for the datatype in the system if it doesn't find it in the
+            domain.
+        {5} This is the domain itself.  It handles the search for system
+            datatypes fine.
+        {6} This code migrates datatypes.  So, this search is OK.
+        {7} Verifier does not yet work at the system level, this functionality
+            will be added later.
+        {8} Added system dt search
+        {9} This usage is for an MDA which must always exist in a domain.  See
+            {1} for why this is OK.
+        {10} The system level elements that require datatype search go through a
+             different path (similar functions in the Utilties EE), so the
+             handling here is OK
+
+5.3		JUnit tests
+5.3.1	Added new system SDT TypeGroup with members to test various datatypes
+		and a multidimensional array.
+
+5.3.2	Added new interface ParameterTestInterface to component
+		ComponentSyntaxTest
+5.3.2.1	Added an operation that that takes an SDT of TypeGroup as a param and
+		returns an SDT of TypeGroup.
+5.3.2.2	Added a signal that takes an SDT of TypeGroup as a param.
+
+5.3.3	Added provided and required interfaces to component GoodSyntax.  Both
+		are formalized to ParameterTestInterface.
+
+5.3.4	Added OAL to the function activity for all four of the interface
+		messages in the instance reference.
+5.3.4.1	This OAL uses the SDT parameter as an l-value and r-value, modifies it,
+		and performs operations with it.
+5.3.4.2	In the case of the operations, it also returns the local that was
+		modified.
+
+6. Implementation Comments
+--------------------------
+6.1		The design specified in [2, 6.4] was not able to be implemented.  During
+		the design, we thought we were doing a blind select on the S_CDT (Core
+		Datatype) class.  However, this is not true.  In reality, we are tra-
+		versing from S_SYS with a "select related by".  Therefore, we have to
+		go through S_DT to get to S_CDT.  Since we are scanning all the S_DTs
+		anyway, the proposed shortcut wasn't really a shortcut at all.
+
+7. Unit Test
+------------
+7.1		Ran all JUnit tests.  Results are checked in to CVS [3].
+
+7.2		In order to test if there was any parsing slowdown introduced by this
+		issue, we decided to compare the speed of running the OAL test between
+		the branch and HEAD.  Note that there was some OAL added to the tests in
+		the branch, so it would naturally take a little longer to run the branch
+		version.  I found that the test times varied widely between runs, even
+		back to back runs.  Therefore, I settled on using average times.  Times
+		are in seconds.
+
+		HEAD: 543, 517, 572, 509     (Avg. time = 535 sec)
+		Review-i3094: 598, 597, 532, 522  (Avg. time = 562 sec)
+
+		Based on these results, it looks like the new code has slowed the parser
+		down a bit, but it also looks like the Review branch average may just be
+		being skewed high by the first two runs.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core (Review-i3094)
+	- models/com.mentor.nucleus.bp.core/ooaofooa/
+	  - Functions/
+	    - OAL Validation Functions/OAL Validation Functions.xtuml
+	    - OAL Validation Utility Functions/OAL Validation Utility Functions.xtuml
+	  - Value/Value/Value.xtuml
+
+Models (R1_5_1-SKB-i3094)
+	- models/Models/
+		- ComponentSyntaxTest/
+			- ComponentSyntaxTest.xtuml
+			- Component Test Interface/
+				- Component Test Interface.xtuml
+				- ParameterTestInterface/
+					- ParameterTestInterface.xtuml
+			- Good Syntax/
+				- Good Syntax.xtuml
+		- Datatypes/Datatypes.xtuml
+
+
+End
+---
+
+$Log: i3094.int,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.4  2007/10/05 18:43:47  kbrown
+Job:3094
+Updated after review.
+
+Revision 1.3  2007/10/05 17:43:45  kbrown
+Job:3094
+Adding info about timing results to the int.
+
+		HEAD: 543, 517, 572, 509     (Avg. time = 535 sec)
+		Review-i3094: 598, 597, 532, 522  (Avg. time = 562 sec)
+
+		Based on these results, it looks like the new code has slowed the parser
+		down a bit, but it also looks like the Review branch average may just be
+		being skewed high by the first two runs.
+
+Revision 1.2  2007/10/05 15:55:55  kbrown
+Job:3094
+Commit implmentation note.
+
+Revision 1.1  2007/10/03 16:00:08  kbrown
+Job:3094
+Started INT.

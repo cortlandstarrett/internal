@@ -1,0 +1,257 @@
+========================================================================
+
+File:      $RCSfile: i384.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Add Context Menu functionality required for self hosting
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla i83.
+[2] bp.core/doc/Model_Explorer-Outline_View/model_explorer-outline_view-i224.ant
+[3] Bugzilla issue i315
+[4] Bugzilla issue i316
+[5] bp.core/doc/internal/technical/Property_View/property_view.ant/dnt
+
+Background
+----------
+The work for object properties[5] does not address the following special cases:
+
+- Add an Attribute to an Identifier
+- Remove an Attribute from an Identifier
+
+- Allocate an Imported Class to a concrete Class
+
+- Make a Base Attribute Derived
+- Make a Derived Attribute Base
+
+- Formalize an Association
+- Unformalize an Association
+
+- Combine Referentials
+- Split Referentials
+
+- Associate an Event with a Transition
+- Remove an Event from a Transition
+- Ignore an Event
+- Mark an Event as Can't Happen
+- Add a Data Item to an Event
+- Remove a Data Item from an Event
+
+This functionality shall be provided by creating object contributions for each
+action.
+
+Analysis
+--------
+The functions below shall be implemented using OAL and added to the file
+bp.core/sql/cme_functions.sql.
+
+The functions shall be named and labeled as follows:-
+
+- O_ATTR_AddToIdentifier           'Add Attribute to Identifier ...'
+- O_ATTR_RemoveFromIdentifier      'Remove Attribute from Identifier ...'
+
+- O_IOBJ_AllocateToClass           'Assign Class ...'
+
+- O_NBATTR_MakeDerived             'Set as Derived Attribute'
+- O_DBATTR_MakeBase                'Set as Base Attribute'
+
+- R_REL_Formalize                  'Formalize Association ...'
+- R_REL_Unformalize                'Unformalize Association'
+
+- O_RATTR_CombineReferentials      'Combine with ...'
+- O_RATTR_SplitReferential         'Split ...'
+
+- SM_TXN_AssociateEvent            'Assign Event ...'
+- SM_TXN_RemoveEvent               'Remove Event'
+- SM_EVT_Ignore                    'Ignore in States ...'
+- SM_STATE_Ignore                  'Ignore Events ...'
+
+- SM_EVT_AddDataItem               'Add Data Item ...'
+- SM_EVT_RemoveDataItem            'Remove Data Item ...'
+
+The ellipses (...) in the label are included in the label string and presented
+to the user as an indication that a wizard dialog will follow the selection.
+
+Modify Attributes: Base to/from Derived/Combine and Split Referentials
+In order to support this without cluttering the Context Menu excessively, the
+tree shall be modified to show Derived, Base and Referential Attribute subtypes
+instead of the supertype as now. This will also enable the opening and editing
+of Derived Attribute Action semantics, which is currently disabled (the
+ui.text/plugin.xml is already set up to enable this functionality, so changing
+the UITree pre-existing instances is all that is required to enable this). Note
+that this change has the effect of allowing the user to filter derived, base and
+referential attributes separately and of causing these attribute types to
+be grouped as a category in the tree. New icons shall be added to highlight the
+different attribute types.
+
+Formalize Association
+Note that this operation must also handle the case where the association is
+already formalized (e.g. the user wants to change which identifier is used to
+do the formalizing).
+
+Event Data
+The required behavior in the area of Event Data handling requires additional
+discussion:
+
+- Each time the user modifies the data items for an event, the new signature
+  (i.e. the set of event data after the change) is compared with the existing
+  set of signatures (SM_SUPDT's including the empty set) for the enclosing state
+  model. 
+  
+  If a match for the new signature is found:
+
+  - The event shall be associated with the matching set across R520.
+
+  If no match is found:
+  
+  - A new signature is created with all the data items of the existing
+    signature, plus the new data item (or less the deleted item if that is what
+    the user did).
+  - The event shall be associated with the new signature across R520.
+  
+  In both cases:
+  - For all states where the event causes a transition into that state,
+    the state is unrelated from the old signature, and related to the new 
+    signature across R521.  The user input validation is assumed to prevent 
+    same data rule violations. 
+  - The old signature (and its associated SM_SDI instances) shall be deleted
+    if no other events are related to it across R520.
+
+- Newly created events are related to the empty signature. If no
+  empty signature is found a new one shall be created.  Newly created states
+  are not related to any signature.
+
+The user shall be prevented by the generated wizard from violating the same data
+rule. Data items with the same name shall be flagged by an automated audit
+function that is outside the scope of this work[3,4].
+
+This behavior was deferred from the work completing the Model Explorer tree
+entries[2].
+
+Event Assignment
+When an event is assigned to a transition, the following rules apply:
+
+- The event's data set (SM_SUPDT) is checked for consistency with the data set
+  already assigned to the target state. The check passes if the state has no
+  data set instance or if the data set instance is the same as the one already
+  attached to the event.
+- If the check passes, the 'State Event Matrix' entry for the State/Event pair
+  is subtype migrated from 'Event Ignored' or 'Cant Happen' to
+  'New State Transition', and the 'Transition' is simultaneously migrated from
+  'No Event Transition' to 'New State Transition'. If the 'Transition' is a
+  'Creation Transition', the association R509 is related instead.
+
+When an event is detached from a transition, the following complementary
+behavior is required:
+
+- The 'State Event Matrix Entry' is subtype migrated to 'Cant Happen' from
+  'New State Transition', and the transition is simultaneously migrated to
+  'No Event Transition' from 'New State Transition'.  If the 'Transition' is a
+  'Creation Transition', the association R509 is unrelated instead.
+- For all states where the event causes a transition into that state,
+  if all transitions into that state are no event transitions, the state is
+  unrelated from the SM_SUPDT instance across R521.
+
+Referential Combination
+As with BridgePoint Builder, a list is presented to the user for referential
+combination. The list contains only those referential attributes in the current
+class which share the same base attribute. The combination is performed and the
+currently selected referential attribute is removed on 'Finish'.
+
+Referential Split
+Again, as for BridgePoint Builder, the list of currently combined references is
+presented to the user. On 'Finish', the selected reference is removed from the
+combined list and a new referential attribute is created for this reference.
+
+Event Ignored
+Selecting 'Ignore in States' for an event will show a dialog with the list of
+states for the state model in which the event appears (states in which the
+event is assigned to an outgoing transition shall be excluded from this list).
+Each list entry shall have a checkbox. Checked states shall be those in
+which the selected event is ignored, unchecked states shall throw a Can't
+Happen error when the selected event occurs.
+
+Selecting 'Ignore Events' for a State shall show a list of all the events not
+already assigned to outgoing transitions. The events shall each have a checkbox.
+Checked events shall be ignored in the selected state, otherwise the event can't
+happen.
+
+Work Required
+-------------
+i384.1    Create Context Menu Pre-existing Instances
+i384.2    Provide bodies for the CME functions
+i384.3    Rework the tree data to show attribute subtypes
+i384.4    Modify the workflow archetypes so that they generate code for lists of
+          items with checkboxes to support Event Ignored.
+          
+Acceptance Test
+---------------
+For each required function, the OAL shall leave the model in the same state
+BridgePoint Builder would have done given the same operation. Unit tests must
+confirm that this is the case for all functions added.
+
+End
+---
+$Log: i384.ant,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.152.1  2008/12/31 16:10:27  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2004/09/09 15:14:51  greg
+Job: 384
+Fixed typos.  Expanded SM_SUPDT processing discussion.
+
+Revision 1.7  2004/09/08 23:52:30  campbell
+Job: 384
+Addressed review issues.
+
+Revision 1.6  2004/09/07 18:59:53  campbell
+Job: 384
+Synchronized Event data handling with
+original requirement and Builder behavior.
+
+Revision 1.5  2004/09/07 18:15:11  campbell
+Job: 384
+Finalized Event data handling.
+
+Revision 1.4  2004/09/01 20:04:49  campbell
+Job: 384
+Added more detail on Ignore and Can't happen manipulation.
+
+Revision 1.3  2004/09/01 16:53:46  campbell
+Job: 384
+Updated per WGT comments.
+
+Revision 1.2  2004/09/01 00:00:02  campbell
+Job: 384
+Corrected title.
+
+Revision 1.1  2004/08/31 23:58:49  campbell
+Job: 384
+Introduced.
+
+Revision 1.1  2004/08/31 23:52:21  campbell
+Job: 384
+Introduced.

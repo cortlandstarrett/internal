@@ -1,0 +1,252 @@
+========================================================================
+
+File:      $RCSfile: canvas-i100.3.2.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Canvas New Connector Functionality
+
+Abstract
+--------
+This note defines the design chosen to allow the user to connect symbols
+together on the canvas.
+
+History
+-------
+
+final - canvas-i100.3.2-071604-01.rvm
+
+Document References
+-------------------
+[1] core/doc/internal/technical/Canvas/canvas.ant
+[2] canvas/mdl/ooaofgraphics.bak
+[3] core/mdl/ooaofooa.bak
+[4] core/doc/internal/technical/Canvas/canvas-i100.1.dnt
+[5] Bugzilla issue 100
+[6] Bugzilla issue 187
+[7] core/doc/internal/technical/Canvas/canvas-i100.3.1.dnt
+[8] core/doc/internal/technical/Canvas/canvas-i100.3.1.int
+
+Design
+------
+This design note builds on the functionality introduced by the [7] & [8].
+
+Once again, the functionality introduced by this work is specified partly by
+action language and to a lesser extent by hand written code. This design note
+therefore also falls into two sections. The first section discusses the changes
+made to the domain models. The second section describes the changes made to
+the hand written classes to support the connector drawing requirements. There
+is a third section describing a minor change to the architecture.
+
+i100.3.2.1     Modeled Changes
+i100.3.2.1.1   Graphics Domain Changes
+i100.3.2.1.1.1 In the Graphics Domain, a new subsystem is added, named
+               Terminal Specifications.
+i100.3.2.1.1.2 In this subsystem, a new superclass 'Terminal Specification' is
+               created. This has three subtypes, 'WhiteSpace Terminal',
+               'Shape Terminal' and 'Connector Terminal'. These subtypes define
+               the three ways in which a connector may end. In the same
+               subsystem, two new subtypes of the existing
+               'Element Specification' class are added, called
+               'Shape Specification and 'Connector Specification'. With this
+               modification, the attribute Element Specification.isConnector
+               becomes obsolete and
+               is removed. A given connector can start and end on a number of
+               legal places. This is captured with two associations between
+               Connector Specification and Terminal Specification. Aside from
+               some operations to assist determination of when a connector can
+               start and end being drawn, these classes are passive and capture
+               the legal diagramming behaviors in data.
+i100.3.2.1.1.3 A new subtype of 'Model Tool' is added, called 'Connector Tool'.
+               It has a state machine to control the drawing of a new connector.
+i100.3.2.1.1.4 The existing operation Segment In Flex.finish() is renamed to
+               finalize to match an established modeling convention. It's
+               body is changed to utilize the placement data stored in the
+               Terminal Specification instances. The implementation is
+               split between three operations, finalizeOnWhitespace,
+               finalizeOnShape and finalizeOnConnector.
+i100.3.2.1.2   Client Domain Changes
+               As before[7], the new operations specified below create new
+               client model instances and are triggered as before from the
+               Graphics Domain using the method name cached in the creator
+               attribute.
+i100.3.2.1.2.1 The ooaofooa is extended to add the operation
+               Subsystem::newAssociation.
+i100.3.2.1.2.2 The ooaofooa is extended to add the operation
+               Subsystem::newAssociative.
+i100.3.2.1.2.3 The ooaofooa is extended to add the operation
+               Subsystem::newSupertype.
+i100.3.2.1.2.4 The ooaofooa is extended to add the operation
+               Subsystem::newSubtype.
+i100.3.2.1.2.5 The ooaofooa is extended to add the operation
+               StateMachine::newTransition.
+i100.3.2.1.2.6 The ooaofooa is extended to add the operation
+               StateMachine::newCreationTransition.
+i100.3.2.2     Code Changes            
+i100.3.2.2.1   A new legal element 'terminator' is added to the
+               core.editors extension point schema to define the legal
+               starting and ending points a connector can have. Terminator
+               elements have a 'name' attribute, a 'type' attribute to specify
+               whether the endpoint is a shape or another connector, an 'end'
+               attribute to specify whether this termination applies to the
+               start or the end of the line and a 'symbol' attribute to specify
+               which kind of symbol is allowed. Finally, the 'terminatesAt'
+               attribute defines whether the start or end point can join a
+               target connector anywhere along its length ('middle') or snaps
+               to the beginning ('start') or end ('end') of the line.
+i100.3.2.2.2   The 'symbol' element is modified to allow a zero to unbounded
+               number of terminator elements as part of its definition.
+i100.3.2.2.3   In the canvas plugin definition, new terminator element instances
+               are added to each symbol element.
+i100.3.2.2.4   In CanvasPlugin, new code is added to read the new plugin
+               registry entries and instantiate new Shape Specification,
+               Connector Specification and Terminal Specification instances.
+               New subtypes of Terminal Specification are instantiated as
+               specified by the value of the terminal type attribute. These
+               subtypes are related to the appropriate Element Specification
+               subtypes based on the value of the terminal symbol attribute.
+i100.3.2.2.5   New icons are needed for each new tool introduced:
+                - association
+                - link
+                - subtype
+                - supertype
+                - transition
+                - creation transition.
+i100.3.2.2.6   New Symbol elements are added for Associations, Linked
+               Associations, Subtype, Supertype, Transition and Creation
+               Transition.  All dependsOn elements are created for all
+               new symbols.
+i100.3.2.2.7   BridgePoint export format does not assign types to subtype or
+               link connectors. This is rectified on import and old values
+               restored on export.
+
+i100.3.2.3     Architecture Changes
+i100.3.2.3.1   The architecture is changed so that automatic assignment of
+               unique_id values is made only only for identifying attributes,
+               not for all attributes of type unique_id. This was causing
+               symbols to be associated with the wrong metamodel element. Since
+               the OOA_ID was being automatically allocated the 'represents'
+               attribute was being initialized to the wrong element during draw,
+               before the correct element was recognized by the graphics domain
+               as having had been created.
+              
+Work Required
+-------------
+i100.3.2.1     Modeled Changes
+i100.3.2.1.1   Graphics Domain Changes
+               The required changes are made to ooaofgraphics.bak
+i100.3.2.1.2   Client Domain Changes
+               The required changes are made to ooaofooa.bak
+
+i100.3.2.2     Code Changes            
+i100.3.2.2.1   The prescribed changes are made to core/schema/
+                                             com.projtech.bp.core.editors.exsd
+i100.3.2.2.2   The prescribed changes are made to core/schema/
+                                             com.projtech.bp.core.editors.exsd
+i100.3.2.2.3   The prescribed changes are made to canvas/plugin.xml
+i100.3.2.2.4   The prescribed changes are made to canvas/src/com/projtech/bp/
+                                                    ui/canvas/CanvasPlugin.java
+i100.3.2.2.5   New files are introduced to core/icons.
+i100.3.2.2.6   The prescribed changes are made to io.sql/arc/gen_export_java.arc
+               and gen_import_java.arc.
+
+i100.3.2.3     Architecture Changes
+i100.3.2.3.1   MC-Java/java.arc is modified as prescribed in the design.
+
+Unit Tests
+----------
+The following tests will be executed:
+
+Repeat each of the 'Over a * Term' tests below for each of the subtypes of
+Terminal Specification. This yields a total of 57 tests.
+
+Test 1: Event 'Activate' in State 'Idle'
+Test 2: Event 'Mouse Down' in State 'Waiting for Start Symbol'
+             - Over a Start Term
+             - Over an End Term
+             - Over neither (not Whitespace)
+Test 3: Event 'Deactivate' in State 'Waiting for Start Symbol'
+Test 4: Event 'Suitable Location' in State 'Determining Mouse Down Location Suitability'
+Test 5: Event 'Unsuitable Location' in State 'Determining Mouse Down Location Suitability' (over Whitespace)
+Test 6: Event 'Mouse Up' in State 'Creating First Segment'
+Test 7: Event 'Mouse Move' in State 'Creating First Segment'
+Test 8: Event 'Mouse Up' in State 'Dragging First Segment'
+             - Over Start Term
+             - Over End Term
+             - End Over same symbol as Start
+             - Over Whitespace
+Test 9: Event 'Mouse Move' in State 'Dragging First Segment'
+Test 10: Event 'Deactivate' in State 'Dragging First Segment'
+Test 11: Event 'Suitable Location' in State 'Determining Mouse Up Location'
+Test 12: Event 'Unsuitable Location' in State 'Determining Mouse Up Location'
+Test 13: Event 'Complete' in State 'Determining Mouse Up Location'
+Test 14: Event 'Unsuitable Location' in State 'Creating Element'
+Test 15: Event 'Done' in State 'Creating Element'
+Test 16: Event 'Mouse Up' in State 'Preparing to Drag Subsequent Segment'
+Test 17: Event 'Mouse Move' in State 'Preparing to Drag Subsequent Segment'
+Test 18: Event 'Mouse Up' in State 'Dragging Subsequent Segments'
+             - Over Start Term
+             - Over End Term
+             - Over Whitespace
+Test 19: Event 'Mouse Move' in State 'Dragging Subsequent Segments'
+Test 20: Event 'Deactivate' in State 'Dragging Subsequent Segments'
+Test 21: Event 'Mouse Move' in State 'Tracking End Segment without Drawing'
+Test 22: Event 'Mouse Down' in State 'Tracking End Segment without Drawing'
+Test 23: Event 'Deactivate' in State 'Tracking End Segment without Drawing'
+Test 24: Event 'Suitable Location' in State 'Determining Subsequent Mouse Up Location Suitability'
+Test 25: Event 'Unsuitable Location' in State 'Determining Subsequent Mouse Up Location Suitability'
+Test 26: Event 'Complete' in State 'Determining Subsequent Mouse Up Location Suitability'
+Test 27: Event 'Deactivate' in State 'Determining Subsequent Mouse Up Location Suitability'
+Test 28: Event 'Mouse Move' in State 'Mouse up at Beginning of Segment'
+Test 29: Event 'Mouse Down' in State 'Mouse up at Beginning of Segment'
+Test 30: Event 'Mouse Move' in State 'Creating Subsequent Segment'
+Test 31: Event 'Mouse Down' in State 'Creating Subsequent Segment'
+Test 32: Event 'Mouse Up' in State 'Mouse Down Tracking End Segment without Drawing'
+Test 33: Event 'Mouse Move' in State 'Mouse Down Tracking End Segment without Drawing'
+Test 34: Event 'Done' in State 'Clearing Partly Drawn Connector'
+Test 35: Event 'Unsuitable Location' in State 'Creating Segment without Mouse Move'
+
+End
+---
+
+$Log: canvas-i100.3.2.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.154.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/08/04 22:51:14  campbell
+Job: 187
+Added history entry.
+
+Revision 1.4  2004/07/20 20:23:46  campbell
+Job: 187
+Addressed review issues.
+
+Revision 1.3  2004/07/15 20:59:20  campbell
+Job: 187
+Ready for review.
+
+Revision 1.2  2004/07/15 18:32:41  campbell
+Job: 187
+Added Work Required section.
+
+Revision 1.1  2004/07/15 17:05:04  campbell
+Job: 187
+Introduced.

@@ -1,0 +1,411 @@
+========================================================================
+
+File:      $RCSfile: dts0100749315.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Complete support for send .. to syntax
+
+1. Abstract
+-----------
+This note describes the design needed to fully support OAL of the form,
+send message(parameterlist) to component_ref.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100749315 - Misrouted interface message when using
+    attribute of type component_ref as destination.
+[2] cvs://Documentation/internal/technical/notes/R3_2_5/dts0100749315/
+    dts0100749315.ant
+[3] ClearQuest DEI dts0100749317 - Erroneous message when creating instance of
+    class with attribute of type component_ref.
+[4] ClearQuest DEI dts0100631471 - inter-component pass-by-ref
+[5] ClearQuest DEI dts0100749318 - Verifier displays component_ref values
+    incorrectly.
+[6] ClearQuest DEI dts0100758853 - Components defined within components cannot
+    receive/send events in Verifier.
+[7] ClearQuest DEI dts0100771666 - Automate Verifier testing under generic
+    packages
+
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Meta-model changes
+The meta-model changes prescribed in the analysis[2] are adopted.
+
+The dispose operation in Signal Invocation(ACT_SGN) is extended to select a
+target value across R630 and if one is found, unrelate and dispose it. Interface
+Operation Invocation does the same thing but across R629 and Message Value does
+the same thing over R851.
+
+6.2 Parser changes
+6.2.1 Message_invocation_end
+At the end of this function, is a block of logic that begins with the comment:
+
+// Now check the optional local variable reference
+
+This optional reference is the 'to' variable. We introduce a new boolean OAL
+variable 'errorInToClause' inside this block and set to false by default. There
+then follow three validation logic blocks which are all modified to set
+'errorInToClause' to true if they fail. If no error is found, the instance
+handle 'msv' is related across R851 to the value found for the passed
+'a8_variable' identifier, which is the 'to' target value. The fact that we do
+not handle R630 or R629 here is expected and explained in the following section.
+
+Note that one possible legal target value is the 'sender' keyword, so this must
+be explicitly tested in addition to the tests prescribed in the analysis[2].
+ 
+6.2.2 Send_statement_end
+An artifact of the BridgePoint OAL grammar is that all inter-component calls are
+initially parsed as a message invocation. So message invocation is validated
+first and always creates a 'Message Value' instance, hence there is no need to
+consider the alternative associations in Message_invocation_end above[6.2.1].
+
+In Send_statement_end, we have a wider scope which includes any assignment
+statement syntax tree elements present. The first two if/elif clauses in this
+function look for such assignments. If they are found, we are dealing with the
+case where a return value is being assigned to something. In these cases, the
+RValue needs to be Message Value instance. Since this has already been created
+by Message_invocation_end() as described above no changes are needed in these
+logic blocks.
+
+If the assignment references are not found, then we are dealing with either a
+signal invocation (which cannot have a return value) or an interface operation
+invocation of type, void. In these cases, we need to destroy the Message Value
+subtype instance and create either a Signal Invocation or Interface Operation
+Invocation as required.
+
+This operation already has all the OAL to identify which subtype it needs to
+create. It does this by traversing from the (about to be destroyed) message
+value to the provided/required signal/operation. Based on what it finds, it
+creates the new statement subtype and transfers all references from the
+previously created Message Value. Once this is done, the message value instance
+is disposed. In the last stage before disposing the message value, we now need
+to transfer the target value from the message value instance to the new signal
+invocation or operation invocation subtype. Since there are two alternatives
+each with two degrees of freedom, we see four alternate code paths in the
+existing implementation. Each of these code paths has OAL added of the form:
+
+  // Migrate the target component reference
+  select one targetCompRef related by msv->V_VAL[R851];
+  unrelate msv from targetCompRef across R851;
+  relate aop to targetCompRef across R629;
+
+Either R629 or R630 is used in the last line depending whether the new statement
+is an operation or signal invocation respectively.
+
+6.2.3 Dispose changes
+The two statement subtypes and the value subtype have dispose OAL added to
+handle disposal of the new associations.
+
+6.3 Verifier changes
+6.3.1 Extend execute operations for messages
+The execute() operation of the two statement subtypes and the getValue()
+operation of Message Value are modified in similar ways.
+
+A new block of code is added near the top of each operation:
+
+get the targetValue across R629 (or R630 or R851)
+if not empty targetValue
+  runtimeValueId = targetValue.getRuntimeValue(for the current stack frame)
+  get the runtimeValue for the runtimeValueId
+  get the componentReference by descending the runtime value hierarchy
+  if not empty componentReference
+    get the specifiedComponentInstance related by
+                              componentReference across R3309
+  else
+    log an error, the parser should have made this impossible
+  end if
+end if
+
+We now traverse the channels between components as we did before, except now
+we look for the specified component instance in the target components as we
+traverse the channels. If we find it, we continue to traverse the channels for
+that specific component because the component specified by the user may itself
+delegate the message to be handled by a sub component. Previously, the first
+target component found traversing any channel corresponding to the satisfaction
+on the specified port was used. 
+
+If after having traversed all the channels the specified component was not
+found, a runtime error is raised informing the user that the message was not
+delivered and the reason:
+
+"Error sending message, specified component reference wiring not found.
+                                                         Message not delivered."
+
+6.3.2 Always initialize sender handle values
+When manually invoking an operation that references a sender value, an NPE was
+noted that was caused by there being no sender handles created if no invoking
+stack frame is found. This is corrected so that the sender instances are always
+created. The created instances are now only hooked up to a sending engine if an
+invoking frame exists. If a send statement with a sender clause is executed
+during manual invocation, the user is now informed with the above runtime error
+[6.3.1].
+
+6.4 Related issues
+An issue[3] that caused a spurious message to be emitted to the error log is
+addressed by this work. It requires a fix in two places:
+
+6.4.1 DataType.getCoreDataTypeName()
+The following message was seen in the log when a new instance was created that
+had an attribute of type component_ref:
+
+"Data Type getCoreDataType error: unknown data type"
+
+This is because the getCoreDataTypeName method checks the 'Core_Typ' meta data
+value. Component_ref is a recently introduced data type and this operation
+should have been updated at the time it was added. This is fixed with this work
+by adding in two places a test for the new core type value (13), and returning
+the string 'component_ref'.
+
+6.4.2 Component Reference Value.setValue()
+This method was found to be logging an error of the form:
+
+"Relate attempted on null left hand instance."
+
+During initialization, the component reference has to be initialized to null. No
+other value makes sense. However, when this is done, the above error is thrown.
+The solution is to simply remove the else clause from the native operation so
+that no exception is logged.
+
+6.4.3 Pass by Reference arguments
+Interface Operations can have by reference arguments, however Verifier does not
+currently support them[4]. Although this issue is not tightly coupled with
+component references, it is required by the same customer in the same time frame
+and so is combined here.
+
+The fix for this is located in the Local Value class, in the operations;
+getValue(), setValue() and getRuntimeValue(). The fix is the same in each
+operation. Towards the end of the operation is a block which is entered if the
+previous_stack_frame is empty. This block is only entered in the case where we
+are in the lowest frame of the stack. The first thing currently done in this
+state is to look for a 'wired bridge'. This was an early precursor to component
+wiring in which domains were wired together. In the inter-component message case
+we are also in the bottom stack frame, so new code to support by reference
+arguments should be handled here.
+
+The following OAL is added to the three operations specified above, just after
+the empty previous stack frame test:
+
+  select one blocked_frame related by stack_frame->I_STF[R2965.'blocks'];
+  if not_empty blocked_frame
+    sf_id = blocked_frame.Stack_Frame_ID;
+  else
+    ... previous code to handle a wired bridge
+  end if;
+
+In each operation, the equivalent supertype instance operation is delegated on
+to with sf_id as the argument. This allows the correct stack to be used to find
+the value to update. In this case, the stack frame found will be on the calling
+component's stack.
+
+6.4.4 Component Reference UI support
+There were a few places where component references do not show correctly in the
+Verifier user interface[5]. These are in the variables window and in the Session
+Explorer.
+
+6.4.4.1 In nuclueus.bp.debug.ui.model.BPValue.getValueString() substitute the
+current result string assignment:
+
+result = comp.getName()+ "[" + exe.Getenginenumber() + "]";
+
+with:
+
+result = exe.getLabel() + "[" + exe.Getenginenumber() + "]";
+
+and delete all references to the variable comp. A null comp value is no longer
+relevant, prevents the result being computed and can be legitimately null as
+implemented.
+
+6.4.4.2 Add new bridge, component_instance_to_string() to the Graphics Domain
+external entity. The body is to be marked as native and contains:
+
+		if (p_Value instanceof ComponentInstance_c) {
+			ComponentInstance_c ci = (ComponentInstance_c) p_Value;
+			String label = ci.getLabel();
+			int num = ci.Getenginenumber();
+			String result = label + "[" + num + "]";
+			return result;
+		}
+		return "Component not found";
+
+This produces the same format label as for getValueString() above[6.4.4.1].
+
+In Attribute Value.Label the derived attribute OAL is extended to check for
+the component_ref data type and call the bridge added above[6.4.4.2].
+
+7. Design Comments
+------------------
+7.1 A typo was noted in an error message in Simple Value.getValue(). This was
+    corrected.
+    
+7.2 During test development, an exception catch with no error log entry was
+    noted in the class, PersistableModelComponent. A suitable error log entry
+    was added.
+
+7.3 Preliminary Generic Package work for Verifier
+A first pass over Verifier functionality revealed a few issues which are fixed
+here. The comprehensive Generic Package Verifier test is tracked under[7].
+
+7.3.1 Inappropriate timer threads left running
+There is currently no way to stop a timer thread once it is started. By changing
+run type between Real time and Simulated time without restating the tool, it is
+possible to have both timer threads running. It is also possible to run in
+Deterministic mode while the timer threads are running. This is unsafe and leads
+to blocked execution and timer threads. Which threads get blocked depends on the
+order in which the modes are used and the behavior of the models being executed.
+
+The timer threads in TIM.java are modified to stop looping when a boolean value
+is set to false. This causes them to exit naturally rather than resorting to
+deprecated java.lang.Thread methods. A new method, stopTimers() is added to the
+TIM class which sets the boolean to false, notifies the thread and waits for it
+to stop, then sets the thread handles to null so that on a subsequent Verifier
+session the timers will be restarted. This method is called from the existing
+method, TIM.terminate().
+
+7.3.2 ARCH.java
+To improve shutdown stability, a null check is added before attempting to notify
+the system instance in ARCH.shutdown(). The call to TIM.terminate() is removed
+from this class because it is already called from BPDebugElement.
+
+7.3.3 Session Explorer
+The Session Explorer tree does not show Generic packages. This makes launching
+Generic Package models impossible. Two new entries are made to the Session
+Explorer build pre-existing instance data in bp.ui.session/sql/UITree.sql. The
+new entries allow packages that contain executable elements to show up under a
+component. An additional filter is added to the entry for a Class in Engine
+under a Component Instance. This filter prevents classes under generic packages
+from appearing in the tree twice.
+
+7.3.4 BPThread
+A call to remove self from an instances list is moved from the terminate method
+to the stop method. This is because in some cases stop is called in preference
+to terminate to avoid having to wait for the timeouts implemented in terminate.
+terminate calls stop in any case, so the instance removal still happens in that
+case. A check is added in the stop method to see if no more BPThread instances
+exist. If not TIM.terminate() is called so that the timer threads are shut down.
+
+7.3.5 BPDebugTarget
+The terminate method here has the call to TIM.terminate(). This is removed
+because this is now done in BPThread when the last instance is being stopped 
+(see [7.3.4] above).
+
+7.3.6 BPDebugUtils
+Packages are removed from getVerifiableElements() and getVerifiableModelIds() so
+that Packages are not considered as a verifiable (launchable) element.
+
+7.3.7 ModelElementLocation
+This is extended to allow Package names to be included in fully qualified names
+in Verifier. The model class handling is also modified to cater for the new
+possibility that classes may be contained within Packages.
+
+8. Work Required
+----------------
+Fully set out in the design section.
+
+9. Unit Test
+------------
+A new test model and JUnit is introduced.
+
+9.1 New Junit test
+This new test follows the paradigm of previous Verifier tests by executing a
+model and comparing the output log with an expected result. The test is factored
+so that it can be reused by passing the package and sub-package names to be
+tested. This works with the required packages set out below in the description
+of the test model. In each case, it invokes the function 'test' in the specified
+component.
+
+9.2 New Test model
+This model is checked into the customary place in the subversion repository. It
+is named, 'VerifierMessageTest'.
+
+This model is rather larger than is strictly required for testing the
+functionality introduced by this work. The reason for this is that we need much
+more comprehensive test coverage of Verifier multi-component execution. This
+model is intended to house this expanded coverage. The comprehensive test will
+be added by the work for [6], or a new issue raised if there is insufficient
+time to complete it under that job.
+
+This test model contains multiple packages to break out the major degrees of
+freedom required by the tests. The first layer of packages under the Test
+Deployment package represents the first such degree of freedom; sender and
+receiver as declared and referenced components. Under each package we have the
+next degree of freedom; sender and receiver as root and delegated components.
+This second level is not relevant to this work, and so we are only interested in
+the Root to Root variation in each of the parent packages.
+
+Each of the cycles initiated by the 'test' function tests both signals and
+operations, passing values and using the send keyword both with and without the
+'to sender' clause.
+
+9.3 Manually confirm that the model attached to the issue runs as expected.
+_- Load the model attached to the issue
+_- Set up a configuration with all the components under the System package
+_- Launch Verifier and execute operation, As::AsOutgoingRequest::TC1
+_R Console output is identical to the expected result in 9.3.1 below
+_- Execute operation, As::ShOutgoingRequest::TC1
+_R Console output is identical to the expected result in 9.3.2 below
+
+9.3.1 Expected result
+Simulation started.
+User invoked operation: TC1
+1:OutgoingRequest dequeueing. Event: OutgoingRequest1: ping
+1:OutgoingRequest transition. New State: Replying Previous State: Waiting To Reply
+1:AsOutgoingRequest dequeueing. Event: AsOutgoingRequest1: Reply
+1:AsOutgoingRequest transition. New State: Received Reply Previous State: Waiting for Reply
+LogInfo:  As received reply.
+
+9.3.2 Expected result
+User invoked operation: TC1
+3:OutgoingRequest dequeueing. Event: OutgoingRequest1: ping
+3:OutgoingRequest transition. New State: Replying Previous State: Waiting To Reply
+1:ShOutgoingRequest dequeueing. Event: ShOutgoingRequest1: Reply
+1:ShOutgoingRequest transition. New State: Received Reply Previous State: Waiting for Reqply
+LogInfo:  Sh received reply.
+
+End
+---
+
+$Log: dts0100749315.dnt,v $
+Revision 1.6  2011/05/19 14:11:08  campbell
+Job: dts0100749315
+Added second manual test.
+
+Revision 1.5  2011/05/19 14:01:57  campbell
+Job: dts0100749315
+Address review obs.
+
+Revision 1.4  2011/05/17 15:40:56  campbell
+Job: dts0100749315
+Ready for review.
+
+Revision 1.3  2011/05/17 14:34:04  campbell
+Job: dts0100749315
+Ready for review.
+
+Revision 1.2  2011/04/04 12:53:06  campbell
+Job: dts0100749315
+Ready for review.
+
+Revision 1.1  2011/03/16 21:57:55  campbell
+Job: dts0100749315
+Introduced.
+

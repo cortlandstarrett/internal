@@ -1,0 +1,155 @@
+========================================================================
+
+File:      $RCSfile: i2650.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Restore last transition highlighting
+
+Abstract
+--------
+This note describes the implementation required to restore the behavior that
+highlights the last transition made when Verifier is running.
+
+History
+-------
+ final - i2650-010307-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 2650
+
+Background
+----------
+Last transition highlighting got broken in the 1.4.1 release because some
+changes to the connector drawing were made to support sequence diagram
+Lifeline connectors.
+
+Analysis
+--------
+When sequence diagrams were added, the connector draw OAL had an extra call to
+GR::setLineWidth(), passing the value of self.getWidth(). This was added to
+allow some connectors (specificaly Lifelines) to be wider than others.
+
+The OAL associated with setting the transition width is in
+Graphical Element.draw(), before control is passed to the subtype draw
+operation. This means that the OAL to support the Lifeline width was over-
+writing the setting for the width for other reasons.
+
+The logic for determining the symbol width is moved to be all together in
+Graphical Element.draw().
+
+Design
+------
+i2650.1 Remove the call to GR::setLineWidth in Connector.draw()
+
+i2650.2 Remove the logic for doubling the line width for selected connectors
+        from Connector.getWidth(). The element selection and the call to
+        Graphical Element.isSelected are also redundant after this change and
+        are removed.
+
+i2650.3 Modify Graphical Element.draw to obtain the width from the connector
+        if necessary. Change the same operation to pass the required width to
+        GR::setWidth() bridge call ('+' below indicates added OAL, the '~'
+        shows modified lines).
+
++ // Get default line width
++ //
++ width = 1;
++ select one connector related by self->GD_CON[R2];
++ if (not_empty connector)
++   width = connector.getWidth();
++ end if;
++ //
+  // if the symbol is selected, set the line width to bold
+  //
+  if (self.isSelected() == true AND NOT param.disable_selection)
+~   GR::setLineWidth(context:param.context, w:width * 2);
+  elif (CL::isHighlighted(element:self.represents))
+~   GR::setLineWidth(context:param.context, w:width * 2);
+  else
++   // Use the default width
+~   GR::setLineWidth(context:param.context, w:width);
+  end if;
+
+Implementation Comments
+-----------------------
+A large number of bridges on the canvas 'Client' external entity and one bridge
+on the 'Graphics Platform' external entity were marked as 'Parse Successful' in
+HEAD. This caused a large number of parse errors to be reported.
+
+Since both EE's are supplied by realized code, these bridges were marked
+'Do not Parse' as part of this work.
+
+Unit Test
+---------
+_- Run Verifier
+_- Start ODMS and execute the 'initialize' function.
+_- Open the Robot instance state chart
+_- Right click on the Robot instance in the Session Explorer
+_- Select 'Put in Spotlight'
+_- Execute 'Mount Disk 1'
+_R The Robot Instance State chart animates as the instance changes state
+_R The last transition taken (always the one into the current state) is
+   highlighted.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+com.mentor.nucleus.bp.ui.canvas/.../ooaofgraphics/External Entities/
+                                                         External Entities.xtuml
+com.mentor.nucleus.bp.ui.canvas/.../ooaofgraphics/Graphical Data/Connector.xtuml
+com.mentor.nucleus.bp.ui.canvas/.../ooaofgraphics/Graphical Data/
+                                                         Graphical Element.xtuml
+End
+---
+
+$Log: i2650.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:06  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.14.1  2008/12/31 16:10:09  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2007/01/05 21:27:33  rmulvey
+Job:2650
+Added the single-file model to the list of files modified.
+
+Revision 1.6  2007/01/03 23:17:02  campbell
+Job:2650
+Added bad bridge marking fix to code change list.
+
+Revision 1.5  2007/01/03 22:42:18  campbell
+Job:2650
+Added comment about fix to bad bridge markings.
+
+Revision 1.4  2007/01/03 19:51:56  campbell
+Job:2650
+Finalized.
+
+Revision 1.3  2007/01/03 19:18:20  campbell
+Job:2650
+Fix typos.
+
+Revision 1.2  2007/01/02 22:53:46  campbell
+Job:2650
+Ready for review.
+
+Revision 1.1  2007/01/02 22:50:09  campbell
+Job:2650
+Introduced.

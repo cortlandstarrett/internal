@@ -1,0 +1,150 @@
+========================================================================
+
+File:      $RCSfile: dts0100832640.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Fix problem with accessing system level External Entity declarations
+
+1. Abstract
+-----------
+In some cases, an External Entity declared at the system level is not processed
+correctly by the parser. This note identifies and describes the fix for this
+problem.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100832640 - EEs do not work at system level.
+[2] ClearQuest DEI dts0100631941 - Migrate away from specialized packages.
+
+4. Background
+-------------
+This problem was detected and reported internally while extending a customer
+model.
+
+5. Analysis
+---------
+This problem has been latent since the promotion of Generic Packages[2]. It has
+not been seen before because few people have tried accessing External Entities
+declared at higher levels in the model and because in some cases described
+below, the observed behavior is as expected.
+
+5.1 Symptoms
+Reproduction procedure:
+_- Create a new package at the system level
+_- In this package, add an External Entity and Bridge.
+_- Add another package at the same level as the EE (i.e nested within the system
+   level package).
+_- In this nested package add a function.
+_- Open the function and add an invocation of the Bridge declared above.
+_R The parser works as expected (including return value and parameter
+   validation).
+_- Return to the system level and a new system level package.
+_- Add a function to this package.
+_- Open the function add an invocation of the Bridge as before.
+_R ERROR. A parser thread terminated prematurely error is reported.
+_R The error log contains an entry indicating that the bridge instance was not
+   found during execution of OAL Validation Functions::is_valid_bridge().
+_R Parameter and return value validation all fail with similar errors or NPE's
+   reported in the error log. 
+
+5.2 Diagnosis
+The problem is localized to OAL Validation Functions::is_valid_bridge(). In this
+function, an EE instance is selected from its instance extent based on its name.
+Because EE.Name is not the identifier, no accelerated lookup is performed. The
+extent searched is therefore limited to the current model root. This in itself
+is not a problem, since after this point different paths are taken for generic
+and non-generic contexts. For the non generic context, the correct EE will
+always be found.
+
+In the generic path, the normal collectElementsForName infrastructure is
+invoked. However, the result of this is never actually used to locate the
+correct EE. Instead the potentially empty EE instance handle selected at the top
+of the function is used. This EE handle is not empty in the case where the EE is
+declared in the same package hierarchy as the referring element. It is empty in
+all other cases, leading to the reported errors.
+
+6. Design
+---------
+The selection of the EE at the top of the function should be moved to the
+beginning of the non-generic path (where it will always work). This is done to
+let the parser detect similar mistakes better in the future. When this is done,
+there are two new parser errors noted; The first is the reference to the EE
+instance handle in the selection of the bridge to be used in the else clause
+after the cardinality has been validated. This is what results in an empty
+bridge handle that is the cause of the reported problems. This is replaced with
+a selection from the results set:
+
+  select any brg related by results->S_EE[R8001]->S_BRG[R19]
+                                          where selected.Name == param.name;
+
+The second error is associated with taking the value of ee.Key_Lett to log an
+error message in the case no bridge is found. Since the key letters the parser
+actually found is passed as an argument to this function in param.key_lett, this
+is a much better choice for providing this data in any case.
+
+OAL that was designed to detect and report multiple external entities with the
+referenced key letters was found to be redundant since the error is detected
+and reported in Identifier_validate(). This OAL was therefore removed.
+
+Finally, an opportunity was taken to enhance the layout of the logic in this
+area to make it easier to understand in the future. All the error cases are
+gathered together with the success case last in the listing.
+
+7. Implementation Comments
+--------------------------
+None.
+
+8. Unit Test
+------------
+The OAL parser test class TestInvocationGenerics is extended to add calls to
+system level defined bridges. This is done for both simple invocations and
+bridges returning values. The test has many expected result sets updated to add
+the expected results of the new tests. The test model, testOAL1G.xtuml has a
+system level external entity added with bridges to support the various tests.
+
+Since all changes are limited to the Validation OAL, only the Parse All tests
+need to be rerun.
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100832640-2
+
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestInvocation_Generics.java
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/testOAL1G.xtuml
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+
+
+
+End
+---
+
+$Log: dts0100832640.int,v $
+Revision 1.3  2011/11/21 17:07:57  campbell
+Job: dts0100832640
+Address review obs.
+
+Revision 1.2  2011/11/21 16:38:56  campbell
+Job: dts0100832640
+Fix typos, add reference to validation code which detects Multiple EE error case.
+
+Revision 1.1  2011/11/21 16:29:58  campbell
+Job: dts0100832640
+Introduced.

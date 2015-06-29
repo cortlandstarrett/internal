@@ -1,0 +1,195 @@
+========================================================================
+
+File:      $RCSfile: dts0100717647.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support new license codes for SystemC and VHDL
+
+1. Abstract
+-----------
+With BP 3.2.0 we began to officially sell the SystemC model compiler.  New 
+MGLS licenses have been introduced.  This issue is raised to introduce support
+in BP proper and generator for these new license codes.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100717647
+[2] http://devnet.wv.mentorg.com/release/Pkginfo.html
+    This is a reference to the latest Mentor Graphics MGLS/Flex-based license 
+    definitions.
+[3] ClearQuest DEI dts0100730442    
+    Modify the new project wizard to allow selection of the model compiler to use
+[4] ClearQuest DEI dts0100730448
+    Refactor (possibly remove) the bp.mc.mc3020 plugin from BridgePoint
+    
+4. Background
+-------------
+The license codes introduced to support licensing of SystemC and VHDL model 
+compilers are [2]:
+101220 : xtumlmcsysc     
+101219 : xtumlmcvhdl  
+
+
+5. Design
+---------
+The mc3020 model compiler can be purchased in one of 2 ways.  A customer can 
+purchase a binary mc3020 model compiler (3145 : xtumlmc3020b ) [2] or a source 
+mc3020 model compiler (2885 : xtumlmc3020) [2].
+
+Initially, the new model compilers will NOT offer these same 2 options.  They 
+shall be available only as source model compilers.   Therefore, they shall be 
+implemented by using the existing mc3020 source license as a guide.  In the 
+future we may license a binary version of these model compilers.  If/when that 
+is done we will not be able to determine what model compiler the user wants us 
+to use by looking at the archetypes that are present.  The user will have to
+tell us which they would like us to use.  A separate issue has been raised for 
+this [3].
+
+5.1 Modify bp.mc.mc3020 to support the new license features.
+5.1.1 Two new command-line arguments shall be introduced for generator.  
+      MCBuilderArgumentHandler.java::getLicenseString() shall be modified to
+      check for specific files in the archetype folder (if an archetype folder 
+      exists) that are specific to each of the new model compilers.
+5.1.1.1 For SystemC the following file is used to determine if the SystemC 
+      model compiler shall be used: t.sysc_main.c
+5.1.1.1.1 When a SystemC source model compiler is present, the following 
+      command-line option shall be passed to generator:  -lSCs
+5.1.1.2 For VHDL the following file is used to determine if the VHDL 
+      model compiler shall be used: t.sys_main.vhd
+5.1.1.2.1 When a VHDL source model compiler is present, the following 
+      command-line option shall be passed to generator:  -lVHs
+5.1.3 If neither if the SystemC or VHDL model compiler files are found, the 
+      current functionality (unchanged) shall be executed to determine if a 
+      MC3020 source license should be used.
+5.1.4  Here is the change made to 
+       MCBuilderArgumentHandler.java::getLicenseString() to support the new 
+       license primitives.
+       
+diff -u -r1.6 MCBuilderArgumentHandler.java
+@@ -153,11 +153,30 @@
+         	boolean arcFolderIsPresent = arcPath.toFile().isDirectory();
+ 
+             if ( arcFolderIsPresent ) {
+-              	licenseString = " -l3s "; //$NON-NLS-1$
+-                if ( !BridgePointLicenseManager.testLicense(BridgePointLicenseManager.MC3020SOURCE_MC_LICENSE_CODE) &&
+-                     !BridgePointLicenseManager.testLicense(BridgePointLicenseManager.DAP_MC_LICENSE_CODE)) {
+-                    popError("License Request Failed", "Failed to get a code generation license.\n\nSee the console view for more information.");
+-                }
++            	IPath sysCPath = arcPath.append(MC3020Nature.SystemC_Archetype);
++            	boolean systemCIspresent = sysCPath.toFile().exists();
++            	boolean vhdlPath = arcPath.append(MC3020Nature.VHDL_Archetype);
++            	boolean vhdlIspresent = vhdlPath.toFile().exists();
++            	boolean isLicensed = false;
++            	if (systemCIspresent) {
++	              	licenseString = " -lSCs "; //$NON-NLS-1$
++	                if ( BridgePointLicenseManager.testLicense(BridgePointLicenseManager.SYSTEMC_SOURCE_MC_LICENSE_CODE)) {
++	                	isLicensed = true;
++		            }
++            	} else if (vhdlIspresent) {
++	              	licenseString = " -lVHs "; //$NON-NLS-1$
++	                if ( BridgePointLicenseManager.testLicense(BridgePointLicenseManager.VHDL_SOURCE_MC_LICENSE_CODE)) {
++	                	isLicensed = true;
++		            }
++            	}
++            	
++	            if (!isLicensed) {
++	              	licenseString = " -l3s "; //$NON-NLS-1$
++	                if ( !BridgePointLicenseManager.testLicense(BridgePointLicenseManager.MC3020SOURCE_MC_LICENSE_CODE) &&
++	                     !BridgePointLicenseManager.testLicense(BridgePointLicenseManager.DAP_MC_LICENSE_CODE)) {
++	                    popError("License Request Failed", "Failed to get a code generation license.\n\nSee the console view for more information.");
++	                }
++            	}
+             } else {
+                	licenseString = " -l3b "; //$NON-NLS-1$
+                 if ( !BridgePointLicenseManager.testLicense(BridgePointLicenseManager.MC3020BINARY_MC_LICENSE_CODE) &&
+
+      
+5.2 Modify the generator (main_gen_erate.cc) to support the new license features.
+5.2.1 Add a check for the new command-line options (-lVHs and -lSCs) and add code to
+    request the new license be checked out when the command-line option is present.
+5.2.2 If neither of the new command-line options are present the code path shall be
+    exactly as it is now (prior to this change).
+5.2.3 Here is the code diff for the change made to support the new license 
+      primitives.
+diff -u -r1.58 main_gen_erate.cc
+@@ -663,7 +663,17 @@
+   bool hasBinLic = false;
+ 
+   // Check the license the user requested to use on the command line.
+-  if ( sourceLicense2020Used ) {
++  if ( sourceLicenseSystemCUsed ) {
++    try {
++      obtainLicense( BP_LICENSE_SystemC_S );
++	  hasSrcLic = true;
++    } catch ( std::exception &e ) {}    
++  } else if ( sourceLicenseVHDLUsed ) {
++    try {
++      obtainLicense( BP_LICENSE_VHDL );
++	  hasSrcLic = true;
++    } catch ( std::exception &e ) {}	
++  } else if ( sourceLicense2020Used ) {
+     try {
+       obtainLicense( BP_LICENSE_GENERATOR );
+       hasDAPLic = true;
+    
+5.3 Modify bp/core/util/BridgePointLicenseManager.java to add support for the new
+    license primitives by adding them with the rest of the license primitives as
+    "public static final int" variables in the class.
+
+6. Implementation Comments
+--------------------------
+6.1  During implementation it was observed that the bp.mc.mc3020 plugin 
+     actually has no mc3020-specific functionality.  It is simply a model 
+     compiler license interface.  A separate issue is raised [4] to
+     refactor/rename this plugin to account for this.
+
+7. Unit Test
+------------
+The test for this has been added to the existing SMA QA test: dts0100709699
+
+
+8. Code Changes
+---------------
+Branch name: <enter your branch name here>
+Enumerate all the files that have been modified while you worked on this issue.
+
+End
+---
+
+$Log: dts0100717647.int,v $
+Revision 1.6  2010/11/11 20:11:05  rmulvey
+job:dts0100668202 dts0100717647 dts0100712872 dts0100712881 dts0100715032 dts0100655323
+Changes look good tagged with chgset-668202-717647-712872-712881-715032-655323
+Completed final testing and promotion documentation.
+
+Revision 1.5  2010/10/19 20:31:44  rmulvey
+job:dts0100717647
+Updated the code diff for the change to support the new -lSCs and -lVHs options to gen_erate in support of the new license primitives.
+
+Revision 1.4  2010/10/19 19:33:14  rmulvey
+job:dts0100717647
+Added the code diff for the change to support the new -lSCs and -lVHs options to gen_erate in support of the new license primitives.
+
+Revision 1.3  2010/10/19 19:26:39  rmulvey
+job:dts0100717647
+Added the code diff for the change to support the new -lSCs and -lVHs options to gen_erate in support of the new license primitives.
+
+Revision 1.2  2010/10/19 15:54:20  rmulvey
+job:dts0100717647
+Updated based on comments.
+
+Revision 1.1  2010/10/19 15:35:35  rmulvey
+job:dts0100717647
+Introduced the note after initial analysis of the problem.

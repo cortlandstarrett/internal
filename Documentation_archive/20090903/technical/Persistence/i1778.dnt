@@ -1,0 +1,244 @@
+========================================================================
+
+File:      $RCSfile: i1778.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:28 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Support file validation before modification
+
+Abstract
+--------
+This note describes the changes required for handling transactions on read only
+models appropriately.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 1778
+[2] Documentation/internal/technical/Persistence/i626.dnt
+[3] Issue 2098
+
+Background
+----------
+When the decision was made to support ClearCase the tool was modified so that if
+a model file was found to be read only no operations were allowed.  This strays
+from the expected behavior of Eclipse.
+
+Eclipse provides mechanisms for allowing a user to decide whether or not to
+modify a read only file.  This behavior may also be overridden by a team
+provider, allowing for the automation for setting a file as writable or ignoring
+the change completely.
+
+Analysis
+--------
+Any time a transaction is completed by a user, the tool shall use the eclipse
+file modification validation routines to determine if the transaction may
+complete.  The transaction shall be handled according to what the user or team
+provider decides for the affected files of the transaction.
+
+Design
+------
+1. Use Eclipse file validation mechanisms
+
+The method TransactionManager.checkIfTransactionCanComplete shall be modified to
+not test the read only status.  The method already adds all affected files to a
+list.  At the end of the method the Workspace.validateEdit shall be used against
+all files collected.  This method provides the required dialog that is presented
+to the user.  The checkIfTransactionCanComplete method shall return true only if
+the status returned by the Workspace.validateEdit method is OK.
+
+All transactions are checked except for those of the type NO_VALIDATION_TYPE.
+The only transactions of this type at this point are delete and rename.  These
+actions are modified to call a new method
+TransactionUtil.modifyReadonlyResources which gathers the files affected in a
+transaction, including parents as renaming and deleting causes a parent to get
+persisted.  If the method finds any read only file it displays a question dialog
+asking the user if they still wish to perform the action.  If so the action will
+be performed, otherwise it is immediately exitted.  When an element is
+encountered which is not a persistable model component itself, the deletion or
+rename will be treated as a normal change.  This has the effect of the normal
+validation routine to be performed.
+
+If any files are found to be read-only the complete transaction will be
+abandoned in the case of a deletion.
+
+The method TransactionManager.endTransaction shall be modified to not fire the
+transactionEnded unless the transaction was determined able to complete.  If the
+transaction was not determined able to complete it shall then be reverted.
+
+2. Remove old modification prevention mechanisms
+
+All old checks and preventions for files that are read only are removed.  See
+[2] for original read only changes.  All read only unit tests are removed from
+the various suites, but left in the repository in case we decide to use them
+at a later time.
+
+3. Batch all resource change events
+
+For concurrency support, Eclipse suggests that all operations which modify any
+resource shall be done within a WorkspaceRunnable.  This prevents other entities
+from modifing the same resources at the same time, by preventing change
+notifications during the operation.
+
+By using a WorkspaceRunnable when the below operations modify a resource, all
+change notifications are received at one time.  This allows for added files to
+be contained within the same list when working under ClearCase.
+
+TransactionManager.fireTransactionEnded (firing this triggers persistence)
+NewSystemWizard.performCreateProject
+GettingStartedAction.loadModel (copies files into the workspace)
+ConvertToMultifileWizard.performFinish
+
+The above change caused the mechanism for ignoring resource changes caused by
+the tool in ComponentResourceListener to break.  The mechanism used a boolean
+attribute to determine if a change event should be ignored, this attribute was
+being set before and unset after each modification (persist).  Batching these
+changes caused the attribute to become unset before the change notification
+arrived.  The method ComponentResourceListener.resourceChanged method is changed
+to unset the attribute if it finds that it was set.  Since all file operations
+are now batched there is only one notification per operation.
+
+The same style of mechanism above was added to the resource listener in
+TransactionManager, which resets the undo/redo stacks if a file has been altered
+outside of the tool.
+
+4.  Change PropertiesViewListener
+
+In an attempt to fix an issue where the read only dialog was appearing more than
+once when changing a text field in the Properties view, the
+PropertiesViewListener was changed to listen for ended transactions.  While this
+did not cure the problem the changes are left as it prevents properties from
+refreshing too often.
+
+5. Remove support for creating state machine on double-click
+
+The issue [3] states that support for creating an instance state machine when
+clicking a class symbol shall be removed.  This behavior is removed and replaced
+with behavior which will follow the below rules:
+
+1) Open Class Description if no state machine
+2) Open Instance State Machine if one exists
+3) Open Class State Machine if one exists and
+   an Instance State Machine does not
+   
+6. Support modification validation within editors
+
+The Eclipse supertypes for DocumentProviders already include the correct code
+for validating the edit of a file when read only.  The reason they do not work
+for us is that we use a "place holder" file to represent the document.  As these
+are newly created they are never read only.  The
+FileDocumentProvider.doValidateState is overridden to allow us to include the
+same validation on the actual model file, the method then passes the control on
+to the supertype implementation.
+
+7. Register .oal and .dsc file types as ignored
+
+The place holder file extensions used for description editors and activity
+editors are added to the list of files excluded from repositories.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+All work required is documented in the design.
+
+Unit Test
+---------
+(The following tests are performed manually)
+
+_- Open Window > Preferences... > Team > Ignored Resources
+_R The .oal extension and .dsc extensions are listed
+
+(The following tests are implemented using junit)
+
+_- Move a shape on a read only diagram
+_R A dialog is shown which prompts to change the file status
+_- Click no
+_R The shape is returned to original position
+_- Move a shape on a read only diagram
+_R A dialog is shown which prompts to change the file status
+_- Click yes
+_R The shape is moved
+
+_- Delete a read only element
+_R A dialog appears asking if the operation shall complete
+_- Click No
+_R The element is not deleted
+_- Delete a read only element
+_R A dialog appears asking if the operation shall complete
+_- Click Yes
+_R The element is deleted
+
+_- Delete a read only element that is not a persistable component
+_R A dialog is shown which prompts to change the file status
+
+_- Rename a read only element that is not a persistable component
+_R A dialog is shown which prompts to change the file status
+
+_- Rename a read only element
+_R A dialog appears asking if the operation shall complete
+_- Click No
+_R The element is not renamed
+_- Rename a read only element
+_R A dialog appears asking if the operation shall complete
+_- Click Yes
+_R The element is Renamed
+
+_- Open a text editor for a read only element
+_- Type a key
+_R A dialog is shown which prompts to change the file status
+_- Click No
+_R The document is not changed
+
+_- Open a text editor for a read only element
+_- Type a key
+_R A dialog is shown which prompts to change the file status
+_- Click Yes
+_R The document is changed
+
+_- Double click a class with no state machines
+_R The description editor is opened
+
+End
+---
+
+$Log: i1778.dnt,v $
+Revision 1.1  2009/09/03 18:22:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/08/11 21:23:52  tlondon
+Job: 1778
+
+Fixed according to review minutes
+
+Revision 1.2  2006/08/03 20:55:55  tlondon
+Job: 1778
+
+Add reference 2
+
+Revision 1.1  2006/08/03 20:24:15  tlondon
+Job: 1778
+
+Initial
+

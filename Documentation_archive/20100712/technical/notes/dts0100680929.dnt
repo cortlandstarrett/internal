@@ -1,0 +1,314 @@
+========================================================================
+
+File:      $RCSfile: dts0100680929.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Address issues with new graphics
+
+1. Abstract
+-----------
+This note describes the changes required to fix several small issues.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100680929
+[2] ClearQuest DEI dts0100673102 [Parent catch all issue]
+[3] dts0100673102.tnt
+
+4. Background
+-------------
+The new graphics were created rapidly, leaving minor issues that need addressing
+before shipping the product.
+
+5. Analysis
+-----------
+5.1 Zoom Combo box behavior
+
+Multiple people have complained about the overall configuration of the zoom
+combo box presented in the new diagrams.
+
+These following complaints are addressed:
+
+1. The combo box should have the textual zoom entries, i.e., Zoom to fit, at the
+beginning of the drop down list.
+2. The combo box should not require the user to scroll the drop down list
+3. There is no Fit to selection support
+
+5.2 Adjust connector creation to account for zooming and scrolling
+
+Some general issues were noted during testing that would cause connections to
+incorrectly crop, sometimes off of the expected target symbol.
+
+The feedback creation and finalization during creation shall be adjusted to work
+no matter what the zoom level is and no matter where the scroll positioning is.
+
+5.3 Remove tool drawers for specialized packages
+
+With specialized packages it is not necessary to have more than one tool drawer.
+
+5.4 Address tool-tip creation when no description present
+
+Currently when hovering over any element, a line is created that is the size of
+the current font height and two pixels wide.  Nothing should show when hovering
+over an element that does not have a description set.
+
+5.5 Assure that container symbols can be manually resized by the user
+
+The container symbol behavior is such that it is automatically sized (to account
+for most of the available screen real estate).  This shall occur until the user
+makes a manual modification, either to the positional value or the size value of
+the container symbol.  Currently the tool will continue to resize the symbol,
+preventing the user from manually adjusting the bounds.
+
+5.6 Floating text
+
+Floating text when selected is displayed with a box, indicating the bounds of
+the text.  The box is drawn right against the text, and sometimes cuts off the
+text.
+
+A spacer (additional white space between box bounds and text) shall be used to
+allow easier reading of the text.
+
+5.7 Allow connector selection with default selection tool
+
+Currently the selection tool does not account for connections or floating text.
+It shall be able to select both nodes, connections and text.
+
+Additionally the marquee selection tools shall be removed.
+
+5.8 Resolve tnt issues
+
+[3] captures any issues found during the testing of new graphics.  When this
+issue is complete the note will be reviewed by management, at which point issues
+will be picked that are required for this release.  All of the issues contained
+in that note shall have CQ issues entered.
+
+6. Design
+---------
+6.1 Zoom Combo box behavior
+
+The first issue is resolved by overriding the method responsible for returning
+a string array which contains the elements to populate the combo box drop down
+with.  The overridden version of the method (getZoomLevelsAsText()) in
+GraphicalZoomManager is changed to add the strings to the beginning of the
+string array rather than at the end.
+
+The second issue is resolved by overriding the default GEF
+ZoomComboContributionItem class, such that the SWT Combo element created has the
+VisibleItemCount value set to a number higher than the drop down possibilities.
+The overridden class is created during the action bar contribution calls, rather
+than creating the default GEF class.
+
+The last issue is resolved by adding a "Fit to selection" string value in the
+combo box drop down.  When the user applies this a new method
+(GraphicalZoomManager.fitSelection) is called.  This method will determine the
+appropriate zoom level, and adjust the scroll bar positioning to center the
+diagram focus on the selected elements.
+
+6.2 Adjust connector creation to account for zooming and scrolling
+
+The code in ConnectionPolicy is modified to adjust all positional values to
+account for the current zoom and scroll positioning.
+
+The code in CreateConnectionCommand is modified to adjust all positional values
+to account for the current zoom and scroll positioning.  This allows the
+existing crop logic to work appropriately.
+
+6.3 Remove tool drawers for specialized packages
+
+The code in GraphicalEditor.fillPalette() is modified such that tool drawers are
+created only for Package diagrams and Component diagrams.
+
+All other diagram types (Specialized) have on tool drawer, Default Toolset.
+
+During this work it was noticed that the Delegation tool was incorrectly added
+to the Default Toolset in a component diagram.  The tool_category attribute is
+specified for the Delegation entry under the Component diagram specification in
+the plugin.xml file.
+
+6.4 Address tool-tip creation when no description present
+
+The initialization code in ConnectorEditPart and ShapeEditPart was incorrectly
+checking that the description value was an empty string before creating a
+tool-tip.  These checks are reversed to check that the description value is not
+empty before creating the tool-tip.
+
+Additionally, it was determined that tool-tips were not refreshed when the user
+first adds a description.  In this case the tool-tip would only show if the user
+closed and reopened the diagram.  The cause of this was related to some
+filtering that was done on the transaction listener, where it ignored events
+when the associated diagram was not the focused editor.  Considering that this
+listener only kicks in when a transaction is completed, the filters are removed
+and all open diagrams are refreshed when a transaction is completed.
+
+Tooltip support is provided for any element in the ooaofooa that has the Descrip
+attribute, and is graphically represented.
+
+6.5 Assure that container symbols can be manually resized by the user
+
+The ShapeSetConstraintCommand is modified to manually set the initial width and
+height values if they were previously -1 (the value which indicates automatic
+sizing).  In addition to that if automatic sizing was being used the default X
+and Y values are updated to 100, 100, the position given during automatic
+positioning.
+
+The code in ShapeEditPart.fillShape() is modified to always use the temporary
+bounds (determined by the auto resizing behavior) rather than the stored values.
+This allows for the shape contents to properly be displayed when a symbol has
+been extended passed the stored bounds.
+
+6.6 Floating text
+
+The layout code and resize policy for text is modified to provide a small spacer
+between the text and selection box.
+
+During this work it was noticed that double clicking floating text did not
+properly open the correct editor.  It should open the same editor as would be
+opened when double clicking the associated element.  The handleOpen code is
+modified to get the associated element and use that as the input for the editor
+to open.
+
+6.7 Allow connector selection with default selection tool
+
+In order to customize the selection behavior the drag tracker returned by the
+viewport must be overridden.  In GraphicsViewport.java, the method
+getDragTracker() is overridden to add connections and floating text to the
+selection if the marquee is drawn to select them.
+
+5.8 Resolve tnt issues
+
+No work required at this point.
+
+7. Design Comments
+------------------
+Added a special case to the generation of
+getComponentRootRootModelElementTypes() for the following EO types:
+
+DataType_c
+Dimensions_c
+CoreDataType_c
+UserDataType_c
+EnumerationDataType_c
+
+This has been commented with a TODO: FIXME comment to indicate that it is
+temporary.  A fix was recently made to
+bp.io.core/arc/generate_configurable_components.inc::
+                                               get_all_parent_components_of_eo()
+to fix a problem that prevent all parents in a chain from being navigated to.
+These problem showed-up in the RTOMove unit tests. That fix was not quite
+correct because while it fixed the RTOMove problem it uncovered additional
+problems.  These shall be addressed in the next promotion of the generic package
+work.  This hack simply provides a work around.
+
+8. Work Required
+----------------
+See design.
+
+9. Unit Test
+------------
+9.1 Zoom Combo box behavior
+
+_- Open a diagram
+_R The zoom combo box is present in the tool bar
+_- Click the drop down arrow
+_R The entire drop down list is shown, no scroll bars are present
+_R The text based zoom entries are at the top of the list
+_- Select a few elements on a diagram
+_- Select the Fit to Selection entry in the drop down
+_R The selection is zoomed
+
+9.2 Adjust connector creation to account for zooming and scrolling
+
+_- Open a package diagram
+_- Create two classes
+_- Zoom to 50%
+_- Draw a connector to self
+_R During the draw the feedback is appropriately attached to the symbol
+_R After creation the connector is created just as the feedback showed
+_- Draw a connector between the two classes
+_R After creation the connector is cropped appropriately
+_- Delete both connectors
+_- Repeat the above test with zoom set to 150% (Note scroll bars should be
+   present)
+
+9.3 Remove tool drawers for specialized packages
+
+_- Open a package diagram
+_R All tool drawers are present
+_- Open a component diagram
+_R Expected tool drawers are present
+_R Delegation tool is not under the Default Toolset drawer
+_R Delegation tool is under the Components tool drawer
+_- Open any specialized package
+_R No tool drawers are present
+
+9.4 Address tool-tip creation when no description present
+
+_- Open any diagram
+_- Hover over an element that has an empty description
+_R Nothing is shown (no pop up at all)
+_- Open the description editor for the element and add a description
+_- Close the description editor and return to the diagram
+_- Hover over the element
+_R A description tool tip is shown
+_- Remove the description for the element
+_- Hover over the element in the diagram
+_R Nothing is shown (no pop up at all)
+
+9.5 Assure that container symbols can be manually resized by the user
+
+_- Open a component diagram
+_- Resize the component container symbol
+_R The element is not auto resized back to original size
+_- Create an element in the container symbol
+_- Drag the element such that part of it is outside of the container symbol
+_R The container symbol is resized, and drawn appropriately
+
+9.6 Floating text
+
+_- Create a new connector
+_- Select any of its floating text
+_R The box drawn around the text has additional space such that the text is not
+   to close to the box
+_- Double click the floating text
+_R The appropriate editor is opened
+
+9.7 Allow connector selection with default selection tool
+
+_- Open a diagram with connectors and floating text
+_- Selection around connectors and floating text
+_R The connectors and floating text are selected
+_- Repeat while holding ctrl
+_R The selection is toggled, the elements are no longer selected
+ 
+End
+---
+
+$Log: dts0100680929.dnt,v $
+Revision 1.3  2010/04/18 14:12:54  tlondon
+Job: dts0100680929
+
+add comment for special case hack
+
+Revision 1.2  2010/04/13 16:12:18  tlondon
+Job: dts0100680929
+
+Address according to review minutes
+
+Revision 1.1  2010/04/07 15:10:12  tlondon
+Job: dts0100680929
+
+Introduce
+

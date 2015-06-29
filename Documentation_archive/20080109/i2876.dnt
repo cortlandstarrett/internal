@@ -1,0 +1,192 @@
+========================================================================
+
+File:      $RCSfile: i2876.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Introduce automated tests for copy/paste
+
+1. Abstract
+-----------
+This note describes the approach taken to test copy/paste for the BridgePoint
+tool.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2876
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2876
+
+4. Background
+-------------
+There are currently only a few automated tests for copy/paste support.
+
+5. Analysis
+-----------
+This issue shall provide a means for automated testing of copy/paste
+functionality.  This note shall also provide an example use of the matrix test
+generator.
+
+6. Design
+---------
+6.1 Introduce archetype for generating a test matrix
+
+An archetype shall be introduced which shall process the ooaofooa_hierarchy and
+the ooaofooa model.  This archetype shall extract those elements which have
+copy/paste support based off of the existence of a paste<Element Name> operation
+in the element's parent.  The archetype shall generate a matrix cell for each
+possible source and destination combination, including non applicable
+destinations.
+
+In order to prevent the need for knowing what each row and column instance name
+must be, the archetype shall also generate a name resolution class.  This class
+shall return a class type for a given row or column name.  For instance if the
+archetype generates a cell which is A1 B1, where A1 equals a Component Package
+and B1 equals a System Model, it shall resolve the element names as
+source_ComponentPackage_c and destination_SystemModel_c.  The generated class
+shall also return the element's required parent class, for instance if A1 was
+a Component Package in a System Model the class would return the System Model
+class as the parent.  In the test model only one source Component Package with a
+System Model parent would exist.
+
+6.2 Introduce supertype class to generated test class
+
+A supertype class shall be introduced.  This class is the supertype for all
+generated test classes.  This supertype shall provide the necessary actions for
+each matrix cell, as well as the necessary result checking for each action
+performed.
+
+6.3 Introduce element resolution class
+
+In order to resolve a column or row instance a class shall be introduced.  This
+class shall use the generated name resolution class to get the element class
+type and the element's parent class type.  With this data the element shall be
+resolved by checking every model root loaded for an instance in the given parent
+class type with the given element name.
+
+In order to do this the ModelRoot.java class shall have a method added which
+returns all instance keys stored.
+
+6.4 Add hierarchy support for nested elements
+
+The ooaofooa_hierarchy.pei.sql file was missing the following nested paths:
+
+- Nested Subsystems
+- Nested External Entity Packages
+- Nested Function Packages
+- Nested Data Type Packages
+
+These are required for the test generator to correctly generate all
+possibilities.
+
+The hierarchy is updated to include the missing paths.
+
+6.5 Initialize Suc_Pars attribute value during SM_ACT upgrade
+
+The SM_ACT upgrade code was not initializing the Suc_Pars value, this left the
+value as -1.  Which in turn caused an Array Out Of Bounds error when viewing an
+upgraded SM_TXN in the properties view.
+
+The upgrade method is updated to initialize the Suc_Pars value to 'Do Parse'.
+
+The expected results in io.mdl.test were updated to account for this.
+
+6.6 Correct ensureCoreDataTypesAvailable methods
+
+During testing it was noticed that too many Data Type Packages were being
+loaded.  This was due to the ensureCoreDataTypesAvailable methods incorrectly
+loading every system level Data Type Package and loading formal component's core
+Data Type Packages.
+
+To ensure that all core Data Types are available only the system level core
+package shall be loaded, unless dealing with a standalone domain.  In the latter
+case the core package found in the domain shall be loaded.
+
+6.7 Always use a good relative path for a proxy
+
+An issue was recently discovered where a proxy path was null.  This was occuring
+during a paste when the proxy path used was a full path and the local element's
+path was relative.  In the method, PersistenceUtil.createRelativePath, the code
+walks through both the remote and local paths extracting the common pieces of
+the paths.  Resulting in the necessary parts to create a relative path.  During
+the paste both paths were actually identical, a special case for paste
+resolution where a proxy must exist even if in the same file, only one was a
+full path and the other was a relative path.
+
+A check to see if the two paths are actually the same is added, in which case
+the given relative path is returned.
+
+6.8 Store S_DID instances in the correct packages
+
+It was noticed that certain operations which create the S_DID instances were
+relating them to the default package even when the related S_DT was not created
+in such a package.  These operations are changed to relate the S_DID instances
+to the correct package.
+
+An upgrade method is added which will check that S_DID instances are related to
+the correct package, re-relating them to the correct package if not.
+
+6.9 Fix consistency warnings
+
+One of the result checking requirements for the copy/paste tests is to see that
+the log file is empty.  For this log file to be empty there must be no
+consistency errors.  All consistency errors were inspected and fixed
+accordingly.  For more details on the changes see the resource history comments
+for the subsystem model files that were changed along with this issue.
+
+There are still a set of consistency failures found in core which were not fixed
+with this issue.  These were left alone because they are false consistency
+errors.  They are considered false because it is simply an error in the
+consistency tool design, the consistency checker does not handle cross
+model-root boundaries.  Due to these failures the test currently will have
+tracing enabled for core.  When the consistency checker is fixed the tracing
+shall be disabled.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See the design section.
+
+9. Unit Test
+------------
+See the generated test matrix found in core.test in the Review-i2876-01 branch.
+
+End
+---
+
+$Log: i2876.dnt,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.2  2007/11/19 23:31:33  tlondon
+Job: 2876
+
+Update according to review minutes.
+
+Revision 1.1  2007/11/12 20:18:09  tlondon
+Job: 2876
+
+Introduce design note.
+

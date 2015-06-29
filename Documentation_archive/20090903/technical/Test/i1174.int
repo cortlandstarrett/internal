@@ -1,0 +1,262 @@
+========================================================================
+
+File:      $RCSfile: i1174.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:28:17 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Enhanced Execution Speed for the Consistency Checker
+
+Abstract
+--------
+
+The Consistency Checker created by issue 1018 calls a domain-level function each
+time persist is called.  The function checks all model elements to see if they
+are populated in the database correctly.  When the Tiger code is instrumented
+with these checks it takes too long to do any model operations which call
+persist.  For instance drawing a new shape in the ooaofooa model takes about 70
+seconds to complete.
+
+History
+-------
+
+Document References
+-------------------
+
+[01] Bugzilla 1174
+[02] Bugzilla 1018, the original project used to create the Consistency Checker.
+[03] Design Note, i1174.dnt
+[04] Bugzilla 1093.  Some Metamodel Associations use O_OBJ Key_Lett.
+
+Background
+----------
+
+As described in the Abstract, the execution speed of the Consistency Checker
+created under project 1018 [02] needs to be improved.
+
+Design
+------
+
+i1174.1 Consistency check removed from persist() method.
+
+i1174.2 Implement consistency checking from a transaction listener
+
+     .2.1 ConsistencyTransactionListener created as described in the Work
+     Required section of the Design Note [03].
+
+     .2.2 Add code necessary to instantiate a ConsistencyTransactionListener in
+     the core domain.
+     
+     Initially the listener instantiation was added to the constructor of
+     EclipseOoaofooa.  However, during unit testing it was discovered that
+     multiple listeners were created, one for each domain model.  The
+     instantiation was moved to CorePlugin.  The archetype
+     create_core_plugin_class.arc was modified appropriately. 
+
+     .2.3 No-op CheckConsistency and CheckClassConsistency added to ModelElement
+     as described in the Design Note.
+     
+     .2.4 New method added to RelationshipChangeModelDelta as described in the
+     Design Note.
+     
+i1174.3 Remove the build process consistency check option switch
+
+     .3.1 Removed definition of PTC_MCC_ENABLED environment variable from
+     MC-Java/build.xml as described in the Design Note.
+     
+     .3.2 The check for the existence of PTC_MCC_ENABLED was removed from
+     java.arc.
+     
+     .3.3 The conditional inclusion of the consistency checker archetypes was
+     removed.  They are unconditionally included.
+     
+Implementation Comments
+-----------------------
+
+01) During unit testing it was determined that the slow deletion test was
+completing with 411 O_RATTRs still in the model.  Modified O_RATTR.dispose
+in ooaofooa.xtuml to delete self after doing all the required unrelating.
+
+02) During unit testing it was determined that an inconsistency may be reported
+if a formalized supertype part of a super/subtype assocation exists with no
+corresponding subtype instances.  This is because the R_RGO side of R111 is
+unconditional.  The R_RGO side of the association was changed to be conditional.
+
+03) During unit testing it was determined that inconsistencies were being
+reported because many classes in test models had identical key letters.
+Key_Lett was a secondary identifier for O_OBJ.  This had previously been
+reported as Bugzilla 1093 [04].  Key_Lett was removed as a secondary identifier
+of O_OBJ.  In order to do this it was necessary to reformalize the following
+associations using Obj_ID instead of Key_Lett: 818, 819, 671, 672, 676, 677,
+678, and 670.  In addition, changes were necessary in OalParserTest.java.
+
+04) A collection of 'if's in model_consistency_functions.inc
+/create_test_class_select were optimized into a single else-if.  Also added
+more entries to the else-if to cover all the elements in the graphics domain.
+
+05) With the move of the consistency checker to a transaction listener,
+generating stack traces to accompany each consistency error message now makes
+sense.  The error message generating archetype was modified to include stack
+traces when error messages are written to the error log.
+
+06) The unit test ModelChangeListenersBatchingTest.testCreateModelElement calls
+ActionTest.testNewO_OBJInstanceStateMachine.  Because ActionTests have been
+modified to check individual elements, testCreateModelElement has been modified
+to disable consistency checking before calling the ActionTest.
+
+07) Replaced expected results for a delete transaction.  This was necessary
+because i597 changed many of the model element dispose() operations.   At this
+time there is not yet an actual production transaction listener.  The test
+Transaction Listener is basically just a logger.  
+
+08) During unit testing it was discovered that many consistency errors were
+reported for ActionTests and DeleteTests.  The inconsistencies are not really
+errors.  They are artifacts of how the tests were created.   The tests were
+created to only test a particular create or delete operation.  Only the minimum
+elements needed to test an operation were created.  Thus many models are left
+in inconsistent states.  The archetype create_action_test.arc was modified so
+that ActionTests check the consistency of the individual relevant components,
+rather than the complete model, and the delete tests were modified to turn off
+consistency checking completely.
+
+09) Operation tracing messages are generated into the Consistency operations.
+Compile errors were occuring in MC-Java.test because that project is not
+an eclipse plugin.  Modified the generation of the messages such that if
+the project is not an eclipse project the tracing messages are written
+to System.out.println instead of Ooaofooa.log.println.
+
+10) During unit testing it was discovered that there may be a race condition
+in the canvas project such that a cursor is trying to be set for a canvas that
+may already be disposed.  Add a check for if canvas is disposed to 
+Setmousecursor in Gr_c.java.
+
+11) During unit testing it was discovered that may be the possibility of an
+uncaught InterruptedException in TigerNatureTest in
+testConfigurationManagementChangesAllEditorsClose.  Added a try-catch block
+to catch that exception.
+
+Note: This change was not made as the method already throws the exception.
+
+12) Added '//$NON-NLS-<#> in several places in ConsistencyTest.java to clear
+up some compiler warnings.
+
+13) Added 'TestUtil.sleep(500);' to S_SYS tests generated by bp.core.test/arc
+/create_action_test.arc to avoid a possible race condition with the UI
+thread.
+
+14) Added note about turning tracing on for io.mdl.test until consistency issues
+are resolved.
+
+Unit Test
+---------
+
+1) All existing unit tests shall run as expected.
+
+
+2) Performance test
+
+-- Compare execution time of core unit test with and without consistency
+   checking included.
+   
+R  Consistency checking does not significantly affect the execution speed of
+   the unit test.
+   
+Code Changes
+------------
+
+com.mentor.nucleus.bp.als.oal.test:
+/src/com/mentor/nucleus/bp/als/oal/test/OalParserTest.java
+
+com.mentor.nucleus.bp.core:
+/arc/create_core_plugin_class.arc
+/models/ooaofooa.xtuml
+/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+/src/com/mentor/nucleus/bp/core/common/ConsistencyTransactionListener.java
+/src/com/mentor/nucleus/bp/core/common/ModelElement.java
+/src/com/mentor/nucleus/bp/core/common/RelationshipChangeModelDelta.java
+
+com.mentor.nucleus.bp.core.test:
+/arc/create_action_test.arc
+/expected_results/TransactionTest/delete_transaction.exp
+/src/com/mentor/nucleus/bp/core/test/ConsistencyTest.java
+/src/com/mentor/nucleus/bp/core/test/ModelChangeListenersBatchingTest.java
+
+com.mentor.nucleus.bp.io.mdl/Test_Readme.txt
+
+com.mentor.nucleus.bp.ui.canvas:
+/src/com/mentor/nucleus/bp/ui/canvas/Gr_c.java
+
+MC-Java:
+/build.xml
+/java.arc
+/model_consistency_functions.inc
+/model_consistency.inc
+
+End
+---
+
+$Log: i1174.int,v $
+Revision 1.1  2009/09/03 18:28:17  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.11  2009/01/01 23:13:39  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.10.30.1  2008/12/31 16:10:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.10  2005/10/17 23:14:08  tlondon
+Job: 1174
+
+Added comments about io.mdl.test and tracing
+
+Revision 1.9  2005/10/17 22:25:20  tlondon
+Job: 1174
+
+Added comment about tracing for io.mdl tests
+
+Revision 1.8  2005/10/17 17:54:26  pablo
+Job: 1174
+Update S_SYS tests to avoid a race condition with the UI thread.
+
+Revision 1.7  2005/10/14 20:32:25  pablo
+Job: 1174
+Document that ConsistencyTest.java was updated to mark the internal strings
+with //$NON-NLS-<#>$.
+
+Revision 1.6  2005/10/12 17:29:09  pablo
+Job: 1174
+Update with changes made to address conditions found during unit testing.
+
+Revision 1.5  2005/09/19 23:19:03  pablo
+Job: 1174
+incremental checkin
+Update Implementation Comments and Code Changes sections.
+
+Revision 1.4  2005/09/10 00:55:47  pablo
+Job: 1174
+incremental checkin
+
+Revision 1.3  2005/09/08 23:54:46  pablo
+Job: 1174
+Add implementation comment explaining change made to O_RATTR.dispose.
+Updated code change section.
+
+Revision 1.2  2005/09/07 23:48:54  pablo
+Job: 1174
+Incremental checkin.
+
+Revision 1.1  2005/09/02 18:52:04  pablo
+Job: 1174
+introduce

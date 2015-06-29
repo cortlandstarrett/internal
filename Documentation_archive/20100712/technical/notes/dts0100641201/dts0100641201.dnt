@@ -1,0 +1,177 @@
+========================================================================
+
+File:      $RCSfile: dts0100641201.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support selectable component configurations in 3020.
+
+
+1. Abstract
+-----------
+MC-3020 already translates wirings modeled in component packages using
+component references.  Now, the MC needs to support the selection of a single
+package and generate code only for the elements in the selected package.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100641201
+[2] ClearQuest DEI dts0100632984 - Update MC for proposed meta-model changes
+[3] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/
+    trunk/Models/Test/RATRconfiguration
+
+4. Background
+-------------
+A model may contain more components than are needed/required for a particular
+working _configuration_ of a system.  Often a model will include additional
+components used for testing.  A user may want multiple versions of components.
+To assemble a system configuration in BridgePoint, the user builds a component
+diagram (in a package) from component references and wires them together as
+desired.  Multiple system configurations (packages) may exist.  Each
+configuration can be different and use only a subset of the components defined
+in the model.
+
+5. Analysis
+-----------
+5.1     Existing Model Compiler (lack of) Strategy
+5.1.1   In BridgePoint from the xtUML modeling perspective component diagrams
+        can be added.  These component diagrams may contain components and/or
+        component references.
+5.1.2   The version 3.1.0 model compiler simply translates all components.
+5.1.3   There may be component packages that contain only references to 
+        components in other packages.  
+5.1.4   In the case of having many components and many packages, each package
+        may contain components from another component package but connect them
+        in different ways.
+5.1.5   In this case what we have is a "library" of components.  And we have
+        various "system configurations" in each "component reference" package.
+5.1.6   While building that kind of a model, it would be a problem in the
+        generated code translated all packages using all components and
+        interface references.
+5.1.7   There must be a way for the user to select which configuration
+        should be involved in the build process.   
+
+5.2     Requirements
+5.2.1   The default (un-marked) behavior for model translation shall remain
+        as in the current MC-3020, translate all components and all interface
+        references.
+5.2.2   Add a mark to enable selection of a package as the chosen "system
+        configuration".  This must use a mark in the model of marking.
+5.2.2.1 The model of marking is being updated for [2] and will include
+        adding the needed mark.
+5.2.3   When a package is marked as the chosen configuration, the model
+        compiler will generate code for only the components and interface
+        references contained within the marked package.
+5.2.4   Update the MC-3020 User Guide to document the feature and the added
+        mark.
+
+6. Design
+---------
+6.1     A new function is added to system.mark which allows to the user to mark
+        a package (currently a component package, later to be changed to a
+        generic package).
+.//============================================================================
+.// Identify System Configuration (collection of components wired into system)
+.//   Mark a package as containing the system configuration.  Code will be
+.//   generated for components contained in this package and referred to
+.//   from this package.  Components that are neither contained in this
+.//   package nor referred to from it are excluded from code generation.
+.//   from code generation.
+.//   This mark should be called only once to mark only one package.
+.//   If no package is marked, then all components, component references and
+.//   interface references contained in the model will be translated.
+.//
+.// MarkSystemConfigurationPackage( system_package )
+.//
+.// Where the input parameter(s) are:
+.//   system_package = name of package containing the components interfaced
+.//                    (wired) together into a system
+.//
+.// Example:
+.//   .invoke MarkSystemConfigurationPackage( "system1" )
+.//============================================================================
+6.2     A mark, "build" (TM_BUILD), is added to the model of marking in the
+        MC-3020 meta-model.
+6.3     This mark is consulted and used to mark each component (TE_C) that is
+        to be included in the generated system.
+6.3     While generating the bodies for the ports, the marked components
+        are consulted.  Wiring is only included when an interface reference
+        connects to components that have been marked as actively participating
+        in code generation (, because they were part of the marked package).
+6.4     Components not existing in, and not referred to from, the marked
+        package are excluded from  code generation.
+6.5     When no mark exists, all components are included in code generation.
+6.6     When the marking function is called multiple times a warning will be
+        emitted, and the last mark will be used.  ("Last mark wins.)
+6.7     Symptoms of incorrect package marking include compile errors due to
+        duplicated names, link errors due to duplicate or missing names.
+        It is also possible to have multiple wirings that are not intended.
+        These wirings can cause problems at run time.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+outlined in the Design section
+
+9. Unit Test
+------------
+9.1    Run RATRconfiguration
+_- Check out [3].
+_- Run in Verifier by running the 'test' function in component c1
+   using the "system1" package in the Launch configuration.
+R- See "LogSuccess" as the last entry in the Console.
+_- Build Project (You may need to refresh the launch configuration.)
+R- Run the compiled executable and see LogSuccess as the last trace
+   element.
+_- Add a second mark MarkSystemConfigurationPackage( "system2" ) before the
+   first one in system.mark.
+_- Build Project
+R- Run the compiled executable and see LogSuccess as the last trace
+   element.
+_- Comment out all marks "MarkSystemConfigurationPackage" from system.mark.
+_- Build Project
+R- See compile errors.
+
+9.2    Run GPS
+_- Using the Welcome page, bring in the GPS model.
+_- Build the C executable.
+R- Run to successful completion.
+
+9.3    Run MicrowaveOven
+_- Using the Welcome page, bring in the MicrowaveOven model.
+_- Build the C executable.
+R- Run to successful completion.
+
+End
+---
+
+$Log: dts0100641201.dnt,v $
+Revision 1.4  2010/05/21 21:00:58  cstarret
+job:dts0100641201
+addressed observations
+
+Revision 1.3  2010/05/21 19:41:48  cstarret
+job:dts0100641201
+solidify design note for component system configurations
+
+Revision 1.2  2010/01/28 21:44:05  cstarret
+job:dts0100641201
+added requirements to the design note
+
+Revision 1.1  2010/01/28 15:09:51  hkhaled
+job: dts0100641201
+Committing a design note
+

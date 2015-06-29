@@ -1,0 +1,148 @@
+========================================================================
+
+File:      $RCSfile: dts0100594110.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+NPE in EDGE TPPerspectiveListener.
+
+1. Abstract
+-----------
+This note describes the work done to eliminate the Null Pointer Exception 
+arising frequently when perspectives are changed in BridgePoint.  
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100594110
+[2] ClearQuest DEI dts0100688910
+	This is the issue is raised by the EDGE team, after reproducing the same 
+	issue on an EDGE installation.
+[3] http://svr-alm-svn-01.alm.mentorg.com:8080/svn/edge
+    Tag Name: 2.4.0.200912041520_release
+    This is the repository and tag of the EDGE release whose files were 
+    modified as part of this issue.
+[4] <CVS>/Documentation/internal/technical/notes/dts0100594110/
+													EdgeDebugController.java
+	This is the only modified file in com.mentor.nucleus.debug plugin, to 
+	resolve this issue.
+[5] svn://phoenix.azt.mentorg.com/arch1/products/tiger/doc_repository/branches/
+	R3_1_1-AYO_dts0100676523/com.mentor.nucleus.debug_2.4.0.200912041520.jar
+	The compiled plugin.
+
+4. Background
+-------------
+4.1 A NPE was encountered frequently when changing perspectives, the exception 
+stack showed that the exception location is at 
+com.mentor.nucleus.debug.internal.ui.perspective.TPPerspectiveListener
+						.perspectiveActivated(TPPerspectiveListener.java:81)
+
+5. Analysis
+-----------
+5.1 After looking at the exception location in TPPerspectiveListener.java, 
+Toggleperspective.getPreferenceStore() is returning a null instance, so when 
+trying invoke getString() function on the returned preference the NPE is 
+thrown.
+
+5.2 Looking at where this preference is initially stored, it was found that in 
+preferences.PreferenceInitializer.initializeDefaultPreferences(), 
+"Toggleperspective.initializeDefaultPreferences(store); (line 50)" isn’t 
+executed as another NPE happens in the same method at 
+"DebugPreferencePage.initializeDefaultPreferences(store);(line 37)", this NPE
+is the main reason for not initializing the default preferences in 
+PreferenceInitializer.initializeDefaultPreferences(), hence the NPE in question
+is thrown.
+
+5.3  Looking at the second NPE stack trace, this NPE is thrown at 
+com.mentor.nucleus.debug.internal.model.EdgeDebugController
+								.visitThreads(EdgeDebugController.java:1472)								
+this function goes through all launches found in the launch manager, however 
+this could include launches that are not Edge launches, then gets the adapter 
+provided by this launch, then tries to invoke getThreadGroups() function on this
+adapter, where here it reports the NPE.
+
+5.4 For non Edge launches, no adapter could be provided, so a null instance is 
+returned when trying to get an adapter from the current processed launch.
+
+6. Design
+---------
+6.1 visitThreads()
+This function should skip its processing for non Edge launches, to prevent NPEs
+to be thrown.
+As for non Edge launches no adapter could be provided, so checking for a non 
+null adapter instance must be done before processing.[4]
+
+6.2  com.mentor.nucleus.debug
+After modifying the previous method, this plugin should be built along with all
+dependent EDGE plugins, then go to plugin.xml > overview tab > export wizard
+then export the compiled plugin into a known directory, to be replaced with 
+VSx_Dev's com.mentor.nucleus.debug plugin found at
+C:\MentorGraphics\VSx_Dev\eclipse_extensions\EDGE\eclipse\plugins.
+
+6.3 This NPE was reproduced on an EDGE installation, when a debug launch is 
+launched from the Java perspective and it is switched to the debug 
+perspective[2].
+We actually could wait until this issue is resolved by the EDGE team, and use 
+the EDGE version that contains the fix.
+However the upComing release should contain a fix for this issue, so we should
+continue on implementing the fix proposed here, and ship a modified version of 
+EDGE with the proposed fix.
+    
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+The work required is fully detailed in the design section.
+
+9. Unit Test
+------------
+_- Create a new workspace, switch to xtUML Modeling perspective, create a new 
+   xtUML project.
+_- Import any BridgePoint Model to the project.
+_- Close VSx_Dev with the xtUML perspective activated.
+_- Restart VSx_Dev to make sure that it is launched at the xtUML perspective.
+_- Right click on the project then launch verifier.
+_R The NPE is thrown.
+_- Replace the compiled plugin [5] with that in the VSx_Dev EDGE plugins in
+   C:\MentorGraphics\VSx_Dev\eclipse_extensions\EDGE\eclipse\plugins
+_- Launch VSx_Dev with the previous workspace selected.
+_- Make sure that the xtUML perspective is launched first, then launch verifier
+   on the pre-created project.
+_R The NPE isn't thrown anymore.  
+
+End
+---
+
+$Log: dts0100594110.dnt,v $
+Revision 1.5  2010/05/19 09:55:42  ayoussef
+job:dts0100594110
+Committing the modified design note after the review, and the implementation note.
+
+Revision 1.4  2010/05/17 17:12:28  ayoussef
+job:dts0100594110
+Initial design note.
+
+Revision 1.3  2010/05/13 20:16:28  ayoussef
+job:dts0100594110
+Initial design note, and modified EdgeDebugController.java
+
+Revision 1.2  2010/05/13 18:58:00  ayoussef
+job:dts0100594110
+Initial design note.
+
+Revision 1.1  2010/05/10 11:38:03  ayoussef
+job:dts0100594110
+Initial design note.
+

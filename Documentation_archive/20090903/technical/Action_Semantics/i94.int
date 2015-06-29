@@ -1,0 +1,463 @@
+========================================================================
+
+File:      $RCSfile: i94.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Parse and Verify while statement
+
+Abstract
+--------
+This note describes adding OAL syntax and semantics verification for 
+the while statement.
+
+History
+-------
+
+update i94-121003-01.rvm
+
+Document References
+-------------------
+Issue 94
+action_semantics.ant
+action_semantics.dnt
+
+Background
+----------
+
+The while statement causes syntax errors.  This is due to 
+the block of statements for the while statement not being
+handled as a "block".
+
+The currently non-existent semantic validation for a 
+while statement must verify:
+
+- The expression in the while statement is correct and of type boolean.
+
+Design
+------
+
+i94.1  Changes to block rule, et al
+
+i94.1.1 Use block rule consistently
+
+In the OAL grammar, the block rule is defined as a sequence
+of zero or more statements.  The block rule is used for the
+block of a for statement, but is not used for if or while 
+statements.
+
+The while_statement and if_statement definitions are changed
+to use the block rule, rather than the ad-hoc statement sequence.
+
+i94.1.2 Add block rule parameter
+
+To aid the verification of statements in a block, the block 
+rule has a parameter added to it, named isRoot, of type boolean.
+The invocation of the block rule in the action rule passes true,
+all other invocations pass false.
+
+i94.1.3 Update block verification function
+
+The validation function Block_start is changed to use the new
+parameter isRoot.  If isRoot is true, then the block is 
+related to the associated Action (ACT_ACT).  If isRoot is false,
+then we relate the block to it's associated statement.  Only
+the while statement is implemented at this time.
+
+i94.2  Fix rule reference variable naming and parameters
+
+These changes are to remedy bugs and shortcomings in the current
+action semantics design.
+
+As a reminder, the bare grammar is run through a process that
+adds the validation functions for each rule.  The archetype
+that generates the processed grammar file hardwires the
+name of the result of a rule reference.  This causes 
+problems when a rule is referenced multiple times in 
+another rule, e.g., the operands to a relational expression.
+
+i94.2.1  Add rule reference attribute for result variable name
+
+In the grammar model, the attribute var_name (string) is added
+to the Rule Reference class.  It has the following description:
+
+This is the name of the variable the result of the rule
+evaluation is saved in.  It is initialized at generation time.
+
+i94.2.2  Change archetype to use new attribute
+
+The grammar_enhancer.arc archetype is changed to initialize
+the var_name attribute to <rule_name><unique_num>_id.  All
+places where the hardwired variable name was used are changed
+to use the var_name attribute.
+
+i94.2.3  Fix rule reference selection function
+
+The archetype function get_referenced_rules is changed to
+not select the following rule references:
+
+- Rules that are part of the options clause are ignored
+- Rules that are in the Ebnf clause => are ignored
+
+The options clause test was used in the functions that
+called get_referenced_rules.  The tests are removed.
+
+
+i94.2.4 Loop processing changes
+
+In order for the block to know which context it is
+operating in we need to add the beginning rule id as
+a parameter to the routine that initializes the loop
+that executes for each statement in the block.
+
+In the function emit_loop_begin_action, add the parameter
+rule_begin_id to the validation function.  Change the
+return value from the validation function to be rule_begin_id.
+
+i94.2.5 Rule label changes
+
+In the grammar, when a rule has iteration (multiple statements
+in a block, for example), there is a loop variable defined to
+track the latest sub-rule that has been validated.  The rules
+being iterated over need the context they are defined in
+(for example, the block) in addition to the previous instance
+of the rule that was successfully executed (for example, 
+the statement).  We change the parameters passed to the
+rules to allow this.
+
+i94.2.5.1  First we need to save the variable name for
+the context rule. Change the function emit_rule_labels to assign
+the fragment attribute rule_label to the string emitted
+as the label for the rule reference.  The string can
+be empty for rules where there is no label to save
+the return value.
+
+i94.2.5.2  We then need to use the context variable instead
+of the loop variable. In the function format_leaf_node, if the
+rule_label attribute returned by emit_rule_labels
+is not empty, then use this value for loop_id_name.
+In the case for the block rule, the variable name
+"rule_begin_id" is used for the loop_id_name.
+In other cases, the loop variable name is used as
+before.
+
+i94.3  Implement typing of relational expressions
+
+The expressions in while loops are typically relational
+expressions of some sort ( e.g., x < 10 ).  The validation
+functions do not currently associate a data type with a
+relational expression.
+
+i94.3.1  Add relational operator storage
+
+The validation function Comparison_operator_validate is implemented.
+The function creates an instance of Binary Operation (V_BIN), and
+initializes the value of the Operand attribute. The V_BIN is related
+to the instance of S_DT representing the boolean type.  The function 
+returns the identifier of the V_BIN instance.
+
+i94.3.2  Add relational expression validation
+
+The validation function Relational_expr_end is implemented.
+It verifies that each operand has a datatype, and that the
+two operand's data types are the same.  If all is well, 
+then the instance of Binary Operation (V_BIN) is found
+(from the id provided by the operator), and related to the 
+two operands. If the operands are not compatible, then 
+their data and the V_BIN instance are deleted, to prevent 
+garbage from accumulating.
+
+i94.3.3  Add binary operation deletion operation
+
+In the ooaofooa model, the clear operation is added to
+the binary operation class (V_BIN).
+
+i94.3.4  Update value clear operation
+
+In the ooaofooa model, the clear operation for the
+Value class (V_VAL) is updated to delete binary 
+operations.
+
+i94.4 Add while verification
+
+i94.4.1  Add while statement verification
+
+The implementation of the While_statement_end verification function
+is created.  It verifies:
+
+- The expression exists.
+- The expression type is boolean.
+
+i94.4.2  Add while statement deletion operation
+
+In the ooaofooa model, the clear operation is added to
+the While statement class (ACT_WHL).
+
+i94.4.3  Update statement clear operation
+
+In the ooaofooa model, the clear operation for the
+Statement class (ACT_SMT) is updated to delete while statements.
+
+i94.5  Add conversion operator
+
+The validation function Relational_expr_end needs to 
+verify that the second operand is not null.  To do this
+we need to compare a parameter of type unique_id to zero.
+This is cause a syntax error in Model Builder.  As a workaround,
+the external entity Operating System (OS) is added with the bridge 
+UNIQUE_ID_TO_INTEGER, which takes a value of type unique_id
+and returns an integer with the same value.  The bridge
+is implemented in native Java code.
+
+Work Required
+-------------
+
+i94.1  Changes to block rule
+
+i94.1.1 Use block rule consistently
+
+In oal.bnf, change the while_statement and if_statement 
+definitions to use the block rule.  The if_statement rule
+contains the logic for the else if and else clauses.
+
+i94.1.2 Add block rule parameter
+
+In oal.bnf, add the parameter to the block rule.
+
+In grammar_enhancer.arc, in the function init_all_the_rules,
+add a case for the isRoot parameter.
+
+i94.1.3 Update block verification function
+
+The validation function Block_start is updated with
+the changes described in the design.
+
+i94.2  Fix rule reference variable naming
+
+i94.2.1  Add rule reference attribute for result variable name
+
+In the grammar.bak, the attribute var_name (string) is added
+to the Rule Reference (RR) class.
+
+i94.2.2  Change archetype to use new attribute
+
+In grammar_enhancer.arc, change the archetype function 
+init_all_the_rules to initialize all RR.var_name attributes
+In the same file, replace all the hardwired variable names
+with the var_name attribute.
+
+i94.2.3  Fix rule reference selection function
+
+In grammar_enhancer.arc, change the archetype function 
+get_referenced_rules to follow the rules described
+in the design.  Change all code invoking get_referenced_rules
+to remove tests for the options clause.
+
+i94.2.4 Loop processing changes
+
+In grammar_enhancer.arc, change the archetype function
+emit_loop_begin_action as described in the design.
+
+i94.2.5 Rule label changes
+
+i94.2.5.1  In grammar_enhancer.arc, change the archetype function
+emit_rule_labels as described in the design.
+
+i94.2.5.2  In grammar_enhancer.arc, change the archetype function
+format_leaf_node as described in the design.
+
+i94.3  Implement typing of relational expressions
+
+i94.3.1  Add relational operator storage
+
+The validation function Comparison_operator_validate is 
+implemented as described in the design.
+
+i94.3.2  Add relational expression validation
+
+The validation function Relational_expr_end is
+implemented as described in the design.
+
+i94.3.3  Add binary operation clear operation
+
+In ooaofooa.bak, the clear operation is added to
+the binary operation class (V_BIN).
+
+i94.3.4  Update value clear operation
+
+In ooaofooa.bak, the clear operation for the
+Value class (V_VAL) is updated to delete binary 
+operations.
+
+i94.4 Add while verification
+
+i94.4.1  Add while statement verification
+
+The implementation of the While_statement_end verification function
+is created.  
+
+i94.4.2  Add while statement clear operation
+
+In ooaofooa.bak, the clear operation is added to
+the While statement class (ACT_WHL).
+
+i94.4.3  Update statement clear operation
+
+In ooaofooa.bak, the clear operation for the
+Statement class (ACT_SMT) is updated to delete while statements.
+
+i94.5  Add conversion operator
+
+i94.5.1 The Operating System EE is created with
+the UNIQUE_ID_TO_INTEGER bridge.  The bridge has
+a default implementation that returns zero.
+The EE is exported with graphics to os_ee_w_graphics.sql
+and without graphics or datatypes to os_ee.sql
+
+i94.5.2  The als/build.xml file is modified to
+import os_ee.sql before generating the validation functions.
+
+i94.5.3 The implementation of the bridge (Os_c.java) is created
+in the als.oal/src directory.
+
+Implementation Comments
+-----------------------
+
+- TestParser.java had some data type creation code added to it.
+
+Unit Test
+---------
+
+- The following tests are added to OalParserTest:
+
+- integer to integer relational expression
+x = 1 < 2;
+
+- real to real relational expression
+x = 1.2 > 2.0;
+
+- string to string relational expression
+x = "up" != "down";
+
+- integer to real relational expression (type mismatch message)
+x = 1 < 2.2;
+
+- integer to boolean relational expression (type mismatch message)
+x = 1 != true;
+
+- empty while loop, literal condition
+while (false)
+end while;
+
+- simple while loop, expression condition
+i = 2;
+while (i < 10)
+  i = 13;
+end while;
+
+- simple while, variable as expression, and
+   defining a variable in the while block scope
+i = true;
+while (i)
+  z = "test";
+  i = false;
+end while;
+
+- another simple while
+i = 4;
+while (i == 4)
+  create object instance d1 of D_D;
+  i = 11;
+end while;
+
+- non-boolean expression (error message)
+x = 1; 
+while (x)
+end while;
+
+- non-boolean expression, while block not empty (error message)
+x = 1; 
+while (x)
+  x = 0; 
+end while;
+
+R All tests pass
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version: 1.4  Final version: 1.5
+
+com.projtech.bp.als/mdl/grammar.bak
+Initial version: 1.1  Final version: 1.2
+
+com.projtech.bp.als/sql/os_ee.sql
+Introduced version:   1.1
+
+com.projtech.bp.als/sql/os_ee_w_graphics.sql
+Introduced version:   1.1
+
+com.projtech.bp.als/build.xml
+Initial version: 1.2  Final version: 1.3
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version: 1.10  Final version: 1.11
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/Os_c.java
+Introduced version:   1.1
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/TestParser.java
+Initial version:  1.3 Final version: 1.4
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.4 Final version: 1.5
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.3 Final version: 1.4
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.7 Final version: 1.8
+
+End
+---
+
+$Log: i94.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/01/15 22:35:53  greg
+Job: 94
+Changes from review
+
+Revision 1.3  2003/12/10 17:01:38  greg
+Job: 94
+Changes from review
+
+Revision 1.2  2003/12/09 23:57:47  greg
+Job: 94
+Update from review
+
+Revision 1.1  2003/12/08 23:17:44  greg
+Job: 94
+Initial checkin
+

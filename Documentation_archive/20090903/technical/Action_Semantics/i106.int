@@ -1,0 +1,706 @@
+========================================================================
+
+File:      $RCSfile: i106.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement if, for, break, continue
+
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+the if, for, break, and continue statements
+
+History
+-------
+
+final i106-021804-01.rvm
+
+Document References
+-------------------
+Issue 106
+action_semantics.dnt
+
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so the following statements are validated properly
+
+- if, elif, else
+- for
+- break, continue
+
+This work is part of implementing the action semantics 
+design (action_semantics.dnt), section AS1.4.3.
+
+The Tiger reduced parser (oal.bnf) has the following rules
+regarding these statements:
+
+break_statement
+  : "break"!
+  ;
+  
+continue_statement
+  :
+    "continue"!
+  ;
+
+for_statement
+  :
+    "for"!
+    "each"!
+    local_variable[true]
+    "in"!
+    inst_ref_set_var
+    ( options {greedy=true ; }:
+      block[false]
+    )
+    "end"!
+    "for"!
+  ;
+
+if_statement
+  :
+    "if"!
+    expr
+    ( options {greedy=true ; }:
+      block[false]
+    )
+    (
+      (
+        "elif"!
+        expr
+	    ( options {greedy=true ; }:
+    	  block[false]
+	    )
+      )+
+    )?
+    (
+      "else"!
+      ( options {greedy=true ; }:
+        block[false]
+      )
+    )?
+    "end"!
+    "if"!
+  ;
+  
+
+Design
+------
+
+i106.1  Add parse flag for loop statements
+
+The class Action Specification has the attribute LoopLevel (integer) 
+added to it.  The following instance-based operations
+are added to the class:
+
+void entered_loop()
+void exitted_loop()
+boolean in_loop()
+
+The entered_loop operation increments the LoopLevel
+attribute, exitted_loop decrements the LoopLevel attribute,
+and in_loop returns true if LoopLevel is greater than zero.
+The clear() operation is updated to set the LoopLevel attribute
+to zero.
+
+i106.2  Update while to trigger loop level
+
+An invocation of entered_loop() is added to while_statement_start(),
+and an invocation of exitted_loop() is added to while_statement_end().
+The instance of Action Specification is determined by getting
+the current scope, which returns a Block instance, then navigating
+to the Action Specification instance from the Block.
+
+i106.3 break statement
+
+i106.3.1  Update ooa of ooa
+
+The class Break (ACT_BRK) is added to the Action subsystem. 
+It is a subtype of the Statement class. It has no other attributes
+or relationships.
+
+i106.3.2  Implement validation
+
+The break statement can only occur in a for or while statement.
+It is an error if the break statement is encountered outside
+of a for or while statement.  The function break_statement_end()
+checks that the current scope is inside of a for or while block.
+
+i106.3.3  Clear operations
+
+The operation Statement.clear is updated to check for the Break
+subtype, and clear it if present.  The clear operation is added
+to the Break subtype. It does nothing.
+
+i106.4 continue statement
+
+i106.4.1  Update ooa of ooa
+
+The class Continue (ACT_CON) is added to the Action subsystem. 
+It is a subtype of the Statement class. It has no other attributes
+or relationships.
+
+i106.4.2  Implement validation
+
+The continue statement can only occur in a for or while statement.
+It is an error if the continue statement is encountered outside
+of a for or while statement.  The function continue_statement_end()
+checks that the current scope is inside of a for or while block.
+
+i106.4.3  Clear operations
+
+The operation Statement.clear is updated to check for the Continue
+subtype, and clear it if present.  The clear operation is added
+to the Continue subtype. It does nothing.
+
+i106.5  for statement
+
+The for statement can have the following errors:
+
+- inst_ref var is already a different type
+- inst_ref var doesn't match inst_ref_set var type
+- inst_ref_set var is the wrong type
+- FOR EACH block not properly terminated with END statement
+
+i106.5.1 Implement validation
+
+i106.5.1.1  for_statement_start()
+
+This function is invoked when the for_statement rule processing 
+is begun.  The function creates an instance of ACT_FOR, and the
+associated ACT_SMT supertype.  The ACT_ACT.entered_loop() 
+operation is invoked.
+
+i106.5.1.2 for_statement_end()
+
+This function is invoked after all parts of the for statement
+have been parsed.  The function verifies the variables have
+the correct type.  If they are correct, then all relationships
+with the instance created during for_statement_start() are 
+formalized.  The ACT_ACT.exitted_loop() operation is 
+always invoked.
+
+The utility function clear_for_data() is created to delete
+all intermediate data associated with the for statement if
+there is a semantic error.
+
+i106.5.1.3  Other function changes
+
+The validation function block_start() is changed to 
+add a search for an instance of ACT_FOR.
+
+The utility function get_enclosing_block() is changed
+to add a search for the enclosing block when the current
+scope is inside a for statement block.
+
+The validation function inst_ref_set_var_validate() is
+implemented.  The function checks that the variable
+exists in the current scope. If it doesn't an error
+is output.  The function returns the variable id.
+
+i106.5.2  Model update
+
+R614 is changed to *-1 from ACT_FOR to V_VAR.  A variable 
+can be used as the iteration variable in multiple for statements.
+
+i106.5.3  Clear operations
+
+The operation Statement.clear is updated to check for the For Statement
+subtype, and clear it if present.  The clear operation is added
+to the For Statement subtype. 
+
+
+i106.6  Add scoping to values
+
+When a syntax error occurs near the end of an if statement, there
+are instances of Value (V_VAL) that haven't been fully connected.
+The best way to keep track of these instances to add a relationship
+between the Block (ACT_BLK) instance and the V_VAL instance to 
+define the scope where the instance was created.
+
+i106.6.1  Add Scoping relationship for Values
+
+The relationship R826 is added between ACT_BLK and V_VAL.  The 
+multiplicity is 1-*.  The referential attributes are in the V_VAL
+class.  The relationship phrases are: 'defines scope of' and 
+'has scope'.
+
+i106.6.2  Instantiate relationship when Values are created
+
+Each place in the action language where a Value instance is
+created formalizes the R826 relationship.  Value instances
+are created in the following functions:
+
+Attribute_access_start()
+Binary_operator_create()
+Enumerator_access_end()
+Local_variable_validate() (2 places)
+Phrase_validate()
+String_literal_false_validate()
+String_literal_true_validate()
+Terminal_tok_fraction_validate()
+Terminal_tok_number_validate()
+Terminal_tok_string_validate()
+Unary_operation_validate()
+
+i106.6.3  Update clear operations
+
+The ACT_BLK and V_VAL clear() operations are updated
+to unformalize the R826 relationship if it is formalized.
+The ACT_BLK clear() operation will also clear and delete the
+related V_VAL instance.
+
+i106.7  if statement
+
+The if statement can have the following errors:
+
+- if expression is not boolean
+- elif expression is not boolean
+- ELIF statement must be contained in IF block
+- ELSE statement must be contained in IF block
+- END IF statement must terminate IF block
+
+i106.7.1  Add Nesting relationships
+
+Relationships are added to the ooa of ooa model to
+indicate which ElseIf and Else statements are associated
+with which If statement.
+
+i106.7.1.1  The relationship R682 is added between the If (ACT_IF)
+and the ElseIf (ACT_EL) statements with cardinality 1-*.  An
+If statement can have zero or more ElseIf's associated with it,
+and an ElseIf is associated with only one If.
+
+i106.7.1.2  The relationship R683 is added between the If (ACT_IF)
+and the Else (ACT_E) statements with cardinality 1-0,1.  An
+If statement can have zero or one Else associated with it,
+and an Else is associated with only one If.
+
+It was considered adding a reflexive relationship for 
+capturing the ordering of the else if's,  but that is deferred until
+MC-Java support for reflexive relationships is implemented.
+
+i106.7.2  Implement validation
+
+i106.7.2.1  if_statement_start()
+
+This function is invoked when the if_statement rule processing 
+is begun.  The function creates an instance of ACT_IF, and the
+associated ACT_SMT supertype.  
+
+i106.7.2.2  if_statement_loop3_end()
+
+This function is called each time an else if statement and block
+have been parsed.  The function verifies that the else if expression
+is boolean, and outputs an error if it isn't.  Otherwise, an
+instance of ACT_EL and the associated ACT_SMT is created, and 
+related to its associated ACT_IF.
+
+i106.7.2.3  if_statement_end()
+
+This function is called after all if, else if, and else statements
+and blocks have been parsed.  The function verifies that the if expression
+is boolean, and outputs an error if it isn't.  If there is an else
+clause, an instance of ACT_E and the associated ACT_SMT is created, and 
+related to its associated ACT_IF.  
+
+i106.7.2.4  Other function changes
+
+The validation function block_start() is changed to 
+add a search for an instance of ACT_IF.  The ACT_EL and
+ACT_E instances don't exist when the block is created, so 
+we can't search for them.  This has the result that the 
+newly created block for the ACT_EL or ACT_E is temporarily
+associated with the ACT_IF instance. When the ACT_EL or 
+ACT_E instance is finally created, the new block currently
+associated with the ACT_IF is associated with the newly
+created ACT_EL or ACT_E, and the original block for the
+if statement is reassociated with the correct if instance.
+
+i106.7.3  Update clear operations
+
+The operation Statement.clear is updated to check for the If,
+Else and ElseIf subtypes, and clear them if present.  
+The clear operation is added to the If, Else, and ElseIf
+subtypes.
+
+
+i106.8  ooaofooa maintenance
+
+The following changes were made to the ooaofooa model.
+
+i106.8.1  Remove redundant relationship and class
+
+The class Var In Scope (ACT_VIS) and relationship R660 
+duplicated the data captured by relationship R823 (Value subsystem).
+The class and relationship are deleted.
+
+i106.8.2  Fix relationship multiplicities
+
+The relationship R808 from V_IRF to V_VAR is changed to *-1.
+An instance reference variable can be used as an r-value multiple times.
+
+The relationship R809 from V_ISR to V_VAR is changed to *-1.
+An instance reference set variable can be used as an r-value multiple times.
+
+i106.8.3  Functions renamed
+
+The functions process_fi and process_rb names were supposed to be changed
+to process_from_instances and process_related_by during the work for issue
+107.  This work wasn't done, so it's being done here.
+
+
+Work Required
+-------------
+
+i106.1  Add parse flag for loop statements
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.2  Update while to trigger loop level
+
+The changes to function_import.sql are made as described in the design.
+
+i106.3 break statement
+
+i106.3.1  Add class to ooa of ooa
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.3.2  Implement validation
+
+The changes to function_import.sql are made as described in the design.
+
+i106.3.3  Clear operations
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.4 continue statement
+
+i106.4.1  Add class to ooa of ooa
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.4.2  Implement validation
+
+The changes to function_import.sql are made as described in the design.
+
+i106.4.3  Clear operations
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.5  for statement
+
+i106.5.1 Implement validation
+
+i106.5.1.1  for_statement_start()
+
+The changes to function_import.sql are made as described in the design.
+
+i106.5.1.2 for_statement_end()
+
+The changes to function_import.sql are made as described in the design.
+
+i106.5.1.3  Other function changes
+
+The changes to function_import.sql are made as described in the design.
+
+i106.5.2  Model update
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.5.3  Clear operations
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.6  Add scoping to values
+
+i106.6.1  Add Scoping relationship for Values
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.6.2  Instantiate relationship when Values are created
+
+The changes to function_import.sql are made as described in the design.
+
+i106.6.3  Update clear operations
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.7  if statement
+
+i106.7.1  Add Nesting relationships
+
+i106.7.1.1  Add relationship R682
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.7.1.2  Add relationship R683
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.7.2  Implement validation
+
+i106.7.2.1  if_statement_start()
+
+The changes to function_import.sql are made as described in the design.
+
+i106.7.2.2  if_statement_loop3_end()
+
+The changes to function_import.sql are made as described in the design.
+
+i106.7.2.3  if_statement_end()
+
+The changes to function_import.sql are made as described in the design.
+
+i106.7.2.4  Other function changes
+
+The changes to function_import.sql are made as described in the design.
+
+i106.7.3  Update clear operations
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.8  ooaofooa maintenance
+
+i106.8.1  Remove redundant relationship and class
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.8.2  Fix relationship multiplicities
+
+The changes to ooaofooa.bak are made as described in the design.
+
+i106.8.3  Functions renamed
+
+The changes to function_import.sql are made as described in the design.
+
+
+Implementation Comments
+-----------------------
+
+- The options {greedy=true ; } clause in the rules is not needed.
+According to the antlr documentation (http://www.antlr.org/doc/lexer.html#Nongreedy_Subrules)
+the use of the greedy option is only there to suppress a warning.
+Greedy is the default behavior of the generated parser.  When the options
+are removed, there are no warnings, because there is no ambiguity
+in the grammar with a lookahead of two tokens (which is what we 
+specify).  Thus all the greedy options can be removed from oal.bnf.
+
+
+Unit Test
+---------
+
+// testForSimpleImplicit
+select many d_set from instances of D_D;  for each d in d_set a = 1; end for;
+
+// testForSimple
+select any d from instances of D_D; select many d_set from instances of D_D;  for each d in d_set a = 1; end for;
+
+// testWhileBreak
+while ( true ) a = 1; break; end while;
+
+// testForBreak
+select many d_set from instances of D_D;  for each d in d_set a = 1; break; end for;
+
+// testNestedBreak
+select many d_set from instances of D_D;  
+for each d in d_set 
+  while ( true )
+   a = 1;
+   break; 
+  end while;
+  b = 2;
+  break;
+end for;
+
+// testWhileContinue
+while ( true ) continue; a = 1; end while;
+
+// testForContinue
+select many d_set from instances of D_D;  for each d in d_set continue; a = 1; end for;
+
+// testNestedContinue
+select many d_set from instances of D_D;  
+for each d in d_set 
+  while ( true ) 
+   continue; 
+   a = 1; 
+  end while;
+  b = 2;
+  continue;
+end for;
+
+// testIfOnly
+if ( false ) a = 1; end if;
+
+// testIfElse
+if ( false ) a = 1; else b = 2; end if;
+
+// testIfElif
+if ( true ) a = 1; elif ( false ) b = 2; end if;
+
+// testIf2Elif
+if ( true ) a = 1; elif ( false ) b = 2; elif ( false ) c = 3; end if;
+
+// testIfElifElse
+if ( true ) a = 1; elif ( false ) b = 2; else c = 3; end if;
+
+// testIf2ElifElse
+if ( true ) a = 1; elif ( false ) b = 2; elif ( false ) c = 3; else  d = 4; end if;
+
+
+------- Invalid code ------------
+
+// testForBadVarType
+select many d_set from instances of D_D;  x = 1; for each x in d_set end for;
+
+// testForWrongVarType
+select any h from instances of D_H; select many d_set from instances of D_D;  for each h in d_set end for;
+
+// testForNotSetVar
+x = 1; for each y in x end for;
+
+// testForNoSetVar
+for each y in x end for;
+
+// testForWithEndWhile
+select many d_set from instances of D_D; for each d in d_set end while;
+
+// testForWithEndIf
+select many d_set from instances of D_D; for each d in d_set end if;
+
+// testForNoEnd
+select many d_set from instances of D_D; for each d in d_set x = 1;
+
+// testBreakBeforeWhileLoop
+break; while (true) end while;
+
+// testBreakAfterWhileLoop
+while (true) end while; break;
+
+// testBreakBeforeForLoop
+select many d_set from instances of D_D;  break; for each d in d_set end for;
+
+// testBreakAfterForLoop
+select many d_set from instances of D_D;  for each d in d_set end for; break;
+
+// testBreakWithNoLoop
+break;
+
+// testContinueBeforeWhileLoop
+continue; while (true) end while;
+
+// testContinueAfterWhileLoop
+while (true) end while; continue;
+
+// testContinueBeforeForLoop
+select many d_set from instances of D_D;  continue; for each d in d_set end for;
+
+// testContinueAfterForLoop
+select many d_set from instances of D_D;  for each d in d_set end for; continue;
+
+// testContinueWithNoLoop
+continue;
+
+// testIfNotBoolean
+if ( 1 ) a = 1; end if;
+
+// testIfWithEndFor
+if ( true ) a = 1; end for;
+
+// testIfWithEndWhile
+if ( true ) a = 1; end while;
+
+// testIfWithNoEnd
+if ( true ) a = 1;
+
+// testIfElseWithEndFor
+if ( true ) a = 1; else b = 2; end for;
+
+// testIfElseWithEndWhile
+if ( true ) a = 1; else b = 2; end while;
+
+// testIfElseWithNoEnd
+if ( true ) a = 1; else b = 2;
+
+// testElifNotBoolean
+if ( true ) a = 1; elif ( "true" ) b = 2; end if;
+
+// testElifOutsideIf
+if ( true ) a = 1; end if; elif ( true ) b = 2; end if;
+
+// testElseOutsideIf
+if ( true ) a = 1; end if; else b = 2; end if;
+
+// testIfElifWithNoEnd
+if ( true ) a = 1; elif (false) b = 2;
+
+// testIfElifElseWithNoEnd
+if ( true ) a = 1; elif ( false ) b = 2; else c = 3;
+
+// testIf2ElifWithNoEnd
+if ( true ) a = 1; elif ( false ) b = 2; elif ( false ) c = 3;
+
+// testIf2ElifElseWithNoEnd
+if ( true ) a = 1; elif ( false ) b = 2; elif ( false ) c = 3; else  d = 4;
+
+
+Code Changes
+------------
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version:  1.16  Final version: 1.17
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.8   Final version: 1.9
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.9   Final version: 1.10
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.12  Final version: 1.13
+
+
+End
+---
+
+$Log: i106.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/02/19 17:01:38  greg
+Job: 106
+Changes from review
+
+Revision 1.2  2004/02/18 00:38:45  greg
+Job: 106
+Ready for review
+
+Revision 1.1  2004/02/12 21:59:55  greg
+Job: 106
+Initial introduction
+

@@ -1,0 +1,308 @@
+
+========================================================================
+
+File:      $RCSfile: dts0100668763.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Complete the testing associated with making context menus consistent
+
+1. Abstract
+-----------
+The issue raised to create consistent context menus for creating model elements  
+(dts0100573206) was promoted before it's testing was complete.  This issue is 
+raised to allow that testing to be completed.  The unit test template calls out 
+the tests that need to be fixed.  
+
+2. History
+----------
+None
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100668763 - Complete the testing associated with making 
+		context menus consistent
+[2] Design note  dts0100668763.dnt
+
+4. Background
+-------------
+See [2]
+    
+5. Design
+---------
+
+
+5.1 CoreII Suite
+5.1.1 ContextMenuTests : 
+5.1.1.1 The RSL code between the two comments mentioned in unit_test_template
+  is removed to allow the generation of the CME tests.
+5.1.1.2 The CME tests are failing because the sub menu items for 'New' label 
+  could not be got. The testing utility method, getChildMenuItems() was never
+  sending the correct event to get the child menu populated.  A SWT.Show 
+  event needed to be sent to the child menu.  Therefore the testing code is 
+  changed to send such an event.  In addition the event processing loop is 
+  removed as it was forcing a SWT.Hide (thus causing the menu to disappear) 
+  to be sent before we could access the child items.
+  
+Before : 
+public static MenuItem[] getMenuItems(final Menu menu, String childMenu) {
+    	// set location
+    	menu.setLocation(menu.getShell().getLocation());
+    	
+    	Display display = PlatformUI.getWorkbench().getDisplay();
+    	
+    	// create a timed close on the menu
+    	// enough time to populate the menu
+    	display.timerExec(10, new Runnable() {
+		
+			public void run() {
+				menu.setVisible(false);
+			}
+		});
+    	// populate the menu
+    	menu.setVisible(true);
+    	while(display.readAndDispatch());
+    	MenuItem[] items;
+    	// get child items if item in question
+    	// is contained in a child menu
+    	if(!childMenu.equals("")) {
+    		items = getChildMenuItems(menu, childMenu);
+    	} else {
+    		items = menu.getItems();	
+    	}
+    	return items;
+    }
+    
+ After :
+ public static MenuItem[] getMenuItems(final Menu menu, String childMenu) {
+
+		Event event = new Event();
+		event.x = 5;
+		event.y = 5;
+		menu.notifyListeners(SWT.Show, event);
+
+		MenuItem[] items;
+
+		// get child items if item in question
+		// is contained in a child menu
+		if (!childMenu.equals("")) {
+			items = getChildMenuItems(menu, childMenu);
+		} else {
+			items = menu.getItems();
+		}
+
+		event.doit = true;
+		menu.notifyListeners(SWT.Hide, event);
+
+		return items;
+
+	}
+	
+	
+Before : 
+    private static MenuItem[] getChildMenuItems(Menu menu, String childMenu) {
+    	MenuItem[] parentItems = menu.getItems();
+    	for(int i = 0; i < parentItems.length; i++) {
+    		if(parentItems[i].getText().equals(childMenu)) {
+    			MenuManager manager = (MenuManager) parentItems[i].getData();
+    			Menu child = manager.getMenu();
+    			child.setLocation(menu.getShell().getLocation());
+    			child.setVisible(true);
+    			MenuItem[] childItems = child.getItems();
+    			return childItems;
+    		}
+    	}
+		return null;
+	}
+
+After:     
+	private static MenuItem[] getChildMenuItems(Menu menu, String childMenu) {
+		MenuItem[] parentItems = menu.getItems();
+		for (int i = 0; i < parentItems.length; i++) {
+			if (parentItems[i].getText().equals(childMenu)) {
+				MenuManager manager = (MenuManager) parentItems[i].getData();
+				Menu child = manager.getMenu();
+				Event event = new Event();
+				event.x = 5;
+				event.y = 5;
+				child.notifyListeners(SWT.Show, event);
+				return child.getItems();
+			}
+		}
+		
+5.1.1.3 A new method 'removeAccelerator' is added to 'UITestingUtilities' to 
+remove the keyboard accelerator character '&' from the menu label
+
+private static String removeAccelerator(String withAccelerator){
+		return withAccelerator.replaceFirst("&", "");
+	}
+	
+The new method invoked in 'getChildMenuItems()', 'checkItemStatusInContextMenu()'
+and 'menuItemExists()'  for menu item string comparison
+
+Before :
+if (parentItems[i].getText().equals( .... ))
+After : 
+if (removeAccelerator(parentItems[i].getText()).equals( .... ))
+
+
+
+
+  
+5.1.1.4 Five Data Type packages have been added to the ContextMenuTests model 
+  to match the requirement of the test. Packages name : 
+  
+  TestElementS_DPKforConstantSpecification
+  TestElementS_DPKforDataTypePackage
+  TestElementS_DPKforEnumerationDataType
+  TestElementS_DPKforStructuredDataType
+  TestElementS_DPKforUserDataType
+
+5.1.1.5 The 'Disconnect' CME tests are excluded from ContextMenuTests since they 
+  can not run vs Domain based model. an issue is submitted to move them 
+  in Component Context Menu Test.
+ 
+
+5.1.2 : SequenceTests : testSequenceInDomainModeling() 
+  The relation number in the 'select' statement in 
+  Domain.getFunctionPckgCount()  and getFunctionPckgId() is changed from R301
+  to R29. By this change only the Function Packages that created directly inside
+  Domain will be selected.
+ 
+Before:
+select many functionPckgs related by self->S_FPK[R301];
+
+After:
+select many functionPckgs related by self->S_FPK[R29];
+
+  Also The expected result needs to be updated for coordination mismatching.
+
+5.1.3 ModifyNonFullyLoadedModelTests : testDeleteClassWithReferringImportedClass
+      is resolved by updating expected results
+    
+5.2  MDL PkgCM Test Suite : 
+5.2.1 PkgCMCreateTest : testCreateSubSystem_ThruCE()
+  
+  The relation number in the 'select' statement in 
+  Domain.getExternalEntityCount() and Domain.getExternalEntityId() is changed 
+  from R300 to R36. By this change only the External Entity Packages that
+  created directly inside Domain will be select.
+  
+5.3 Canvas Test Suite 
+5.3.1 CanvasEditorInteraction : 
+5.3.1.1 Un comment the setUp().
+5.3.1.2 Un comment the member variables.
+5.3.1.3 Un comment setGenerateResults().
+5.3.1.4 test82CreateNewEEP()
+    Some of the invoked method inside it are no longer exist and have been 
+    replaced by others.
+    
+    CanvasEditor  -->   GraphicalEditor
+	CanvasTestUtils.controlShapeToolState(graphicsModelRoot, shptool, "activate");
+	            -->    UITestingUtilities.activateTool( shptool);
+	CanvasEditor.ptCanvas --> GraphicalEditor.getModel()
+	CanvasTestUtils.controlShapeToolState(graphicsModelRoot, shptool, "deactivate");
+				-->     UITestingUtilities.deactivateTool( shptool); 
+				
+    Also new expected result files are added since there were not existed one.
+    
+
+	 
+
+5.4 Rename Domain.getExternalEntityCount() to  Domain.getExternalEntityPkgCount() 
+5.5 Rename Domain.getExternalEntityId() to Domain.getExternalEntityPkgId()
+5.6 The new operations name -getExternalEntityPkgCount() and 
+getExternalEntityPkgId-  need to be updated in ui.graphics/plugin.xml  
+
+Before:
+<autoReconcile
+               targetSymbol="External Entity Package"
+               countMethod="Getexternalentitypkgcount"
+               elementMethod="Getexternalentitypkgid"
+               elementExistsMethod="not used"/>
+
+After :
+<autoReconcile
+               targetSymbol="External Entity Package"
+               countMethod="Getexternalentitycount"
+               elementMethod="Getexternalentityid"
+               elementExistsMethod="not used"/>
+  
+6. Implementation Comments
+--------------------------
+None.
+
+
+7. Unit Test
+------------
+7.1 All Junit must pass
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100668763-03
+
+com.mentor.nucleus.bp.compare.test/src/
+    com.mentor.nucleus.bp.compare.test.cases/GenerateComparisonTextTest.java
+com.mentor.nucleus.bp.compare.test/src/com.mentor.nucleus.bp.compare.test.plcm/
+    InspectorTest.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Domain/Domain.xtuml
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    ModifyNonFullyLoadedModelTests.java
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    SequenceTests.java
+com.mentor.nucleus.bp.core.test/arc/create_context_menu_tests.arc
+com.mentor.nucleus.bp.core.test/expected_results/ModifyNonFullyLoadedModel_1/
+    ModifyNonFullyLoadedModel_1-5
+com.mentor.nucleus.bp.core.test/expected_results/ModifyNonFullyLoadedModel_1/
+    ModifyNonFullyLoadedModel_1-5.jpg
+com.mentor.nucleus.bp.core.test/expected_results/ModifyNonFullyLoadedModel_1/
+    ModifyNonFullyLoadedModel_1-shape_deletion_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/SequenceTest_42/
+    SequenceTest_42-1
+com.mentor.nucleus.bp.core.test/expected_results/SequenceTest_42/
+    SequenceTest_42-1.jpg
+
+com.mentor.nucleus.bp.io.mdl.test/src/com.mentor.nucleus.bp.io.mdl.test.pkgcm/
+    PkgCMCreateTest.java
+
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/
+    UITestingUtilities.java
+
+com.mentor.nucleus.bp.ui.canvas.test/src/(default package)/CanvasTestSuite.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com.mentor.nucleus.bp.ui.canvas.test/
+    CanvasEditorInteraction.java
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/CanvasEditor__test_77/
+    CanvasEditor__test_77-1
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/CanvasEditor__test_77/
+    CanvasEditor__test_77-1.jpg
+    
+com.mentor.nucleus.bp.ui.graphics/plugin.xml
+
+
+
+
+
+End
+---
+
+$Log: dts0100668763.int,v $
+Revision 1.3  2010/06/14 22:51:13  nmohamad
+job:dts0100668763
+Update design / code change  sections
+
+Revision 1.2  2010/06/10 17:34:50  nmohamad
+job:dts0100668763
+Column 80 fixes
+
+Revision 1.1  2010/06/10 17:29:26  nmohamad
+job:dts0100668763
+Creating

@@ -1,0 +1,372 @@
+========================================================================
+
+File:      $RCSfile: i1051.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:18 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add detection of infinite recursion in referential attribute naming
+
+Abstract
+--------
+This note describes changes to detect when determining the 'referred to' 
+attribute name or prefix would result in a stack overflow due to 
+infinite recursion.
+
+History
+-------
+
+update i1051-010406-01.rvm
+final i1051-010606-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 1051
+
+Background
+----------
+The issue describes a scenario where Tiger fails due to a stack overflow.
+The overflow occurs when the user attempts to split a combined referential
+where one of the formalized associations is reflexive.
+
+Analysis
+--------
+
+The infinite recursion occurs when trying to resolve the base attribute
+that the referential attribute refers to in order to display the 
+'referred to' name of the referential attribute.  The recursion could 
+also occur if the referential attribute used a 'referred to' prefix.
+
+Design
+------
+
+When navigating to the base attribute, we need to detect if we've already
+visited the attribute when navigating from the referential to the base
+attribute.  We detect this change by adding the attribute Referential
+Attribute.visited (boolean).  This attribute indicates if we've visited 
+this Referential attribute already.  If we detect a loop in the
+referential attributes, the loop is exited, and the referential attribute
+is shown as 'Orphaned'.  This duplicates the functionality in 
+BridgePoint 6.1.
+
+1. Add support for non-persistent attributes
+
+The attribute Referential Attribute.visited is used only during the run
+time operation of Tiger.  We don't want each change to the attribute to
+be persisted.  We thus add support for the ability to mark attributes as
+"non-persistent".  A non-persistent attribute has the following properties:
+
+  - it is not a parameter to the constructor that initializes all data
+    member values
+  - when the attribute value is changed, no model change event is generated
+  - it does not appear in the Properties view
+  - it does not appear in a schema generated from the model
+  - it is not imported or exported
+  
+1.1  Remove non-persistent attribute from constructor parameter list
+
+java.arc is changed to check if an attribute has "Persistent:false" in
+its description.  If this is the case, then the attribute is not added to
+the constructor's parameter list.  The attribute value is not initialized
+either.
+
+1.2  Model change event change
+
+The function notifies_changes in arch_utils.inc is modified to check
+if an O_ATTR has the Persistent:false keyword in its description.  If
+it does, attr_result is set to false.
+
+1.3  Properties view change
+
+The function show_simple_attr in BuildPropertySource.arc is changed to check
+if an O_ATTR has the Persistent:false keyword in its description.  If
+it does, attr_result is set to false.
+
+1.4  schema_gen changes
+
+The schema_gen.arc archetype is changed to check for the
+TRANSLATE_FOR_EXTERNAL_USE keyword in each attribute's description.  If 
+the keyword is FALSE, then the attribute is not output for the schema.
+This keyword is used to be consistent with the rest of the schema_gen
+processing.
+
+1.5  Change import and export code generation
+
+The archetype class2table.arc generates the table and column information
+used to generate the import and export code. The archetype is 
+changed to not output data for attributes marked with Persistent:false.
+
+2. Add attribute
+
+The attribute ReferentialAttribute.visited (boolean) is added to ooaofooa.  
+The attribute has the following description:
+
+This attribute is used when navigating from the referential attribute
+back to the referred to attribute.  As we navigate back to the base 
+attribute, each referential attribute we visit along the way has this
+attribute set to true.   This allows the code to be able to detect if
+we've visited an attribute already, and avoid going into an infinite loop.
+
+Persistent:false
+TRANSLATE_FOR_EXTERNAL_USE:FALSE
+
+3. Add helper operations
+
+ReferentialAttribute::PREFIX_LOOP_STRING() : string
+  // Class-Based
+  return "< Prefix Loop >";
+
+ReferentialAttribute::NAME_LOOP_STRING() : string
+  // Class-Based
+  return "< Name Loop >";
+
+Attribute::get_root() : string
+	select one battr related by self->O_BATTR[R106];
+	if ( not_empty battr )
+	  return self.Root_Nam;
+	else
+	  select one rattr related by self->O_RATTR[R106];
+	  return rattr.get_root();
+	end if;
+
+ReferentialAttribute::get_root() : string
+	tmp_root = "";
+	if ( self.visited )
+		tmp_root = O_RATTR::ROOT_LOOP_STRING();
+	elif ( self.Ref_Mode == 0 )   // Local Attribute
+	    select one attr related by self->O_ATTR[R106];
+		tmp_root = attr.Root_Nam;
+	elif ( self.Ref_Mode == 1 )  // Referred To Attribute
+		self.visited = true;
+		tmp_root = self.get_root_name_internal();
+		self.visited = false;
+		// when calls are all finished, all visited attributes should be false
+	end if;
+	
+	return tmp_root ;
+
+Attribute::get_prefix() : string
+	select one battr related by self->O_BATTR[R106];
+	if ( not_empty battr )
+	  if ( self.Pfx_Mode == 1 )  // use local prefix
+	    return self.Prefix;
+	  else
+	    // can't be referred to prefix, must be no prefix
+	    return "";
+	  end if;
+	else
+	  select one rattr related by self->O_RATTR[R106];
+	  return rattr.get_prefix();
+	end if;
+
+ReferentialAttribute::get_prefix() : string
+	tmp_prefix = "";
+	if ( self.visited )
+		tmp_prefix = O_RATTR::PREFIX_LOOP_STRING();
+	else
+	  select one attr related by self->O_ATTR[R106];
+	  if ( attr.Pfx_Mode == 1 )   // Local Prefix
+		tmp_prefix = attr.Prefix;
+	  elif ( attr.Pfx_Mode == 2 )  // Referred To Prefix
+		self.visited = true;
+		tmp_prefix = self.get_prefix_string_internal();
+		self.visited = false;
+		// when calls are all finished, all visited attributes should be false
+	  end if;
+	end if;
+	
+	// no prefix is handled by default
+	return tmp_prefix ;
+
+ReferentialAttribute::get_root_name_internal() : string
+
+	if ( self.Ref_Mode == 0 )  // use local root
+	  select one attr related by self->O_ATTR[R106];
+	  return attr.Root_Nam;
+	else
+	  select many oref_set related by self->O_REF[R108];
+	  for each oref in oref_set
+	    select one attr related by oref->O_RTIDA[R111]->O_OIDA[R110]->O_ATTR[R105];
+	    if ( not_empty attr )
+	      root_name = attr.get_root();
+	      if ( root_name != O_RATTR::ROOT_LOOP_STRING() )
+	        return root_name;
+	      end if;
+	    else
+	      return ::getOrphanedElementName();
+	    end if;
+	  end for;
+	end if;
+
+	// We didn't find anything
+	return ::getOrphanedElementName();
+
+ReferentialAttribute::get_prefix_string_internal() : string
+ 
+	select one attr related by self->O_ATTR[R106];
+	if ( attr.Pfx_Mode == 1 )  // use local prefix
+	  return attr.Prefix;
+	elif ( attr.Pfx_Mode == 2 )  // use referred to prefix
+	  select many oref_set related by self->O_REF[R108];
+	  for each oref in oref_set
+	    select one root_attr related by oref->O_RTIDA[R111]->O_OIDA[R110]->O_ATTR[R105];
+	    if ( not_empty root_attr )
+	      prefix = root_attr.get_prefix();
+	      if ( prefix != O_RATTR::PREFIX_LOOP_STRING() )
+	        return prefix;
+	      end if;
+	    else
+	      return ::getOrphanedElementName();
+	    end if;
+	  end for;
+	  // We didn't find anything
+	  return ::getOrphanedElementName();
+	else  // no prefix
+	  return "";
+	end if;
+
+4. Change existing operations
+
+The following operations are completely rewritten:
+
+ReferentialAttribute::get_root_name
+    // make sure all visited attributes are false
+    select many rattr_set from instances of O_RATTR;
+    for each rattr in rattr_set 
+      rattr.visited = false;
+    end for;
+    
+    result = self.get_root_name_internal();
+
+    // assert that all visited attributes are false
+    select any rattr from instances of O_RATTR where (selected.visited);
+    if ( not_empty rattr )
+       USER::logError(msg:"Assertion failed: get_root_name(): visited attribute is still true");
+    end if;
+    
+    return result; 
+
+ReferentialAttribute::get_prefix_string
+ (renamed from get_prefix)
+
+    // make sure all visited attributes are false
+    select many rattr_set from instances of O_RATTR;
+    for each rattr in rattr_set 
+      rattr.visited = false;
+    end for;
+    
+    result = self.get_prefix_string_internal();
+    
+    // assert that all visited attributes are false
+    select any rattr from instances of O_RATTR where (selected.visited);
+    if ( not_empty rattr )
+       USER::logError(msg:"Assertion failed: get_prefix_string(): visited attribute is still true");
+    end if;
+    
+    return result;
+
+Design Comments
+---------------
+An attempt was made to change the Split... context menu function so that
+the user would be unable to select the O_REF instance that causes the 
+original problem.  Detecting the given situation was fairly simple, but
+writing the code so that all possible situations were detected, and with
+no false positives was seen as beyond the effort needed to resolve this
+issue.
+
+Work Required
+-------------
+1. Add support for non-persistent attributes
+
+1.1  Remove non-persistent attribute from constructor parameter list
+
+java.arc is changed as described in the design.
+
+1.2  Model change event change
+
+arch_utils.inc is changed as described in the design.
+
+1.3  Properties view change
+
+BuildPropertySource.arc is changed as described in the design.
+
+1.4  schema_gen changes
+
+The schema_gen.arc archetype is changed as described in the design.
+
+1.5  Change import and export code generation
+
+The class2table.arc archetype is changed as described in the design.
+
+2. Add attribute
+
+The attribute is added to ooaofooa.xtuml.
+
+3. Add helper operations
+
+The operations are added to ooaofooa.xtuml. 
+
+4. Change existing operations
+
+The changes are made to ooaofooa.xtuml.  The one other invocation of 
+ReferentialAttribute::get_prefix is changed to get_prefix_string in
+the Attribute.Name derived attribute activity.
+
+Unit Test
+---------
+
+The following tests are automated in CombineSplitReferentialsTest.java
+
+- Invoke 'Split...' on a referential attribute where one of the 
+associations is reflexive.  The referential attribute uses the 
+'referred to' name.
+R The split finishes. The tool does not hang.
+
+- Invoke 'Split...' on a referential attribute where one of the 
+associations is reflexive.  The referential attribute uses the 
+'referred to' prefix.
+R The split finishes. The tool does not hang.
+
+The test data for the properties test is generated by create_view_test.arc.
+The archetype is modified to test for non-persistent attributes.
+
+End
+---
+
+$Log: i1051.dnt,v $
+Revision 1.1  2009/09/03 18:21:18  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.28.1  2008/12/31 16:10:18  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2006/01/06 20:20:59  greg
+Job: 1051
+Addressed observations
+
+Revision 1.3  2006/01/05 22:44:39  greg
+Job: 1051
+Addressed observation
+
+Revision 1.2  2006/01/03 20:59:11  greg
+Job: 1051
+Add another design comment
+
+Revision 1.1  2005/12/23 22:39:24  greg
+Job: 1051
+Introduce
+

@@ -1,0 +1,218 @@
+========================================================================
+
+File:      $RCSfile: dts0100640940.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+F2 rename does not work at first.
+
+1. Abstract
+-----------
+Sometimes when selecting an item in the Model Explorer View to be 
+editable by using the F2 function key, is it not always being selected
+for editing. This problem also happens  with Delete function key.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100640140 - F2 rename does not work at first.
+[2] The core ui package: CVS/com.mentor.nucleus.bp.core/
+	com.mentor.nucleus.bp.core.ui package
+[3] Test model: CVS/com.mentor.nucleus.bp.ui.explorer.test/small.xtuml
+[4] Test model: CVS/com.mentor.nucleus.bp.ui.canvas.test/Odms.xtuml
+
+4. Background
+-------------
+4.1 Introduction
+
+	BridgePoint plug-ins "com.mentor.nucleus.bp.ui.explorer" and
+	"com.mentor.nucleus.bp.ui.session" extends "org.eclipse.ui.views"
+	plug-in to add some Views to BridgePoint User Interface which are
+	"Model Explorer", "Spotlight" and "Session Explorer".
+	
+	Each View has some associated actions, like "Copy", "Paste","Delete", 
+	"OPEN"....... etc.
+	Actions "Rename" and "delete" are associated with "Model Explorer" 
+	and "Spotlight" Views but not associated "Session Explorer" View.
+	The actions "Rename" and "delete" are handled by "RenameAction.java" and
+	"DeleteAction.java" class respectively in
+	"com.mentor.nucleus.bp.core" plug-in.
+	Each View -"Model Explorer" and "Spotlight"- has its own instance
+	of the class "RenameAction.java" to handle "Rename" action.
+	There is only one instance of "DeleteAction.java" for "delete" action
+	for all views.
+	
+	BridgePoint plug-ins "com.mentor.nucleus.bp.ui.canvas" extends 
+	"org.eclipse.ui.editors" plug-in to add canvas Editor named 
+	"Diagram Editor". This Editor has an associated actions like  "Rename" 
+	and "delete". Actions "rename" and "delete" are handled by one instance of
+	"Action.java" class for each action.
+	
+5. Analysis
+-----------	  
+	
+5.1 The process of "View" or "Editor" creation and Initialization
+	
+	This task is accomplished by the function createPartControl() in each
+	View or Editor class. This function is responsible for the following
+		_-Creating the layout 
+     	_-Creating associated actions. This is done by calling 
+          function createActions(), which creates instances for the
+          associated actions. 
+     	_-Creating Menus. This is done by calling createMenus(), which controls
+     	 the creation of "PopupMenu" and disabling or enabling the actions in 
+     	 that menu.
+     	_-Hook up all the listeners needed by the View. Like 
+     	  "ISelectionChangedListener" listener if any item in 
+     	  the View is changed. 
+	 	
+5.2 The process of actions "Rename" and "delete" instantiation and Enabling or
+    disabling.
+    
+    _- These actions are instantiated through the calling of function
+       createActions().
+    _- The action is enable or disabled upon the creation of "PopupMenu".
+       The "Rename" action is enabled or disabled if the corresponding
+       item in the View supports name changing. This is done by 
+       calling  
+       		rename.setEnabled(RenameAction.canRenameAction())      
+       Similarly with "delete" action 
+       by calling
+       		delete.setEnabled(DeleteAction.canDeleteAction())
+       in View case.
+       or in the Editor case
+       		delete.setEnabled(enableDelete())
+
+      	   
+5.3 Problem Diagnose 
+	
+	The real problem happens due to the following sequence. 
+		_- An item in the View or Editor is selected, and "PopupMenu" 
+		   is created.
+		_- If this item doesn't support name changing, the instance
+		   of RenameAction is disabled.
+		_- Pressing F2 function key, checks the status of RenameAction
+		   instance -which is currently disabled- will not work.
+		   F2 function key will not work properly until RenameAction
+		   instance is enabled again.
+    Similarly when pressing Delete function key.
+    
+    In short, the action is enabled or disabled according to the previously 
+    selected item upon the creation of "PopupMenu" not the current selected one.
+ 	
+ 	"Rename" and "delete" are the only actions whose activation changes in 
+ 	"PopupMenu" creation. So this problem will not occur for other function
+ 	keys.
+	  
+6. Design
+---------
+6.1 Design 
+	
+	The action handler instance should be enabled or disabled when the 
+	item selection changes not when a "PopupMenu" is created
+	on a selected item.
+	
+	The enablement of the "Rename" and "delete" actions will be moved from the 
+	createMenu() methods to the selection change listener 
+	in create_explorer_view.inc, create_mon_explorer_view.inc, create_view.inc
+	and CanvasEditor.java
+	 
+	So the flow will be : Before pressing F2 or Delete key, item selection will
+	change. This in turn fires the "ISelectionChangedListener" listener, which 
+	enables or disables the handler instance according the selected item.
+	So when that key is pressed it will works according the new selected
+	item supports that kind of editing or not, which is reflected in the
+	current state of the handler instance.
+	
+	
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+---------------- 
+fully specified in the design section.      
+
+9. Unit Test
+------------
+9.1
+	_- Create a new xtuml project
+	_- Import a model (small.xtuml [3])
+	_- In Subsystem "Test" select "Instance State Machine" 
+	_- Press F2 function key, try to change the name.
+	_R Make sure that the name is not editable.
+	_- Right-click on "Instance State Machine" and create new event.
+	_- Select "A" class and press F2.
+	_- Change the name to "A2"
+	_R Make sure that the class name did get changed.
+	_- Select "Datatypes" package then Right-click.  
+	_- Select "A2" class in Subsystem "Test" 
+	   and press F2.
+	_- Change the name to "A"
+	_R Make sure that the class name did get changed.
+	
+9.2 
+	_- Create a new xtuml project
+	_- Import a model (small.xtuml [3])
+	-_ Select "Datatypes" package then press Delete.
+	_R Make sure the package is not deleted.
+	_- In Subsystem "Test" select "Instance State Machine"  for class "A"
+	_- Press Delete function key.
+	_R Make sure that "Instance State Machine" is deleted .
+	_- Right-click "Datatypes" package.
+	_- Select "A" class and press Delete.
+	_R Make sure that the class has been deleted
+9.3
+	_- Create a new xtuml project
+	_- Import a model (Odms.xtuml [4])
+	_- Open the canvas Editor for "Odms" class diagram.
+	_- Select any association and Right-click
+	_- Select any class and press F2.
+	_R Make sure that the name of the class has changed.
+	_- Right click on an empty space in the canvas Editor.
+	_- Select any class and press Delete.
+	_R Make sure that the selected class has been deleted.  
+End
+---
+$Log: dts0100640940.dnt,v $
+Revision 1.8  2010/02/02 11:26:41  etarek
+job:dts0100640940
+applying  standard
+
+Revision 1.7  2010/01/18 13:27:03  etarek
+job:dts0100640940
+changing design section
+
+Revision 1.6  2010/01/18 12:46:20  etarek
+job:dts0100640940
+changing design section
+
+Revision 1.5  2010/01/18 12:30:15  etarek
+job:dts0100640940
+change design section
+
+Revision 1.4  2010/01/18 11:56:24  etarek
+job:dts0100640940
+reformating the sections
+
+Revision 1.3  2010/01/17 14:19:49  etarek
+job:dts0100640940
+changes to support Delete key
+
+Revision 1.2  2010/01/17 10:48:46  etarek
+job:dts0100640940
+adding the design notes
+
+
+

@@ -1,0 +1,185 @@
+========================================================================
+
+File:      $RCSfile: i717.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Very large state actions cause state model canvas drawing slowdown
+
+
+1. Abstract
+-----------
+This note describes a fix to make BridgePoint more responsive when manipulating
+a state machine diagram that includes states with large amounts of action
+language.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 717
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=717
+[2] Bugzilla item 3103
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3103
+[3] Bugzilla item 3106
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3106
+    
+4. Background
+-------------
+If a state machine diagram has states that have a couple hundred or more lines
+of action language (including comments), the user interface has a noticeable
+lag and unresponsiveness when selecting elements on the diagram, scrolling, 
+moving, etc.
+
+This is because the entire text of each state action is passed through a pro-
+cessing routine on each draw.  This processing routine determines for every 
+single line of action language if it is wider than the containing compartment.
+If it is, the line is truncated at the proper width and an ellipsis ("...") is 
+added to the end of the line.
+
+It has also been noted that animated statecharts slow down very quickly when 
+watched in the spotlight.
+
+5. Design
+---------
+5.1     The processing function (fitTextTo()) is designed to avoid unnecessarily
+        processing the entire text block of OAL.  It only needs to process the
+        visible text that fits inside the container height.
+        
+5.2     Create sample models that can be used to reliably test the bug.
+
+5.3     The drawing of graphical elements is handled in OoaOfGraphics in the 
+        Shape class' Draw() function.
+        
+5.3.1   Add the a block of OAL that truncates long text before calculating
+        line lengths for ellipsis substitution.
+    
+5.4     Add a domain function truncateTextBlock(text, maxLines) to the
+        OoaOfGraphcis to perform the truncation.
+
+5.5     Pass in full filesystem path to relative path creation routine during
+        stream export.  This resolves issue 3106.
+        
+6. Implementation Comments
+--------------------------
+6.1     The solution outlined in section 5 did not fix the issue with the ani-
+        mated statechart slowdown.  Therefore, we decided to address each issue
+        individually.  [2] is opened to track progress on the animated state
+        machine slowdown bug.
+
+6.2     The sample models called out in 5.2 turned out to be more suitable for
+        testing [2].  The ex1 model is most suitable for testing this issue.
+        
+7. Unit Test
+------------
+7.1     Verify that Canvas JUnit tests still run OK.
+7.2     Perform manual test with "ex1.xtuml" model.  See [1] for instructions.
+        Verify the UI response is snappy with the fix in place.
+        
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    shape_creation_transaction.exp
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    UniqueNameTest.java
+
+com.mentor.nucleus.bp.io.core/arc/export_functions.inc
+
+com.mentor.nucleus.bp.io.mdl/arc/gen_stream_export.arc
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/TestUtil.java
+
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Shape Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Functions/Functions.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Shape/Shape.xtuml
+
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_35/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_50/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_51/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_52/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_53/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_54/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_55/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_56/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_57/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_58/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/canvastest/14155803-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/canvastest/14155803-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ConnectorsAsAnchors_8/
+    13-103.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ConnectorsAsAnchors_9/
+    13-103.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    FreeFloatingConnectorTests_1/5-105
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    FreeFloatingConnectorTests_1/5-105.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/1572867-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/1572867-8.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/3145734-10
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/3145734-10.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/4194312-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/4194312-8.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/4718601-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/4718601-8.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/5767179-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/5767179-8.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/6291468-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/6291468-8.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/6815757-8
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMS/6815757-8.jpg
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    CanvasTest.java
+
+End
+---
+
+$Log: i717.int,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.3  2007/09/10 22:37:16  tlondon
+Job: 717 3106
+
+Update to include 3106 changes.
+Update to include test result changes.
+
+Revision 1.2  2007/09/06 22:22:40  cstarret
+job:717
+updates per review
+
+Revision 1.1  2007/09/06 20:19:43  kbrown
+Job:717
+Check in mostly complete implementation note.

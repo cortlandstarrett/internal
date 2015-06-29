@@ -1,0 +1,178 @@
+========================================================================
+
+File:      $RCSfile: dts0100575968.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Remove timing window in verifier
+
+1. Abstract
+-----------
+This note describes the changes required to remove a race condition where the
+target of an event is not set up until after the event queue has been unlocked.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100575968
+[2] ClearQuest DEI dts0100580091
+    Policy covering relate of already related instances requires review.
+[3] ClearQuest DEI dts0100565196
+    Incorrect event queue shown when using component execution
+
+4. Background
+-------------
+Reports were made of frequent cases where no target for event errors were being
+reported during Verifier runtime. This was traced to a number of places in the
+operation Pending Event.fireToClassSM(). In this operation, the last line:
+
+// Make this event pending for the target class
+relate self to target_cie across R2931;
+
+always happens after the calls to Execution Engine.unlockQueue(queue_name).
+
+Thus a window exists where another thread can start before the target class has
+been set up. If this thread is the execution engine execution thread for the
+receiving component, it attempts to process the event and logs the error. It
+also disposes the event so that it is lost and the thread of control is thus
+compromised.
+
+Although the window looks small, it was leading to relatively frequent errors
+(> 1 in 10,000).
+
+5. Design
+---------
+Move the relate statements into the body of the operation before the queues are
+released. This change is required in two places in fireToClassSM(), just before
+the unlockQueue() calls. Note there are 3 calls to unlockQueue() in the
+operation. In the case where no target class is found, setting up the target
+cannot be performed so no relate statement is needed.
+
+6. Implementation Comments
+--------------------------
+6.1 The instance fireToInstSM() operation cannot fail because there is currently no
+way for an instance based event to be delivered on a separate thread. However,
+the operation, Pending Event.fireToInstSM() is given similar treatment for
+consistency and robustness for future enhancements.
+
+6.2 Added a change to help debug verifier problems.  This was called out
+    in dts0100580091 [2].
+Useful in catching this problem [2] was a catch clause added in the 
+BPThread.startModel() method:
+
+inside the while block in the runner thread inner class, right after the 'try' 
+clause and before the 'finally', I added:
+
+ 		          catch (Exception e) {
+		        	  DebugUIPlugin.log(e);
+		          }
+
+This gets runtime errors put into the error log properly and it provides a good 
+place to put a breakpoint too.
+
+So (+ is added) :
+
+		          try {
+		        	  ModelRoot.disableChangeNotification();
+                                 // runtime execution code . . . 
+		          }
++		          catch (Exception e) {
++		        	  DebugUIPlugin.log(e);
++		          }
+		          finally {
+		        	  ModelRoot.enableChangeNotification();
+		          }
+
+6.3 A 2-line fix for a problem causing incorrect event queue to be shown when 
+    using component execution [3] is included in this promotion.
+
+In com.mentor.nucleus.bp.debug.ui.BPThread.getStackFrames() uses the following 
+line to obtain the list of outstanding timer events:
+
+// Timer events
+PendingEvent_c [] tes = PendingEvent_c.getManyI_EVIsOnR2940(Timer_c.TimerInstances(engine.getModelRoot()));
+
+The above selects all timers globally, when it should only select those for the 
+component that the current BPThread represents. This is rather done thus:
+ 
+ // Timer events
+Timer_c [] timers = Timer_c.getManyI_TIMsOnR2940(PendingEvent_c.getManyI_EVIsOnR2964(engine));
+PendingEvent_c [] tes = PendingEvent_c.getManyI_EVIsOnR2940(timers);
+ 
+
+7. Unit Test
+------------
+7.1 All existing unit tests must pass.
+
+7.2 Run Seat Heater for 2 or more hours, observe that no target not found errors
+are reported.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Pending Event/Pending Event.xtuml
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPThread.java
+
+ 
+End
+---
+
+$Log: dts0100575968.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/04/10 18:32:55  rmulvey
+job:dts0100575968
+Fixed cut/paste error
+
+Revision 1.8  2009/04/10 18:26:00  rmulvey
+job:dts0100575968
+Updated the note to account for 2 small changes (for other issues) added during promotion.They are:
+ClearQuest DEI dts0100580091
+    Policy covering relate of already related instances requires review.  Actually, what was addwed was a
+	log message for a situation where verifier was throwing an exception.  This log message was very helpful
+    in finding this issue (the issue itself will remain open).
+
+ClearQuest DEI dts0100565196
+    Incorrect event queue shown when using component execution
+
+Revision 1.7  2009/04/10 18:21:30  rmulvey
+job:dts0100575968
+Updated the note to account for 2 small changes (for other issues) added during promotion.They are:
+
+Revision 1.6  2009/04/08 21:44:47  campbell
+Job: dts0100575968
+Fix typo.
+
+Revision 1.5  2009/04/08 12:58:04  campbell
+Job: dts0100575968
+One final clarification.
+
+Revision 1.4  2009/04/08 12:56:59  campbell
+Job: dts0100575968
+Fix typos add clarifications.
+
+Revision 1.3  2009/04/08 10:52:06  campbell
+Job: dts0100575968
+Clarify case where change is not needed.
+
+Revision 1.2  2009/04/08 10:47:20  campbell
+Job: dts0100575968
+Ready for review.
+
+Revision 1.1  2009/04/08 10:24:03  campbell
+Job: dts0100573488
+Introduced.

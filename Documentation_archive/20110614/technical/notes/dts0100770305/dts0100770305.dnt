@@ -1,0 +1,288 @@
+========================================================================
+
+File:      $RCSfile: dts0100770305.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Further copy/paste automated testing
+
+1. Abstract
+-----------
+This note describes some of the work done to take copy/paste automated testing
+further.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100770305
+[2] ClearQuest DEI dts0100758796
+    Support copy/paste for all elements...
+[3] ClearQuest DEI dts0100774464
+    Complete automated copy/paste testing round 2
+[4] ClearQuest DEI dts0100774258
+    Paste into component does not work
+[5] ClearQuest DEI dts0100773170
+    Generic Package: Async and Sync message are not displayed in the ME unless
+    they are linked with  element
+[6] ClearQuest DEI dts0100774209
+    After upgrading a model to GPs, system level packages are shown are empty
+    white boxes after restart
+    
+4. Background
+-------------
+[2] made quite a few changes to the copy/paste infrastructure, mainly expanding
+support across all elements.  In order to give a broader audience access the
+issue was promoted to HEAD before the automated testing was complete.  This
+issue was raised to complete such automated testing.  However due to timing
+constraints and the valuable changes in this issues branch we are going to once
+again promote a portion of the work completed.  [3] was raised to again attempt
+completion of copy/paste automated testing.
+
+5. Analysis
+-----------
+Nothing to analyze.
+
+6. Design
+---------
+6.1 Work on existing copy/paste test infrastructure
+
+Two new test suites were generated, CopyPasteSourceDestinationTests in the cpts
+package and in the cpts_full.  The archetype that generates these tests is
+modified so that in the non-full case only one possible destination parent is
+actually tested, along with only one bad location test.  In the other case there
+are no restrictions, all possible destination parents are tested and all bad
+location tests are generated.
+
+CopyPasteTestModel is introduced and follows a naming convention that allows
+elements to be resolved properly for testing.  Additionally, it allows for model
+file modification prior to model compare to allow known differences to pass.  An
+example of such a known difference is the appended -1 when a duplicate element
+exists.
+
+The following new test classes are introduced, MultipleTargetPasteTests and
+PackageReconciliationTests.  These handle the automated tests specified in [2].
+
+6.2 Do not treat connectors that are attached to ContainerShape instances as
+    pasted
+    
+The paste infrastructure was determining that connectors attached to
+ContainerShape elements were part of the paste, when the parent symbol was
+copied.  This resulted in duplicate connectors being created on the pasted
+element.  An example of such an element is the Component symbol, where the
+component diagram symbol is an instance of ContainerShape.
+
+6.3 Add missing reconcile support
+
+The following elements did not have reconciliation support:
+
+Package::Package
+Component::Package
+Component::Interface
+Component::User Data Type
+Component::Component Reference
+
+The ui.graphics/plugin.xml is modified to add the reconcile entries.  The
+Package and Component classes are modified to add the required reconciler
+operations.  These are getElementCount and getElementId(integer:index).
+
+[4] is resolved by these changes.
+
+6.4 Remove messages from under package
+
+The UI tree pei data was incorrectly showing all messages under a Package.  It
+should only show those message that are not connected to a target.  It should
+also exclude messages that are free floating yet are formalized as they are
+considered to have a target.
+
+The pei data is changed to only show messages under their target.  [5] will
+resolve the issue about showing messages that are free floating and not formal.
+
+6.5 Address TransactionException in CanvasTransactionListener
+
+A case was noticed where a transaction can be canceled, but the transaction
+variable is not nulled out.  This causes endTransaction to be called for that
+transaction which has already been canceled.  This causes a
+TransactionException.
+
+The transaction variable is nulled if canceled.
+
+6.6 Export proxy data for satisfactions
+
+When pasting components and their interface references, all satisfactions were
+lost.  This was due to the fact that there was no export path from an interface
+reference to the satisfaction instances.  Alternate path entries are added to
+include satisfactions for Provisions, Imported Provisions, Requirements, and
+Imported Requirements.
+
+Additionally, the existing pasteProvision operations are modified to check for
+the satisfaction and the element on the other end.  If it finds that there is
+no satisfaction present the satisfaction instance is disposed.
+
+During testing for this it was noticed that some event data was being exported
+as a non-proxy when it should have been a proxy.  The reason being is that the
+infrastructure cannot handle the re-entry into the export_Transition_c method as
+is written.  What happens now is the transition being exported has alternate
+children defined by AEP entries.  These include O_OBJ, and are configured to
+export the AEPs's children as well.  Doing this allows for all data to be
+present when trying to resolve inherited events.  When the export code was
+entering export_Transition_c for the O_OBJ AEP it was set to not write the
+children as proxies, which is right but only for the transition selected for
+export.
+
+To handle this a new attribute is added to Alternate Export Child Link (AEP).
+This attribute is named, forceProxyWritingForChildren.  When true the export
+archetypes will generate code that forces the AEPs children to be written as
+proxies.  Unless the selected element for export is the current instance being
+processed.  The AEP entries for inherited event resolution are modified to set
+this value.
+
+6.7 Fix hierarchy pei data
+
+There was a pei entry in ooaofooa_hierarchy.pei.sql which used the old package
+containment associations.  This is removed and a new one is added for the
+R8000/R8001 associations.
+
+6.8 Persist system model file on import when converting to generics
+
+[6] Captures a problem where package symbols were white boxes on restart.  This
+was due to the fact that the conversion properly modifed the GD_GE instances,
+but these changes were never persisted.  A call to persist the system model file
+is added in ImportModelWizard, after processing all packages.
+
+[6] is resolved by these changes.
+
+6.9 ModelStreamProcessor
+
+On paste some elements need special code to determine if they are part of the
+paste (those elements selected at copy time).  Provisions and Requirements fit
+this special case pattern, as you need to check the symbols they are connected
+to and see if those element's parents are null or proxies.
+
+The special code is added for these cases.
+
+Support to disable the parse on paste was added.  This support is currently only
+used by the CCP tests.
+
+6.10 Fix issue where domain related elements were not filtered from the generic
+     package assignment dialogs
+     
+The archetype in function_body.inc had support for filtering domain level
+elements from the generic package dialogs (Interface formalization support).
+However the archetype never worked because the wrong key letters were being
+checked.  The archetype is modified to pass in the key letters of the element
+being formalized to the get_precondition function.  These key letters are then
+used to properly determine when such filtering should occur.
+
+6.11 Add oal for inherited event resolution in all container possibilities
+
+When copying and pasting something that can contain signal events, we need to
+call into the Transition.updateAssignedSignal() so that they are properly
+resolved.  This is needed in all cases because the signal could come from any
+where up until the system model.
+
+When pasting a domain, subystem, component, or package oal is added that
+traverses all elements below looking for transitions.  Then calls the required
+updateAssignedSignalEvent().
+
+During this work it was noticed that there was a copy/paste error during [2].
+When delegating to a formal domain of a component for pasting the pasteActivity
+call was copied and pasted into the other informal diagrams.  These are all
+renamed to the proper calls.
+
+6.12 Fix interface operation and signal resolution
+
+Interface operation and signal datatype resolution was not working properly in
+the generic package case.  Each operation has oal added that will check for
+being in a generic package (in the same way as other areas of the tool), then
+call the already existing PE_PE.resolveDatatypeRelativeToSelf().
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design.
+
+9. Unit Test
+------------
+9.1 Test duplicated connections on paste
+
+_- Copy and paste a component along with its interface references
+_R There are no duplicate interface references pasted
+
+9.2 Test reconciler additions
+
+_- Copy a package and paste it into a package using model explorer
+_R The package symbol is created on the diagram
+
+_- Copy a package and paste it into a component by selecting the component
+   on a package diagram
+_R The package symbol is created on the component diagram
+_- Copy an interface and paste it into a component by selecting the component
+   on a package diagram
+_R The interface symbol is created on the component diagram
+_- Copy a UDT and paste it into a component by selecting the component
+   on a package diagram
+_R The UDT symbol is created on the component diagram
+_- Copy a Component Reference and paste it into a component by selecting the
+   component on a package diagram
+_R The Component Reference symbol is created on the component diagram
+
+9.3 Test messages under a package
+
+_- Create a message drawn to a participant on a package diagram
+_R The message is not listed under the package
+_R The message is listed under the participant
+
+9.4 Test satisfaction export
+
+_- Copy two components and all of their wired interface references
+_- Paste the two components
+_R All interface references are pasted and remain satisfied
+_R There are no duplicate text labels on the interface references
+_- Repeat above test for component references
+
+9.5 Test GD_GE creation on generic package conversion
+
+_- Create a new xtUML project
+_- Import MicrowaveOven with the "convert to generics" options selected
+_- Open the System Package diagram
+_R Everything looks good
+_- Restart
+_- Open the System Package Diagram
+_R Everything still looks good
+
+9.6 Test generic package formalize dialog filtering
+
+_- In a system that has a domain with some classes under it, and some packages
+   with some classes create a class participant under a package
+_- Right click the class participant
+_R The Formalize... menu item is available
+_- Select the Formalize... menu item
+_R The selection dialog is opened
+_R The selection dialog does not contain any of the classes from the domain
+
+End
+---
+
+$Log: dts0100770305.dnt,v $
+Revision 1.2  2011/05/28 14:12:17  tlondon
+Job: dts0100770305
+
+Address review minutes
+
+Revision 1.1  2011/05/27 22:22:10  tlondon
+Job: dts0100770305
+
+Add design note
+

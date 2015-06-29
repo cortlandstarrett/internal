@@ -1,0 +1,117 @@
+========================================================================
+
+File:      $RCSfile: i3322.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Stale proxy data causes NPEs during batchRelate
+
+1. Abstract
+-----------
+This note will describe the problem that results in NPEs during batchRelate that 
+are caused by stale proxy data.  The note will outline a solution for this 
+problem.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3322
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3322
+[2] Bugzilla item 3579 (Model export error)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3379
+
+4. Background
+-------------
+By design, when a model element that is a RTO is modified, BridgePoint does not 
+update the references to the RTO.  The reason for this is that to do so would 
+often require dirtying many files (the RGOs).  Additionally, it would 
+be time consuming.  Therefore, since the proxy data held in RGOs may become 
+stale, the loading of the RTO through the proxy in the RGO must be robust in 
+the presence of changes that may have been made to the RTO.  This issue has 
+identified a problem where, when an RTO is deleted, the RGO still attempts to 
+load it during batchRelate, and when it can not (because it doesn't exist) the 
+result is a NPE.
+
+5. Analysis
+-----------
+This problem is caused because the proxy's persistable model component (PMC) is
+set to be the same as the RTO's PMC.  Because of this, the test that checks for 
+a proxy during batchRelate (!isProxy()) is being overridden by the test that 
+checks to see if the element is in the same component (inSameComponent()) and
+BridgePoint attempts to load it.  To fix this, the batchRelate() will be 
+modified and the test for inSameComponent() will include a check to assure
+that proxies that are in the same component are not batchRelated.
+
+
+6. Work Required
+----------------
+6.1 The source of the problem was a situation where batchRelate was setting up 
+    a stale proxy that was left over after the real element was deleted.  This 
+    happened because the inSameComponent() test
+    had an error.  This error was resolved as follows:
+    before:   
+    if (relateProxies || !isProxy() || 
+       (inSameComponent(this, ${rel_inst_var_name})))
+    
+    after: 
+    if (relateProxies || !isProxy() || 
+       (inSameComponent(this, ${rel_inst_var_name}) && !isProxy()))    
+6.2 Modify the export code to be robust during proxy load failures.  Safety
+    checks shall be added to account for load failures.  When a load fails
+    it will not be fatal, it shall log a message that provides information 
+    about what was being loaded when the failure happened.
+
+
+7. Acceptance Test
+------------------
+7.1 Import a model with a stale proxy and assure that the stale proxy does not 
+    cause an NPE.  A new unit test shall be introduced for this in the 
+    io.mdl.test plugin.
+    _- Use the test workspace provided in bug 3579 comment 10 [2]    
+    _- "Import..."->"Existing Projects into Workspace"->"Select archive file"
+    _- Make sure OAL export is enabled
+    _- Export the model
+    _R There are errors in the error log to indicate a PMC could not be loaded,
+       but they are not fatal.
+    _R The Export is successful.  
+ 
+
+
+End
+---
+
+$Log: i3322.ant,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.4.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2008/07/02 00:20:11  rmulvey
+Job:3322
+Updated based on review.
+
+Revision 1.2  2008/06/19 14:37:54  rmulvey
+Job:3322
+Reworded
+
+Revision 1.1  2008/06/19 14:26:13  rmulvey
+Job:3322
+Introduced

@@ -1,0 +1,185 @@
+========================================================================
+
+File:      $RCSfile: i126.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+MC-Java Implementation Note
+Fix invocations as parameter to invocation generation
+
+Abstract
+--------
+This note describes the changes to MC-Java to correctly generate
+an invocation used as a parameter to an invocation returning a value.
+
+History
+-------
+
+final i126-042304-01.rvm
+
+Document References
+-------------------
+
+Bugzilla issue 126
+
+Background
+----------
+
+The following OAL (in the odms2 model):
+
+x =  ::test( a: ::get_robot_id());
+
+produces the following Java code:
+
+int          x = Odms2.Test() ;
+
+Design
+------
+
+The code for invocations (bridge, function, operation)
+returning a value is part of the routine that generates
+all values.  However, when an invocation result is used as a
+parameter to another invocation that also returns a value,
+the parameter invocation may not have been generated
+before the calling invocation is generated. This cannot be known
+a priori.
+
+i126.1  Generate invocations as parameters correctly
+
+When an r-value invocation is generated, the value of each
+parameter is tested to see if it has been generated yet 
+(the parameter's generation buffer is not empty.)  If the
+parameter's value hasn't been generated yet, it is generated
+before being added to the calling invocation's parameter list.
+
+Note that parameter lists to events are generated after all
+values are generated, so no change is needed for the event
+generation and creation code.
+
+Work Required
+-------------
+
+i126.1  Generate invocations as parameters correctly
+
+In value.inc, the following code 
+
+  .if (val.buffer == "")
+    .invoke gen_value(val)
+  .end if
+
+is added to the functions gen_bridge_value, gen_transform_value,
+and gen_synch_service_value just before outputing the value buffer.
+
+
+Implementation Comments
+-----------------------
+
+None
+
+Unit Test
+---------
+
+- Add the following functions to odms:
+
+test( a: unique_id) :integer
+test2() :unique_id
+
+- Add the following bridges to the PIO ee in odms:
+
+test( a: unique_id) :integer
+test2() :unique_id
+
+- Add the following operations to the D_H class in odms:
+
+itest( a: unique_id) :integer (instance)
+itest2() :unique_id           (instance)
+ctest( a: unique_id) :integer (class)
+ctest2() :unique_id           (class)
+
+- Add the following OAL to the odms initialize function:
+
+select any dh from instances of D_H;
+x = ::test( a: ::test2());
+x = pio1::test( a: ::test2());
+x = D_H::ctest( a: ::test2());
+x = dh.itest( a: ::test2());
+
+x = ::test( a:pio1::test2());
+x = pio1::test( a: pio1::test2());
+x = D_H::ctest( a:pio1::test2());
+x = dh.itest( a:pio1::test2());
+
+x = ::test( a:D_H::ctest2());
+x = pio1::test( a: D_H::ctest2());
+x = D_H::ctest( a:D_H::ctest2());
+x = dh.itest( a:D_H::ctest2());
+
+x = ::test( a:dh.itest2());
+x = pio1::test( a: dh.itest2());
+x = D_H::ctest( a:dh.itest2());
+x = dh.itest( a:dh.itest2());
+
+- Generate the odms2 model
+R The generated code is correct:
+
+PermanentHomeInLibrary_c dh = PermanentHomeInLibrary_c.PermanentHomeInLibraryInstance() ;
+int x = Odms2.Test(Odms2.Test2()) ;
+x = Pio1_c.Test(Odms2.Test2()) ;
+x = PermanentHomeInLibrary_c.Ctest(Odms2.Test2()) ;
+x = dh.Itest(Odms2.Test2()) ;
+
+x = Odms2.Test(Pio1_c.Test2()) ;
+x = Pio1_c.Test(Pio1_c.Test2()) ;
+x = PermanentHomeInLibrary_c.Ctest(Pio1_c.Test2()) ;
+x = dh.Itest(Pio1_c.Test2()) ;
+
+x = Odms2.Test(PermanentHomeInLibrary_c.Ctest2()) ;
+x = Pio1_c.Test(PermanentHomeInLibrary_c.Ctest2()) ;
+x = PermanentHomeInLibrary_c.Ctest(PermanentHomeInLibrary_c.Ctest2()) ;
+x = dh.Itest(PermanentHomeInLibrary_c.Ctest2()) ;
+
+x = Odms2.Test(dh.Itest2()) ;
+x = Pio1_c.Test(dh.Itest2()) ;
+x = PermanentHomeInLibrary_c.Ctest(dh.Itest2()) ;
+x = dh.Itest(dh.Itest2()) ;
+
+Code changes
+------------
+
+MC-Java/value.inc
+Initial version:  1.2  Final version: 1.3
+
+
+End
+---
+
+$Log: i126.int,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.164.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/04/23 22:43:01  greg
+Job: 126
+Update after review
+
+Revision 1.1  2004/04/23 19:36:56  greg
+Job: 126
+Initial Introduction
+
+

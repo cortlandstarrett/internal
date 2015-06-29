@@ -1,0 +1,190 @@
+========================================================================
+
+File:      $RCSfile: i2164.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+MV: Automatic Generation of Tree Structures
+
+Abstract
+--------
+This note explains the way the existing infrastructure for generating trees
+will be changed to make it easier for multiple projects to generate their own
+custom trees in different plug-ins.
+
+History
+-------
+update i2164-060106-01.rvm
+
+Document References
+-------------------
+[01] Bugzilla issue 2164
+[02] Bugzilla issue 1625
+
+Background
+----------
+The current infrastructure is used by both the Model Explorer view and the
+Instance Explorer view, but this was accomplished by copying and pasting several
+files into the same project.  As is common when the same code is put in
+different places, the model explorer view has been improved, but the instance
+explorer view was left behind.  Also, the verifier project must be able to be
+shipped as a separate component from Model Builder.
+
+The idea is to create a new internal project that will be used during
+development but not shipped with the product.  The tree generation
+infrastructure will be moved to this common location so any improvements can
+be made in one place to affect all the generated trees.  Developers will also
+be able to generate skeleton files that should be maintained under version
+control and will enable the developer to quickly get something built and working
+before starting their customization.
+
+Analysis
+--------
+1. Create a new common project to store the tree generation infrastructure
+   that can be used by multiple projects.
+
+2. Any files used to create the Instance Explorer view that can be made generic
+   should be modified and stored in the common project.  The build files for
+   model explorer and instance explorer should be updated to use the new
+   generic functions.
+   
+3. Since sql/UITree_schema.sql and sql/uitree.sql will not change from project
+   to project, these files should be generated into the common project and
+   the model used to generate them should also be moved to the common project.
+
+4. In order to provide a more flexible infrastructure, each generic archetype
+   will expect to find a specific version of that archetype in the calling
+   projects 'arc' folder.  This will allow a developer to add their own custom
+   content provider, label provider, adapters, and the like in addition to the
+   code generated for all trees.
+
+5. The archetype responsible for generating the tree shall be made generic and
+   stored in the bp.ui.tree project.
+
+6. Create a new ANT script in the common project that will be used to generate
+   skeleton files for all the files needed to compile a generated tree that
+   should be maintained under version control.  These files should be generated
+   only once so their custom work will not be overwritten.  This will allow a
+   developer to get started with their new tree very quickly.
+
+7. Create documentation that will explain to a developer how to use the new
+   infrastructure to:
+     Add a tree to an existing project
+     Add a new node to a tree
+     Identify the files to change to modify their new tree
+
+Work Required
+-------------
+1. Create a new project com.mentor.nucleus.bp.ui.tree
+
+2a.Compare the differences between the instance explorer and model explorer
+   archetype files in order to identify the common ground between them.  Then
+   create a single generic archetype file for each comparison and store it
+   in com.mentor.nucleus.bp.ui.tree/arc.  Update BuildTree.arc and
+   BuildInstanceTree.arc accordingly to call the new generic function in the
+   common project.  Delete the now unused archetypes in
+   com.mentor.nucleus.bp.ui.explorer/arc.
+
+2b.While there is no instance explorer version of the create_adapters archetype,
+   a generic version of that file shall be created and the build archetypes
+   updated so that other projects can have their adapters generated as well.
+
+3a.Move the UITree.xtuml file from bp.ui.explorer/models to bp.ui.tree/models.
+
+3b.Delete the unused UITree.bak file from bp.ui.explorer/models.  The models
+   folder should automatically be deleted because no files remain.
+
+3c.Create a new ANT script in com.mentor.nucleus.bp.ui.tree called
+   generate_schema.xml, which will be responsible for generating the
+   sql/UITree_schema.sql and sql/uitree.sql files in the bp.ui.tree project.
+
+3d.Update the bp.ui.explorer/generate.xml file to call the generate_schema.xml
+   script in the bp.ui.tree project to handle generating and cleaning the
+   sql/UITree_schema.sql and sql/uitree.sql files.
+
+3e.Copy .cvsignore from bp.ui.explorer/sql to bp.ui.tree/sql since CVS should
+   now ignore the generated files in that directory.
+
+3f.Delete .cvsignore from bp.ui.explorer/sql since the file is now empty.
+
+4. In each generic archetype, use the provided path parameter to locate the
+   calling project, and then call a function that will return custom code to
+   include in the file.  
+     For example:  bp.ui.tree/arc/create_generic_content_provider.inc will
+     expect to find a function called create_custom_content_provider in
+     bp.ui.explorer/arc/create_custom_content_provider.inc in order to create
+     bp.ui.explorer/src/com/.../bp/ui/explorer/ModelContentProvider.java
+
+5. The BuildTree.arc file shall be made generic and moved to the bp.ui.tree
+   project, and any project using a generated tree, such as bp.ui.explorer
+   shall call the generic BuildTree.arc file rather than providing their own.
+   
+6. Create generate_skeleton_tree.xml and arc/generate_skeleton_tree.arc in the
+   bp.ui.tree project.  These files will generate the skeleton files for all 
+   the files needed to compile a generated tree that should be maintained under
+   version control including the following:
+   
+	  sql/UITree.pei.sql
+	  arc/create_explorer_view.inc
+	  arc/create_custom_content_provider.inc
+	  arc/create_custom_filters_content_provider.inc
+	  arc/create_custom_label_provider.inc
+	  arc/create_custom_adapters.inc
+	  FilterSelectionAction.java
+	  I<PROJECT NAME>ExplorerHelpContextIds.java
+	  <PROJECT NAME>TreeViewer.java
+	  adapters/RootAdapter.java
+	  adapters/DomainProxyAdapter.java
+	  generate.xml
+
+7. Create a readme.txt file to be stored in com.mentor.nucleus.bp.ui.tree that
+   will explain what a developer must do to both add a generated tree to an
+   existing project and add a new node to a tree.  List all generated files 
+   (both skeleton and always generated) along with a description of why the
+   file exists.
+
+Acceptance Test
+---------------
+No JUNIT test will be created for this project.  Instead, this work will be
+exercised every time a developer cleans and builds a project, such as
+bp.ui.explorer, that includes a generated tree.
+
+To verify that a new tree can be added to another project, the foundations of
+the session explorer view[02] will be generated by following the directions in
+bp.ui.tree/readme.txt before this issue is promoted.
+
+
+End
+---
+
+$Log: i2164.ant,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/06/02 15:36:43  jeremyr
+Job:2164
+Addressed observations made in i2164-060106-01.rvm
+
+Revision 1.1  2006/06/01 16:52:15  jeremyr
+Job:2164
+Introduce
+
+

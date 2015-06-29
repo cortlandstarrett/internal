@@ -1,0 +1,242 @@
+========================================================================
+
+File:      $RCSfile: dts0100532307.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support default initialization value settings.
+
+1. Abstract
+-----------
+This note describes how Verifier will be enhanced to set default instance
+attribute values at runtime.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100532307 - Request for ability to set default
+    initialization for class attributes.
+[2] ClearQuest DEI dts0100530239 - Support for Constants still not in place in
+    BridgePoint.
+[3] ClearQuest DEI dts0100539291 - [BZ 3061] Request for Hexadecimal variable
+    support in Verifier.
+
+4. Background
+-------------
+A field request was made to have Verifier leverage the existing Default Value
+meta-model attributes in Data Type (S_DT) and Attribute (O_ATTR).
+
+5. Analysis
+-----------
+5.1 The process of initializing a value will follow the following steps, in the
+specified order:
+
+  1) If the attribute has a non-empty DefaultValue set, Verifier will use it.
+  2) If the data type associated with the attribute value has a non-empty
+     DefaultValue set, Verifier will use that.
+  3) If neither default value is provided, Verifier will use the already
+     existing, system wide default value.
+
+5.2 Default values for attributes of type instance reference, instance set,
+current state, event instance, inst<Mapping> and inst_ref<Mapping> will not be
+supported. Arrays of any kind, fixed or variable depth, will not be initialized.
+
+5.3 Default Values for structured data types will not be supported. However,
+Structured data type _members_ will be initialized with their data type default
+value if there is one. Members having any of the types specified above [5.2]
+will not be initialized in this way.
+
+5.4 Enumerated type default values will be supported.
+
+5.5 Currently, no data entry validity checking is done on what is entered for
+Default Value settings. This will be changed to validate against the core data
+type or enumeration specified for the attribute or member.
+
+5.6 The following other cases will use the Data Type.DefaultValue if set. In
+these cases, the runtime warning that is already given will _not_ be suppressed
+(as it will be in the case of attribute value access [5.1]). This is because
+these scenarios represent either cases where the model being executed is not
+well-formed or else can come about only through an internal error:
+
+- Bridge return value (unwired and with no OAL).
+- Function return value (no OAL).
+- Operation return value (no OAL).
+- Message return value (no OAL).
+- Accessing a previously unwritten array element
+- When Verifier fails to find a value for a parameter inside the following
+  invoked activities:
+  - Bridge
+  - Function
+  - Message
+  - Operation
+
+This last group are internal Verifier errors and should never happen. They are
+included here for completeness only.
+
+5.7 The BridgePoint template models shall be updated to provide the expected
+default values for core data types.
+
+5.8 The BridgePoint model upgrade code will be examined and if necessary,
+upgraded to provide the same default values for core data types as described
+above[5.7].
+
+6. Design
+---------
+6.1 Input Validation
+Validation already exists for input of constant values[2]. This support is
+refactored to provide a common component that can be used to validate both
+Constants and default value input. The common code is moved to a new class,
+InputValueValidator in the com.mentor.nucleus.bp.core.common package. The common
+code is enhanced to handle validation of enumerated type value input.
+
+The ConstantValueInputValidator is reworked to call the common method and a new
+class, DefaultValueInputValidator, is introduced to invoke the same method to
+validate default values.
+
+6.2 DataType.getDefaultValue()
+This operation is modified to check the DefaultValue attribute and use any value
+found there in preference to system default.
+
+6.3 Instance.initialize()
+This is modified to look for a DefaultValue attribute and use any value found
+there in preference to the data type default. Also, Structured Data Types and
+Arrays are now initialized using the RuntimeValue.setDefault() convenience
+operation.
+
+6.4 DefaultValuePropertyDescriptor
+This new class is introduced, providing the validation required above[5.5]. The
+archetype BuildProertySource.arc is modified to special case DefaultValue
+attributes to set this property descriptor class.
+
+7. Design Comments
+------------------
+7.1 String Defaulting
+During implementation it was realized that using an empty DefaultValue would not
+work well for strings, since Verifier could not tell the difference between 'no
+default' and 'default to empty string'. The decision was made to always default
+strings to empty if no DefaultValue is specified. Once this design choice was
+made, it became necessary to have all data types behave the same way for
+consistency. This means that 'read before write' errors are effectively no
+longer detected by Verifier, except for array values which are specified as not
+initialized[5.2].
+
+7.2 Value.computeValue()
+Had a very minor cosmetic enhancement.
+
+7.3 Alternate radix support
+The Constants work added support for alternate radices, bases 2 and 16. Since it
+was already in place, this work adds support to allow such values in Verifier.
+This support is currently weak because Verifier internally uses integers without
+any extended data about presentation style[3]. The end result is that while
+alternate radix input is accepted, it is immediately converted to a base 10
+presentation.
+
+This work therefore increases the priority of the radix support issue[3] by
+providing partial support where previously there was none. A note is added to
+that issue to this effect.
+
+8. Work Required
+----------------
+Fully covered in the design section.
+
+9. Unit Test
+------------
+9.1 Defaulting tests
+A new model, Attribute Defaulting Test is introduced into the model test suite.
+It tests the following:
+
+- Undefaulted Attributes
+- Attribute level defaulting
+- Datatype level defaulting
+
+- In each case above, integer, real, string, boolean, enumeration and structured
+  data type defaulting is exercised.
+
+To perform the test execute:
+
+- ::performTest()
+
+This initiates the following six individual tests:
+
+- ::performIntegerTest()
+- ::performRealTest()
+- ::performStringTest()
+- ::performBooleanTest()
+- ::performEnumerationTest()
+- ::performSDTTest()
+
+Success or failure is indicated in the console transcript:
+
+Simulation started.
+User invoked function: performTest
+LogSuccess:  Datatype defaulting test passed.
+LogSuccess:  Attribute defaulting test passed.
+LogSuccess:  Datatype defaulting arithmentic test passed.
+LogSuccess:  Attribute defaulting arithmetic test passed.
+LogSuccess:  Datatype defaulting test passed.
+LogSuccess:  Attribute defaulting test passed.
+LogSuccess:  Datatype defaulting assignment test passed.
+LogSuccess:  Attribute defaulting assignment test passed.
+LogSuccess:  Datatype defaulting test passed.
+LogSuccess:  Attribute defaulting test passed.
+LogSuccess:  Datatype defaulting arithmentic test passed.
+LogSuccess:  Attribute defaulting arithmetic test passed.
+LogInteger:  0
+LogSuccess:  Datatype defaulting test passed.
+LogSuccess:  Attribute defaulting test passed.
+LogSuccess:  Datatype defaulting arithmentic test passed.
+LogSuccess:  Attribute defaulting arithmetic test passed.
+
+9.2 Properties tests
+9.2.1 Reject illegal default values in Properties
+_- Open Model Explorer on Attribute Default Test/
+                                           Integer Default Test.UndefaultedValue
+_- Focus the Properties View and attempt to enter an illegal value: "011c".
+_R The message "Invalid integer value" is shown on the bottom right hand status
+   bar.
+_R The Default Value attribute is not updated.
+
+9.2.2 Reject illegal hexadecimal values in Properties
+_- Focus the Properties View and attempt to enter an illegal value: "0x11vc".
+_R The message "Invalid integer value" is shown on the bottom right hand status
+   bar.
+_R The Default Value attribute is not updated.
+
+9.2.3 Accept legal hexadecimal values in Properties
+_- Focus the Properties View and enter a legal value: "0x11c".
+_R No message is shown.
+_R The Default Value attribute is updated with the value 284.
+
+End
+---
+
+$Log: dts0100532307.dnt,v $
+Revision 1.5  2010/01/05 04:29:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.4  2009/10/28 11:16:43  campbell
+Job: dts0100532307
+Ready for review.
+
+Revision 1.3  2009/10/21 10:32:17  campbell
+Job: dts0100532307
+Reorganized and reworded.
+
+Revision 1.2  2009/10/21 08:45:20  campbell
+Job: dts0100532307
+Added functional clarifications.
+
+Revision 1.1  2009/10/20 13:23:28  campbell
+Job: dts0100532307
+Introduced.

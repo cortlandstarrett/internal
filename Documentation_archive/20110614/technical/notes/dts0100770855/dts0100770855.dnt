@@ -1,0 +1,158 @@
+========================================================================
+
+File:      $RCSfile: dts0100770855.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Generic Package instance data is not being properly persisted in the stream 
+export.
+
+1. Abstract
+-----------
+OAL instance data that is in action homes that are under generic packages is
+not being properly persisted during the stream export which happens during
+model export.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100770855
+[2] ClearQuest DEI dts0100760259 
+    Migrate IO MDL Tests  to Generics
+[3] com.mentor.nucleus.bp.io.mdl.test/expected_results/testOAL1.xtuml
+    This is the expected result file for the specialized package 
+    test, OALPersistenceTests.java::testPersistOAL()
+
+4. Background
+-------------
+While working on migration of the bp.io.mdl.test unit tests to provide testing
+of generic package functionality [2], it was discovered that model export was
+not properly including all OAL instance data in the export.  This issue was 
+raised to investigate and resolve this problem.
+
+5. Analysis
+-----------
+5.1 Under the io.mdl.test plugin, inside the Generic Suite 2 test suite, the
+    OALPersistenceTestsGenerics.java::testPersistOAL(), and 
+    OALPersistenceTestsGenerics.java::testPersistOALwithPOI unit tests are 
+    failing.  These tests were commented out during work on [2].   The tests 
+    shall be restored during this issue.
+
+5.2 The purpose of the testPersistOAL unit test is to assure that all OAL 
+    instance data is properly exported.  To test this, we shall take advantage 
+    of the fact that the same test performed under specialized packages has a 
+    known good result file [3].  
+
+5.2.1 The following is a awk script that shall be used to verify that the
+      instance data in the known good result file [3] matches the OAL 
+      instance data in the new generic package version of the test of the same 
+      name (5.1).
+      
+      cat testOAL1.xtuml  | awk '/INSERT INTO/{ print $3 }' | sed "s/_.*/_/" | sort | uniq -c
+
+5.2.1.1 Here is the result of the awk script against the known good result:
+	   1501 ACT_
+	   1858 DIM_
+	      1 EP_
+	    288 E_
+	    919 GD_
+	    256 O_
+	      2 PL_
+	    109 R_
+	   1472 SM_
+	    156 S_
+	   2142 V_          
+	   
+	  Note that ONLY the OAL instance subsystems must match, the rest
+	  is not expected to match in this test.  The OAL instance data in this
+	  test case has the following subsystem prefixes:
+      ACT_, E_, SM_, and V_ are exact matches.      	  
+      
+      Additionally, note that the awk script can be modified slightly to get an
+      even more detailed report to assure that not only the subsystem instance 
+      counts match, but that the class instance counts match:
+
+      cat testOAL1.xtuml  | awk '/INSERT INTO/{ print $3 }' | sort | uniq -c
+
+      This more detailed version shall be used to verify that the correct
+      instance data is present.
+            
+6. Design
+---------
+6.1 In the parser, AllActivityModifier.java, a new method was introduced named
+    initializeBodies() which is used to initialize R601 given a NonRootModel 
+    element OR a ModelRoot.  This is being introduced as a refactoring  of code 
+    that duplicated this functionality in 2 places.  Those places were: 
+    bp/debug/ui/model/BPDebugTarget.java::launchElement v1.21, and 
+    bp/io/core/CoreExport.java::parseAllForExport() v1.17.  These places that 
+    call this are slightly different in that one, Verifier, is parsing 
+    everything, while the other, Model Export, is parsing only the selection 
+    made by the user.  However, at this point where R601 must be initialized 
+    with the parsed Body_c instances, the code is common and therefore it was 
+    removed from the 2 referenced places, and put into this new method,  
+    bp/ui/text/activity/AllActivityModifier.java::intializeBodies() to avoid 
+    maintaining the code in multiple places.
+
+6.2 Refactored CoreExport.java to use a new method, 
+    AllActivityModifier.java::intializeBodies(), to initialize parsed Body_c 
+    instances on R601.  Additionally, this code was modified to allow 
+    Package_c instances to be parsed as part of the selection made by the user 
+    in the export wizard.  Package_c instances are now supported and 
+    parseable by AllActivityModifier.java so this code simply had to be modified 
+    to call the parse for these types of instances.    
+    
+6.3 Refactored BPDebugTarget.java::launchElement() to use a new method, 
+    AllActivityModifier.java::intializeBodies(), for initializing parsed Body_c 
+    instances on R601 instead of duplicating that code here.  
+
+6.4 Enabled OALPersistenceTestsGenerics.java::testPersistOAL() as required in 
+    the analysis section.  However, 
+    OALPersistenceTestsGenerics.java::testPersistOALPOI() was removed.  The 
+    reason is that this test is no longer valid.  There is no Parse On Import
+    in the tool any longer, so this test performs no useful function.
+    
+6.5 The expected result for OALPersistenceTestsGenerics.java::testPersistOAL()
+    was validated as specified in the analysis section, and the result was then 
+    updated.     
+    
+7. Design Comments
+------------------
+none
+
+8. Work Required
+----------------
+Specified in the design section above.
+
+9. Unit Test
+------------
+9.1 Run the bp.io.mdl.test Generics Suite II and assure all tests pass.
+9.2 Run the bp.io.mdl.test Suite II and assure all tests pass.
+
+No additional tests need to be run for this change.
+
+End
+---
+
+$Log: dts0100770855.dnt,v $
+Revision 1.3  2011/05/17 21:03:24  rmulvey
+job:dts0100770855
+Addressed review observations
+
+Revision 1.2  2011/05/17 20:31:55  rmulvey
+job:dts0100770855
+Fixed typo
+
+Revision 1.1  2011/05/17 20:27:51  rmulvey
+job:dts0100770855
+Introduced
+

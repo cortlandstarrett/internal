@@ -1,0 +1,292 @@
+========================================================================
+
+File:      $RCSfile: dts0100650381.ant,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Support GEF based editor
+
+1. Abstract
+-----------
+This note describes the requirements to complete a GEF based diagram editor.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100650381
+[2] ClearQuest DEI dts0100640408 - Implement a graphics palette for the canvas
+
+4. Background
+-------------
+It was determined that with not too much effort we could replace a layer in the
+graphics infrastructure, by implementing a GEF editor.  In addition to removing
+some of the burden from an in house plug-in we will also be moving towards the
+goal for GMF based diagram editors.  The look and feel of GMF is based on that
+of GEF, so with these changes the user will get an early start on what is to
+come of the graphics.  Most of the initial work is already completed, therefore
+this note will give an overview of that work in the following section.  It will
+however focus mainly on the remaining work to get the new graphics to an
+acceptable state.  An acceptable state is one that is as good as or better than
+the existing graphics technology.
+
+5. Analysis
+-----------
+5.1     Requirements
+5.1.1   All existing BridgePoint functionality shall be supported.
+5.1.2   The general appearance of the BridgePoint diagrams will remain
+        unchanged after this work.
+5.1.3   Behavior of diagrams may change in minor ways to more closely follow
+        the Eclipse/GMF/GEF standard in a way that improves the  usability
+        of the product.
+5.1.4   As much BridgePoint canvas graphics and behavior shall be deprecated
+        as reasonable.  This is one of the primary driving requirements for
+        the move to GEF.
+5.1.5   Departures from GMF/GEF standards shall be made only with careful
+        consideration.  This design should result in graphics that leverage
+        features supplied by Eclipse/GMF/GEF and avoid hand-craft IP.
+5.1.6   In the future, support for a "BridgePoint Theme" shall be supported.
+        Preference infrastructure shall be considered now to support this
+        theme, G*F standard theme and perhaps other themes that combine
+        settings of color, thicknesses, fonts, etc. to refine esthetics.
+5.1.7   Palette
+5.1.7.1 Support for a palette shall be added.  A separate issue [2] tracks
+        the specifics of the palette configuration and design.
+5.1.7.2 The palette shall default to open when working in a workspace that
+        has not used the palette before.
+5.1.7.3 The palette state shall be maintained such that, once closed, the
+        palette does not intrude unless the user asks for it.
+5.1.7.4 See [2] for more detail.
+5.1.8   Support for Overview (small map of entire canvas) shall be added.
+5.1.9   Refresh
+5.1.9.1 Canvases shall refresh when models change.
+5.1.9.2 Canvases refresh shall be transacted/throttled in such a way as to
+        honor tool performance.  Canvas refresh will be at a granularity
+        reasonably balancing the capability of the human eye and the need to
+        allow the tool to update significant data without refreshing so
+        often as to lower tool performance.
+        Canvas shall not refresh faster than 30 times per second.
+5.1.10   The properties and outline will be exactly the same as the old canvas.
+5.2     Requirements for Future Preparations
+5.2.1   The next steps after this is completed will be to remove as much
+        "local" (BP canvas specific) logic as possible and replace it with
+        GEF-standard logic.
+5.2.2   Additionally, we will want to slowly replace the current draw logic
+        for a shapes contents with real draw2d labels and compartments
+        ("in-place editing").
+
+5.3 Explanation of existing support and future work
+
+The GEF editor implementation shall be held in a new plug-in,
+com.mentor.nucleus.bp.ui.graphics.
+ 
+Using the GEF framework we have created commands that can do the following:
+ 
+1. Move a shape
+2. Create a new shape (and call into ooaofooa to create the core instance)
+3. Add bendpoints
+4. Move bendpoints
+ 
+All of the above commands will be executed within a transaction.  This allows
+the existing framework to persist all changes.
+
+The GEF editor implementation will listen for model changes, refreshing the
+diagrams as necessary.  An additional listener is required that will setup a
+graphical element's represents value during creation.
+ 
+The following logic is still handled by the original ui.canvas plugin:
+
+Shape contents drawing
+  (The GEF implementation calls into the original Shape.draw() operation).
+Shape movement, Connector movement (These are left as is so that other elements
+anchored to the shape or connector being moved are also moved)
+ 
+Selections will be passed along to the bp selection instance (which manages all
+other BP views).
+ 
+This approach requires us to implement four GEF edit parts
+ 
+ShapeEditPart
+ConnectorEditPart
+TextEditPart
+DiagramEditPart
+ 
+If we add support for a port symbol we will need a additional edit part.
+
+We will have a shape creation tool,  and connector creation tool.  The behavior
+of the tool is different for all elements, and is determined by the
+ElementSpecification which is modeled in ooaofgraphics.  So while the written
+class for a shape creation tool is generic, the outcome of execution is much
+different.  Same is true for the edit parts, for example the ShapeEditPart can
+handle all types of BP graphical shapes.
+ 
+At the end of this we will have a new graphics tool that looks the same as the
+old, with the exception of the palette.  The new tool will move, resize, create
+a bit different.  With default GEF support the following differences exist:
+
+Resizing:
+1. There is a limit to resize, once resized passed this the shape will remain
+at the limit size.
+2. When multiple elements are selected, you can resize all selected by resizing
+any of the selected elements.
+3. The resized shape indicator is a "ghost shape" instead of the actual shape
+being resized.
+4. When holding the ctrl key the shape is resized the same amount on all sides,
+i.e, if you have the right edge selected and resize with the ctrl key the delta
+is applied to both sides of the shape (West, and East).
+5. When holding the shift key, the shape is resized with an applied aspect
+ratio.  For instance, with the shift key held you can resize on the X axis only
+and the shape will increase in size on the Y axis as well.
+
+Moving:
+1. The shape itself is not moved until the mouse button is let up.  The movement
+indicator is a "ghost shape".
+2. When the ctrl key is held a copy/paste occurs.  So you can hold ctrl and drag
+the shape to make a copy.
+3. When the shift key is held the shape will move along a line, which can be
+the X or Y axis or along a diagonal line from the orginal center point.
+4. When the grid is enabled, you can hold the alt key to prevent grid snapping.
+
+Creation:
+1. Connector creation is done by single clicking the source and target elements.
+2. During connector creation you cannot create bendpoints (waypoints in the old
+tool).
+3. Creating a reflexive association is not fully supported.  The connector is
+created but hidden because no bendpoints are created.  The approach for fixing
+this now will be to show feedback that auto-creates bendpoints to go in and out
+of the symbol.
+
+The remaining work includes getting to a point where we fully support what the
+old graphics used to support.  The work required section outlines those items.
+
+6. Work Required
+----------------
+6.1 Do not extend connector length during creation where one terminal is
+whitespace and the other a shape
+6.1.1 Adjust the creation command such that the connector is shortened when
+cropped rather than moved.
+6.2 Assure that required interface cup maintains it's cropping from the provided
+interface ball when moving the providing component.
+6.3 Support reconnection of already drawn connectors
+6.3.1 Add commands that support the reconnection in the ooaofooa
+6.3.1.1 Support "disconnect/reconnect" for provided and required interfaces
+6.3.1.2 Support "disconnect/reconnect" for all other connectors
+6.4 Support full feedback when moving a component, this is to support showing
+the connector text move during bendpoint movement as well as showing attached
+connectors moving
+6.4.1 Add all associated text and anchored to connectors to the feedback layer
+during the bendpoint move.
+6.4.2 During the move, adjust the ooaofgraphics location values without
+persisting.
+6.5 Support non-ghosted feedback figures when moving shapes
+6.5.1 Show fully drawn shape when moving, instead of ghost figure
+6.5.2 Add preference for ghosting vs full figure
+6.6 Support autocreation of bendpoints when drawing a connector to/from the same
+element.
+6.7 Add support for diagram panning
+6.7.1 GEF has a panning tool, we just need to enable it in the palette
+6.8 Add zoom tools
+6.8.1 Add a tool to zoom all
+6.8.2 Add a tool to zoom selected
+6.8.3 Add a tool to zoom in
+6.8.4 Add a tool to zoom out
+6.9  The editor shall listen to resource changes, refreshing if the underlying
+resource has changed
+6.10 Add key shortcuts
+6.10.1 Add key shortcuts for all that the old diagram used to have, and any
+additional that make sense
+6.11 Floating text resizing behavior shall match that of the old diagram.
+6.12 Paste operation needs to use the mouse location at the time of the paste
+6.13 Support nested elements in a component symbol
+6.13.1 Use the ooaofgraphics model to determine when a shape edit part has
+children, these will be Contained Shape instances
+6.13.2 Use a compartment for the container symbol on a component diagram.
+6.14 When the generic package work is complete adjust the palette to include all
+possible tools, grouped by concept
+6.15 The drawing support for the following symbols does not work appropriately:
+
+Initial Node
+Final Node
+Flow Node
+6.15.1 Adjust the drawing logic to draw the symbol contents using a fixed aspect
+such that it always shows no matter what the width and height are.
+6.17 Floating text for shapes does not work appropriately, some shapes have
+floating text for the name.
+6.17.1 ShapeEditPart's shall return FloatingText as their children, using the
+TextEditPart for visual representation.
+6.18 Support building the new diagram in the nightly build
+6.18.1 The nightly build should ideally be able to build the new plug-in along
+with the original diagram functionality
+6.18.2 Reconfigure ui.canvas to maintain the original diagram support yet also
+support the new editor
+6.19 Support preferences for the new editor
+6.19.1 The some preferences should be supported with any additional ones that
+make sense, for instance "Show Grid"
+6.20 Support port symbols
+6.20.1 Create a new bordered edit part, allow showing a port label and hiding it
+6.20.2 Anchor the connectors which connect to the port symbol to the center
+outer edge
+6.21 Support printing
+6.21.1 Create a print action in the editor class, using the built in GEF print
+support
+6.22 Support for overview in outline
+6.22.1 We need to make use of the GEF based overview within the outline.
+
+7. Acceptance Test
+------------------
+7.1      Testing Strategy
+7.1.1    Ad-hoc Testing
+7.1.1.1  During esthetic review, ad-hoc testing will be done involving many
+         people.
+7.1.2    Existing Unit Tests
+7.1.2.1  Existing unit tests will be run with a focus on getting functional
+         tests passing followed by fixing UI tests with corrected 
+         expected results.
+7.1.3    New Tests
+7.1.3.1  The existing canvas tests will be explored, anything thing that is not
+         covered by them shall have new tests written.
+7.1.4    QA Testing
+7.1.4.1  The suite of QA tests will be run.
+
+7.2      Subjective Test
+7.2.1    Distribute pre-release plugins widely to get feedback and opinions.
+         Collect, review and discuss subjective behavioral issues.
+         
+7.3      Objective Testing
+7.3.1    Build one of every type of diagram using at least one of every symbol.
+7.3.2    Run existing unit tests.
+7.3.3    Update ui.canvas tests to the new editor.
+
+End
+---
+
+$Log: dts0100650381.ant,v $
+Revision 1.4  2010/03/02 15:53:49  tlondon
+Job: dts0100650381
+
+Address review minutes
+
+Revision 1.3  2010/02/01 17:34:10  tlondon
+job: dts0100650381
+
+Address review minutes
+
+Revision 1.2  2010/01/28 20:58:17  cstarret
+job:dts0100650381
+updated ant with requirements and updated review minutes with
+a few items addressed
+
+Revision 1.1  2010/01/22 21:14:12  tlondon
+job: dts0100650381
+
+Introduce analysis note
+

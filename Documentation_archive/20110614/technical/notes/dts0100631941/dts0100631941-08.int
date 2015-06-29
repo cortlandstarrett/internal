@@ -1,0 +1,2040 @@
+========================================================================
+
+File:      $RCSfile: dts0100631941-08.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Migrate away from specialized packages continuation.
+
+1. Abstract
+-----------
+Incremental promotion for the work associated with migrating away from 
+specialized packages.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100631941
+[2] Clearquest DEI dts0100695128 
+    Verifier fails to assign large real typed values to integers
+[3] ClearQuest DEI dts0100712772
+    Migrating JUnit tests to Generic Packages
+[4] <cvs>Documentation/internal/technical/notes/dts0100631941/dts0100631941.tnt
+    Document that calls out problems found during implementation and testing
+    of dts0100631941.
+[5] dts0100631941.ant 
+[6] ClearQuest DEI dts0100720869    
+    Resource refresh during model import of an existing project may cause 
+    orphaned elements
+[7] dts0100734304 remove the atSystemLevel check from the operation action 
+    filter in the Package Participant class.    
+4. Background
+-------------
+Because this is a long-term project [5] we have used small promotions along the 
+way to promote partial functionality of this new feature without breaking 
+existing functionality.   We have chosen to do this to expose the new 
+functionality to a large audience as soon as possible.  For each branch 
+created we have an associated development note that tracks the changes in 
+that working branch.  This note describes the changes in 
+Review-dts0100631941-08{x).  Note that "x" is present because the branch has 
+been refreshed to pick-up changes to head that have occurred while this branch 
+was being worked on.
+
+
+5. Design
+---------
+5.1 A fix was made to improve Verifier integer precision during assignment[2]. 
+    It was reverted in error prior to the previous release. This fix is 
+    included in this branch for (re)promotion.
+
+	The change for this was made to External Entities.xtuml version 1.32.16.2.
+    The change was to handle mantissa/exponent style float values when converting 
+    to floats to integer.
+
+5.2 A fix to prevent error entries that show when importing an xtumlModel 
+    with the "convert to generic packages" option selected was made.
+    
+5.3 A fix for importing user data types was made. The importer missed creating 
+    packageable elements for the system level user data types. This change was
+    made to ImportHelper.java::createDatatypes().  The change simply creates
+    PE_PE elements for the system data types created and relates them on R8001.
+
+5.4 OAL Parser for Generic Packages
+
+    All OAL parser classes/files associated with junit tests have been 
+    duplicated [3]. 
+    All new file names and  class names have been updated as follows:
+    1. <OalParser_fileName>.java --> <OalParser_fileName>_Generics.java
+    2. <OalParser_ClassName> --> <OalParser_ClassName>_Generics
+
+    References within the Generic flavor of the test have been changed to 
+    conform to the Generics naming convention as described above.
+
+    In order to launch the Generics test suite, the main class name should be:
+    OALTestSuite_Generics
+
+5.5  Update in Validation Function - Assignment_expr_end   
+     The code below is added to force the validation to check both that the
+     size of the handle is compatible and the handles are to the same class in 
+     an assignment expression.
+     The OAL below is found in revision 1.55.2.1 of the source file between 
+     lines 9115-9124.  These lines were added after line 9114 of the specified 
+     revision.
+     
+     select one left_val_dt related by lval->S_DT[R820];
+    
+      if ( val_dt.Name != left_val_dt.Name )
+        assign_ok = false;
+        err_msg = "Variable ->" + lvar.Name +
+                                     "<- already exists as a different type";
+      end if;	
+
+5.6 Do not allow specialized packages inside components when the component is 
+    in an generic package [4 section 6.10].  Likewise, when a component is NOT 
+    under a EP_PKG, the option to create a EP_PKG should NOT be present.
+    
+    Additionally, prevent pasting of specialized packages into a component when 
+    the component is under a EP_PKG and prevent pasting of EP_PKG into a 
+    component when the component is NOT under a EP_PKG.
+    
+5.6.1 Modified bp.ui.graphics/.../editors/GraphicalEditor.java:fillPalette() to 
+      filter specialized packages from the palette menu for components when the 
+      component is under a EP_PKG and to filter EP_PKG from the palette when 
+      the component is NOT under a EP_PKG.
+5.6.2 Modified bp.core/sql/context_menu.pei.sql and added MEF entries for 
+      C_C.new*, where "*" is:
+     'Sequence Diagram', 'Communication Diagram', 'Usecase Diagram', and 
+     'Activity Diagram'.
+     This causes the C_C.actionFilter to be called for these entries.
+5.6.3 Modified C_C.actionFilter to filter specialized packages from the CME 
+      components when the component is under a EP_PKG and to filter EP_PKG from 
+      the CME when the component is NOT under a EP_PKG.
+5.6.4 Modified bp.ui.canvas/Cl_c.java::supportsPaste() by adding support for
+      optional canPaste<ME>() operations in the ooaofooa.  When a 
+      canPaste<ME>() operation is present, it is used to determine if the paste 
+      CME is enabled.   
+      
+      I also added a comment to Cl_c.java::supportsCopy() to describe how 
+      it is used to manage copy/paste support in BridgePoint. 
+5.6.5 Introduced C_C.canPaste{Sequence, InterfacePackage, Communication, 
+      UseCase Activity Package} to control the presence of the paste CME.
+5.6.6 Introduced C_C.pastePackage to allow a EP_PKG to be pasted into 
+      a C_C.
+5.6.7 Introduced C_C.isInGenericPackage to provide a single point of control 
+      for determining if the C_C is under a generic package.  Additionally, 
+      many operations in C_C were modified to take advantage of this new 
+      operation.
+5.7 Removed references to PREF::genericsEnabled.  
+5.7.1 In OAL Validation Utility Functions::data_types_compatible.
+	
+	BEFORE:
+	select any dom from instances of S_DOM where
+                                selected.Dom_ID == ::getValidationDomain();
+	isInGenericPackage = empty dom;
+	if isInGenericPackage and PREF::genericsEnabled() 
+	...
+	
+	AFTER:
+	select any dom from instances of S_DOM where
+	                                     selected.Dom_ID == ::getValidationDomain();
+	isInGenericPackage = empty dom;
+	if isInGenericPackage 
+    ...
+5.7.2 In bp/io/mdl/wizards/ModelImportPage.java 
+      Removed code that selectively caused display of the 
+      "Upgrade to generic packages" checkbox.  This checkbox is now
+      always displayed.
+5.7.3 In bp/io/core/ImportHelper.java there were several places in data upgrade 
+      code that were taking advantage of the preference.  I removed them, but
+      left the comment in place for the ones that were put in to help resolve
+      dts0100720869 [6].  Additionally, I added item [4 - 5.40] to assure the 
+      problem is retested.
+5.8 Introduced a C_C.newPackage CME by adding the appropriate entry to 
+    bp.core/sql/context_menu.pei.sql and adding the entry to control it in 
+    C_C.actionFiler.  This change makes the CME consistent with the palette.  
+    The C_C.newPackage is only allowed when the C_C is under a generic 
+    package.  When it is not under the generic package this CME is not 
+    available (nor is the C_C.newPackage palette entry).
+
+
+5.9 In Component Reference an operation get_ooa_id() is added
+    this modification is done to fix the problem of empty squares that show
+    instead of component reference under package after BP restart.
+    the operation entry is found below :
+  
+	  Operation    
+	    Operation Name : get_ooa_id
+	    Operation Description : 
+	    Instance Based Indicator : 1
+	    Action Semantics Field : return self.Id;
+	    Successful Parse Indicator : 1
+	    Return Array Dimensions : 
+	    Return Type : unique_id     
+
+5.10 In Class Instance Participant:: actionFilter() operation :
+      the line: 
+        select one packageableElem related by self->O_OBJ[R934]->PE_PE[R8001];   
+      Is modified to become :
+        select one packageableElem related by self->SQ_P[R930]->PE_PE[R8001];
+     
+     This modification is done to fix the problem of having the wrong value for 
+     actionFilter() for unformalized Class Instance Participant.
+     The unformalized Class Instance Participant is falsely viewed as not 
+     having a packageable element related to it  because the relation R934 does 
+     not exist until the formalization is done.
+     
+5.11 In Class Interaction Participant:: definedAtSystemLevel() operation       
+       The lines : 
+          if (isInGenericPackage)
+           select  one pip related by package->EP_PIP[R1404];
+           if (not_empty package and empty pip)
+             return true;
+           end if; 
+      
+       Are modified to become:     
+          if (isInGenericPackage)
+           select  one system related by package->S_SYS[R1401];
+             if (not_empty package and not_empty system)
+               return true;
+             end if; 
+        
+      This modification is done because having package in package EP_PIP 
+      doesn't exist in generic package context. Instead, the relation R1401 
+      represents the packages related directly to the system model. 
+
+5.12 Introducing a new MetaModel class SQ_PP "Package Participant" this class
+     is to replace the functionality of FunctionPackageParticipant SQ_FPP for 
+     generic packages 
+     
+     SQ_PP is a subType of SQ_P "Interaction Participant" across the relation 
+     R930
+      
+     SQ_PP can be formalized  to a package instance of EP_PKG across 
+     the relation R956 
+     
+     This formalization doesn't occur at the system level packages
+     [the previous point is addressed in a separate issue[7] to change this 
+      behavior and make the formalization available at system level packages] .
+     
+      The changes made to Introduce this new Class :
+      
+5.12.1 In the ooaofooa domain, in the subsystem "Interaction" the new "SQ_PP" 
+       model class is added , and related to the SQ_P "interaction participant" 
+       across R930.  Relating SQ_PP to EP_PKG instance across R956 represents 
+       the formalization relation.
+       
+5.12.2 For SQ_PP to be created under a generic package EP_PKG 
+       Two operations are added to EP_PKG :
+         - newPackageParticipant() 
+         - pastePackageParticipant (unique_id id)
+       One operation of EP_PKG is modified , the following lines are added to 
+       the Operation dispose():
+>           select many pps related by self->SQ_PP[R956];
+>              for each pp in pps
+>                   pp.unformalize();
+>              end for;
+   
+       
+5.12.3 In "ooaofooa" domain in function package "Functions" 
+       in the function package "Context Menu Entry Functions"
+       4 functions are added 
+       SQ_PP_Delete
+       SQ_PP_Rename
+       SQ_PP_PackageParticipantFormalize
+       SQ_PP_PackageParticipantUnformalize
+        
+5.12.4 In the Domain "ooaofgraphics" in the dataType package "Datatypes"
+       User data type "OOAType" got added an enumerator "PackageParticipant"
+       with default value "Value:110".
+       
+5.12.5  In the File EditorUtil.java in the function getElementToEdit(),
+        entries for the PackageParticipant are added.
+
+5.12.6 - The file com.mentor.nucleus.bp.core/sql/context_menu.pei.sql 
+         got added the following entries:      
+         4 CME entries for SQ_PP for Delete,Rename ,Formalize,Unformalize               
+         2 MEF entries for  Formalize and Unformalize
+          
+       - The file com.mentor.nucleus.bp.core/sql/ooaofooa_hierarchy.pei.sql 
+         got added the following entries:      
+         1 T_TNS entry that adds the ImportedFunctionPackage image to the 
+                                                          "Package participant"
+         3 T_TPS entries 
+           one for the navigation from package to package participant that's 
+           contained inside it
+           and the other two to define LinkStart and LinkEnd for 
+           package participant
+           
+        - The file com.mentor.nucleus.bp.ui.explorer/sql/UITree.pei.sql
+          got added the following entries:     
+          1 T_TNS entry for SQ_PP tree node 
+          1 T_TPS entry for navigation from package to package participant
+  
+        - The file com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+          got added the following entries:
+          1 EO entry is added for package participant
+          1 EO entry is modified the entry of LifeSpan to point to 
+                                      package participant as Next. 
+          
+        - The file com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql
+          got added the following entries:
+          1 EO entry is added for package participant
+          1 EO entry is modified the entry of LifeSpan to point to 
+                                      package participant as Next. 
+
+5.12.7 - In File com.mentor.nucleus.bp.core/plugin.xml
+         got added entries to point the Formalization and Unformalization 
+         actions for SQ_PP
+       - In File com.mentor.nucleus.bp.ui.graphics/plugin.xml
+          added entry for package participant symbol under package
+          added entry Start and end for package participant so messages can  be 
+          drawn to or form it.  
+          
+5.12.8  Exclude the SQ_PP from specialized package tests as it doesn't exist in 
+        specialized packages context. This is done in the following files:
+        - create_action_test.arc
+        - create_context_menu_tests.arc
+        - create_dispose_test.arc
+        - create_view_test.arc
+        
+5.12.9 In create_dispose_test.arc the create_dispose_test() function for EP_PKG 
+       is modified as shown below. In case of the relation 956 
+       [SQ_P---R956---EP_PKG] the instances of PackageableElement and 
+       interactionParticipant needed to be created and related to Package 
+       participant for the dispose() operation to function properly.
+        ...
+        ...
+        > .elif(rel.Numb == 956)
+        >.// this association needs an interaction participant to be related to the package participant
+        >.//  for the disposal to work as designed  
+        >InteractionParticipant_c interactionParticipant = new InteractionParticipant_c(modelRoot);
+		>testR956Inst.relateAcrossR930To(interactionParticipant);
+		>PackageableElement_c pe = new PackageableElement_c(modelRoot);	
+		>interactionParticipant.relateAcrossR8001To(pe);
+		>Package_c pkg = new Package_c(modelRoot);
+		>pkg.relateAcrossR8000To(pe);            
+        >.end if
+        ...
+        ...
+
+        
+5.13 Refactor the Relations R8009 , R8010 and R8011 :
+     In the Domain "ooaofooa" in the subsystem "Packageable Element"     
+     delete the relations from the meta model and the classes PE_MIP
+     and PE_PIP.
+
+5.13.1 R8009 : SQ_P->EP_PKG[R8009]  using PE_PIP
+       Relation Description : This relationship allows us to formalize a 
+                              participate to a package.  
+                              This relationship replaces R932 
+                              from specialized packages.
+      
+      -In all OAL places where the relation SQ_P->EP_PKG[R8009]  using PE_PIP
+        is used, it's replaced by SQ_P->SQ_PP[R930]->EP_PKG[R956].
+       
+5.13.2 R8010 : SQ_P->EP_PKG[R8010]  using PE_PIP
+       Relation Description : This relationship allows us to relate a 
+                              participant to a package.  This relationship 
+                              replaces R1126 from specialized packages.
+
+      
+      -In all OAL places where the relation SQ_P->EP_PKG[R8010]  using PE_PIP
+       is used, it's replaced by SQ_P->PE_PE[R8001]->EP_PKG[R8000].
+      
+5.13.3 R8011 : MSG_M->EP_PKG[R8011] using PE_MIP
+       Relation Description : This relationship allows us to relate a message 
+                              to a package.  This relationship replaces R1135 
+                              from specialized packages.
+      
+      -In all OAL places where the relation MSG_M->EP_PKG[R8011] using PE_MIP
+       is used, it's replaced by MSG_M->EP_PKG[R8001]->EP_PKG[R8000].       
+ 
+
+5.14 The method getModelRoots() in the java class "ModelRoot.java"
+     is modified so as not to POP up a NullPointerExecption when this function 
+     is called to get ModelRoots for Package instances if was called in 
+     specialized packages context.
+     
+     The CodeModification is :
+     
+     Before :
+     	public Object[] getModelRoots(String type, String excludedType) {
+     	....
+     	...
+		ArrayList list = modelRootMap.get(type);  <---- At this point If we are in the context of specialized packages, the list value is Null
+		Object[] elements = list.toArray(); <----- Consequently this will pop up an NPE 
+		ArrayList<ModelRoot> returnList = new ArrayList<ModelRoot>();
+		for(int i = 0; i < elements.length; i++) {
+				...
+				...
+		}
+		return returnList.toArray();
+	}
+     
+     
+     After :
+     public Object[] getModelRoots(String type, String excludedType) {
+          ....
+          ...
+>		 ArrayList list = modelRootMap.get(type);
+		 ArrayList<ModelRoot> returnList = new ArrayList<ModelRoot>();
+>		 if (list!= null) { <----- make sure the code wont be executed if  the list value is null 
+			Object[] elements = list.toArray();
+			for(int i = 0; i < elements.length; i++) {
+			...
+			...
+	      } 
+	  }
+		return returnList.toArray();
+	}
+5.15 In File "com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc"
+     The function "referential_attr_descriptors" is modified as shown below.
+     This modification is done to enable resolving the "Datatypes" that are 
+     created in a generic Package not just the ones created in 
+     a DataType Package.
+     The same change is done to the function "ref_attr_setpropval".
+
+ Before :
+ ....
+ ...
+  .if(spec.CrossModelRootBoundary)
+			Object[] roots = m_inst.getModelRoot().getModelRoots("${spec.ModelRootType}", "${spec.ExcludedModelRootType}");
+			ArrayList<${child_class_name.body}> list = new ArrayList<${child_class_name.body}>();
+			for(int i = 0; i < roots.length; i++) {
+				${child_class_name.body}[] children = ${child_class_name.body}.$Cr{child_class.Name}Instances((ModelRoot) roots[i]);
+				for(int j = 0; j < children.length; j++) {
+				  .// special case for suppressed data types
+				  .if(child.Key_Lett == "S_DT")
+				  DatatypeInSuppression_c dis = DatatypeInSuppression_c.getOneS_DISOnR47(children[j]);
+				  SystemDatatypeInPackage_c sdip = SystemDatatypeInPackage_c.getOneSLD_SDINPOnR4401(children[j]);
+				  if(dis == null && sdip != null)
+				     list.add(children[j]);
+				  .else
+					list.add(children[j]);
+				  .end if
+				}
+			}
+...
+...			
+ After :
+ ...
+ ...
+ .if(spec.CrossModelRootBoundary)
+>	        Object[] rootsOfDataTypePackages = m_inst.getModelRoot().getModelRoots("${spec.ModelRootType}", "${spec.ExcludedModelRootType}");	 
+>			Object[] rootsOfPackages= m_inst.getModelRoot().getModelRoots("Package", "${spec.ExcludedModelRootType}");
+>			List<Object> bothRoots = new ArrayList<Object>(rootsOfDataTypePackages.length + rootsOfPackages.length); 
+>			Collections.addAll(bothRoots , rootsOfDataTypePackages);
+>			Collections.addAll(bothRoots , rootsOfPackages);
+>	        Object[] roots = bothRoots.toArray();
+	        
+			ArrayList<${child_class_name.body}> list = new ArrayList<${child_class_name.body}>();
+			for(int i = 0; i < roots.length; i++) {
+				${child_class_name.body}[] children = ${child_class_name.body}.$Cr{child_class.Name}Instances((ModelRoot) roots[i]);
+				for(int j = 0; j < children.length; j++) {
+				  .// special case for suppressed data types
+				  .if(child.Key_Lett == "S_DT")
+				  DatatypeInSuppression_c dis = DatatypeInSuppression_c.getOneS_DISOnR47(children[j]);
+				  SystemDatatypeInPackage_c sdip = SystemDatatypeInPackage_c.getOneSLD_SDINPOnR4401(children[j]);
+>				  PackageableElement_c pe = PackageableElement_c.getOnePE_PEOnR8001(children[j]);
+				  if(dis == null && sdip != null)
+				     list.add(children[j]);
+>	              if(dis == null && pe != null)
+>					  list.add(children[j]);
+				  .else
+					list.add(children[j]);
+				  .end if
+				}
+			}
+
+5.16 In the ooaofgraphics domain in Graphical Data subsystem
+     The operation Dispose() of class Line Segment is modified as shown below:
+     the line :
+                         unrelate startEdge from gcon across R321;
+     became :
+                         unrelate startEdge from gcon across R320;
+     it's a Typo that shows console error when unrelate across R321 is
+     invoked again for endEdges.
+                               
+
+5.17 Migrate JUnit Tests to Generics : 
+
+5.17.1 In Plugin com.mentor.nucleus.bp.test 
+5.17.1.1 In BaseTest.java the method  loadProject() is added.
+         This method is used to import the zipped generic package projects
+         into a test workspace by our unit tests.  
+         and returns a boolean indicating the success or failure of that import
+
+5.17.1.2 In the UITestingUtilitiesJava class two overLoadings are added to the 
+         methods:  
+         - createShapeInDiagram(GraphicalEditor ce, Rectangle rectangle, 
+                                             String toolSet , String toolName)
+         - getTool(String toolSet, String toolName)
+         the parameter toolSet is added to differentiate between different 
+         instances having the same name 
+         for example : Informal classes and formal model classes both have the
+                       same name "Classes" but they have different toolSet 
+                       names.  
+
+5.17.2 In Plugin com.mentor.nucleus.bp.core.test 
+        General Steps done for migration:
+        _-Copy Test.java file
+        _-Paste Test.java and Rename it to TestGenerics.java
+        _-Modify the Test behavior to comply with generics behavior
+        
+        For Test models:
+        _- Import TestModel.xtuml while covertToGenerics is checked 
+        _- The project containing the generics version of the model is 
+           zipped and moved to the directory from which it will be imported 
+           later during the testSetUp
+         /com.mentor.nucleus.bp.core.test/models/
+                                        com.mentor.nucleus.bp.core.testGenerics
+        _- For all test setups the default project name became 
+           "Default project"                                   
+        _- Creating new project is replaced by importing already converted to 
+            generics project containing the test model.
+        
+        For JUnit Test Launcher:
+        _- Duplicate TestLaunchConfiguration 
+        _- Rename it to TestLaunchConfigurationGenerics
+        _- Modify the test class to point to the generics test class 
+
+5.17.2.1  "CoreTestSuiteIGenerics" test suite contains many test classes 
+           modified as shown below: 
+           Some of the following items needed extra work other than the general
+           migration steps mentioned above others only needed the general steps
+           If there is no further modification needed only the name of the new 
+           test class is listed :
+           
+5.17.2.1.1   MultipleReloadGenerics
+5.17.2.1.2	 NumberingTestGenerics
+5.17.2.1.3   DisposeTestGenerics
+             - Remove all tests for relations between instances and domain
+             - Remove tests for "Domain" and specialized package instances 
+               Activity, Communication, Sequence, Component Package, 
+               Use Case Diagram, DataType package and Interface Package
+             - When needed replace the Subsystem and Domain instances 
+               with package instances with the same name    
+5.17.2.1.4	 ActionTestGenerics
+             - Replace the Domain, Subsystem and specialized package instances 
+               with package instances with the same name
+             - When needed Create packageable element and package and relate 
+               them to the instance under test      
+5.17.2.1.5   RenameTestGenerics
+             - Tests for subsystem and specialized package instances are 
+               removed
+5.17.2.1.6   RenameTest2Generics
+5.17.2.1.7   DeleteAttributesTestGenerics
+5.17.2.1.8	 GetNameTestGenerics
+5.17.2.1.9	 DerivedAttributeTestGenerics
+5.17.2.1.10	 DeleteTestGenerics
+5.17.2.1.11	 TigerNatureTestGenerics
+             - getNewPackageString() and createNewPackage() methods are added to
+               the test
+             - For testConfigurationManagementChangesAllEditorsClose()
+               a generic package project named "CVS Test Project Generics"
+               is checked into cvs under directory 
+               "/arch1/products/tiger/tt_rep" 
+               
+5.17.2.1.12	 FormalizeUnformalizeTestGenerics
+              - Subsystem_by_name_c() method is modified to be 
+                Package_by_name_c()
+              - openTestSSDiagram() method is modified to be 
+                openTestPKGDiagram()
+              
+5.17.2.1.13	 AssignClassTestGenerics		
+              - Subsystem_by_name_c() method is modified to be 
+                Package_by_name_c()
+              - openTestSSDiagram() method is modified to be 
+                openTestPKGDiagram()
+              - UITestingUtilities.getTool("Class")method call is modified to 
+                be UITestingUtilities.getTool("Classes", "Class") 
+              - Actions  all over the test suite are changed from the ones for 
+                specialized packages to the ones for generic packages   
+               i.e.
+                SpecializedPackageAssignClassOnO_IOBJAction()
+                is modified to be GenericPackageAssignClassOnO_IOBJAction()
+
+5.17.2.1.14	 AttributeMenuItemTestGenerics
+              - Subsystem_by_name_c() method is modified to be 
+                Package_by_name_c()
+              - openTestSSDiagram() method is modified to be 
+                openTestPKGDiagram()
+              
+5.17.2.1.15	 AssignRemoveEventsGenerics 
+               -Action filters in the test suite changed from the ones 
+                for specialized packages to the ones for generic packages
+                i.e.  
+                "exists spec pkg" became "exists generic pkg"
+
+5.17.2.1.16	 CantHappenEvtIgnoreEvtTestsGenerics
+             - Action filters in the test suite changed from the ones for 
+               specialized packages to the ones for generic packages
+               i.e.  
+                "ignore spec pkg" became "ignore generic pkg"
+                
+              - Actions in the test suite are changed from the ones for 
+                specialized packages to the ones for generic packages   
+                i.e.
+                "SpecializedPackageCantHappenEventOnSM_STATEAction" became 
+                                "GenericPackageCantHappenEventOnSM_STATEAction"
+               
+              - Wizard dialogs in the test suite are changed from the ones for 
+                specialized packages to the ones for generic packages   
+               i.e.
+                "SpecializedPackageCantHappenEventOnSM_STATEWizardPage1" became 
+                "GenericPackageCantHappenEventOnSM_STATEWizardPage1"
+                    
+5.17.2.1.17	 OperationsTestGenerics
+              - Subsystem_by_name_c() method is modified to be 
+                Package_by_name_c()
+              - openTestSSDiagram() method is modified to be 
+                openTestPKGDiagram()
+              - instead of using subSystem instance named "TestOperations" 
+                package instance named "TestOperations" is used.  
+                
+
+
+6. Implementation Comments
+--------------------------
+6.1 Removed the copy of metamodel_schema.sql that was kept under 
+    com.mentor.nucleus.bp.pkg/metamodel/metamodel_schema.sql
+    This copy is obsolete.  The important copies are :
+6.1.1 MC-Java/ooa_schema.sql 
+    This is copy MC-Java uses to build BridgePoint
+6.1.2 model_compilers/mc3020/schema/sql/xtumlmc_schema.sql 
+    This is the copy used by our ModelCompilers.  It is also the copy 
+    shipped to customers who have their own model compilers.
+6.1.3 com.mentor.nucleus.bp.core/sql/metamodel_schema.sql
+    This gets generated with each BridgePoint build.  However, it is not 
+    actually currently used.  
+    
+
+    
+     
+7. Unit Test
+------------
+7.1 Do not allow specialized packages inside components when the component is 
+    in an generic package.  This is a test for item 5.6 above.
+7.1.1    
+    _- Create a xtUML model
+    _- Create a EP_PKG
+    _- Create a Component (cp1) in it
+    _- Open the Component (cp1) 
+    _R In the Default Toolset drawer on the palette the option to create a 
+       Package IS present.
+    _R In the Default Toolset drawer on the palette the options to create 
+       specialized packages are NOT present.  
+    _- Right-click on white space in the component (cp1) on the canvas
+    _R In the CME the option to create a Package IS present.
+    _R In the CME the option to create specialized packages are NOT present.  
+    _- Open the System Model Package Diagram
+    _- Create a component package in it (cpkg1)
+    _- Create a component (cp2) in cpkg1.
+    _- Open the Component (cp2) 
+    _R In the Default Toolset drawer on the palette the option to create a 
+       Package is NOT present.
+    _R In the Default Toolset drawer on the palette the option to create 
+       specialized packages ARE present.  
+    _- Right-click on white space in the component (cp2) on the canvas
+    _R In the CME the option to create a Package is NOT present.
+    _R In the CME the option to create specialized packages ARE present.  
+7.1.2 
+    _- Attempt to paste a specialized package into a component where the 
+       component is under a EP_PKG
+    _R The paste CME is NOT enabled
+    _- Attempt to paste a specialized package into a component where the 
+       component is NOT under EP_PKG
+    _R The paste CME is enabled
+    _R The paste is successful
+    
+7.1.3 
+    _- Attempt to paste a EP_PKG into a component where the 
+       component is under a EP_PKG
+    _R The paste CME is enabled
+    _R The paste is successful
+    _- Attempt to paste a EP_PKG into a component where the 
+       component is NOT under EP_PKG
+    _R The paste CME is NOT enabled
+
+7.2 _- Run Test Suite Generics    
+    _- 0 Errors 0 failures
+    
+     
+8. Code Changes
+---------------
+Branch: Review-dts0100631941-08b
+
+com.mentor.nucleus.bp.als.oal.test/src/(default package)/
+    OALTestSuite_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ArrayBaseTest_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ComponentParamTest_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ComponentScopeTest_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ComponentSyntaxTest_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ImplicitComponentAddressTest_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    OalParserTest_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    ParseAllInDomain_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    RelaxedSameDataTest_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_0_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_1_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_10_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_11_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_12_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_13_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_14_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_15_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_16_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_17_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_18_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_19_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_2_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_3_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_4_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_5_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_6_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_7_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_8_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    SingleDimensionFixedArrayAssigmentTest_9_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestArray_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestAssign_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestAttribute_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestBPPrefAllowPromotion_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestBPPrefStrictTyping_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestControl_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestCRUD_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestEvent_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestExpr_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestInvocation_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestLineNumbers_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestParser_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestPlugin_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestSelect_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestStructuredDataType_Generics.java [incoming addition]
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/testOAL1G.xtuml [incoming addition]
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    ModelRoot.java [incoming change]
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui/
+    .cvsignore [incoming change]
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.util/
+    EditorUtil.java [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Activity/
+    Activity/Activity.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Communication/Communication.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component/Component.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Component Reference/
+    Component Reference.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Requirement/Requirement.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type/Data Type.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type Package/Data Type Package.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    System Model/System Model.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    User Data Type/User Data Type.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Package/Package.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/Context Menu Entry Functions/
+    Context Menu Entry Functions.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/
+    OAL Validation Functions.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Class Instance Participant/
+    Class Instance Participant.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Function Package Participant/
+    Function Package Participant.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Interaction Participant/
+    Interaction Participant.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Package Participant/
+    Package Participant.xtuml [incoming addition]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Interaction.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Asynchronous Message/Asynchronous Message.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Message/Message.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Message/
+    Synchronous Message/Synchronous Message.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Packageable Element/Message in Package/
+    Message in Package.xtuml [incoming deletion]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Packageable Element/Packageable Element/
+    Packageable Element.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Packageable Element/Participant in Package/
+    Participant in Package.xtuml [incoming deletion]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Packageable Element/Packageable Element.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Sequence/
+    Sequence/Sequence.xtuml [incoming change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Use Case/
+    Use Case Diagram/Use Case Diagram.xtuml [incoming change]
+com.mentor.nucleus.bp.core/sql/.cvsignore [incoming change]
+com.mentor.nucleus.bp.core/sql/context_menu.pei.sql [incoming change]
+com.mentor.nucleus.bp.core/sql/ooaofooa_hierarchy.pei.sql [incoming change]
+com.mentor.nucleus.bp.core/generate.xml [incoming change]
+
+com.mentor.nucleus.bp.core.test/src/(default package)/
+    CoreTestSuite.java [incoming change]
+com.mentor.nucleus.bp.core.test/src/(default package)/
+    CoreTestSuite2Generics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/(default package)/
+    CoreTestSuiteGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    ActionTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    AssignClassTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    AssignRemoveEventsGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    AttributeMenuItemTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    CantHappenEvtIgnoreEvtTestsGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    CommunicationMessageTestsGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    CommunicationTestsGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    CoreTestSuiteIGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    CoreTestSuiteIIGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    DeleteAttributesTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    DeleteTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    DerivedAttributeTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    DisposeTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    FormalizeUnformalizeTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    GetNameTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    MultipleReloadGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    NumberingTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    OperationsTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    RenameTest2Generics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    RenameTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    TigerNatureExistingProjectsTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    TigerNatureTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    TigerNatureWorkspaceSetupTestGenerics.java [incoming addition]
+com.mentor.nucleus.bp.core.test/arc/create_action_test.arc [incoming change]
+com.mentor.nucleus.bp.core.test/arc/
+    create_context_menu_tests.arc [incoming change]
+com.mentor.nucleus.bp.core.test/arc/create_dispose_test.arc [incoming change]
+com.mentor.nucleus.bp.core.test/expected_results/AssignClass_2/
+    AssignClass_2-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignClass_2/
+    AssignClass_2-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_1/
+    AssignRemoveEvents_1-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_1/
+    AssignRemoveEvents_1-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_2/
+    AssignRemoveEvents_2-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_2/
+    AssignRemoveEvents_2-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_3/
+    AssignRemoveEvents_3-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_3/
+    AssignRemoveEvents_3-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_4/
+    AssignRemoveEvents_4-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_4/
+    AssignRemoveEvents_4-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_5/
+    AssignRemoveEvents_5-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_5/
+    AssignRemoveEvents_5-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_6/
+    AssignRemoveEvents_6-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AssignRemoveEvents_6/
+    AssignRemoveEvents_6-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_10/
+    AttributeMenuItem_10-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_10/
+    AttributeMenuItem_10-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_11/
+    AttributeMenuItem_11-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_11/
+    AttributeMenuItem_11-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_12/
+    AttributeMenuItem_12-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_12/
+    AttributeMenuItem_12-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_13/
+    AttributeMenuItem_13-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_13/
+    AttributeMenuItem_13-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_14/
+    AttributeMenuItem_14-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_14/
+    AttributeMenuItem_14-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_15/
+    AttributeMenuItem_15-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_15/
+    AttributeMenuItem_15-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_16/
+    AttributeMenuItem_16-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_16/
+    AttributeMenuItem_16-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_18/
+    AttributeMenuItem_18-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_18/
+    AttributeMenuItem_18-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_19/
+    AttributeMenuItem_19-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_19/
+    AttributeMenuItem_19-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_21/
+    AttributeMenuItem_21-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_21/
+    AttributeMenuItem_21-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_22/
+    AttributeMenuItem_22-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_22/
+    AttributeMenuItem_22-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_24/
+    AttributeMenuItem_24-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_24/
+    AttributeMenuItem_24-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_25/
+    AttributeMenuItem_25-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_25/
+    AttributeMenuItem_25-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_27/
+    AttributeMenuItem_27-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_27/
+    AttributeMenuItem_27-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_28/
+    AttributeMenuItem_28-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_28/
+    AttributeMenuItem_28-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_3/
+    AttributeMenuItem_3-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_3/
+    AttributeMenuItem_3-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_4/
+    AttributeMenuItem_4-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_4/
+    AttributeMenuItem_4-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_5/
+    AttributeMenuItem_5-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_5/
+    AttributeMenuItem_5-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_6/
+    AttributeMenuItem_6-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_6/
+    AttributeMenuItem_6-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_7/
+    AttributeMenuItem_7-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_7/
+    AttributeMenuItem_7-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_8/
+    AttributeMenuItem_8-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_8/
+    AttributeMenuItem_8-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_9/
+    AttributeMenuItem_9-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/AttributeMenuItem_9/
+    AttributeMenuItem_9-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_1/
+    DeleteTest_test_1-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_1/
+    DeleteTest_test_1-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_10/
+    DeleteTest_test_10-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_10/
+    DeleteTest_test_10-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_11/
+    DeleteTest_test_11-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_11/
+    DeleteTest_test_11-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_12/
+    DeleteTest_test_12-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_12/
+    DeleteTest_test_12-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_13/
+    DeleteTest_test_13-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_13/
+    DeleteTest_test_13-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_14/
+    DeleteTest_test_14-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_14/
+    DeleteTest_test_14-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_15/
+    DeleteTest_test_15-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_15/
+    DeleteTest_test_15-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_16/
+    DeleteTest_test_16-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_16/
+    DeleteTest_test_16-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_17/
+    DeleteTest_test_17-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_17/
+    DeleteTest_test_17-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_18/
+    DeleteTest_test_18-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_18/
+    DeleteTest_test_18-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_19/
+    DeleteTest_test_19-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_19/
+    DeleteTest_test_19-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_2/
+    DeleteTest_test_2-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_2/
+    DeleteTest_test_2-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_20/
+    DeleteTest_test_20-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_20/
+    DeleteTest_test_20-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_21/
+    DeleteTest_test_21-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_21/
+    DeleteTest_test_21-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_22/
+    DeleteTest_test_22-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_22/
+    DeleteTest_test_22-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_23/
+    DeleteTest_test_23-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_23/
+    DeleteTest_test_23-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_24/
+    DeleteTest_test_24-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_24/
+    DeleteTest_test_24-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_25/
+    DeleteTest_test_25-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_25/
+    DeleteTest_test_25-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_26/
+    DeleteTest_test_26-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_26/
+    DeleteTest_test_26-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_27/
+    DeleteTest_test_27-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_27/
+    DeleteTest_test_27-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_28/
+    DeleteTest_test_28-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_28/
+    DeleteTest_test_28-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_29/
+    DeleteTest_test_29-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_29/
+    DeleteTest_test_29-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_3/
+    DeleteTest_test_3-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_3/
+    DeleteTest_test_3-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_30/
+    DeleteTest_test_30-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_30/
+    DeleteTest_test_30-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_31/
+    DeleteTest_test_31-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_31/
+    DeleteTest_test_31-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_32/
+    DeleteTest_test_32-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_32/
+    DeleteTest_test_32-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_33/
+    DeleteTest_test_33-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_33/
+    DeleteTest_test_33-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_34/
+    DeleteTest_test_34-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_34/
+    DeleteTest_test_34-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_35/
+    DeleteTest_test_35-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_35/
+    DeleteTest_test_35-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_36/
+    DeleteTest_test_36-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_36/
+    DeleteTest_test_36-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_37/
+    DeleteTest_test_37-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_37/
+    DeleteTest_test_37-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_38/
+    DeleteTest_test_38-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_38/
+    DeleteTest_test_38-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_39/
+    DeleteTest_test_39-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_39/
+    DeleteTest_test_39-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_4/
+    DeleteTest_test_4-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_4/
+    DeleteTest_test_4-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_40/
+    DeleteTest_test_40-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_40/
+    DeleteTest_test_40-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_41/
+    DeleteTest_test_41-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_41/
+    DeleteTest_test_41-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_42/
+    DeleteTest_test_42-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_42/
+    DeleteTest_test_42-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_43/
+    DeleteTest_test_43-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_43/
+    DeleteTest_test_43-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_44/
+    DeleteTest_test_44-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_44/
+    DeleteTest_test_44-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_45/
+    DeleteTest_test_45-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_45/
+    DeleteTest_test_45-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_46/
+    DeleteTest_test_46-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_46/
+    DeleteTest_test_46-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_47/
+    DeleteTest_test_47-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_47/
+    DeleteTest_test_47-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_48/
+    DeleteTest_test_48-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_48/
+    DeleteTest_test_48-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_49/
+    DeleteTest_test_49-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_49/
+    DeleteTest_test_49-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_5/
+    DeleteTest_test_5-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_5/
+    DeleteTest_test_5-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_50/
+    DeleteTest_test_50-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_50/
+    DeleteTest_test_50-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_51/
+    DeleteTest_test_51-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_51/
+    DeleteTest_test_51-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_52/
+    DeleteTest_test_52-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_52/
+    DeleteTest_test_52-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_53/
+    DeleteTest_test_53-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_53/
+    DeleteTest_test_53-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_54/
+    DeleteTest_test_54-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_54/
+    DeleteTest_test_54-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_55/
+    DeleteTest_test_55-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_55/
+    DeleteTest_test_55-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_56/
+    DeleteTest_test_56-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_56/
+    DeleteTest_test_56-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_57/
+    DeleteTest_test_57-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_57/
+    DeleteTest_test_57-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_58/
+    DeleteTest_test_58-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_58/
+    DeleteTest_test_58-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_59/
+    DeleteTest_test_59-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_59/
+    DeleteTest_test_59-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_6/
+    DeleteTest_test_6-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_6/
+    DeleteTest_test_6-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_60/
+    DeleteTest_test_60-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_60/
+    DeleteTest_test_60-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_61/
+    DeleteTest_test_61-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_61/
+    DeleteTest_test_61-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_62/
+    DeleteTest_test_62-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_62/
+    DeleteTest_test_62-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_63/
+    DeleteTest_test_63-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_63/
+    DeleteTest_test_63-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_64/
+    DeleteTest_test_64-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_64/
+    DeleteTest_test_64-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_65/
+    DeleteTest_test_65-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_65/
+    DeleteTest_test_65-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_66/
+    DeleteTest_test_66-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_66/
+    DeleteTest_test_66-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_67/
+    DeleteTest_test_67-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_67/
+    DeleteTest_test_67-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_68/
+    DeleteTest_test_68-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_68/
+    DeleteTest_test_68-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_69/
+    DeleteTest_test_69-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_69/
+    DeleteTest_test_69-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_7/
+    DeleteTest_test_7-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_7/
+    DeleteTest_test_7-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_70/
+    DeleteTest_test_70-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_70/
+    DeleteTest_test_70-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_71/
+    DeleteTest_test_71-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_71/
+    DeleteTest_test_71-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_72/
+    DeleteTest_test_72-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_72/
+    DeleteTest_test_72-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_73/
+    DeleteTest_test_73-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_73/
+    DeleteTest_test_73-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_74/
+    DeleteTest_test_74-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_74/
+    DeleteTest_test_74-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_75/
+    DeleteTest_test_75-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_75/
+    DeleteTest_test_75-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_76/
+    DeleteTest_test_76-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_76/
+    DeleteTest_test_76-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_77/
+    DeleteTest_test_77-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_77/
+    DeleteTest_test_77-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_78/
+    DeleteTest_test_78-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_78/
+    DeleteTest_test_78-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_79/
+    DeleteTest_test_79-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_79/
+    DeleteTest_test_79-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_8/
+    DeleteTest_test_8-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_8/
+    DeleteTest_test_8-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_80/
+    DeleteTest_test_80-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_80/
+    DeleteTest_test_80-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_81/
+    DeleteTest_test_81-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_81/
+    DeleteTest_test_81-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_82/
+    DeleteTest_test_82-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_82/
+    DeleteTest_test_82-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_83/
+    DeleteTest_test_83-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_83/
+    DeleteTest_test_83-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_84/
+    DeleteTest_test_84-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_84/
+    DeleteTest_test_84-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_85/
+    DeleteTest_test_85-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_85/
+    DeleteTest_test_85-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_86/
+    DeleteTest_test_86-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_86/
+    DeleteTest_test_86-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_87/
+    DeleteTest_test_87-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_87/
+    DeleteTest_test_87-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_88/
+    DeleteTest_test_88-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_88/
+    DeleteTest_test_88-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_89/
+    DeleteTest_test_89-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_89/
+    DeleteTest_test_89-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_9/
+    DeleteTest_test_9-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_9/
+    DeleteTest_test_9-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_90/
+    DeleteTest_test_90-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_90/
+    DeleteTest_test_90-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_91/
+    DeleteTest_test_91-8 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_91/
+    DeleteTest_test_91-8.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_92/
+    DeleteTest_test_92-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_92/
+    DeleteTest_test_92-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_93/
+    DeleteTest_test_93-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_93/
+    DeleteTest_test_93-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_94/
+    DeleteTest_test_94-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_94/
+    DeleteTest_test_94-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_95/
+    DeleteTest_test_95-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/DeleteTest_test_95/
+    DeleteTest_test_95-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_1/
+    FormalizeUnformalize_test_1-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_1/
+    FormalizeUnformalize_test_1-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_10/
+    FormalizeUnformalize_test_10-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_10/
+    FormalizeUnformalize_test_10-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_11/
+    FormalizeUnformalize_test_11-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_11/
+    FormalizeUnformalize_test_11-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_12/
+    FormalizeUnformalize_test_12-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_12/
+    FormalizeUnformalize_test_12-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_13/
+    FormalizeUnformalize_test_13-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_13/
+    FormalizeUnformalize_test_13-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_14/
+    FormalizeUnformalize_test_14-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_14/
+    FormalizeUnformalize_test_14-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_15/
+    FormalizeUnformalize_test_15-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_15/
+    FormalizeUnformalize_test_15-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_16/
+    FormalizeUnformalize_test_16-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_16/
+    FormalizeUnformalize_test_16-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_17/
+    FormalizeUnformalize_test_17-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_17/
+    FormalizeUnformalize_test_17-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_18/
+    FormalizeUnformalize_test_18-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_18/
+    FormalizeUnformalize_test_18-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_19/
+    FormalizeUnformalize_test_19-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_19/
+    FormalizeUnformalize_test_19-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_2/
+    FormalizeUnformalize_test_2-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_2/
+    FormalizeUnformalize_test_2-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_20/
+    FormalizeUnformalize_test_20-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_20/
+    FormalizeUnformalize_test_20-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_21/
+    FormalizeUnformalize_test_21-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_21/
+    FormalizeUnformalize_test_21-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_22/
+    FormalizeUnformalize_test_22-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_22/
+    FormalizeUnformalize_test_22-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_23/
+    FormalizeUnformalize_test_23-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_23/
+    FormalizeUnformalize_test_23-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_24/
+    FormalizeUnformalize_test_24-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_24/
+    FormalizeUnformalize_test_24-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_25/
+    FormalizeUnformalize_test_25-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_25/
+    FormalizeUnformalize_test_25-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_26/
+    FormalizeUnformalize_test_26-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_26/
+    FormalizeUnformalize_test_26-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_27/
+    FormalizeUnformalize_test_27-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_27/
+    FormalizeUnformalize_test_27-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_28/
+    FormalizeUnformalize_test_28-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_28/
+    FormalizeUnformalize_test_28-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_29/
+    FormalizeUnformalize_test_29-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_29/
+    FormalizeUnformalize_test_29-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_3/
+    FormalizeUnformalize_test_3-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_3/
+    FormalizeUnformalize_test_3-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_30/
+    FormalizeUnformalize_test_30-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_30/
+    FormalizeUnformalize_test_30-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_31/
+    FormalizeUnformalize_test_31-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_31/
+    FormalizeUnformalize_test_31-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_32/
+    FormalizeUnformalize_test_32-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_32/
+    FormalizeUnformalize_test_32-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_33/
+    FormalizeUnformalize_test_33-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_33/
+    FormalizeUnformalize_test_33-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_34/
+    FormalizeUnformalize_test_34-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_34/
+    FormalizeUnformalize_test_34-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_35/
+    FormalizeUnformalize_test_35-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_35/
+    FormalizeUnformalize_test_35-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_36/
+    FormalizeUnformalize_test_36-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_36/
+    FormalizeUnformalize_test_36-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_37/
+    FormalizeUnformalize_test_37-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_37/
+    FormalizeUnformalize_test_37-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_38/
+    FormalizeUnformalize_test_38-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_38/
+    FormalizeUnformalize_test_38-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_39/
+    FormalizeUnformalize_test_39-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_39/
+    FormalizeUnformalize_test_39-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_4/
+    FormalizeUnformalize_test_4-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_4/
+    FormalizeUnformalize_test_4-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_40/
+    FormalizeUnformalize_test_40-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_40/
+    FormalizeUnformalize_test_40-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_41/
+    FormalizeUnformalize_test_41-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_41/
+    FormalizeUnformalize_test_41-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_42/
+    FormalizeUnformalize_test_42-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_42/
+    FormalizeUnformalize_test_42-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_43/
+    FormalizeUnformalize_test_43-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_43/
+    FormalizeUnformalize_test_43-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_44/
+    FormalizeUnformalize_test_44-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_44/
+    FormalizeUnformalize_test_44-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_45/
+    FormalizeUnformalize_test_45-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_45/
+    FormalizeUnformalize_test_45-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_46/
+    FormalizeUnformalize_test_46-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_46/
+    FormalizeUnformalize_test_46-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_47/
+    FormalizeUnformalize_test_47-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_47/
+    FormalizeUnformalize_test_47-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_48/
+    FormalizeUnformalize_test_48-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_48/
+    FormalizeUnformalize_test_48-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_49/
+    FormalizeUnformalize_test_49-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_49/
+    FormalizeUnformalize_test_49-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_5/
+    FormalizeUnformalize_test_5-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_5/
+    FormalizeUnformalize_test_5-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_50/
+    FormalizeUnformalize_test_50-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_50/
+    FormalizeUnformalize_test_50-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_51/
+    FormalizeUnformalize_test_51-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_51/
+    FormalizeUnformalize_test_51-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_52/
+    FormalizeUnformalize_test_52-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_52/
+    FormalizeUnformalize_test_52-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_53/
+    FormalizeUnformalize_test_53-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_53/
+    FormalizeUnformalize_test_53-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_54/
+    FormalizeUnformalize_test_54-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_54/
+    FormalizeUnformalize_test_54-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_55/
+    FormalizeUnformalize_test_55-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_55/
+    FormalizeUnformalize_test_55-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_56/
+    FormalizeUnformalize_test_56-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_56/
+    FormalizeUnformalize_test_56-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_57/
+    FormalizeUnformalize_test_57-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_57/
+    FormalizeUnformalize_test_57-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_58/
+    FormalizeUnformalize_test_58-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_58/
+    FormalizeUnformalize_test_58-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_59/
+    FormalizeUnformalize_test_59-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_59/
+    FormalizeUnformalize_test_59-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_6/
+    FormalizeUnformalize_test_6-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_6/
+    FormalizeUnformalize_test_6-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_60/
+    FormalizeUnformalize_test_60-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_60/
+    FormalizeUnformalize_test_60-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_61/
+    FormalizeUnformalize_test_61-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_61/
+    FormalizeUnformalize_test_61-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_62/
+    FormalizeUnformalize_test_62-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_62/
+    FormalizeUnformalize_test_62-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_63/
+    FormalizeUnformalize_test_63-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_63/
+    FormalizeUnformalize_test_63-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_64/
+    FormalizeUnformalize_test_64-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_64/
+    FormalizeUnformalize_test_64-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_65/
+    FormalizeUnformalize_test_65-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_65/
+    FormalizeUnformalize_test_65-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_66/
+    FormalizeUnformalize_test_66-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_66/
+    FormalizeUnformalize_test_66-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_7/
+    FormalizeUnformalize_test_7-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_7/
+    FormalizeUnformalize_test_7-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_8/
+    FormalizeUnformalize_test_8-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_8/
+    FormalizeUnformalize_test_8-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_9/
+    FormalizeUnformalize_test_9-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/FormalizeUnformalize_test_9/
+    FormalizeUnformalize_test_9-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_10/
+    FormalizeUnformalize_test_Special_10-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_10/
+    FormalizeUnformalize_test_Special_10-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_11/
+    FormalizeUnformalize_test_Special_11-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_11/
+    FormalizeUnformalize_test_Special_11-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_12/
+    FormalizeUnformalize_test_Special_12-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_12/
+    FormalizeUnformalize_test_Special_12-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_13/
+    FormalizeUnformalize_test_Special_13-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_13/
+    FormalizeUnformalize_test_Special_13-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_14/
+    FormalizeUnformalize_test_Special_14-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_14/
+    FormalizeUnformalize_test_Special_14-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_15/
+    FormalizeUnformalize_test_Special_15-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_15/
+    FormalizeUnformalize_test_Special_15-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_16/
+    FormalizeUnformalize_test_Special_16-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_16/
+    FormalizeUnformalize_test_Special_16-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_17/
+    FormalizeUnformalize_test_Special_17-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_17/
+    FormalizeUnformalize_test_Special_17-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_18/
+    FormalizeUnformalize_test_Special_18-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_18/
+    FormalizeUnformalize_test_Special_18-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_19/
+    FormalizeUnformalize_test_Special_19-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_19/
+    FormalizeUnformalize_test_Special_19-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_20/
+    FormalizeUnformalize_test_Special_20-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_20/
+    FormalizeUnformalize_test_Special_20-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_21/
+    FormalizeUnformalize_test_Special_21-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_21/
+    FormalizeUnformalize_test_Special_21-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_22/
+    FormalizeUnformalize_test_Special_22-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_22/
+    FormalizeUnformalize_test_Special_22-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_29/
+    FormalizeUnformalize_test_Special_29-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_29/
+    FormalizeUnformalize_test_Special_29-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_30/
+    FormalizeUnformalize_test_Special_30-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_30/
+    FormalizeUnformalize_test_Special_30-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_31/
+    FormalizeUnformalize_test_Special_31-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_31/
+    FormalizeUnformalize_test_Special_31-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_32/
+    FormalizeUnformalize_test_Special_32-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_32/
+    FormalizeUnformalize_test_Special_32-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_33/
+    FormalizeUnformalize_test_Special_33-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_33/
+    FormalizeUnformalize_test_Special_33-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_34/
+    FormalizeUnformalize_test_Special_34-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_34/
+    FormalizeUnformalize_test_Special_34-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_35/
+    FormalizeUnformalize_test_Special_35-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_35/
+    FormalizeUnformalize_test_Special_35-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_36/
+    FormalizeUnformalize_test_Special_36-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_36/
+    FormalizeUnformalize_test_Special_36-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_37/
+    FormalizeUnformalize_test_Special_37-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_37/
+    FormalizeUnformalize_test_Special_37-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_38/
+    FormalizeUnformalize_test_Special_38-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_38/
+    FormalizeUnformalize_test_Special_38-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_39/
+    FormalizeUnformalize_test_Special_39-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_39/
+    FormalizeUnformalize_test_Special_39-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_40/
+    FormalizeUnformalize_test_Special_40-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_40/
+    FormalizeUnformalize_test_Special_40-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_41/
+    FormalizeUnformalize_test_Special_41-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_41/
+    FormalizeUnformalize_test_Special_41-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_42/
+    FormalizeUnformalize_test_Special_42-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_42/
+    FormalizeUnformalize_test_Special_42-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_43/
+    FormalizeUnformalize_test_Special_43-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_43/
+    FormalizeUnformalize_test_Special_43-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_44/
+    FormalizeUnformalize_test_Special_44-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_44/
+    FormalizeUnformalize_test_Special_44-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_7/
+    FormalizeUnformalize_test_Special_7-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_7/
+    FormalizeUnformalize_test_Special_7-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_8/
+    FormalizeUnformalize_test_Special_8-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_8/
+    FormalizeUnformalize_test_Special_8-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_9/
+    FormalizeUnformalize_test_Special_9-112 [incoming addition]
+com.mentor.nucleus.bp.core.test/expected_results/
+    FormalizeUnformalize_test_Special_9/
+    FormalizeUnformalize_test_Special_9-112.jpg [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    AssignClassTests.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    AssignRemoveEvents.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    AttributeMenuItemTests.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    CantHappenEvtIgnoreEvtTests.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    DeleteTestModel.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    FormalizeUnformalizeTest.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    mfp_issue34.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    odmsGenerics.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    OperationsTest.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.testGenerics/
+    testRename1.zip [incoming addition]
+com.mentor.nucleus.bp.core.test/generate.xml [incoming change]
+
+com.mentor.nucleus.bp.io.core/src/com.mentor.nucleus.bp.io.core/
+    ImportHelper.java [incoming change]
+com.mentor.nucleus.bp.io.core/arc/import_functions.inc [incoming change]
+
+com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl.wizards/
+    ModelImportPage.java [incoming change]
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql [incoming change]
+com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql [incoming change]
+
+com.mentor.nucleus.bp.pkg/metamodel/metamodel_schema.sql [incoming deletion]
+
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/
+    BaseTest.java [incoming change]
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/
+    TestingUtilities.java [incoming change]
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/
+    UITestingUtilities.java [incoming change]
+
+com.mentor.nucleus.bp.ui.canvas/src/com.mentor.nucleus.bp.ui.canvas/
+    Cl_c.java [incoming change]
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Datatypes/Datatypes.xtuml [incoming change]
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Line Segment/
+    Line Segment.xtuml [incoming change]
+
+com.mentor.nucleus.bp.ui.explorer/sql/UITree.pei.sql [incoming change]
+
+com.mentor.nucleus.bp.ui.graphics/src/com.mentor.nucleus.bp.ui.graphics.editor/
+    GraphicalEditor.java [incoming change]
+com.mentor.nucleus.bp.ui.graphics/plugin.xml [incoming change]
+
+com.mentor.nucleus.bp.ui.properties/arc/
+    BuildPropertySource.arc [incoming change]
+
+com.mentor.nucleus.bp.ui.properties.test/arc/
+    create_view_test.arc [incoming change]
+
+
+End
+---
+
+$Log: dts0100631941-08.int,v $
+Revision 1.24  2010/11/30 18:51:38  rmulvey
+job:dts0100631941
+Added back the generation of bp.core/sql/metamodel_schema.sql.  It is causing dependency issues that have nothing to do with the issue at hand and I need to get the issue at hand promotion completed.
+
+Revision 1.23  2010/11/30 16:32:43  rmulvey
+job:dts0100631941
+Updated the code changes section.
+
+Revision 1.22  2010/11/30 16:10:26  hkhaled
+job:dts0100631941
+for covering the point 13 in the review minute another issue "dts0100734304" was created and referenced at both the rvm and the int to address it
+
+Revision 1.21  2010/11/29 22:09:47  rmulvey
+job:dts0100631941
+Addressed the remaining review observations.
+
+Revision 1.20  2010/11/29 19:06:13  hkhaled
+job:dts0100631941
+some updates from the review minutes
+
+Revision 1.19  2010/11/29 16:02:29  hkhaled
+job:dts0100631941
+update the int fixing some typo's
+
+Revision 1.18  2010/11/29 14:12:52  hkhaled
+job:dts0100631941
+moving the the comment 6.2 from the dts0100631941-08.int note to the dts0100712772.dnt
+
+Revision 1.17  2010/11/29 12:44:52  hkhaled
+job:dts0100631941
+updating int :
+
+modified sections are :
+5.12.2
+and section 8
+
+
+added sections are :
+
+5.12.8
+5.12.9
+
+5.14
+5.15
+5.16
+5.17
+
+6.2
+
+7.2
+
+Revision 1.16  2010/11/25 13:18:09  hkhaled
+job:dts0100631941
+updating int with non JUnits changes
+
+Revision 1.15  2010/11/24 20:31:41  rmulvey
+job:dts0100631941
+Updated the note while reviewing changes in the branch.
+
+Revision 1.14  2010/11/24 19:56:07  rmulvey
+job:dts0100631941
+Updated the file change list.
+
+Revision 1.13  2010/11/24 16:02:18  rmulvey
+job:dts0100631941
+Fixed unit test instructions, moved the items in section 6 to section 5, added a implementation comment about removal of a stale copy of the meta model schema, and updated the background to describe what the purpose of this note is.
+
+Revision 1.12  2010/11/18 03:41:52  rmulvey
+job:dts0100631941
+Updated to account for the additional places the references to PREF::genericsEnabled had to be removed from.
+
+Revision 1.11  2010/11/17 20:53:02  rmulvey
+job:dts0100631941
+Updated the note to describe the change to remove PREF::genericsEnabled().
+
+Revision 1.10  2010/11/17 19:21:06  rmulvey
+job:dts0100631941
+Added more tests
+
+Revision 1.9  2010/11/17 19:03:27  rmulvey
+job:dts0100631941
+Added section 5.6 to describe the fix item 5.10 from the implementation note.  I also added a test for this situation.
+
+Revision 1.8  2010/11/17 15:47:52  rmulvey
+job:dts0100631941
+Modified C_C.actionFilter to filter specialized packages from the CME  components when the component is under a EP_PKG and to filter EP_PKG from the CME when the component is NOT under a EP_PKG.
+
+Revision 1.7  2010/11/16 16:58:56  rmulvey
+job:dts0100631941 dts0100712772
+Added a reference to 712772 to the 631941 design note. The introduction of generic-package specific tests (dts0100712772) is tightly coupled to the introduction of generic packages (dts0100631941).
+
+Revision 1.6  2010/11/08 13:18:36  gbahig
+job: dts0100631941
+
+update the int to reflect the latest oal parser
+test for Generic packages.
+
+Revision 1.5  2010/10/26 12:36:02  gbahig
+job:dts0100631941
+
+int update to refelect BaseTest GetTypeId Generics function change to retrieve Ids of system and non system level data types
+
+Revision 1.4  2010/10/25 07:17:57  gbahig
+job:dts0100631941
+
+Implementation updates to support parser tests execution on Generic Packages
+
+Revision 1.3  2010/09/20 15:54:00  hkhaled
+job: dts0100631941
+
+section 5.2 and  8.2 are added
+
+Revision 1.2  2010/09/20 08:46:04  campbell
+Job: dts0100631941
+Documented combined issue dts0100695128.
+
+Revision 1.1  2010/09/19 17:17:21  rmulvey
+job:dts0100631941
+Introduced an implementation note for the changes in Review-dts0100631941-08

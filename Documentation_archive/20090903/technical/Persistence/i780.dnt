@@ -1,0 +1,176 @@
+========================================================================
+
+File:      $RCSfile: i780.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Reloading Editor Contents When a Model File Changes on Disk
+
+Abstract
+--------
+This note describes the design for making Tiger editors sync their 
+contents with their associated model-file when that file changes on disk.  
+
+History
+-------
+
+Document References
+-------------------
+Bugzilla issue 780
+
+Background
+----------
+Previously, as part of the work for issue 561, a simpler approach to the 
+problem was taken wherein all editors associated with a model-file would 
+close when the file was modified.
+
+The file modification being considered can occur through a 
+configuration management (or local history) operation, or through the 
+file-system.
+
+Analysis
+--------
+Currently, there is a resource listener assigned to each model's file, 
+listening for changes to that file.  When the listener learns that the file 
+has been modified, it reloads the model from the file.  There is another
+kind of listener attached to each Tiger editor, and for each of these listeners, 
+when it receives a reload-all message resulting from the reload, it must 
+match the model element being edited by its editor to the updated version 
+that is in the reloaded model.  Once this newer instance is resolved, the 
+listener must change its editor's input to be that instance.  
+
+For an activity editor, the above also requires that parsing be 
+setup for the new input.  Also, all problem markers are to be removed 
+after a reload, since there is a likelihood that any or all of them will 
+have been rendered invalid.  
+
+Design
+------
+1.
+In class ModelDelta of java.arc, two kinds of delta are added: pre-reload-all
+and reload-all. 
+
+2.
+In class Ooaofooa of java.arc, a pre-reload-all model-change event is fired
+before a changed model-file is reloaded from disk, and a reload-all event
+is fired afterwards. 
+
+3.
+In java.arc, for class NonRootModelElement, as well as for each of its 
+descendant model-element classes, an equals() method is generated so that
+the comparison may be made between an editor's model-element and a
+potentially newer version in a reloaded model. 
+
+4.
+bp.core.ui.EditorListener is introduced as a place to hold code common to all 
+editor listeners in the product.  To this listener is added a method 
+pointEditorToReloadedContent() which finds the element in a newly-reloaded 
+model that corresponds to an older version being edited, and makes
+the newer version the new input of the editor.  If the newer element cannot
+be found, the editor is closed, as before.
+
+4.1
+The above class is added to cvs_java_files in core's generate.xml.
+
+5.
+In bp.ui.canvas's CanvasEditor, a method setInput is added that exposes the
+same-named, protected method of its supertype.  
+
+6.
+bp.ui.canvas's CanvasEditorListener and bp.ui.text's EditorListener are 
+modified to: 
+
+- extend from bp.core.ui.EditorListener
+- ignore the delete-all event that immediately follows a pre-reload-all event
+- call pointEditorToReloadedContent() on a reload-all event
+
+6.1
+bp.ui.text's EditorListener is also modified to: 
+
+- on a relevant reload-all event, remove all problem markers associated 
+	with the editor's file
+- include a method getEditors() that returns an array of all the editors that
+	are open in the workbench; this code was previously duplicated in other
+	portions of the file
+	
+7.
+In bp.ui.text.activity's ActivityEditor, the addition and removal of the 
+listener that handles the parsing is moved from createPartControl() to 
+setInput(), as the latter method may now be called more than once on the 
+same editor (namely, when the editor's content is reloaded).  
+
+Design Comments
+---------------
+
+Work Required
+-------------
+No further work is required beyond that outlined in the Design section.
+
+Unit Test
+---------
+- if not already present, import an xtUML project from CVS into the test 
+	workspace
+- open a domain package diagram on one of the domains in the project
+- make a change such that the model gets saved, and the CVS "changed" marker
+	(">") appears next to the domain in the model explorer
+- right-click on the domain in the model explorer, and select "Replace with >
+ 	Latest from HEAD"
+R the diagram stays open, displaying the original contents before the 
+	modification was made
+	 	
+- open an activity editor 	 	
+- make a change that causes an error to be flagged by the parser
+- save the editor, such that the error gets turned into a problem marker
+- right-click on the domain in the model explorer, and select "Replace with >
+ 	Latest from HEAD"
+R the editor stays open, displaying the original contents before the 
+	modification was made
+R the problem is gone from the Problems view
+- make a change that should cause an error to be flagged by the parser
+R an error is flagged
+
+- open a description editor 	 	
+- make a change 
+- save the editor
+- right-click on the domain in the model explorer, and select "Replace with >
+ 	Latest from HEAD"
+R the editor stays open, displaying the original contents before the 
+	modification was made
+	
+End
+---
+
+$Log: i780.dnt,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.38.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/03/31 19:32:28  jmather
+Job: 780
+Addressed review comments.
+
+Revision 1.2  2005/03/30 00:04:59  jmather
+Job: 780
+Made an addition to a unit test.
+
+Revision 1.1  2005/03/29 22:53:55  jmather
+Job: 780
+Introduced.
+

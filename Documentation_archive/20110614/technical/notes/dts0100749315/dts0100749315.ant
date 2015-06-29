@@ -1,0 +1,144 @@
+========================================================================
+
+File:      $RCSfile: dts0100749315.ant,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Complete support for send .. to syntax
+
+1. Abstract
+-----------
+This note examines the changes needed to fully support OAL of the form,
+send message(parameterlist) to component_ref.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100749315 - Misrouted interface message when using
+    attribute of type component_ref as destination.
+[2] Bugzilla issue i2924 - Add new OAL syntax for Components.
+[3] ClearQuest DEI dts0100756958 - Update model compiler products to leverage
+    'to component_ref' syntax.
+  
+4. Background
+-------------
+Component reference usage and syntax was specified in 2007[2], but formal end
+to end tool support for it was not completed while the requirements were being
+clarified. This has now happened and some customers anticipate a need for this
+feature in the near future.
+
+5. Analysis
+-----------
+To complete support for this feature, changes are required in three areas of the
+tool; meta-model, OAL parser and Verifier.
+
+The parser already recognizes and validates the send statement syntax, and the
+meta-model does contain the necessary support for the basic send syntax.
+
+send Output::log(message:"Output test");
+
+This works acceptably for cases where no component identity ambiguity exists,
+but is insufficient where multiple components communicate across a single
+port. To meet this need, the parser also recognizes extended syntax using the
+'to' clause as in:
+
+send Output::log(message:"Output test") to self.logger;
+
+However, the meta-model lacks the associations required to allow the parser to
+capture the 'to' clause information, and so neither Verifier nor downstream
+model compiler tools can generate correct code for this syntax.
+
+Because the target component reference is not cached by the parser, Verifier
+currently behaves as if the 'to' clause was not present.
+
+Changes will be required to the model compiler products to leverage the changes
+proposed here. This is outside the scope of this document and a separate
+issue[3] is raised to track this work.
+
+6. Work Required
+----------------
+6.1 Meta-model changes
+The parser grammar specifies that a send statement may, optionally have a
+trailing 'to' clause of the form 'to <rvalue>'. Existing parser validation
+assures that all values used in this context have a component_ref data type.
+
+To support execution and translation of this syntax, we need new conditional
+associations between the 'Value' class (V_VAL) and the statement subtypes
+'Interface Operation Invocation' (ACT_IOP) and 'Signal Invocation' (ACT_SGN) and
+between the Value class and the Value subtype 'Message Value' (V_MSV).
+Association numbers R629, R630 and R851 are suggested for the three associations
+respectively:
+
+       has target        is target of
+  V_VAL 0..1  ---- R629 ----  * ACT_IOP
+  V_VAL 0..1  ---- R630 ----  * ACT_SGN
+  V_VAL 0..1  ---- R851 ----  * V_MSV
+
+Meta-model dispose OAL needs to be modified to tear down the above associations
+when required. Further details shall be provided in the design note.
+
+The schema that ship with BridgePoint require extension to include these new
+associations.
+
+6.2 OAL Parser changes
+The parser itself already correctly recognizes the grammar. The validation
+functions need to now assert the above new associations when the 'to component'
+syntax is recognized. Changes are anticipated in the OAL of Send_statement_end
+and Message_invocation_end. Further details shall be provided in the design
+note.
+
+6.3 Verifier changes
+The execute operation OAL shall be modified for Interface Operation Invocation
+and Signal Invocation Statement subtypes and for the getValue operation of the
+Value subtype, Message Value.
+
+The character of the change is the same in all three locations.
+
+If a target Value is found across R629 (ACT_IOP), R630 (ACT_SGN) or R851
+(V_MSV), then a component reference value is found by obtaining the associated
+runtime value for the current execution context. Traversal to the target
+Component Instance is then possible. This instance is then used to deliver the
+message as required. Further details shall be provided in the design note.
+
+7. Acceptance Test
+------------------
+7.1 Since this work involves changes to the parser, metamodel and Verifier, all
+existing automated unit tests must pass. 
+
+7.2 Since the parser already recognizes the extended send grammar, no new
+parser unit tests are needed.
+
+7.3 A new Verifier unit test is required to show that an explicit 'to' clause is
+executed as expected for all possible kinds of value and the three message
+types (signal, interface operation and non void interface operation). 
+
+End
+---
+
+$Log: dts0100749315.ant,v $
+Revision 1.4  2011/03/15 16:49:45  campbell
+Job: dts0100749315
+Correct a small typo.
+
+Revision 1.3  2011/03/11 12:51:26  campbell
+Job: dts0100749315
+Ready for review.
+
+Revision 1.2  2011/03/11 12:15:48  campbell
+Job: dts0100749315
+Specify follow on issue.
+
+Revision 1.1  2011/03/11 12:09:17  campbell
+Job: dts0100749315
+Introduced.
+

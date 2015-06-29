@@ -1,0 +1,243 @@
+========================================================================
+
+File:      $RCSfile: dts0100772842.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Port OAL defined in an imported interface reference is not pasted
+
+1. Abstract
+-----------
+OAL that exists in ports is lost during paste operations.  This issue is raised
+to resolve this problem.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100772842 - Port OAL defined in an imported interface 
+	reference is not pasted
+[2] ClearQuest DEI dts0100735420 - Support overloading of interface messages, 
+	class operations, and functions 
+4. Background
+-------------
+None.
+
+5. Requirements
+---------------
+5.1 When a component is selected and copied, all connected ports with the 
+    selected component are copied even if they are not selected.
+5.2 When pasting a component with formalized interfaces, if a proper interface 
+    satisfaction is found in the pasted location, then the ports are kept 
+    formalized and no OAL loss shall occur.
+5.2.1 If no proper interface is found, a pop up window will be displayed at the 
+    end of the paste operation that informs the user about the ports that could 
+    not be kept as formalized (OAL will be lost in this situation).
+5.2.1.1 The user can proceed or cancel the paste action.
+5.3 In order to find a proper interface satisfaction during paste, the following 
+    criteria must be fulfilled:
+5.3.1 The interface must have the same name as the one used to formalize
+    the port.
+5.3.2 The interface must have same number of Operations and Signals as the 
+    formalized port.
+5.3.2.1 The operations and signals must contain the exact signature. 
+5.3.2.2 Order of Operations and signals is not required for a match.
+5.3.2.3 Order of executable property parameters is not required for a match.
+
+
+6. Analysis
+-----------
+6.1 Currently when a user selects a component that has one or more formalized 
+    ports that contain OAL code, copies it, and then pastes. All OAL code 
+    contained by the component ports is lost in the target.
+
+6.2 Currently the copy process correctly collects the OAL data in the ports of 
+	Provided Operation, Provided Signal, Required Operation, and Required Signal.
+
+	 These instances are created at the beginning of the paste process with the 
+	source data. However, when resolving the interface referenced by the port, 
+	all of the created instances for Provided/Required Operation/Signal are 
+	deleted by InterfaceReference.Removesignalsandoperations() operation, and 
+	then the tool creates another new instances.   This action can be called 
+	by unformalize and  reformalize the port.
+
+	The reason that this strategy was followed is that it is much easier to 
+	discard the Signals/Operations definition and create new one that match each 
+	of the targets Signals/Operations declaration then to match each 
+	Signal/Operation definition in the port with its corresponding declaration 
+	in the target interfaces. 
+
+6.3 To avoid definition deletion, we need to figure out for each copied 
+	definition in the clipboard, what is the corresponding declaration for it. 
+	So it is required to know for each definition the following information :
+	- Name 
+	- Return type ( operation only)
+	- Parameters Name 
+	- Parameters Type
+
+
+6.4  Currently the data copied only contains the Signal/Operation Name, and 
+    Interface Proxy, Executable Property Proxy for each Signal/Operation. 
+    
+6.4.1 The copied data does NOT currently include the return data type and all
+	parameters information.  Therefore we can not currently perform a signature
+	that would attach each copied instance with a signature in the target. 
+
+6.5 The current implementation for interfaces allow two or more 
+	operations or signals with exact signature (name, return type, parameters 
+	name and type), and this must be banned if we go for the signature matching 
+	approach.
+	By resolving [2], this problem will be resolved.
+
+6.6  The signature matching will be done in a sequence of steps as follows :
+	- Match the interface name
+	- For each Operation/Signal 
+  		- Match Operation/Signal name
+	  	- Match return type for operations, skip it this step for signals
+  		- For each parameter -if found :
+	    - Match parameter name
+    	- Match parameter type
+    
+6.7  A benefit of the signature matching approach is that it will be possible 
+    to copy a component with formalized ports, paste it into another project 
+    that has the interface, keep the ports formalized and do not lost any 
+    OAL data.
+
+6.7.1    
+	If any operation/signal definition could not be matched with one of the 
+	operation/signal declaration, then the match process should break and 
+	restart by picking another interface. If all available interfaces could not 
+	be matched with the port definition, then this port will be unformalized and 
+	a pop up window at the end of the paste process should prompt up telling the 
+	user that the <portName> could not be formalized on the available interfaces 
+	and all OAL will be lost. The user should have the option either to proceed 
+	or cancel the paste.
+
+6.7.2  
+ 	If the interface has more executable property declaration than the port 
+ 	executable property definition, then the match will be considered failed.
+ 
+6.7.3
+ 	If one or more executable property definition could not be matched with 
+ 	another one in the interface declaration, then the matched will be 
+ 	considered failed.
+ 
+6.7.4
+ 	 If executable property declaration has different number of parameter than 
+ 	 the executable property definition then the match fails.
+ 
+6.7.5
+	 The only way to match interface is to have the same name, same number of 
+ 	the executable properties with the exact signatures.
+
+6.8  The current copy process shall be modified to add extra proxies for 
+	executable property parameters and their return type, and interface 
+	operation return type.
+
+6.9 It is worth mentioning here that there is an analogy between pasting a 
+    component with formalized port(s) and pasting an element with an SDT type. 
+    We match the name only, and the members are not checked for compatibility. 
+    If the interface referencing behavior is changed we shall change the SDT as 
+    well to keep the tool consistent.
+    
+6.10 This issue will resolved in two phases due to complexity : 
+6.1.1 Phase 1
+	- Prevent the unformalize and reformalize port act upon paste, and replace
+	  it with executable properties migration.
+	- Match interface and executable property by name only.
+	- prompt pop up window if could not find matched interface with proceed
+	  and cancel buttons
+	
+6.1.2 Phase 2 
+	  
+
+	- Modify the copy action to include proxies for executable property 
+	  parameters and their type, and interface operation return type.
+	- Match the interface as explained in 6.7
+	
+7. Design
+---------
+7.1 Phase 1 : 
+7.1.1 Modify InterfaceReference.resolveInterface() to prevent the unformalizing
+	  and reformalizing action
+7.1.2 Add new operation InterfaceReference.MigrateSignalsAndOperations() that 
+	  will apply the matching mechanism by executable property name only.
+7.1.3
+7.1.3.1  Store the unmatched executable properties in new created array 
+		TransactionManager.unmatchedExecutableProperties 
+7.1.3.2  Add new bridge Util::collectUnmatchedExecutableProperty(String,String) 
+		to collect every unmatched executable property and store them in 
+	    TransactionManager.unmatchedExecutableProperties.
+7.1.3.3 Modify TransactionManager.checkIfTransactionCanComplete() to check for
+		the new created array if not empty, and pop up proper warning message 
+		that OAL data will be lost by pasting, giving to the user privilege to 
+		cancel or proceed.
+
+7.2 Phase 2 : 
+7.2.1  Modify ExportModelStream.export_ProvidedExecutableProperty_c() and 
+	 export_RequiredExecutableProperty_c() to export the executable property 
+	 parameters and their type along the executable property.
+	   Also modify export_ProvidedOperation_c() and export_RequiredOperation_c()
+	 to export the return type.
+	 
+7.2.2 InterfaceReference.MigrateSignalsAndOperations() match mechanism to 
+	 include complete signature matching for each executable property.
+	
+
+8. Design Comments
+------------------
+8.1 The rough estimate to implement 7.2 is 40 man hours
+
+9. Work Required
+----------------
+Fully outlined in the design section.
+
+10. Unit Test
+------------
+10.1 Extend the  automated copy paste test for the component to perform the 
+the following : 
+- Copy component with formalized port and paste into same package
+- Copy component with formalized port and paste into another package that does 
+  not have visibility on the referenced interface.
+- Copy component with formalized port and paste into another package that has 
+  interface with the same name but not with the same executable property 
+
+
+End
+---
+
+$Log: dts0100772842.dnt,v $
+Revision 1.6  2012/02/22 15:58:57  nmohamad
+job:dts0100772842
+Add new document reference
+
+Revision 1.5  2012/02/22 15:37:07  rmulvey
+job:dts0100772842
+MAde a pass through the document for grammar
+
+Revision 1.4  2012/02/22 14:56:26  nmohamad
+job:dts0100772842
+update design  and design comments
+
+Revision 1.3  2012/02/22 14:30:49  nmohamad
+job:dts0100772842
+update design  and fix column 80
+
+Revision 1.2  2012/02/17 13:57:52  nmohamad
+job:dts0100772842
+Numbering fixes
+
+Revision 1.1  2012/02/17 13:56:21  nmohamad
+job:dts0100772842
+Create
+

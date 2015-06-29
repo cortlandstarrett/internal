@@ -1,0 +1,293 @@
+========================================================================
+
+File:      $RCSfile: sql_export.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:36 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+Tiger Drop 1 Design Note
+Add export sql to BridgePoint format
+
+Abstract
+--------
+
+This document describes the addition of the ability to export
+an sql file for a domain in a format that can be used by BridgePoint 6.1
+
+History
+-------
+
+final sql_export-071803-01.rvm
+
+Document Reference
+------------------
+
+bp.core/doc/internal/technical/File_IO/sql_export.ant
+
+Background
+----------
+
+See analysis note.
+
+Design
+------
+
+SE.1 Create Export Wizard classes
+
+SE.1.1 Add Export Wizard to plugin
+
+We add an Export Wizard extension to the com.projtech.bp.io.sql/plugin.xml
+file.  This makes the Export Wizard available in the workbench.
+The extension description is "Export model data to a BridgePoint 6.1 compatible SQL file".
+
+SE.1.2  BPSQLExportWizard
+
+The class com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/BPSQLExportWizard.java
+extends the Wizard class. It overrides the following functions: 
+
+addPages() - create an instance of BPSQLExportPage
+getWindowTitle() - returns "Export SQL"
+performFinish() - write the sql to the file specified by the wizard
+
+SE.1.3  BPSQLExportPage
+
+The class com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/BPSQLExportPage.java
+extends the WizardExportResourcesPage class. The page is laid out like any
+other Eclipse export page.  It has two panes at the top to select the 
+data to export.  These panes are non-functional in Drop-1.  It also has
+a text entry field to enter the destination file name, and a Browse
+button that brings up a file browser to locate a file.
+
+The class publishes the function getDestinationFilePath(), which returns
+the value in the destination file text field.
+
+The page name is "BP SQL Export".
+
+SE.2  File IO Model
+
+We create a model that captures the information needed
+to output the model information into SQL tables. The model
+is com.projtech.bp.io.sql/mdl/file_io.bak.  The model has
+the following classes:
+
+Table (T) - A table stores data for a class.  Each instance 
+of table represents a class in the BridgePoint application
+model.  The three attributes are: bpName, Key_Lett, and Name.
+bpName is the class name in the BP application model, and
+Name is the class name in the Tiger application model.
+Key_Lett is required to be the same in both models.
+
+Column (C) - A column in a table.  Instances of this class represent
+an attribute of a class in the BridgePoint application
+model.  There is a containment relationship to Table.
+
+Graphical Data (GD) - This class represents a 
+graphical model in the BridgePoint application.  Values:
+DD, SRM, SCM, SAM, OIM, OCM, OAM, ISM, ASM.
+
+Export Item (EI) - This class is a supertype of 
+Table and Graphical Data.
+
+Export Ordering (EO) - This class captures 
+the sequence for exporting classes to a BridgePoint SQL 
+file suitable for importing by Model Builder. The sequence is
+essentially a call graph.  Each instance represents the export 
+of a specific Export Item.  Instances are ordered within
+a level, and may have children as well.
+
+SE.3  Populate IO Model
+
+SE.3.1 The population of the Export Ordering instances
+is done by hand.  The instances are placed in 
+the file com.projtech.bp.io.sql/sql/file_io.pei.sql.
+
+SE.3.2 The population of the Graphical Data instances
+is done by hand.  The instances are placed in 
+the file com.projtech.bp.io.sql/sql/file_io.pei.sql
+as well.
+
+SE.3.3 The population of the Table and Column instances
+is done automatically.  The tables and columns we wish 
+to populate are from BP 6.1, so we start with the application
+model for BP 6.1.
+
+SE.3.3.1  The file bp_ooa_ooa.sql is created.  It is the
+sql export (without graphics) of the ooa_ooa domain from BP,
+with these changes:
+
+- The '/' is changed to a ' ' in the Subtype/Supertype Relationship class name.
+- The order of the last two CA_SMSMC attributes is reversed.
+
+The file is stored in com.projtech.bp.io.sql/sql/bp_ooa_ooa.sql.
+
+SE.3.3.2  The BP application model doesn't include the
+Graphical Data subsystem, so we need to create the file
+gd.sql, which contains that model.  This file is created
+by exporting the 'Graphics Domain' subsystem from the
+Tiger ooaofooa model, without graphics, and then removing
+all data type INSERTS.
+
+SE.3.3.3  An archetype, class2table.arc, is written to output an 
+INSERT Table (T) statement for each O_OBJ instance in the BP 
+application model combined with the Graphical Data subsystem.  
+The initial value for the bpName and Name attributes are the same.
+
+For each O_ATTR in the BP application model, an INSERT Column 
+(C) statement is output.  The appropriate EI instances are
+also output. The data is output to the file bp_ooa.pei.sql.
+
+SE.4  Generate code from IO Model
+
+In the analysis, it was expected that we would generate
+OAL from the model.  Rather than generate OAL from the model, and then
+translate that OAL to Java, we are translating the
+model directly to Java.   There is no benefit
+to generating OAL that just gets translated into
+Java.
+
+SE.4.1 The file gen_export_java.arc is created, which traverses
+the tree defined by the EO instances, and outputs a function
+for each EO instance.  The function calls a function that writes 
+the sql for that EO instance, then invokes the generated export
+function for all of its children.  The archetype also generates
+all the functions that write the sql.  All the functions are
+static void, and are defined in the class ExportBPSql.
+The class file is
+com.projtech.bp.io.sql/src/com/projtech/bp/io/sql/ExportBPSql.java
+
+SE.4.2 Some class names changed in the Tiger Application model.
+The archetype class_rename.inc changes the Table.Name attribute
+value to be the Tiger class name for those that are different from
+the BP application model.  This file is included in 
+gen_export_java.arc before any processing is done.
+
+SE.5  Infrastructure.
+
+SE.5.1  Script files are needed to automate the generation of
+the file_io_schema.sql file, the bp_ooa.pei.sql file, and
+the ExportBPSql.java file.
+
+SE.5.2  The Export... menu in bp.ui.explorer is changed so
+that when invoked, the Export Wizard defined in section SE.1
+is displayed.
+
+Work Required
+-------------
+
+SE.1  Add an export wizard
+
+SE.1.1  Add Extension to plugin
+
+The following is added to com.projtech.bp.io.sql/plugin.xml:
+
+   <extension
+         point="org.eclipse.ui.exportWizards">
+      <wizard
+            name="BridgePoint SQL"
+            class="com.projtech.bp.io.sql.BPSQLExportWizard"
+            icon="../com.projtech.bp.core/icons/green-bp.gif"
+            id="com.projtech.ExportWizard1">
+         <description>
+            Export model data to a BridgePoint 6.1 compatible SQL file
+         </description>
+      </wizard>
+   </extension>
+
+SE.1.2  BPSQLExportWizard
+
+Create class as designed.
+
+SE.1.3  BPSQLExportPage
+
+Create class as designed.
+
+SE.2  File IO Model
+
+The model is created.  The sql version (with no graphics)
+of the model is stored in sql/file_io.sql.  The result
+of running schema_gen on this model is stored in 
+sql/file_io_schema.sql
+
+SE.3  Populate IO Model
+
+SE.3.1 Populate the Export Ordering instances
+
+SE.3.2 Populate the Graphical Data instances
+
+SE.3.3 Table instance generation work
+
+SE.3.3.1  Create the file bp_ooa_ooa.sql as described.
+
+SE.3.3.2  Create the file gd.sql as described.
+
+SE.3.3.3  Create the archetype class2table.arc as described.
+
+SE.4  Generate code from IO Model
+
+SE.4.1 Create gen_export_java.arc
+
+SE.4.2 Create class_rename.inc
+
+SE.5  Infrastructure.
+
+SE.5.1  Build files
+
+The following files are created:
+
+SE.5.1.1 sql/schema_gen.bat
+
+SE.5.1.2 sql/class2table.bat
+
+SE.5.1.3 gen_export_java.bat
+
+SE.5.2  Hook up to menu
+
+SE.5.2.1  The code generated for the export menu action in create_explorer_view.inc
+is changed to the following:
+
+    fileExport = new Action(IWorkbenchActionConstants.EXPORT){
+      public void run(){
+		ExportResourcesAction era = new ExportResourcesAction(
+		    CorePlugin.getDefault().getWorkbench().getActiveWorkbenchWindow());
+		era.run();
+      }
+    };
+
+The following import is added at the beginning of the file:
+
+import org.eclipse.ui.actions.ExportResourcesAction;
+
+---
+End
+
+$Log: sql_export.dnt,v $
+Revision 1.1  2009/09/03 18:20:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.168.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2003/07/18 23:26:30  greg
+Job: 52
+Update history
+
+Revision 1.2  2003/07/18 23:25:02  greg
+Job: 52
+Changes from review
+
+Revision 1.1  2003/07/17 18:44:29  greg
+Job: 52
+Initial checkin
+

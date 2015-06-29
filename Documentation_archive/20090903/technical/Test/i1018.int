@@ -1,0 +1,361 @@
+========================================================================
+
+File:      $RCSfile: i1018.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:28:16 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+
+Model Consistency Checker
+
+Abstract
+--------
+
+A tool is needed to check metamodel consistency.
+
+History
+-------
+
+Document References
+-------------------
+
+[01] Bugzilla 1018
+
+[02] Analysis note: i1018.ant
+
+[03] Design note: i1018.dnt
+
+[04] Bugzilla 1156.
+
+[05] Bugzilla 1158.
+
+Background
+----------
+
+As described in the Background section of the Analysis Note [02].
+
+Design
+------
+Elaborate on each point of the Work Required section of the design note.  
+Describe how you implemented each step.
+
+i1018.1 No work required.
+
+i1018.2 Create a model consistency checking tool
+
+     The 'for each object' loop of java.arc was extended to create the two new
+     operations for each metamodel class as described in the Work Required
+     section of the Design Note [3].  The consistency checks done inside the
+     checkConsistency operations are described in detail in paragraphs 2.1, 2.2,
+     and 2.3 below.
+     
+     Several helper functions were added to java.arc to create the Java code
+     fragments for the class selectors and  selected class membership test
+     criteria.      
+
+     To implement a mechanism for calling the consistency checker, java.arc
+     is modified to generate a checkDomainConsistency function.  This function
+     is similar to the clearDatabase function except that instead of calling
+     each metamodel's clearInstances operation, its checkClassConsistency
+     operation is called.  The persist method in EclipseOoaofooa is modified
+     to call checkDomainConsistency for the ooaofooa and ooaofgraphics
+     domains.
+     
+     The core utility class, OoaofgraphicsUtil.java was modified to create a
+     method for calling the graphics domain consistency checker from the
+     ooaofooa domain (from 'persist' as described above).
+     
+     .2.1 Check for unique identifiers
+     
+     For each object, a navigation is done to each if its identifiers.  For each
+     identifier, a selector is created and the selection is tested for not zero
+     and not more than one.
+     
+     .2.2 Check referring classes
+     
+     For each object, a navigation is done to its O_RGO's.  A selector is
+     created and the selection is tested as described in Design section 2.2 of
+     the Design Note.
+     
+     .2.3 Check referred to classes
+     
+     For each object, a navigation is done to its O_RTO's.  A selector is
+     created and the selection is tested as described in Design section 2.3 of
+     the Design Note.
+     
+     .2.4 Write inconsistency messages to the error log
+     
+     A helper function called create_test_class_error is added to java.arc to
+     create the java code fragment that create an error log entry.
+     
+     .2.5 Add a process for conditionally including the Consistency Checker
+     
+     The create_tiger_release.sh script is modified so that if a production
+     release is to be built, the environment variable PTC_RELEASE_BUILD is set
+     to 'yes'.  Otherwise, it is not set.
+     
+     Immediately after the check for PTC_MC_ARC_DIR at the top of java.arc the
+     variable mc_consistency is set to the value of PTC_RELEASE_BUILD.
+     
+     All of the Consistency Checker archetype code in java.arc is wrapped around
+     checks for if the variable mc_consistency is a null string.  
+     
+     The generation of the checkDomainConsistency domain function is modified so
+     that if mc_consistency is not null, a no-op checkDomainConsistency function
+     is created.
+     
+Implementation Comments
+-----------------------
+
+1) A special check was added to the start of generating the checkConsistency
+   operations to determine if the target metamodel class is GD_GE.  If it is
+   a check is added to assert that the GD_GE.represents attribute is not null.
+
+2) A special supplemental metamodel domain was created in the core.test plugin
+   to simplify the unit tests.  The model was named ConsistencyTest.xtuml.  To
+   implement the Consistency Test domain, the following supporting files were
+   created or modified:
+   
+   Coloring files Consistency*.clr.
+   
+   A base class ConsistencyBase, similar to OoaofgraphicsBase was created by
+   hand.
+   
+   The ant build script in core.test, generate.xml, was modified with the extra
+   targets necessary to build the supplemental domain.
+   
+   A unit test class ConsistencyTest was created.  Also, a simple model,
+   blankTest.xtuml, to be called by the tests in ConsistencyTest was created. 
+   
+   The CoreTest class that ConsistencyTest is derived from was modified to
+   relax the visibilty of m_logfile_path to make it available to
+   ConsistencyTest.
+
+   The ooaofgraphics model was modified to allow the unit tests to run
+   successfully.  Association 108 was changed to be conditional.  A
+   specification class is not needed if a canvas editor is not open.
+   
+   CVS ignore files, src/com/mentor/nuclues/bp/core/test/consistency/.cvsignore
+   and sql/.cvsignore, were added to cover the new generated files.
+
+   Added Consistency logger entries to bp/core/common/ILogger.java and
+   TraceLogger.java. 
+
+   A new unit test in core.test was created, ConsistencyTest.java.
+
+3) A unit test class MCModelConsistency was created in io.mdl.test to perform
+   the tests described in part 2 of the Unit Test section of the Design Note.
+
+   This unit test was added to the io.mdl test suite, IOMdleTestSuite.java.
+
+4) Until apparent consistency problems are addressed [04] and [05], a way was
+   needed to redirect consistency problems to tracing, rather than the error
+   log, in order for existing unit tests to complete successfully.  To support
+   this the following files were created or modified:
+   
+   bp.core/.options
+   
+   bp.core.test/Test_Readme.txt
+   
+   ui.canvas/.options
+
+5) Per final review checklist, removed unused dependenices from ui.canvas
+   /plugin.xml.
+
+6) Models that had to be introduced in order to allow the unit tests to
+   run successfully: Loop Disconnect Telephone.xtuml, microwave.xtuml,
+   odms1.xtuml, small.xtuml, small_with_errors.xtuml.
+   
+7) The original archetype used to test model consistency was factored out of
+   java.arc and placed in two files: model_consistency.inc and 
+   model_consistency_functions.inc
+
+8) mc_java.depends was modified to include the new archetypes created above
+   in 7.
+   
+9) Due to perfomance issues the checker shall only be enabled if the
+   PTC_MCC_ENABLED environment variable is set to true.  It shall never be
+   enabled for any release build.
+   
+Unit Test
+---------
+
+-- Execute bp.core.test ConsistencyTest, to perform the tests described in
+paragraph 1 of the Unit Test section of the Design Note.
+
+R  The unit test completes without error.  No error log entries are created.
+
+-- Execute bp.io.mdl.test MCModelConsistency.java to perform the tests described
+in paragraph 2 of the Unit Test section of the Design Note.
+
+R  The unit test completes without error.  No error log entries are created.
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.core
+/.options
+/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+/src/com/mentor/nucleus/bp/core/common/ILogger.java
+/src/com/mentor/nucleus/bp/core/common/TraceLogger.java
+/src/com/mentor/nucleus/bp/core/util/OoaofgraphicsUtil.java
+/tools/create_tiger_release.sh
+
+com.mentor.nucleus.bp.core.test
+/generate.xml
+/Test_Readme.txt
+/color/Consistencytest_import_spec.clr
+/color/Consistencytest_package_spec.clr
+/color/Consistencytest_startspec.clr
+/models/blankTest.xtuml
+/models/consistencyTest.xtuml
+/sql/.cvsignore
+/src/com/mentor/nucleus/bp/core/test/ConsistencyTest.java
+/src/com/mentor/nucleus/bp/core/test/CoreTest.java
+/src/com/mentor/nucleus/bp/core/test/CoreTestPlugin.java
+/src/com/mentor/nucleus/bp/core/test/consistency/.cvsignore
+/src/com/mentor/nucleus/bp/core/test/consistency/ConsistencyBase.java
+
+com.mentor.nucleus.bp.io.mdl.test
+/src/IOMdlTestSuite.java
+/src/com/mentor/nucleus/bp/io/mdl/test/MCModelConsistency.java
+
+com.mentor.nucleus.bp.ui.canvas
+/.options
+/plugin.xml
+/models/ooaofgraphics.xtuml
+
+MC-Java
+/java.arc
+/model_consistency.inc
+/model_consistency_functions.inc
+
+Models
+/models/Loop Disconnect Telephone.xtuml
+/models/microwave.xtuml
+/models/odms1.xtuml
+/models/small_with_errors.xtuml
+/models/small.xtuml
+
+End
+---
+
+$Log: i1018.int,v $
+Revision 1.1  2009/09/03 18:28:16  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.24  2009/01/01 23:13:39  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.23.30.1  2008/12/31 16:10:52  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.23  2005/08/18 22:16:08  tlondon
+Job: 1018
+
+Added comment about new enablement rules
+
+Revision 1.22  2005/08/18 15:32:29  tlondon
+Job: 1018
+
+Added comment about factoring out consistency archetype
+
+Revision 1.21  2005/08/16 16:55:41  pablo
+Job: 1018
+Update Code Changes section to list models introduced in order for unit
+tests to run successfully.
+
+Revision 1.20  2005/08/16 16:43:41  pablo
+Job: 1018
+Add description of using tracing to allow standard generic unit test to run
+ until 1156 and 1158 are addressed.
+
+Revision 1.19  2005/08/16 00:32:21  pablo
+Job: 1018
+Update code changes section to include changes needed to merge with latest
+version of HEAD.
+
+Revision 1.18  2005/08/13 00:56:56  pablo
+Job: 1018
+Add a Consistency logger entry in ILogger.java
+
+Revision 1.17  2005/08/12 17:45:04  pablo
+Job: 1018
+Remove Consistency Test from Core Test Suite
+
+Revision 1.16  2005/08/12 17:13:28  pablo
+Job: 1018
+Restore dependencies to core.test and io.mdl.test, so that they would build.
+
+Revision 1.15  2005/08/12 16:13:03  pablo
+Job: 1018
+Update Code Changes section.
+
+Revision 1.14  2005/08/12 00:25:39  pablo
+Job: 1018
+Add entries for coloring files for Consistency test domain
+
+Revision 1.13  2005/08/12 00:16:28  pablo
+Job: 1018
+Remove unneeded dependencies
+
+Revision 1.12  2005/08/12 00:07:50  pablo
+Job: 1018
+Add ui.canvas/plugin.xml to Code Changes section
+
+Revision 1.11  2005/08/11 21:32:00  pablo
+Job: 1018
+Add MCModelConsistency to io mdl test suite.
+
+Revision 1.10  2005/08/11 21:24:55  pablo
+Job: 1018
+Add ConsistencyTest to the core test suite.
+
+Revision 1.9  2005/08/11 21:08:02  pablo
+Job: 1018
+Per final review checklist, remove unused dependencies.
+
+Revision 1.8  2005/08/11 20:52:22  pablo
+Job: 1018
+add Implementation Comment entries for .cvsignore files
+
+Revision 1.7  2005/08/11 20:24:19  pablo
+Job: 1018
+Add Code Change entries for .cvsignore files to ignore generated
+consistency test domain.
+
+Revision 1.6  2005/08/10 23:16:40  pablo
+Job: 1018
+add explanation of why ooaofgraphics was changed to allow unit test
+to run.
+
+Revision 1.5  2005/08/10 21:51:23  pablo
+Job: 1018
+first draft with all sections filled in
+
+Revision 1.4  2005/08/03 23:38:33  pablo
+Job: 1018
+incremental checkin
+
+Revision 1.3  2005/08/01 23:42:05  pablo
+Job: 1018
+Added more entries to the Code Changes section
+
+Revision 1.2  2005/07/22 00:09:36  pablo
+Job: 1018
+incremental checkin
+
+Revision 1.1  2005/07/19 23:40:31  pablo
+Job: 1018
+introduce template

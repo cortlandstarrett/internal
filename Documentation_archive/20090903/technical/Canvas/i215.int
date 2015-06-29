@@ -1,0 +1,154 @@
+========================================================================
+
+File:      $RCSfile: i215.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:57 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Smoothing Mouse Movement.
+
+Abstract
+--------
+Issue 215 documents the fact that mouse movement is not smooth, especially
+at large zoom scales.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 215.
+
+Background
+----------
+Mouse movement values are turned into a delta by subtracting the new
+mouse position (delivered by SWT with the mouse move event) from the
+old mouse position, saved as integers CanvasEditor.lastX and
+CanvasEditor.lastY. The problem occurs because the delta is scaled
+at some point during the event processing (the exact point depends on
+the current state of the canvas being edited). The scaling causes
+unavoidable rounding errors which result in the item on the canvas
+being moved less than the original amount moved by the mouse. Since
+this occurs every time a mouse move event is processed, the problem
+builds up and becomes noticable, particularly if the mouse is moved
+slowly.
+
+Design
+------
+The full solution to this problem is to cease using a delta calculated
+before entry to the state model code and instead to calculate the
+required delta where necessary and to use absolute mouse position
+values in all appropriate places. However, this part of the system is
+somewhat complex and requires more redesign time than is available for
+this milestone. A new issue is raised to track the full redesign work
+required.
+
+For this issue, we resolve the problem by minimizing the lost precision
+in two ways:
+
+ i215.1 In the CanvasEditor class, the mouse movement listener is
+        changed to unscale the scaled delta value and only apply and
+        cache the significant component of a delta. Fractional delta
+        values, previously lost in scaling, are cached in lastX and
+        lastY until enough mouse movement has occurred to make them
+        significant.Here is what the new mouse move listener code will
+        look like:
+
+      public void mouseMove(MouseEvent event) {
+        Gr_c.Setzoomfactor(ptCanvas.getZoomfactor());
+        Gr_c.cur_canvas = swtCanvas;
+        Gr_c.cur_model = ptCanvas;
+        Gr_c.setLastX(event.x);
+        Gr_c.setLastY(event.y);
+        int effectiveXDelta = Gr_c.Unscale(Gr_c.Scale(event.x - lastX)); 
+        int effectiveYDelta = Gr_c.Unscale(Gr_c.Scale(event.y - lastY));
+        if (effectiveXDelta != 0 || effectiveYDelta != 0) { 
+          ptCanvas.MouseMoved(false, effectiveXDelta, effectiveYDelta);
+          ActivePoller_c.oneShot();
+          lastX = lastX + effectiveXDelta;
+          lastY = lastY + effectiveYDelta;
+        }
+      }
+
+ i215.2 The hand written methods Gr_c.Scale and Gr_c.Unscale are
+        modified to preserve as much precision as possible. The
+        value to be scaled is cast to a float before applying the
+        float zoom value and the result is turned back to an int
+        using Math.round.
+
+Implementation Notes
+--------------------
+A graphics context creation and disposal was removed. This was left over
+from development code added to aid test creation. Since the disposal
+immediately follows the creation, the code is obviously redundant.
+
+Since the rounding changes affect plotting code as well as mouse event
+processing, all but 6 of the JUnit tests failed with 1 and 2 pixel
+differences in plotting position. The test results still look fine,
+so the expected results are updated in CVS.
+
+Unit Test
+---------
+_- Using the ODMS model, zoom the diagram so that a single association
+   fills the display.
+_- Select the end of a connector.
+_- Drag the end of the connector.
+_R The connector end tracks the mouse position much more closely than
+   it did with the M2 release.
+_- Run Canvas Unit Test
+_R All tests pass.
+
+Code Changes
+------------
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasEditor.java
+Initial: 1.7          Final: 1.8
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/Gr_c.java
+Initial: 1.5          Final: 1.7
+
+com.projtech.bp.ui.canvas.test/expected_results/<multiple files>
+Various revision levels
+
+End
+---
+
+$Log: i215.int,v $
+Revision 1.1  2009/09/03 18:18:57  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:06  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.164.1  2008/12/31 16:10:09  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/05/12 22:06:45  campbell
+Job: 215
+Corrected minor typo.
+
+Revision 1.4  2004/05/12 22:05:51  campbell
+Job: 215
+Addressed review issues.
+
+Revision 1.3  2004/05/12 21:14:34  campbell
+Job: 215
+Addressed review issues.
+
+Revision 1.2  2004/05/12 17:33:36  campbell
+Job: 215
+Addressed review issues.
+
+Revision 1.1  2004/05/10 23:18:11  campbell
+Job: 215
+Introduced.

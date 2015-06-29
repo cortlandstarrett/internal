@@ -1,0 +1,159 @@
+========================================================================
+
+File:      $RCSfile: i2243.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Modifying UUID Generation to Prevent Test Result Brittleness
+
+
+Abstract
+--------
+This note describes the design for modifying the manner in which model
+element IDs are generated, such that expected test results change as 
+infrequently as they did prior to the work done for [2].
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 2243
+[2] Bugzilla issue 1554
+[3] Bugzilla issue 605
+[4] Bugzilla issue 2285
+
+Background
+----------
+The work for [2] changed the IdAssigner class to generate UUIDs for model
+element IDs, with only one generator used for all model element types, where
+previously there was a generator per type.  This makes the IDs generated
+for tests results very brittle, as if there is any change to what model 
+elements are created during the course of a test (including changes to the 
+order of their creation), then the IDs in the test results change.  Previously,
+the test results were mostly insulated from such changes, as there was a 
+separate ID sequence per model element type, and those sequences had no bearing
+on one another.  
+
+It has even been encountered in a few instances during the promotion of [3]
+to HEAD that it is not possible to get tests to pass against their expected
+results when those results are generated just beforehand, on the same machine.
+This is because the model element creation sequence is slightly different 
+when running the tests for results generation versus for regression testing,
+which is perhaps to be expected, due to the different code paths involved.  
+
+Analysis
+--------
+The problems outlined in the Background section argue for the reintroduction 
+of having one IdAssigner instance per model element type, so that there may be 
+multiple, independent ID streams, as there were prior to [2].  
+
+It was suggested that there be multiple IdAssigner instances only during 
+the running of the test cases, while having just a single instance during 
+execution of the production tool.  I am not in favor of this approach, as 
+it would complicate the code, and foster a situation in which the tests 
+exercise a different code path than is run during normal tool operation, 
+which would introduce risk.
+
+There is a separate concern about whether the pseudorandom sequence of IDs 
+emitted by IdAssigner, for the same given seed, changes from machine to 
+machine, an occurrence encountered by Travis during the aforementioned 
+promotion of [3] to HEAD.  Due to time constraints, this concern is ignored 
+here and separated into its own issue [4].
+
+Design
+------
+1. Have one IdAssigner instance per model element type
+
+core.common.IdAssigner is modified so that multiple instances of the class 
+may be created, each with its own random number generator for UUID creation.
+A method setSeedOfAllInstances() is added so that all current and imminent
+instances of the class may have their seeds set to the same value, so that our 
+automated tests may yield consistent expected results.
+
+In MC-Java's java.arc, a static idAssigner field is added to those generated 
+classes which need to employ an instance of IdAssigner.
+
+A getIdAssigner() method is added to NonRootModelElement to allow generic 
+access to the IdAssigner instance used to generate IDs for a particular model 
+element.
+
+Code in the following places is jibed with the above changes:
+
+core.common.IDConvertor
+core.test's gen_delete_test.arc
+core.test.CombineSplitReferentialsTest
+core.test.ConsistencyTest
+core.test.CoreTest
+io.mdl.test.IOMdlTest
+io.mdl.test.ImportVersion7_0ModelsTest
+io.mdl.test.IOMdlNestedTest
+io.mdl.test.IOMdlUnicodeTest
+ui.canvas.test.CanvasCreationTest
+ui.canvas.test.CanvasEditorInteraction
+
+2. Modify operation of certain tests
+
+core.test.ModelTransactionTest is modified so that the seeds of all 
+IdAssigners are only set once, before the tests in this class are run, 
+rather than once per test, as the latter can cause clashes between the IDs of 
+canvas tools of successive tests.
+
+In core.test.UseCaseTests, a call to IdAssigner.setSeedOfAllInstances() is 
+added before the first test is run, so that the results will be repeatable.
+
+In io.mdl.test.IOMdlTest, the empty doPostTest() method is removed, as well as
+all calls to it.
+
+3. Update expected test results
+
+Expected results in core.test, io.mdl.test, and canvas.test are regenerated 
+where they contain model element IDs in their filenames or contents, due to 
+the changes made for this issue to the generation of such IDs.
+
+
+Design Comments
+---------------
+
+Unit Test
+---------
+The functionality affected by this issue is fully exercised by many of the 
+existing automated tests, so no new tests are necessary.
+
+End
+---
+
+$Log: i2243.dnt,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/06/29 22:37:30  jmather
+Job: 2243
+Addressed review observations.
+
+Revision 1.2  2006/06/29 20:57:41  jmather
+Job: 2243
+Changed to ASCII -kkv.
+
+Revision 1.1  2006/06/29 18:54:31  jmather
+Job: 2243
+Introduced.
+

@@ -1,0 +1,221 @@
+========================================================================
+
+File:      $RCSfile: i38.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Import and export of functions and external entities
+
+Abstract
+--------
+This note describes the requirements for import and export of function 
+and external entity data.
+
+History
+-------
+
+final i38-083104-01.rvm
+
+Document References
+-------------------
+Bugzilla issue 38
+
+Analysis
+--------
+In order for M5 to be self hosting, we need to be able to
+import and export functions and external entities. This functionality is 
+only needed for self-hosting.
+
+i38.1 Create plugin for function and external entity import and export
+
+Since this is only needed for self-hosting, a separate plugin, 
+com.projtech.bp.internal.io.sql is created.  This plugin is not shipped
+as part of the product.  The plugin defines the import and export function
+and EE sql wizards.  The plugin uses code from io.sql to perform the actual 
+parsing and import of the data.
+
+i38.2  Import functions or ees
+
+i38.2.1 The import code needs to read the first comment line in the import 
+file, and determine what to do.  If first line has the form:
+
+-- BP 6.1D content: synch_service syschar: 3
+
+then the file contents are functions, and we can import them.  If the content
+string is 'external_entity', then we import the enternal entity data. If the 
+content string is 'domain' then the file contents is a domain, and should be 
+imported. Any other content string is not supported, and an error is raised.
+
+i38.2.2 When importing functions or external entities, the instance database is 
+not cleared.
+
+i38.2.3 Before importing the contents of the import file, datatypes and 
+functions and external entities in the import file are checked to see if they 
+already exist in the database.  If any do, then the user is given a dialog 
+containing a list of the existing instances, and given the choice to either 
+overwrite the existing instances or cancel the import.  The list should 
+preface the instance name with the type, i.e.
+
+Datatype: Object
+EE: OS
+Function: validateParameters
+
+The list is sorted alphabetically. Two datatypes match if they have the same 
+name or id.  Only user-defined datatypes and enumerations are checked.  
+CDTs and predefined UDTs (where S_UDT.Gen_Type != 0) are not checked. 
+
+Two functions match if they have the same name or id.
+Two EEs match if they have the same name or id.
+
+All imported functions are placed in the root function package.
+The imported EE is placed in the root external entity package.
+
+i38.2.4  Incoming core data type and predefined UDT instances are 
+discarded if the datatype already exists in the database.
+
+i38.3  Export functions
+
+i38.3.1  A wizard for exporting functions is created.
+It is the same as the normal export sql wizard, but the 'Export graphics'
+checkbox is removed.
+
+i38.3.2 The export file header will be:
+
+-- BP 6.1D content: synch_service syschar: 3
+
+i38.3.3  All core data types, the functions in the domain, and the non-core 
+data types referenced by the functions in the domain are output to the sql file.
+
+i38.4  Export external entites
+
+i38.4.1  A wizard for exporting ees is created.
+It is the same as the normal export sql wizard, including the 'Export graphics'
+checkbox.  It has a list of EEs in the domain.  The user is allowed to pick
+one to export.
+
+i38.4.2 The export file header will be:
+
+-- BP 6.1D content: external_entity syschar: 3
+
+i38.4.3  All core data types, the external entity and all its data ( bridges,
+events, etc.), and the non-core data types referenced by the EE are output 
+to the sql file.
+
+Work Required
+-------------
+
+i38.1 Create plugin for function and external entity import and export
+
+The new plugin is created with the new import and export pages being
+contributed.
+
+i38.2  Import functions or ees
+
+i38.2.1 The import code (in io.sql) is changed to determine the import type 
+and flags are set to indicate what kind of import is occuring.  
+
+i38.2.2 Import code has a check added for the clear database flag.
+
+i38.2.3 The import is changed to check the file for duplicate datatypes 
+and functions.  The error dialog is created if there is a conflict.
+
+i38.2.4 The generated code for importing datatypes is modified to discard
+incoming CDT and predefined UDT instances if they already exist.
+
+i38.3  Export functions
+
+i38.3.1  The export function wizard is created.
+
+i38.3.2  A utility function is created to create all the file header variations,
+and it is used wherever needed.
+
+i38.3.3  The export function wizard is written to export the functions 
+in the domain.
+
+i38.4  Export external entites
+
+i38.4.1  The wizard for exporting ees is created.
+
+i38.4.2 The header utility function is used to create the file header.
+
+i38.3.3  The export ee wizard is written to export the data for the selected
+external entity.
+
+Acceptance Tests
+----------------
+
+- All current tests pass
+
+- Perform als workflow 
+   import ooaofooa
+   import err_ee_w_graphics.sql
+   import os_ee_w_graphics.sql
+   import oal_utilities.sql
+   import oal_functions.sql
+   export functions to function_import1.sql, validate contents
+   export ERR EE to err_ee_w_graphics1.sql, validate contents
+   export OS EE to os_ee_w_graphics1.sql, validate contents
+   export ERR EE (without graphcs) to err_ee1.sql, validation contents
+   export OS EE (without graphcs) to os_ee1.sql, validation contents
+
+- Perform cme workflow
+   import ooaofooa
+   import cme_import.sql
+   export functions to cme_functions1.sql, validate contents
+
+- Test duplicate function detection ( name and/or id )
+
+- Test duplicate datatype detection ( name and/or id )
+
+- Test duplicate EE detection ( name and/or id )
+
+
+End
+---
+
+$Log: i38.ant,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.152.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2004/09/14 17:15:36  greg
+Job: 38
+Add history entry
+
+Revision 1.5  2004/08/31 21:36:15  greg
+Job: 38
+Update from review
+
+Revision 1.4  2004/08/31 16:30:31  greg
+Job: 38
+Pre-review comments
+
+Revision 1.3  2004/08/31 11:34:44  greg
+Job: 38
+Fix typo
+
+Revision 1.2  2004/08/23 22:57:49  greg
+Job: 38
+Ready for review
+
+Revision 1.1  2004/08/23 22:47:55  greg
+Job: 38
+Initial introduction
+

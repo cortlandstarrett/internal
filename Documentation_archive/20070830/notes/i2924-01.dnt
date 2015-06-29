@@ -1,0 +1,313 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+New OAL syntax to support Components
+
+1. Abstract
+-----------
+This note specifies the design for supporting Components, Interfaces, Ports and
+Signals in OAL.
+
+2. History
+----------
+    final - i2924-071807-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 2924
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2924
+[2] CVS/Documentation/internal/technical/notes/i2924.ant
+[3] Bugzilla item 3018
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3018
+
+4. Background
+-------------
+This note discusses only the changes required in the OAL for component related
+grammar. A separate note covers the additional restrictions and preferences
+associated with "implied component addressing" as specified in [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 BNF changes
+Apart from the "send" keyword, the required new syntax is indistinguishable from
+the syntax for calling an operation or bridge. Consequently, while new grammar
+is added to support the "send" variant of the syntax, the existing grammar that
+recognizes operations and bridges is reused and the validation OAL extended to
+support component concepts.
+
+6.1.1 New "send" grammar
+New grammar is introduced as follows:
+
+send_statement
+  :
+    "send"!
+    (
+	    (
+	      ( member_access[true]     
+	      | param_data_access[true]
+	      )
+	      TOK_EQUAL!
+		    message_invocation[true]
+	    )
+	|
+	    message_invocation[false]
+    )
+
+  ;
+
+The references to 'member_access' and 'param_data_access' rules allow assignment
+of synchronous message return values to local variables, data item values etc.
+The 'message_invocation' rule is new and covers the syntax of the call itself.
+
+6.1.2 Extension of existing grammar
+This is mostly achieved through the addition of new validation OAL, however one
+change is made that is considered essential to the continued self documenting
+nature of the bnf file. In the previous revision of this file, the root rule
+that validates the operation and bridge is called:
+
+'implicit_bridge_or_transform_statement' 
+
+The logical continuation of this would have been to call the new expanded rule
+'implicit_bridge_or_transform_or_message_statement'. This is bulky and also
+reflects pollution of the bnf namespace with metamodel concepts. Instead, the
+more generic 'implicit_invocation_statement' is selected for the new rule. There
+are a couple other rules named '*_bridge_or_transform_*' that are similarly made
+generic. Other than that, no additional change to the existing grammar itself is
+required.
+
+6.1.3 Changed rule name
+The 'obj_or_ee_keyletters' rule is renamed to 'identifier' and redefined to
+reference the 'general_name' rule directly.
+
+6.2 Validation OAL changes
+6.2.1 Systematic changes
+The change to the grammar to remove '*_bridge_or_transform_*' references has a
+cascade into OAL validation functions. In most cases, other than the name
+change, these functions are unchanged. The three exceptions are;
+'Invocation_validate' (formerly 'Bridge_or_transform_invocation_validate'),
+'Invocation_function_validate'
+(formerly 'Bridge_or_transform_function_validate') and 'Invocation_end'
+(formerly 'Bridge_or_transform_invocation_end'). Details of these changes are
+found below[6.2.2].
+
+6.2.2 Non systematic changes 
+6.2.2.1 Local_variable_validate
+Has a call added to a new function, 'sender_validate'. This function checks for
+correct usage of the "sender" keyword. It is discussed in full below[6.2.4.2].
+
+6.2.2.2 Invocation_validate
+Has two new blocks of logic added to match the passed names with a message
+(signal or interface operation). If found, the existing function
+'is_valid_invocation' is called. Additionally, this function checks the value
+of the existing passed argument, 'is_Rval'. If true, this means that a result
+is expected from this call. For signals, this is illegal so an error message is
+added here to report the violation to the user.
+
+6.2.2.3 Obj_or_ee_keyletters_validate
+This function is renamed 'Identifier_validate' to jive with the changes made to
+the bnf[6.1.3] and to reflect the more generic role this function is playing.
+The local variable, 'keylett_ok' is changed to 'identifier_ok' for the same
+reasons. Additionally, the function is extended to check interface references
+for a name match.
+
+6.2.2.4 Invocation_function_validate
+This function also has a local variable 'keylett' renamed to identifier for the
+reasons given in 6.2.2.3. This function is also extended to look for and
+validate the individual message name.
+
+6.2.2.5 Invocation_end
+This function is extended to look for a new subtype of the 'Value' class,
+'Message Value'.
+
+6.2.2.6 Member_access_end
+This function is extended to call the 'sender_validate' function discussed
+below[6.2.4.2]. The sibling validation function 'Member_access_loop11_end' is
+not similarly modified because the "sender" keyword is valid only in isolation.
+It cannot be found in an instance chain (e.g. foo.sender.bar). Adding this call
+in the 'loop11' variant would make it illegal to have an attribute or structure
+member called sender. This is deemed unnecessarily restrictive since the two
+cases are easily disambiguated. Local variables called 'sender' are henceforth
+illegal, however, so an issue is raised to cover this and all 1.5.0 release note
+and documentation change requirements[3].
+
+6.2.2.7 Data_item_validate
+This function is extended to locate and relate message arguments across the
+new association (R843) between 'Parameter Value' (V_PVL) and
+'Property Parameter' (C_PP).
+
+6.2.2.8 Invocation_parameters_end
+This function is extended to locate and hook up the actual values passed to a
+message.
+
+6.2.2.9 Invocation_parameters_loop4_end
+Logic exactly analogous to that described above[6.2.2.8] is added to this
+function.
+
+6.2.2.10 is_valid_invocation
+This utility function is reformatted to make it more readable on hard copy.
+
+6.2.3 New validation functions
+The following new validation functions are introduced.
+Send_statement_start, Send_statement_end, Message_invocation_start,
+Message_invocation_end, Message_invocation_validate, Message_name_validate and
+Interface_or_port_name_validate. These functions are all used to verify the new
+syntax tree created by the grammar specified above [6.1.1]. They all check that
+the passed names match with interfaces, ports and messages as necessary. Unlike
+the analogous functions discussed in 6.2.2, these functions check only component
+related data, since these all get called as a result of syntax starting with the
+"send" reserved word.
+
+6.2.4 New validation utilities
+6.2.4.1 is_valid_message
+This is called from Message_name_validate and checks that the message being
+referenced is defined on the specified interface.
+
+6.2.4.2 sender_validate
+This is called from 'Member_access_end' and from 'Local_variable_validate'. It
+checks that the sender keyword cannot be used on the left of an assignment and
+that whatever it is being assigned to is of type "component_ref".
+
+6.3 System data type changes
+A new system data type, 'component_ref' is created. This is instantiated in the
+same place as other data types, in io.core/ImportHelper.java.
+
+6.4 Metamodel changes
+6.4.1 New classes
+New statement subtypes are created for invoking signals and synchronous
+messages. A new Value subtype is added to support synchronous messages that
+return values. Changes are made to file.io.pei to make them persistent.
+
+6.4.2 New associations
+R694 is added to the Body subsystem to provide faster navigation to the
+component[7.]. R679, R662, R663 and R680 are added to the Invocation subsytem to
+relate invocation instances with the messages they invoke and with the parameter
+values they carry. R841 is added in the Value subsystem to relate a message
+value with its 'Executable Property' instance. Note that the
+'Executable Property' subtype, 'Interface Operation' is at first glance more
+appropriate here, since only synchronous messages can return a value. However,
+the parser creates a Value instance before other validation code is activated.
+Some useful data is cached with the value before it can be determined that we
+are dealing with a signal. This useful data cache is leveraged by temporarily
+having an instance of 'Message Value' for signals. A new association between
+V_PVL and C_PP to capture parameter values for messages is added.
+
+6.4.3 dispose() changes
+All appropriate dispose() operations are updated to unrelate and dispose of the
+new classes and association instances discussed above.
+
+6.4.4 Value.getDimensions
+This is modified to handle the new message return value possibility.
+
+7. Design Comments
+------------------
+A convenience class, 'Body in Component' is added to the Body subsystem to
+enable easy navigation from a body instance to the corresponding component. This
+is instantiated by a new operation, Body.associateWithComponent(). This
+operation sets up a new association between Body and Component if neccessary.
+This eliminates a lot of wasteful repeated speculative evaluation of the Body
+subtypes in order to find the path to the component.
+
+Although called for in the analysis note, the 'to' syntax is not currently
+supported in the implicit form of the message syntax. In other words,
+
+UI::Update() to self.client;
+
+and 
+
+UI::Update() to sender;
+
+are both illegal, giving 'Unexpected token' errors. It was felt that this
+variant of the syntax did not read well. If customers express a need for this
+specific variant, it can be added relatively easily. Of course,
+
+send UI::Update() to self.client;
+
+is supported.
+
+8. Work Required
+----------------
+The design section contains a complete specification of the work required.
+
+9. Unit Test
+------------
+A new model shall be created that tests all syntactic variations of component
+signal syntax, interface operation syntax and component_ref data types.
+
+This shall cover the following test matrix:
+
+9.1 Good syntax                             without     'to     'to'
+                                          'to' clause  sender' <rVal>
+explicit send syntax
+      using interface name                     X         X       X
+      using port name                          X         X       X
+implicit send syntax
+      using interface name                     X
+      using port name                          X
+
+9.2 Bad syntax
+
+explicit send syntax - rVal is not a component_ref type          X
+
+explicit send syntax
+      using interface name - no matching interface
+      using interface name - multiple matching interfaces
+      using port name -  no matching port
+      using port name -  mutiple matching ports
+implicit send syntax
+      using interface name - no matching interface
+      using interface name - multiple matching interfaces
+      using port name -  no matching port
+      using port name -  mutiple matching ports
+
+<rVal> above shall be repeated with: attribute, parameter value,
+event data item, bridge, function and operation return value, structure member,
+array element and local variable.
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.4  2007/07/19 17:25:44  campbell
+Job: 2924
+Added additional design found necessary during test creation.
+
+Revision 1.3  2007/07/18 18:33:43  campbell
+Job: 2924
+Address review observations.
+
+Revision 1.2  2007/07/17 23:30:14  campbell
+Job: 2924
+Specified name change. Documented deviation from analysis note
+
+Revision 1.1  2007/07/17 22:48:05  campbell
+Job: 2924
+Introduced.
+

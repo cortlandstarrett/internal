@@ -1,0 +1,139 @@
+========================================================================
+
+File:      $RCSfile: i932.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add warning dialog before project deletion.
+
+Abstract
+--------
+This note describes the changes required to show a warning dialog before
+deleting xtUML projects from the Model Explorer.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 932
+
+Background
+----------
+Currently, projects deleted from the Model Explorer are immediately removed from
+the workspace. This is an egregious defect since, unlike models, projects cannot
+be restored from the Local History.
+
+Analysis
+--------
+Eclipse behavior will be followed for deleted projects.
+
+Design
+------
+The generated S_SYS_Delete method in bp.core.DeleteAction is replace with
+special case code.  The S_SYS delete function body in cme_functions is obsoleted
+by this special case, but is left in place to prevent build time error reports.
+The body of this function is reduced to a comment directing the reader to the
+special case code.
+
+The special case code converts the System Model instances to Project instances
+using a getAdapter() call passing the IProject class. The resulting projects are
+passed to an instance of DeleteResourceAction (in org.eclipse.core.resources)
+created for the purpose. This class takes care of presenting the same dialog as
+Eclipse and also carries out the project deletions for us if the user approves
+them. Note that the removal of the system model instances from memory (and hence
+from the Model Explorer tree) now happens in the reverse order compared to the
+way in which it occurred prior to this modification. Previously, the system
+model instances were removed from memory and the model change listener took
+care of deleting the file system resources. After this change, the file system
+resources (or at least the logical IResource counterparts) are removed first.
+The core resource change listener is then notified and removes the memory
+instances.
+
+Since it is now possible for selection elements to be present after a delete
+action, the statement that cleared the selection introduces a problem in that
+the selection inside Tiger is cleared when the tree entries remain selected.
+This causes delete to be unexpectedly disabled if the user answers no to the
+warning dialog. A loop is added after the clear to add back any elements that
+were not orphaned by the delete operation.
+
+If the user elects not to delete the underlying project data and later creates
+another project with the same name, standard Eclipse behavior is followed and
+the project is restored in its original state. To support this behavior,
+NewSystemWizard is changed to only create a new SystemModel_c instance if one
+with the same name is not already found.  If this change is not made, duplicate
+entries for projects restored in this way are present in the Model Explorer
+until the tool is restarted.
+
+The previous change exposed a defect in the MC3020 plugin that returned false
+from the performFinish() method if there was nothing to do. This incorrectly
+signalled a wizard problem and prevented the new project wizard from closing.
+The return value is changed to true in the MC3020 new project wizard.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+1. Special case S_SYS in bp.core/arc/create_global_action.inc as described in
+   the design.
+2. Change selection clear behavior in the generated delete action run method in
+   bp.core/arc/create_global_action.inc to preserve undeleted systems.
+3. Modify NewSystemWizard to only create a new SystemModel if none is found.
+4. Modify MC3020NewProjectWizard to return true in the performFinish method. 
+
+Unit Test
+---------
+_- Open Model Explorer
+_- Select one or more projects from the tree presented.
+_- Right click and select Delete.
+_R A standard Eclipse project deletion dialog is presented.
+_- Click 'No'.
+_R The dialog is dismissed. The tree is unaffected.
+_- Right Click and select Delete again
+_- Click 'Yes'
+_R The projects are removed from the Model Explorer and Resource Navigator
+_- Examine the file system
+_R The project(s) is(are) still present in the file system
+_- Create a new project with the same name as one of the deleted projects
+_R The project is restored in the Model Explorer
+_- Right Click and select Delete again
+_- Select the 'Also delete contents . . .' checkbox.
+_- Click 'Yes'.
+_R The project is removed from the Model Explorer and Resource Navigator
+_- Examine the file system
+_R The deleted project is not present in the file system.
+
+End
+---
+
+$Log: i932.dnt,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.34.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/05/17 23:00:53  campbell
+Job:932
+Addressed review observations.
+
+Revision 1.1  2005/05/17 19:16:37  campbell
+Job: 932
+Introduced.
+

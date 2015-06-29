@@ -1,0 +1,249 @@
+========================================================================
+
+File:      $RCSfile: i683.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Subtype.dispose incorrectly unformalizes subtype/supertype association
+
+Abstract
+--------
+When deleting a subtype that exists in a formalized subtype/supertype
+association with more than one class, the association is unformalized, 
+inappropriately causing an orphaned attribute in all other subtype classes. 
+Also, currently, a supertype association is not formalized correctly when there 
+are no subtypes.  This note describes how these problems are fixed.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 683
+
+Background
+----------
+The problem stated in the abstract lead to an investigation that revealed that
+the formalization does not work proeperly for subtype supertype associations
+although it appeared to work properly when there was only one subtype present.
+Also, it is found that the improper implementation of O_REF.Dispose is 
+responsible for causing the inappropriate orhpaning of the attribute in the
+subtype classes. 
+
+
+Design
+------
+i683.1  Modify O_REF.Dispose.
+
+The part of code in O_REF.Dispose that relates to this issue looks like this 
+currently:
+
+unrelate rtida from rgo across R111 using self;
+unrelate rto from oida across R110 using rtida;
+delete object instance rtida;
+delete object instance self;
+
+Unrelating R_RTO from the O_OIDA leaves the identifying attributes in the 
+subtypes as orphaned. This can be noticed when there is more than one subtype in 
+the association.  This problem is solved if the O_RTIDA instance is not 
+deleted.  Unrelating the O_RTIDA instance from the R_RGO instance is what is 
+required to unformalize the association. Also, unrelating the R_RTO instance 
+from the O_OIDA instance across R110 causes the supertype association to 
+unformalize when the last subtype is deleted.  This is because once the R_RTO 
+instance is disconnected from the O_OIDA instance, the formalization becomes 
+meaningless.  
+
+O_REF.Dispose is modified as follows:
+
+  unrelate rtida from rgo across R111 using self;
+  [removed] unrelate rto from oida across R110 using rtida; 
+  [removed] delete object instance rtida; 
+  delete object instance self;
+  
+i683.2  Modify R_SUBSUP.formalize so that a supertype association can be 
+        formalized even when there are no subtypes.
+        
+Previously, the logic for performing the formalization was placed within a
+for loop that iterated through the number of subtypes.  If there were no 
+subtypes present, the for loop was not entered and hence the formalization was
+not processed.  The code is changed so that the inner for loop that was
+processing the formalization for each O_OIDA instance is now the outer for loop.  
+For each O_OIDA instance, an O_RTIDA instance is created.  Now the formalization 
+does not depend on the number of subtypes present.
+
+R_SUBSUP.formalize is modified as follows.  The lines preceded with the plus 
+sign are new additions:  
+
+select many oida_set related by oid->O_OIDA[R105];
+select many sub_rgo_set related by self->R_SUB[R213]->R_RGO[R205];
+for each oida in oida_set // [previously inner loop] 
+  + create object instance rtida of O_RTIDA;
+  + relate oida to sup_rto across R110 using rtida;
+  for each sub_rgo in sub_rgo_set // [previously outer loop]  
+    select one sub_obj related by sub_rgo->R_OIR[R203]->O_OBJ[R201];
+    unused_oid = sub_obj.findUnusedIdentifier();  
+    oida.addReference(rel_id: self.Rel_ID,
+        rto_obj_id: sup_rto.Obj_ID, rto_oir_id: sup_rto.OIR_ID, 
+        rgo_obj_id: sub_rgo.Obj_ID, rgo_oir_id: sub_rgo.OIR_ID,
+        id: unused_oid);
+  end for;
+end for;
+
+Implementation Comments
+-----------------------
+R_RTO.unformalize does not need to maintain R112 (see bug discussion) because
+in O_ATTR.dispose, O_RATTR.dispose is called, and in O_RATTR.dispose, each 
+O_REF.dispose is called, and in O_REF.dispose, R112 is maintained.
+
+Modifying O_REF.dispose as described in Design i683.1 caused the 
+Linked Association to function improperly (which was working properly before
+this issue).  In the subtype supertype relationship, deleting the last subtype
+class or the connector should keep the supertype relationship formalized.
+However, in the Linked Association, that is not the case. Once the link is
+deleted, the relationship needs to be unformalized.  Because the O_RTIDA 
+instance is no longer being deleted in O_REF.dispose, the relationship
+incorrectly stays formalized when the link is deleted in a Linked Association.  
+Hence, the following logic is added to Linked Association.migrateToSimple:
+
+if ( self.isFormalized() )
+  self.unformalize();
+end if  
+
+This same addition is also required for the operation
+'Simple Association.migrateToLinked()'. Although omitting this change did not
+cause any test failures, it nevertheless leaves instances of O_RTIDA lying
+around, a potential memory leak.
+
+Unit Test
+---------
+- Delete a subtype class which is connected to a supertype that is connected to
+  two subtypes.  The supertype class has an identifying attribute and the
+  association between the supertype and subtype classes is formalized.
+R The identifying attribute in the other subtype is not changed to orphaned.
+  The subtype is deleted and its association with the supertype disappears from 
+  the canvas.
+- Right-click on the supertype association.  
+R Unformalize menu item is present. 
+  
+- Formalize an association from a supertype that is not connected to any 
+  subtypes. Right-click on the same association.
+R Unformalize menu item is present. 
+
+- Delete a subtype class that is connected to a supertype, where the association 
+  is formalized and there are no subtype siblings. Right-click on the supertype
+  association.
+R Unformalize menu item is present.
+
+- Same as previous test, except delete just the subtype connector.
+R Unformalize menu item is present.
+
+Code Changes
+------------
+com.projtect.bp.core/mdl/ooaofooa.mdl
+
+com.projtect.bp.core/mdl/ooaofooa.bak
+
+com.projtect.bp.core.test/src/SubtypeSupertypeFormalizeTest.java
+
+com.projtect.bp.core.test/mdl/subtypeSupertypeFormalizeTest.mdl
+
+com.projtect.bp.core.test/src/CoreTestResultCreator.java
+
+com.projtect.bp.core.test/expected_results/SubtypeSupertypeFormalize_test1/
+                                                                         1-5.jpg
+com.projtect.bp.core.test/expected_results/SubtypeSupertypeFormalize_test2/
+                                                                         2-5.jpg
+com.projtect.bp.core.test/expected_results/SubtypeSupertypeFormalize_test3/
+                                                                         2-5.jpg
+com.projtect.bp.core.test/expected_results/SubtypeSupertypeFormalize_test4/
+                                                                         2-5.jpg 
+                                                                         
+com.projtect.bp.core.test/expected_results/DeleteTest_test_12/2097156-5.jpg
+.
+. [DeleteTest_test_12 to DeleteTest_test57 are modified]
+.
+com.projtect.bp.core.test/expected_results/DeleteTest_test_57/2097156-5.jpg
+
+com.projtect.bp.core.test/expected_results/DeleteTest_test_78/7340046-5.jpg
+.
+. [DeleteTest_test_78 to DeleteTest_test85 are modified]
+.
+com.projtect.bp.core.test/expected_results/DeleteTest_test_85/7340046-5.jpg
+
+com.projtect.bp.core.test/generate.xml
+
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_111/
+														           1048578-5.jpg
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_112/
+														           1048578-5.jpg
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_113/
+														           1048578-5.jpg														                                                                                                                                                                                                                                                                                                              
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_114/
+														           1048578-5.jpg
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_115/
+														           1048578-5.jpg	
+														           													           
+End
+---
+
+$Log: i683.int,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.9.46.1  2008/12/31 16:10:26  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.9  2005/02/22 16:58:13  campbell
+Job: 683
+Added unformalize call to MigrateToLinked
+
+Revision 1.8  2005/02/18 16:31:15  svenkat
+Job: 683
+Modified Implementation comments section
+
+Revision 1.7  2005/02/18 01:58:31  svenkat
+Job: 683
+Modified Code Changes section and Implementation comments section
+
+Revision 1.6  2005/02/11 22:25:09  svenkat
+Job: 683
+Addressed review comments
+
+Revision 1.5  2005/02/10 20:32:16  svenkat
+Job: 683
+Added to code changes section
+
+Revision 1.4  2005/02/09 20:58:19  svenkat
+Job: 683
+Changed code changes section
+
+Revision 1.3  2005/02/09 19:24:43  svenkat
+Job: 683
+Changed code changes section
+
+Revision 1.2  2005/02/09 19:11:07  svenkat
+Job: 683
+- Modified Abstract
+- Added a new design bullet
+- Elaborated on design section
+- Added 2 new unit tests
+- Added implementation comments section
+
+Revision 1.1  2005/02/04 22:12:17  svenkat
+Job: 683
+Introduced

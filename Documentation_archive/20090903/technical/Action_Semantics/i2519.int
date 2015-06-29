@@ -1,0 +1,181 @@
+========================================================================
+
+File:      $RCSfile: i2519.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Implementation Note
+Integer to/from real coersion is incorrect
+
+
+
+1. Abstract
+-----------
+This note describes the work done to the BridgePoint action language parser to
+enhance type promotion and coersion of reals and ints.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bug 2519.  http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=2519
+[2] <CVS>/Documentation/internal/technical/Action_Semantics/i2519.dnt
+[3] Bug 2617.  http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=2617
+
+4. Background
+-------------
+The data type handling in BridgePoint was not very strict, which led to some
+ambiguity when dealing with reals and integers.  This work addresses the problem
+by strengthening the default typing of BridgePoint, but providing preferences
+for the user to weaken it if they choose.
+
+5. Design
+---------
+5.1     bp.core non-generated code changes
+5.1.1   Added new preference page in ActionLanguagePreferences.java
+5.1.2   Added variables to the BridgePoint preferences model and data store
+        classes to support the two new preferences
+5.1.3   Added new preference page to bp.core/plugin.xml as an extension
+
+5.2     ooaofooa model changes
+5.2.1   Added an external entity "Preferences"
+5.2.1.1 Added Preferences bridge operation "boolean getBoolean(string name)"
+5.2.1.2 Added Preferences bridge operation "integer getInteger(string name)"
+5.2.1.3 Added Preferences bridge operation "real getReal(string name)"
+5.2.1.4 Added Preferences bridge operation "string getString(string name)"
+5.2.1.5 These "get" functions call out to functioanlly equivalent operations
+        inside the Eclipse IPreferenceStore interface.
+5.2.2   The data_types_compatible OAL Validation Utility Function logic has been
+        modified to use the new EE to conditionally implement the new typing
+        rules.
+5.2.2.1 Here's the truth table for the new typing rules:
+                = : indicates assignment operation
+                + : indicates all other operations
+                coercion: coercion preference setting
+                promotion: promotion preference setting
+
+        left    right
+        type    type    operator    coercion    promotion   return
+        ----    ----    --------    --------    ---------   ------
+        i       r       =           T           T           i
+        i       r       =           F           T           bad
+        i       r       =           F           F           bad
+        i       r       +           T           T           r
+        i       r       +           F           T           r
+        i       r       +           F           F           bad
+        r       i       =           T           T           r
+        r       i       =           F           T           r
+        r       i       =           F           F           bad
+        r       i       +           T           T           r
+        r       i       +           F           T           r
+        r       i       +           F           F           bad
+
+        // The following rules are not allowed:
+        i       r       =           T           F           n/a
+        i       r       +           T           F           n/a
+        r       i       =           T           F           n/a
+        r       i       +           T           F           n/a
+
+6. Implementation Comments
+--------------------------
+6.1     Unit tests
+6.1.1   The design note called for tests to be updated in the TestAssign.java
+        test suite.  This was not done.
+6.1.2   Instead, two new test suites were added: TestBPPrefAllowPromotion.java
+        and TestBPPrefStrictTyping.java
+6.1.3   These test suites set the appropriate preferences, then run a variety
+        of assignment and expression tests to verify correct behavior.
+6.1.4   The TestAssign suite has a setup() function added to set the preferences
+        to allow promotion and coercion as was the previous BP behavior.  The
+        rest of the test suites are then ran in this configuration.
+6.1.5   In TestAttribute.java, the functions goodAttributeWriteCheck() and
+        badAttributeWriteCheck() were changed from private to public so they
+        could be called from the new BPPref test suites.
+6.1.6   In TestControl.java, a "cleanup" function was added to clear out any
+        action language that was laying around in the test model before running
+        the return statement control tests.  In addition, a new test was added
+        to verify returning a real from an integer function works when coercion
+        is turned on.
+
+6.2     Documentation
+6.2.1   The BP Help doc "BridgePoint UML Suite Help > Reference > OAL Reference"
+        was not updated as part of this issue.  It has been deferred until a
+        later release.  Issue 2617 has been opened to track this work.
+6.2.2   The text for the release notes has been added to [1].
+
+7. Unit Test
+------------
+7.1     Significant new test suites were added to test the new functionality
+7.2     The unit tests have been run successfully and checked into CVS
+7.2.1   The core consistency check test is failing.  This is a known issue
+        because I compiled core and canvas with PTC_MCC_DISABLED=true.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.als.oal.test
+    - src/
+        - OALTestSuite.java
+        - com/mentor/nucleus/bp/als/oal/test
+            - TestAssign.java
+            - TestAttribute.java
+            - TestBPPrefAllowPromotion.java
+            - TestBPPrefStrictTyping.java
+            - TestControl.java
+
+com.mentor.nucleus.bp.core
+    - arc/
+        - create_core_plugin.inc
+    - models/
+        - com.mentor.nucleus.bp.core/ooaofooa/External Entities
+            - External Entities.xtuml
+        - com.mentor.nucleus.bp.core/ooaofooa/Functions/OAL Validation Utility Functions
+            - OAL Validation Utility Functions.xtuml
+        - ooaofooa.xtuml
+    - src/com/mentor/nucleus/bp/core/
+        - common/
+            - BridgePointPreferencesModel.java
+            - BridgePointPreferencesStore.java
+        - ui/preferences/
+            - ActionLanguagePreferences.java    (added)
+    - generate.xml
+End
+---
+
+$Log: i2519.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.16.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2006/12/04 19:49:47  rmulvey
+Job:2519
+Added com.mentor.nucleus.bp.core/generate.xml to the list of files modified.
+
+Revision 1.3  2006/11/30 20:39:42  kbrown
+Job:2519
+Completed implementation note review.
+
+Revision 1.2  2006/11/30 20:10:14  kbrown
+Job:2519
+Completed implementation note.
+
+Revision 1.1  2006/11/20 18:02:46  kbrown
+Job:2519
+Implementation note started.

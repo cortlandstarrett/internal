@@ -1,0 +1,134 @@
+========================================================================
+
+File:      $RCSfile: i2247.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Fixing Over-Restrictiveness of Spaces in Model Element Names
+
+
+Abstract
+--------
+This note describes the implementation for fixing a problem introduced by [2]
+where spaces are no longer allowed in the names of model elements of types
+for which they should be allowed.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 2247
+[2] Bugzilla issue 1872
+[3] Documentation/internal/technical/Action_Semantics/i1872.dnt
+
+Background
+----------
+Work done for [2] sought to prevent spaces from being inserted into the names
+of model elements of certain types, so as to prevent situations where the 
+relocatables functionality might cause the user to have to perform a large
+number of manual model element renamings.  Unfortunately, the code that was 
+added for [2] disallows spaces in many types on which the relocatables 
+functionality has no bearing, and for which spaces should be allowed.  This 
+issue is therefore intended to reduce the scope of the code for [2] to only 
+impact model element types that are affected by relocatables and are ones 
+whose elements should not contain spaces in their names.
+
+Design
+------
+1. Change specification of which model element types may have spaces
+
+In core's create_rename_action.inc (which generates RenameAction), the
+test in the isNameValid() method for whether the model element type permits
+spaces is modified to explicitly list those types which do not, rather than
+the opposite of listing those types which do, and excluding all the rest.
+The types listed are only ones whose names are affected by the relocatables
+functionality.
+
+2. Fix ui.properties.ModelElementNameValidator bug
+
+Previously, this validator (which calls the above-mentioned 
+RenameAction.isNameValid()) was retrieving the model element to validate
+from the current selection.  The validator is changed to take the model
+element to validate as a parameter to its constructor.  This is necessary 
+since the unit tests which exercise the validator do not set the pertinent 
+model element as the current selection.
+
+The line in BuildPropertySource.arc which instantiates a new 
+ModelElementNameValidator instance is changed to supply the new parameter.
+
+
+Implementation Comments
+-----------------------
+1.  Fix action semantics property cell bug
+
+The work for [2] made the Action_Semantics attribute of activity-containing
+model elements derived.  The BuildPropertySource.arc archetype of ui.properties
+was seeing this new status and accordingly specifying the wrong kind of 
+property descriptor for the attribute, one that would create a cell editor 
+without an "..." edit button.  A special case is therefore added to the 
+archetype (as well as in the create_view_test.arc archetype of properties.test) 
+to ignore the derived status of attributes named "Action_Semantics" when 
+determining what kind of property descriptor to create for an attribute.
+
+
+Unit Test
+---------
+Perform the same tests as in [3], but also:
+
+- try to rename a model class in the model explorer to contain a space in its 
+	name
+R the rename succeeds	
+- repeat the above for other model element types which allow spaces in 
+	the names of their instances
+
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core/arc/create_rename_action.inc
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+com.mentor.nucleus.bp.ui.properties/src/com/mentor/nucleus/bp/ui/properties/
+    ModelElementNameValidator.java
+
+com.mentor.nucleus.bp.ui.properties.test/arc/create_view_test.arc
+com.mentor.nucleus.bp.ui.properties.test/src/com/mentor/nucleus/bp/ui/
+    properties/test/PropertiesViewTest2.java
+
+
+End
+---
+
+$Log: i2247.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/06/23 16:28:34  jmather
+Job: 2247
+Added an implementation comment.
+
+Revision 1.2  2006/06/22 18:43:47  jmather
+Job: 2247
+Addressed review comments.
+
+Revision 1.1  2006/06/22 17:31:57  jmather
+Job: 2247
+Introduced.

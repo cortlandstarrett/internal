@@ -1,0 +1,237 @@
+========================================================================
+
+File:      $RCSfile: dts0100610740.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Further Verifier runtime enhancements
+
+
+1. Abstract
+-----------
+After the last round of Verifier reliability improvements, further opportunities
+for improved reliability present themselves. This note tracks their resolution.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100610740 - Further Verifier runtime enhancements
+
+4. Background
+-------------
+The specific problems addressed by this work are:
+
+- A random execution failure that has miscellaneous impact but frequently
+  manifests itself with a single or repeated message, "Statement execute:
+  Invalid stack frame id. Terminating execution".
+- Stepping button states suggest that it is possible to step into the body of a
+  synchronous message when it isn't.
+- Miscellaneous error messages when shutting down a Verifier session.
+
+5. Analysis
+-----------
+5.1 Random verification session crash.
+This was traced to an architectural issue which left an open time window during
+which the instance extent of any meta-class could be swapped out by another
+thread. The instance extent infrastucture supports finding an instance from its
+ID, hence when this happens, the stack frame lookup fails in the top of
+Statement.execute() (and randomly in other places too).
+
+The swap out window is created by code in the class which provides the ID lookup
+infrastructure, InstanceList. The method removeElement() in that class checks
+to see if the list is empty and disassociates itself from the owning ModelRoot 
+if so. This effectively disposes the class, because when the next attempt to
+access the meta-class extent in the ModelRoot is made, a new InstanceList is
+created.
+
+While all the methods discussed above are synchronized and therefore thread
+safe, very many if not all of the methods which call ModelRoot.getInstanceList()
+obtain the list and then after some amount of time, access it. Since another
+thread may call instanceList.removeElement() during this window, the instance
+list obtained from getInstanceList() may or may not be the current live list.
+
+For most purposes and most meta-classes, this window does not present a
+significant (or in many cases, any) risk. This is because the window only opens
+up when the instance extent is nearly empty and another thread disposes an
+instance while the current thread is creating one. For most general builder
+operations, instances are accumulated in significant numbers and are not often
+deleted during runtime.
+
+However, for Verifier, some instance populations grow and shrink on a very
+frequent basis during session runtimes. Hence the unpredictable behavior seen.
+
+5.2 Stepping button state changes
+When stepping over a synchronous message send statement, the calling component
+invokes behavior in a remote component which runs on a separate stack. Therefore
+the local execution must suspend until the remote execution has completed. It is
+not possible to step into the remote execution because that would require
+transferring the selection to another stack tree. This would be confusing for
+the user. The execution engine follows this policy, but the state of the UI
+buttons does not. This is also confusing for the user and needs to be fixed.
+
+5.3 Shutdown error messages
+These are caused by various parts of Verifier code not checking to see if a
+valid instance was found before accessing it. Under normal running conditions,
+an instance will always be found. However when shutting down the entire
+execution space is deleted, so it is possible for instances to disappear during
+this time without warning. Safety not_empty checks are required around some data
+access and operation invocations. Rather than put these everywhere, which would
+introduce considerable overhead, reported errors should be examined and safety
+code added only where it is needed. 
+
+6. Design
+---------
+6.1 Random verification session crash.
+Two options were considered for fixing this issue:
+
+- Add to and/or rework the existing synchronization mechanisms around the
+  InstanceList implementation.
+- Remove the code which discards an empty instance extent, so that once created,
+  an instance extent exists until tool shutdown.
+
+Any modification to the existing synchronization code carries with it the risk
+of new deadlock windows, or alternatively windows that are missed and therefore
+not closed. However, allowing instance extents to remain in memory for the
+life of the tool runtime will only create a demand for a maximum of around 330
+instances of a relatively small class. The second option was therefore selected.
+
+In addition, an analysis was performed of the risks of client code assuming that
+an instance extent is empty based on the mere presence of an instance list for
+the class as opposed to checking the size of the collection. It was found that
+there is no access to the instance lists except through the method,
+ModelRoot.getInstanceList(). This always returns an instance list by creating
+one if the required one is not found, so there is no way that client code can
+know whether an instance list existed or not.
+
+There was one exception to this in the InstanceList class itself which of course
+has privileged access to the data structures. This class has a method, isEmpty()
+which does check to see if the instance extents are populated. A further check
+showed that no BridgePoint code uses this method, so it can in any case be
+removed.
+
+In ModelRoot, the methods associateInstanceList() and dissociateInstanceList are
+removed and the body of associateInstanceList() is moved into getInstanceList().
+This reduces the coupling between these two classes.
+
+In InstanceList.removeElement() and InstanceList.removeAllElements() the call
+to ModelRoot.dissociateInstanceList() is replaced with instanceMap.clear().
+Logically, this provides identical behavior to what was there before, except
+that the instance list and associated instanceMap are not destroyed, just
+cleared.
+
+6.2 Stepping button state changes
+The execution button enable logic is reworked to gray out the step and step into
+buttons when the blocked state is entered. This logic is cleaned up at the same
+time to fix some other anomalous button enablements seen in the past.
+
+To provide a self documenting logic policy, three new methods are added to
+BPThread; isBlocked(), isWaiting() and isTopEvent(). isBlocked() returns true if
+the top stack frame has an associated instance across R2965.BlockedBy.
+isWaiting() returns true if there are no events on the queue nor stack frames
+being executed. Similarly, BPStackFrame.isTopEvent() returns true if the
+SelfEventQueue entry instance associated with the selected event (in the debug
+view) has no entries ahead of it (R2947.precedes) and the EventQueueEntry meets
+the same criterion and there are no self queue entries at all.
+
+The first two methods are called from BPThread.canStepOver() method. Previously,
+The thread had to be not terminated and suspended in order for step over to be
+possible, we now add is not blocked and is not waiting to the list of criteria.
+
+The last method is called from the BPStackFrame.canStepInto() and canStepOver()
+methods. It is used to ensure that the user cannot attempt to step over or
+into the processing for an event that has not yet reached the top of the queue.
+
+BPStackFrame.canStepInto() is also enhanced to use the new BPThread.isBlocked()
+method described above so that stepping is not possible at intermediate stack
+frames when the top stack frame is blocked.
+
+6.3 Shutdown error messages
+6.3.1 AttributeValue.getLabel()
+This is called by the UI to obtain data for the Variables view and Session
+Explorer tree. If the corresponding attribute is not found, a nominal "Unknown
+Attribute" value is returned. This may be seen momentarily by the user, but this
+information will soon be removed by the UI.
+
+6.3.2 LinkParticipation.getLabel()
+Same comments as 6.3.1 above.
+
+6.3.3 GD::Instance_to_*()
+
+7. Implementation Comments
+--------------------------
+7.1 Launcher NPE
+When running some test models, I hit a problem where the Launcher would not
+start up. The error log contains an ArrayIndexOutOfBoundsException. I have heard
+others mention this problem, but I could not find an issue tracking it. All
+that is required to address it is an array size test so that no attempt is made
+to resize the first column when no columns yet exist. Since this problem was
+interfering with my ability to perform tests, it was quicker just to fix it.
+
+7.2 Empty instance error log entry
+An recurring error log entry being made during execution turned out to be an
+example of normal behavior. When the PendingEvent.fire operation is invoked, it
+is normal to stimulate the execution engine for the component by calling
+Execution Engine.notify(). However, it is possible that the remote engine is
+just exiting its execution loop when the event is enqueued. If this happens, the
+remote engine can pick up the event immediately, process it and dispose it
+before the local fire operation completes. In this case, no engine will be found
+by navigating R2964. Since the goal of performing this navigation was to notify
+the engine to do processing it has already completed, all that is needed to
+address this error log entry is a not_empty test around the notify() call.
+
+8. Unit Test
+------------
+7.1 Ring Around the Rosy
+    - As checked in.
+    - Modified to chain return values together.
+    - Modified to make interface operation calls to obtain parameter values.
+7.2 SC Video application from John Wolfe.
+7.3 Tick simple VSI application.
+    - As checked in
+    - Modified to use simple return keyword in void activity
+7.4 Seat Heater VSI demonstration application.
+7.5 GPS application from Staffan Kjellberg.
+7.6 Looper model used to highlight the reliability issue (see 5.1).
+
+9. Code Changes
+---------------
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    InstanceList.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/ModelRoot.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Attribute Value/Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Link Participation/Link Participation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Pending Event/Pending Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.launch/
+    VerifiableElementComposite.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPStackFrame.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPThread.java
+
+End
+---
+
+$Log: dts0100610740.int,v $
+Revision 1.2  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.1  2009/08/24 16:49:57  campbell
+Job: dts0100610740
+Introduced.

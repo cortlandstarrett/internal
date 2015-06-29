@@ -1,0 +1,209 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Projects not shown in model explorer when deleted then restored
+
+1. Abstract
+-----------
+This note describes the changes implemented to fix issues i2490, i2694, and 
+i2654.  The primary issue here is i2490, the other 2 are small issues that we
+are piggy-backing on this one so testing does not have to be duplicated.
+
+2. History
+----------
+final Documentation/technical/review_minutes/R1_4_2/i2490-011207-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 2490
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2490
+[2] Bugzilla item 2694
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2694
+[3] Documentation/internal/technical/Model_Explorer-Outline_View/i2490.dnt
+[4] Bugzilla item 2654
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2654
+[5] <cvs>Documentation/internal/technical/Verifier-Debugger/i2654.int
+
+4. Background
+-------------
+4.1 See [3] 
+4.2 Issue i2694 is a small change added to this issue branch.  The problem is
+    that when multiple components are selected and deleted from the canvas, 
+    they are not all deleted from disk.  The ComponentTransactionListener only
+    deleted the topmost element in the transaction.
+4.3 For a description of i2654, please see [5].
+
+5. Design
+---------
+i2490.6.1 In ComponentResourceListener.java::visit() the code was modified to
+          cause a scan of the project to occur when the system component is 
+          deleted as part of a IResourceDelta.CHANGE operation against the 
+          project.  This allows old format projects to be found and converted
+          to a format that can be displayed in ME.
+i2490.7   In ComponentResourceListener.java::visit() the IResourceDelta.ADDED
+          case was modified to look at the IProject delta and see if a system
+          component file is included.  If it is, addRootComponent() is not
+          called.       
+
+6. Implementation Comments
+--------------------------
+6.1 To fix i2694 [2], ComponentTransactionListener.java::transactionEnded() was 
+    modified to delete all model roots that were marked as deleted in the 
+    transaction, not just the topmost one.
+6.2 It was observed that a error dialog contained stale information.  The text
+    for this dialog was updated in create_core_plugin_class.arc.
+6.3 It was observed that a change made for issue 2661 was overwritten by a 
+    subsequent merge.  This change has been reapplied in this branch.  The
+    change is to PersistenceManager.java.  A job in that source file was 
+    made a system job so its dialog would no longer be displayed.
+6.4 During promotion of this issue it was noticed that with issue 2529 the
+    problem marker message was changed to use a model relative path.  This was
+    incorrect as the problems are specific to files.  This was changed back to
+    reference the complete resource path.
+6.5 During promotion of this issue it was noticed that the fix to prevent system
+    component files from being rewritten was not completely fixed.  To fix this
+    the added code for this issue was removed and the ensureRootExists method
+    was changed to run in a WorkspaceJob.  The actual code which creates the
+    system model component was placed within a workspace.run call.  Within this
+    call the check to see if the component file exists was added.  This allows
+    for the method to wait for check outs to occur before testing if the file
+    exists.
+
+7. Unit Test
+------------
+7.1 The following are manual tests use projects that exist in a CVS repository 
+    on phoenix.azt.mentorg.com named /arch1/products/tiger/tt_rep.
+
+_- Check outi2490-R1_3_1
+_- Switch to ME
+_- Delete the project i2490-R1_3_1
+_R The project is removed
+_- Switch to RN
+_R The project is removed
+
+_- Check outi2490-R1_3_1
+_- Switch to RN
+_- Delete the models folder
+_R The models folder is removed (and is not added back)
+_- Switch to ME
+_R The project is not present
+
+_- Check outi2490-R1_4_0
+_- Switch to ME
+_- Delete the project i2490-R1_4_0
+_R The project is removed
+_- Switch to RN
+_R The project is removed
+
+_- Check outi2490-R1_3_1
+_- Switch to ME
+_- Right-click i2490-R1_3_1
+_R The option "Convert to Multifile format is present
+_- Select replace-with and replace the project with the latest from i2490-R1_3_1
+_R i2490-R1_3_1 is immediately marked dirty (system nodes and system level 
+   data types have been added)
+_- Double-click i2490-R1_3_1 to open the system package diagram
+_R Diagram opens successfully.
+
+
+_- Check out i2490-R1_4_0
+_- Switch to ME
+_- Right-click i2490-R1_4_0
+_R The option "Convert to Multifile format is not present
+_- Select replace-with and replace the project with the latest from i2490-R1_3_1
+_R i2490-R1_4_0 is immediately marked dirty. System node was modified, domain-
+   level data types were modified, and system-level data types were added.
+_- Double-click i2490-R1_4_0 to open the system package diagram
+_R Diagram opens successfully.
+
+_- Create a new workspace (it must be new)
+_- Open Model Explorer in the xtUML perspective 
+_- Check-out the Models project from head
+_R No files in the Models project are marked dirty
+
+7.1 This is a manual test to verify that i2694 is fixed.
+_- Create two classes
+_- Select one then the other using ctrl + click
+_- Right click and delete
+_- Switch to the Resource Navigator view
+_R Both class files have been deleted
+_- Switch to ME and undo the operation
+_R The classes are restored on the canvas
+_- Switch to RN
+_R The class files are restored on disk
+
+
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select/Select.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select From Instances/Select From Instances.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ComponentTransactionListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+		PersistenceManager.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/marker/
+		CreateMarkerEvent.java
+		
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.5  2007/01/26 17:44:15  tlondon
+Job: 2490
+
+Add notes about new changes.
+
+Revision 1.4  2007/01/24 11:48:49  rmulvey
+Job:2490
+Included the single-file model in the code changes.
+
+Revision 1.3  2007/01/24 11:42:41  rmulvey
+Job:2490
+Updated the single-file ooaofooa to captures changes made for i2654 which is being included with this issue.
+
+Revision 1.2  2007/01/24 00:55:07  rmulvey
+Job:2490
+Updated list of modified files
+
+Revision 1.1  2007/01/24 00:40:44  rmulvey
+Job:2490
+Updated the note to include the fact that i2654 is included in this branch.  Also added another manual unit test.
+
+Revision 1.2  2007/01/23 20:18:01  rmulvey
+Job:2490
+Updated instructions for one of the unit tests
+
+Revision 1.1  2007/01/23 20:15:55  rmulvey
+Job:2490
+Introduced

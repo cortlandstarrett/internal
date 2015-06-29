@@ -1,0 +1,171 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Issues found while smoke testing the R1.4.5 release
+
+1. Abstract
+-----------
+This note is a catchall for R1.4.5 pre-alpha release testing.
+
+2. History
+----------
+
+3. Document References
+----------------------
+In this section, list all the documents that the reader may need to refer to.
+Give the full path to reference a file.
+[1] Bugzilla item 2990
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2990
+
+4. Background
+-------------
+
+
+5. Analysis
+-----------
+5.1 PkgCMDeleteTest.testDeleteSystem_ThruRN_NoEditor fails
+
+This test reports that file deletion failed.
+
+Deletion of the file actually doesn't fail. The problem is that the file is
+immediately recreated. Stepping through the deletion itself does not reveal much
+because thread synchronization prevents visibility of the moment of recreation
+of the file. Using a conditional breakpoint in the constructor of the internal
+eclipse file implementation takes us to the heart of the issue. The resulting
+trimmed stack trace documents the problem:
+
+Thread [main] (Suspended (breakpoint at line 27 in File))
+	File.<init>(IPath, Workspace) line: 27
+	Workspace.newResource(IPath, int) line: 1564
+	WorkspaceRoot(Container).getFile(IPath) line: 125
+	PersistableModelComponent.<init>(IPath) line: 127
+	PersistableModelComponent.create(IPath) line: 110
+6   PersistenceManager.findOrCreateComponent(IPath) line: 298
+	PersistenceManager.loadAndFinishComponent(String) line: 347
+5   SystemModel_c(NonRootModelElement).loadProxy() line: 448
+	SystemModel_c(NonRootModelElement).ensureLoaded(boolean) line: 483
+	SystemModel_c.SystemModelInstances(ModelRoot, ClassQueryInterface_c, boolean) line: 1394
+	SystemModel_c.SystemModelInstances(ModelRoot) line: 1412
+	RootAdapter.getChildren(Object) line: 72
+	ModelContentProvider.getChildren(Object) line: 63
+	ModelContentProvider.getElements(Object) line: 919
+4   ExplorerTreeViewer(StructuredViewer).getRawChildren(Object) line: 848
+	ExplorerTreeViewer(AbstractTreeViewer).getRawChildren(Object) line: 896
+	ExplorerTreeViewer(StructuredViewer).getFilteredChildren(Object) line: 790
+	ExplorerTreeViewer(StructuredViewer).getSortedChildren(Object) line: 905
+	ExplorerTreeViewer(AbstractTreeViewer).updateChildren(Widget, Object, Object[], boolean) line: 1707
+	ExplorerTreeViewer(AbstractTreeViewer).internalRefreshStruct(Widget, Object, boolean) line: 1268
+	ExplorerTreeViewer(AbstractTreeViewer).internalRefresh(Widget, Object, boolean, boolean) line: 1245
+	ExplorerTreeViewer(AbstractTreeViewer).internalRefresh(Object, boolean) line: 1201
+	ExplorerTreeViewer(AbstractTreeViewer).internalRefresh(Object) line: 1188
+	StructuredViewer$7.run() line: 1264
+	ExplorerTreeViewer(StructuredViewer).preservingSelection(Runnable) line: 1201
+	ExplorerTreeViewer(StructuredViewer).refresh(Object) line: 1262
+	ExplorerTreeViewer(StructuredViewer).refresh() line: 1221
+	UIUtil.refresh(StructuredViewer, Object) line: 151
+	UIUtil.refreshViewer(StructuredViewer, Object) line: 126
+	ExplorerView$5.modelElementUnloaded(ModelChangedEvent) line: 382
+	ModelRoot$9.invoke(IModelChangeListener) line: 359
+	ModelRoot$9(ModelRoot$ListenerMethodInvoker).run() line: 192
+	Ooaofooa(EclipseOoaofooa).callFireMethod(Runnable) line: 265
+	Ooaofooa(ModelRoot).fireModelElementUnloaded(ModelElement) line: 362
+3   PersistableModelComponent.deleteSelf() line: 794
+	ComponentResourceListener.handleComponentResourceRemoved(PersistableModelComponent, IResource) line: 532
+	ComponentResourceListener.visit(IResourceDelta) line: 220
+	ResourceDelta.accept(IResourceDeltaVisitor, int) line: 68
+	ResourceDelta.accept(IResourceDeltaVisitor, int) line: 77
+	ResourceDelta.accept(IResourceDeltaVisitor, int) line: 77
+	ResourceDelta.accept(IResourceDeltaVisitor, int) line: 77
+	ResourceDelta.accept(IResourceDeltaVisitor, int) line: 77
+	ResourceDelta.accept(IResourceDeltaVisitor) line: 49
+2   ComponentResourceListener.resourceChanged(IResourceChangeEvent) line: 92
+	NotificationManager$2.run() line: 276
+	InternalPlatform.run(ISafeRunnable) line: 1044
+	Platform.run(ISafeRunnable) line: 783
+	NotificationManager.notify(ResourceChangeListenerList$ListenerEntry[], IResourceChangeEvent, boolean) line: 270
+	NotificationManager.broadcastChanges(ElementTree, ResourceChangeEvent, boolean) line: 144
+1   Workspace.broadcastPostChange() line: 180
+	Workspace.endOperation(ISchedulingRule, boolean, IProgressMonitor) line: 916
+	File(Resource).delete(int, IProgressMonitor) line: 689
+	File(Resource).delete(boolean, boolean, IProgressMonitor) line: 704
+	PkgCMDeleteTest(PkgCMBaseTest).doDeleteThruResNav(PersistableModelComponent) line: 335
+	PkgCMDeleteTest(DeleteTest).performDeleteComponentThruRN(String, String, int, int) line: 212
+	PkgCMDeleteTest.testDeleteSystem_ThruRN_NoEditor() line: 269
+
+5.1.1 The file deletion is broadcast as a ResourceChange event.
+5.1.2 The ComponentResourceListener fields the event.
+5.1.3 deleteSelf() calls clearDatabase() which calls deleteME(). This method
+      converts the SystemModel_c instance to a proxy.
+5.1.4 The Explorer View sees the model change and traverses the database to
+      rebuild its tree.
+5.1.5 getChildren looks for System Model instances and finds the one converted
+      to a proxy in step 5.1.3. The architecture cannot tell that the proxy was
+      only just created and so loadProxy() is called.
+5.1.6 Finally, findOrCreateComponent() does not find a component for the System
+      Model instance and so creates one. this leads to a new Component and
+      ultimately a new file being recreated.
+
+Conclusion: We could add extra complexity to trap this circular piece of
+behavior, but I'm not certain its justified. This only occurs if the user
+deletes the system file. This renders the rest of the model unusable, and so
+recreating it is not such a bad thing to do.
+
+5.2 Unformalizing an interface restuls in an NPE.  This was done to a provided 
+    interface that was not nested.
+
+java.lang.NullPointerException
+ at com.mentor.nucleus.bp.core.InterfaceReference_c.Unformalize(InterfaceReference_c.java:2834)
+ at com.mentor.nucleus.bp.core.Provision_c.Unformalize(Provision_c.java:1382)
+ at com.mentor.nucleus.bp.core.InterfaceReference_c.Unformalize(InterfaceReference_c.java:2734)
+ at com.mentor.nucleus.bp.core.InterfaceReference_c.Unformalizedelegatedreferences(InterfaceReference_c.java:3311)
+ at com.mentor.nucleus.bp.core.InterfaceReference_c.Unformalize(InterfaceReference_c.java:2854)
+ at com.mentor.nucleus.bp.core.Provision_c.Unformalize(Provision_c.java:1382)
+ at com.mentor.nucleus.bp.core.ui.ProvidedInterfaceUnformalizeOnC_PAction.C_P_ProvidedInterfaceUnformalize(ProvidedInterfaceUnformalizeOnC_PAction.java:77)
+ at com.mentor.nucleus.bp.core.ui.ProvidedInterfaceUnformalizeOnC_PAction.run(ProvidedInterfaceUnformalizeOnC_PAction.java:53)
+ at org.eclipse.ui.internal.PluginAction.runWithEvent(PluginAction.java:246)
+...
+
+5.3 The version number in the bp.ui.text plugin needs to be updated to 1.4.5.
+
+6. Work Required
+----------------
+
+7. Acceptance Test
+------------------
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:01  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.2  2007/07/09 23:41:29  rmulvey
+Job:2990
+Added an item for the NPE that happens when an interface is unformalized. and for the fact that version number  was not updated in the bp.text plugin.
+
+Revision 1.1  2007/07/09 23:08:16  campbell
+Job:2990
+Introduced.
+

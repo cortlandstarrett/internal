@@ -1,0 +1,129 @@
+========================================================================
+
+File:      $RCSfile: dts0100748748.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Simulated time deadlock
+
+1. Abstract
+-----------
+It is possible for a deadlock to occur between the verifier timer and the 
+verifier execution threads.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100748748
+[2] ClearQuest DEI dts0100752925
+    Deadlock between timer and verifier execution threads(s)
+[3] ClearQuest DEI dts0100748742
+    UI Event flooding during Verifier execution.
+[4] ClearQuest DEI dts0100748744
+    Timer dispose issues in SIM time
+[5] ClearQuest DEI dts0100749872
+    Deleting a transition that has an assigned signal does not delete the 
+    signal
+[6] ClearQuest DEI dts0100643767
+    Handle determinism in Verifier.
+[7] ClearQuest DEI dts0100752970    
+    Verifier Execution Deadlock and Event Flooding test
+    
+4. Background
+-------------
+A deadlock was reported by a customer (Saab Aero) that we were not able to
+reproduce in-house.  During a site visit in Feb 2011 a debug environment was
+taken to the customer site and we were able to hit the problem and determine the
+cause.  The customer was actually hitting a series of problems [1,3,4,5,6].
+A patch release, BP3.2.2.2, was provided to allow the customer to immediately
+work through these problems and continue their progress.
+
+This particular issue [1], is a deadlock that occurs during Verifier execution
+in models using timers.  It can be hit when using either SimTime or 
+WallClockTime and in Single Threaded and Multi-threaded Verifier execution.  
+This customer only uses SimTime and they are will only use Single-Threaded 
+Verifier [6].  The change made in the code to resolve this problem for this 
+customer is very simple and it was proven to work at the customer  site.  
+To assure we provide the customer with exactly what we know works for them, 
+and to do it quickly we are providing the simple fix in the BP3.2.2.2 patch.
+We will follow-up in the next full release with a fix that resolves the problem 
+in both SimTime and WallClockTime [2] and well and both deterministic and 
+non-deterministic verifier execution [6].
+
+Note that this issue [1], shall be marked resolved with the release of 
+BP3.2.2.2.   However, this fix will NOT be promoted to head.  It will be the fix
+provided for [2] that shall be promoted to head.
+
+5. Design
+---------
+5.1  The deadlock occurred between the Verifier timer thread and one of the 
+     Verifier execution threads.
+5.1.1 The Timer was locked in timersList.get(0).Tick()
+     It was waiting on the lock on a component instance.
+5.1.2 The verifier execution thread had the same component instance executing.
+      The component was in BPThread.java making a call to 
+      TIM.IdleNotification().  
+5.1.3 The timer grabbed the idleBusyLock lock and then tried to grab the 
+      component instance monitor lock, while the component execution grabbed 
+      those same 2 locks in the opposite order.  It was these 2 locks that 
+      caused this deadlock.
+5.1.4 To resolve this issue for simulated time, the lock on the component
+      instance shall be removed from 
+      BPDebugTarget.java::launchSynchronousExecutionThread().  This is done
+      by commenting-out line 415 of BPDebugTarget.java (revision 1.20.66.2).
+      
+      //synchronized (fee) {      
+      
+      Of course the associated end bracket is also commented out.
+5.1.4.1  Removing this synchronized block removes the possibility for 
+     deadlock because it removes the component instance lock.  
+5.1.4.2 It safe to do for this in the single-threaded verifier case because 
+     this synchronized block is only there to prevent another component from 
+     placing something into another thread's message queue.   This 
+     protection isn't required in the single-threaded verifier.
+
+
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+7.1 The test for this is to execute the Saab CFMon test model.  This
+    test is captured in SMA QA issue [7].
+
+8. Code Changes
+---------------
+Branch name: R3_2_2_2
+
+NOTE: As noted above, this change is NOT going into head.  Therefore it is only
+      found in the patch.  To clearly see this 2-line change diff
+      revisions 1.20.66.1 and 1.20.66.2 of the following file:
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/
+	ui/model/BPDebugTarget.java (revision 1.20.66.2)
+
+
+End
+---
+
+$Log: dts0100748748.int,v $
+Revision 1.3  2011/02/22 20:42:47  rmulvey
+job:dts0100748748
+Addressed review observations
+
+Revision 1.2  2011/02/22 16:36:35  rmulvey
+job:dts0100748748
+Addressed a couple of pre-review comments.
+
+Revision 1.1  2011/02/22 16:14:33  rmulvey
+job:dts0100748748
+Introduced

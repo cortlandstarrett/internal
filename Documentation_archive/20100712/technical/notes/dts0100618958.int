@@ -1,0 +1,161 @@
+========================================================================
+
+File:      $RCSfile: dts0100618958.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Handle re-entrancy correctly
+
+1. Abstract
+-----------
+There are two places where executing inter-component synchronous calls on an
+already active stack can result in incorrect behavior or runtime errors.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100618958 - Component re-entrancy not always handled
+    correctly.
+[2] ClearQuest DEI dts0100619262 - Display updates can get left disabled during
+    regions of concurrency.
+[3] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/RATR
+[4] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/SC
+[5] http://beta.wv.mentorg.com/tenmile_svn/tenmile/trunk/Models/Demo/Tick
+[6] http://beta.wv.mentorg.com/tenmile_svn/tenmile/trunk/Models/Demo/SeatHeater
+[7] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/GPS
+[8] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/Looper
+
+4. Background
+-------------
+There are two outstanding cases where synchronous inter-component communication
+is not being handled correctly by Verifier. The symptoms are that if inter-
+component communication arrives while processing is already being carried out by
+the target component, there is a chance that inappropriate statement pointer
+increment or stack popping may occur. This can lead to incorrect behavior or
+runtime errors and premature termination.
+
+5. Design
+---------
+Two separate problems were identified. In Stack.dequeue(), data being returned
+from remote components was being processed too early. Secondly, in the
+Return Stmt.execute() operation, a void return statement in an inter-component
+activity body was incorrectly attempting to modify the stack frame below as if
+it was returning control to it. For normal returns, this is expected behavior,
+but inter-component calls are effectively interrupts and should therefore not
+alter the normal execution frames below it under any circumstances.
+
+5.1 Stack.dequeue()
+The second loop in this operation iterates over returned data values attached
+to stack frames, including void stack frames responsible for transferring
+control back to a caller. Just inside the test that checks if the frame is
+ready for an interrupt, a new test is made to see if the local frame blocked by
+the currently iterated over queued frame is the top stack frame. If it is, then
+the data (if any) is transferred into the correct place in the local stack. If
+the blocked frame is not at the top of the stack, the queued frame is left in
+place until the frame it blocks does rise to the top of the stack.
+
+Previously, all data was transferred to the local stack immediately it became
+available. However, this caused problems when it came time to increment the
+statement pointer past void calls. If this happened when the stack frame being
+adjusted was not the top stack frame, the stack could become corrupted. By never
+processing any queued frames until the frame they block is the current stack
+top, this situation is avoided.
+
+5.2 Return Stmt.execute()
+The OAL that manipulates the stack on a return is moved to be within the if
+statement that tests to see if the current stack frame blocks another across
+R2965.'blocks'. Thus if such an invoking frame is found, the frame below must
+not be altered in any way. Moving the code that calls the operation,
+Statement.setUpNextStatement() and its preamble to be inside the else clause
+achieves this requirement.
+
+6. Implementation Comments
+--------------------------
+While working on this job, an issue with display freezing after running Verifier
+was reported[2]. Investigation showed unsafe thread access on the display
+disable counter was responsible. Since the fix is small, it is included with
+this work.
+
+7. Unit Test
+------------
+Run the following models manually:
+
+7.1 Ring Around the Rosy[3]
+7.2 SC Video application from John Wolfe[4].
+7.3 Tick simple VSI application[5].
+7.4 Seat Heater VSI demonstration application[6].
+7.5 GPS application from Staffan Kjellberg[7].
+7.6 Looper model[8].
+
+In particular, test 7.2 specifically illustrated the failures fixed by this
+work. The other models are to demonstrate regression capability.
+
+The first problem is shown by a series of Can't Happen VMCD::AckInterrupt signal
+events. These were happening because a message statement was not being stepped
+on correctly in the test model at[4].
+
+The second problem is shown by adding by hand a return statement to the last
+line of Control System::Test::CS Test Point::Interrupt in the same model.
+
+To manually test that the display issue is resolved:
+_- Open any diagram in the RATR model.
+_- Start RATR[3], then stop it again (there is no need to even invoke any
+   activity).
+_- Move a scroll bar
+_R The diagram scrolls as expected (prior to this fix no scrolling would happen
+   but the display would update when clicking in the display).
+_- Click and drag with the mouse over whitespace.
+_R The elastic selection  rectangle is shown and follows the mouse (prior to
+   this fix no rectangle would be visible, although dragged over items would be
+   shown as selected after a mouse up).
+_- Select and drag some symbols.
+_R The symbols move with the mouse cursor (prior to this fix the symbols would
+   not be shown as moved until after a mouse up).
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/ModelRoot.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack/Stack.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Return Stmt/Return Stmt.xtuml
+
+Models introduced directly to trunk (no promotion action):
+
+svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/SC
+svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/GPS
+svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/Looper
+
+End
+---
+
+$Log: dts0100618958.int,v $
+Revision 1.3  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.2  2009/09/16 11:44:39  campbell
+Job: dts0100618958
+Updated with paths to test models. Review obs. addressed.
+
+Revision 1.1  2009/09/15 11:12:09  campbell
+Job: dts0100618958
+Introduced.

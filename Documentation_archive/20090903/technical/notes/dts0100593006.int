@@ -1,0 +1,164 @@
+========================================================================
+
+File:      $RCSfile: dts0100593006.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Model Explorer and Canvas hitting license server too much.
+
+1. Abstract
+-----------
+While working on licensing for demo purposes [2], it became clear that we check 
+the licensing a LOT.  Too much.  On networked license servers, this will degrade 
+performance.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100593006
+[2] ClearQuest DEI dts0100590737
+    Provide a licensing solution for the 2009 ET-robocon educational challenge
+[3] Bugzilla issue 3427
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3427
+    Update exact access date    
+[4] Bugzilla issue 2919
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2919
+    Incorporate Mentor Standard Licensing update v2007_2 into BridgePoint
+[5] ClearQuest DEI dts0100593339
+    Disable the demo license
+    
+4. Background
+-------------
+
+5. Design
+---------
+Implement a license cache to prevent the code from calling the FlexLM license
+manager to often.  If a license was obtained within the last hour do not
+request it again.
+
+5.1 Modify BridgePointLicenseManager.java and introduce a HashMap<String, Date > 
+    to track the date/time a license was last acquired.  When a license request 
+    comes-in, checks the map to see if the license was already acquired within 
+    the last hour, and if it was, allow access without performing another check.
+5.2 These are the places in BridgePoint that license requests are made.
+5.2.1 These place are in BP proper and go through 
+    BridgePointLicenseManager.java::checkLicense(int licenseCode) function.
+    These shall all be cached.  
+		BridgePointDemoKeyCreator/src/com/mentor/bp/demo/BridgePointDemoKeyCreator.java
+		com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+		.../bp/core/util/BridgePointLicenseManager.java
+		.../bp/core/CorePlugin.java
+		.../bp/debug/license/VerifierLicenseManager.java
+		.../bp/debug/ui/launch/BPLaunchDelegate.java (4 matches)
+		.../bp/mc/mc2020/ModelCompiler.java
+		.../bp/mc/mc3020/ExportBuilder.java
+		.../bp/mc/mc3020/MCBuilderArgumentHandler.java
+		.../bp/welcome/gettingstarted/GettingStartedAction.java
+		.../bp/welcome/gettingstarted/GPSGettingStartedAction.java
+    
+5.2.2 These license requests are made in the Nucleus code that populates the 
+    License Information dialog.  This issue will not make any change to the way 
+    these license requests are made.  For more information about how these 
+    are used see [3,4].
+		com.mentor.nucleus.bp.bld.pkg
+			.nucleusproduct
+		com.mentor.nucleus.bp.dap.pkg
+			.nucleusproduct
+		com.mentor.nucleus.bp.dbg.pkg
+			.nucleusproduct
+		com.mentor.nucleus.bp.mc.mc2020.pkg
+			.nucleusproduct
+			.nucleusproduct_b
+		com.mentor.nucleus.bp.mc.mc3020.pkg
+			.nucleusproduct
+			.nucleusproduct_b
+		com.mentor.nucleus.bp.verifier.pkg
+			.nucleusproduct    
+
+     
+6. Implementation Comments
+--------------------------
+6.1 When the demo license was introduced a class named 
+    BridgePointDemoEncryptor.java was introduced to manage the demo license 
+    file.  It was intended that this file live in the location pointed to by the
+    MGLS_LICENSE_FILE environment variable with the default being the default
+    location for this file which is: C:\MentorGraphics\BridgePoint\license
+    A problem was discovered. The MGLS_LICENSE_FILE is set by the BridgePoint
+    "launcher" batch file, but it value is not passed to the JVM, so Java does 
+    not have access to it.  Additionally, to pass the option to the JVM would
+    require a change to the eclipse.ini file installed with the product, and if
+    the user changed the location MGLS_LICENSE_FILE points to, having this in
+    the eclipse.ini would be problematic.  Therefore, 
+    BridgePointDemoEncryptor.java was modified and function introduced to find
+    the MGLS_LICENSE_FILE in the environment variables and set the location of
+    the demo file to that same location.  This assures the license file and the
+    demo file will always be in the same place.
+
+6.2 Removed the 4 lines of code n BridgePointLicenseManager.java::checkLicense() 
+    that control the demo license [5].
+    
+    
+7. Unit Test
+------------
+7.1 Verify that the license cache works.  This is a manual test that must be
+    run in a development environment.
+    _- Exit from Skype
+       Note: this is done to prevent skype errors caused by setting your machine
+             time forward.
+    _- Set a break point in BridgePointLicenseManager.java::checkLicense()
+    _- Launch BP in a debug session in the development environment
+    _- Open a model
+    _R Breakpoint is hit 
+    _- Note the license requested, it will be a Model Builder license.
+    _R Step through the code to assure the request goes through FlexLM
+    _- Select "go" to continue running
+    _- Open another model
+    _R Breakpoint is hit 
+    _- Note the license requested, it will be a Model Builder license
+    _R Step through the code to assure the request does NOT go through FlexLM
+    _- Select "go" to continue running
+    _- Set the machine time 1 hour ahead
+    _- Open a model
+    _R Breakpoint is hit 
+    _- Note the license requested, it will be a Model Builder license
+    _R Step through the code to assure the request go through FlexLM and the
+       map is updated with the new timestamp.
+    _- Select "go" to continue running
+    _- Exit
+    _- Restore your machine time
+    _- Restart Skype       
+    
+    
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.util/
+    BridgePointDemoEncryptor.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.util/
+    BridgePointLicenseManager.java
+
+
+End
+---
+
+$Log: dts0100593006.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/06/08 19:33:53  rmulvey
+job:dts0100593339 dts0100593006
+Addressed observations
+
+Revision 1.1  2009/06/08 18:06:12  rmulvey
+job:dts0100593006
+Introduced

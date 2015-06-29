@@ -1,0 +1,517 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support Structured Data Types
+
+
+1. Abstract
+-----------
+The changes described here enable support for the declaration and use of
+structured data types in a BridgePoint model. It does not cover the changes
+required for Verifier, beyond those required to make Verifier operational to
+its original specifications.
+
+2. History
+----------
+2.1  i478-020607-01.rvm
+2.2  i478-032307-01.rvm (Final)
+
+3. Document References
+----------------------
+[1] Bugzilla item 478
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=478
+[2] Int to Real Conversion Analysis Note.
+    Documentation/internal/technical/Action_semantics/i2519.ant
+[3] SDTs Analysis Note.  Documentation/internal/technical/notes/i478.ant
+[4] Documentation/internal/test_results/R1_5_0/i478/i478_usage_test_matrix.xls
+[5] Bugzilla item 477 - Array support
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=477
+
+4. Background
+-------------
+Adding the ability to support SDTs in BridgePoint will require changes to the
+OAL parser.  The design of the parser is outlined in [2 s5.1].
+
+5. Analysis
+-----------
+The analysis is covered in [3].
+
+6. Design
+---------
+6.1 Create a simple subtype of Data Type
+6.1.1 New OAL in Data Type class
+      The dispose() operation now selects the new subtype and delegates the
+      dispose to it. The isCommonAllowedType() operation is changed to specify
+      that stuctured data types are allowed for both parameters and return
+      types.
+6.1.2 New operation on Data Type Package
+      A new operation newStructuredDataType() is added. This code peforms tasks
+      analogous to those that create other data types. It creates a Data Type
+      supertype and a Structured Data Type subtype and relates them. It also
+      relates the data type to either the system or the domain depending on
+      where it was declared (test note: we'll need to repeat all tests for both
+      system and domain level structured data types).
+6.1.3 New classes in Domain subsystem
+      Two new classes, Structured Data Type (S_SDT) and Structure Member (S_MBR)
+      are added to the Domain Subsystem. Structured Data Type has a name and a
+      Description and has two operations, one to add a new member and one to
+      dispose the structured data type. Structured Data Type is related one to
+      many with Structure Member (R44). Structure Member is related to the
+      Data Type supertype to call out its own data type. It too has attributes
+      Name and Description. Structure Member also has a reflexive association
+      (R46) to manage member position as specified in the analysis. Operations
+      for initializing (to an integer), disposal and moving up and down the
+      structure list are provided. Note that Structure Member.dispose() will
+      have to be extended to unrelate associations yet to be added in the Value
+      subsystem.
+6.1.4 Make elements persistent
+      Change file_io.pei.sql to include the new metamodel elements.
+6.1.5 Add the new elements to the Explorer tree
+      Modify UITree.sql to include the Structured Data Type and its
+      Structure Members.
+
+6.2 Add new symbols to the Data Type diagram
+6.2.1 Add canvas API
+      The standard operations; get_compartments(), get_entries(),
+      get_compartment_text(), get_style(), get_text_style(), get_ooa_id() etc.
+      are added to Structured Data Type class.
+6.2.2 Add plugin declarations
+      Add new symbol element for Structured Data Type. It depends on Data Type
+      and Structure Member so that it will always update when someting is
+      changed. Add the new Structured Data Type symbol to the legal symbols for
+      the Data Type Package Diagram declaration.
+6.2.3 Add Structure Member and Structured Data type to the ooaofooa_hierarchy.
+      Add two new tree node specifications and two new tree parenthood
+      specifications.
+6.2.4 Check ooaofooa_package_spec.clr
+      R45 is a cross component association but is not a Containment association,
+      so no change is required.
+6.2.5 Add case to Getinstancefromooa_id()
+6.2.6 Add new OOAType enumeration to ooaofgraphics
+      The StructuredDataType enumeration is refered to in Getinstancefromooa_id
+      and from the symbol definition in plugin.xml.
+6.2.7 Create new icons
+      Three new icons, one each to represent Structured Datatypes and Structure
+      Members. A third is for the canvas tool for drawing new Structured
+      Datatypes.
+
+6.3 Add new Menu entries
+6.3.1 Context Menu API
+      An actionFilter() operation is added to Structure Member to support
+      turning the Move Up/Down menus on and off. Seven context menu interface
+      functions are added for Delete and Rename of Structured Data Types and
+      Structure Members, also for adding a new Structure Member to a Structured
+      Data Type and for moving Structure Members up and down in the list. Mark
+      all new functions 'ContextMenuFunction: TRUE'.
+6.3.2 Add entries to context menu entries instances set
+      Seven new entries are added corresponding to the seven new context menu
+      interface functions.
+
+6.4 Modify Parser Syntax
+6.4.1 oal.bnf
+	  The new rule member_access is added to the BNF.  It will replace all
+	  current callouts to the attribute_access rule.  The member_access rule
+	  is defined as:
+
+        member_access[boolean isLval]:
+        (
+          class_or_struct_inst  { if ( isLval ) rememberLocation(LT(0)); }
+          TOK_DOT!
+        )+
+        field_access;
+
+      The parameter data access rule allows a less deep change. This is because
+      the "param" keyword is not ambiguous (compared to an attribute access and
+      a transient field access). This rule simply has the class_or_struct_inst
+      rule to be added on as an optional extension to the existing rule. It is
+      redefined as:
+
+        param_data_access[boolean isLval]:
+          "param"!  { if ( isLval ) rememberLocation(LT(0)); }
+          TOK_DOT!
+          (
+          data_item[true]
+          |
+          (
+            (
+              class_or_struct_inst  { if ( isLval ) rememberLocation(LT(0)); }
+              TOK_DOT!
+            )+
+            field_access
+          )
+        );
+
+      The event data access rule is similar to the parameter access rule, having
+      an unambiguous keyword at the start; "rcvd_evt". It is redefined similarly
+      as:
+
+        event_data_access:
+          "rcvd_evt"!
+          TOK_DOT!
+          (
+          supp_data_item
+          |
+          (
+            (
+              class_or_struct_inst
+              TOK_DOT!
+            )+
+            field_access
+          )
+        );
+
+6.4.2 data_types_compatible
+      The ooaofooa domain function data_types_compatible needs to be modified
+	  to disallow all operations on SDTs except =, ==, and !=.
+
+6.4.3 Extend OAL meta-model
+      A new subtype of Value is added to allow the parser to capture the new
+      syntax as metamodel instances.
+
+6.5 Add support for cut/copy/paste of SDT
+
+In order to support cut/copy/paste of the new data type two new operations are
+added:
+
+Data Type Package.pasteStructuredDataType(unique_id)
+Structure Memeber.resolveDataType()
+
+The pasteStructuredDataType(unique_id) operation hooks up the pasted data type
+to the destination parent, whether it be a domain level data type package or a
+system level package.  It also handles naming the new data type uniquely, of
+course this will not have an effect until we enforce data types to have unique
+names.
+
+The resolveDataType() operation searches the destination for a data type of the
+same name, if found it hooks the pasted Structure Member to the resolved data
+type.  If a data type is not found the integer data type is used.
+
+When a Structured Data Type is exported by itself, the data type proxy must
+always get exported.  To handle this a special case is added to the export
+archetype: export_functions.inc.  The same type of special case already exists
+for User Data Types.
+
+7. Design Comments
+------------------
+7.1 Deviation for Structure Member
+    This class was not made a link class as specified in the analysis. This is
+    because it would have been a *.*:* type link class (a structure may contain
+    more than one member of the same type). This construct is not supported
+    in the UML 2.0 standard and is therefore deprecated. The single linked
+    association is replaced with two simple associations. This is logically
+    equivalent to the suggested design.
+
+7.2 Rework of Value and Instance Access subsystems
+    During this job, it was noticed that there was a great deal of repetition in
+    the handling for the statement subtypes; Assign to Attribute,
+    Assign to Transient and Assign to Parameter (located in the Instance Access
+    subsystem). Furthermore, this repetition would have been further extended
+    when adding the OAL for this work and when dealing with arrays[5] and with
+    instance references. For this reason, it was decided to remove all three
+    statement subtypes and replace them with a single new one called
+    Assign to Member.
+
+    This new statement subtype handles all the previous cases by calling out
+    two values instead of one. The new value is an l-value and represents the
+    location to which the value will be written. Since Value subsystem subtypes
+    already cover attribute, transient and parameter access, the same
+    information as before can be encoded with the new design. The structured
+    data type, instance reference and array work can now be applied once and
+    cover all the alternatives.
+
+    In the following examples, uppercase abbreviations are metamodel element
+    keyletters. The examples are all UML object diagrams, simplified to aid
+    representation in an ASCII document.
+
+    For example, in the previous parser design:
+
+    b.foo = 1;
+
+    Would be instantiated as:
+
+        +--------- ACT_AI - R609 - V_VAL - R801 - V_LIN(1)
+        |            |
+      R630         R629
+        |            |
+     O_ATTR("foo")  V_VAR("b")
+
+    With the new arrangement, the same syntax is instantiated as:
+
+                   ACT_AI - R609 - V_VAL - R801 - V_LIN(1)
+                     |
+                   R689
+                     |
+                   V_VAL
+                     |
+                   R801
+                     |
+                   V_AVL - R806 - O_ATTR("foo")
+                     |
+                   R807
+                     |
+                   V_VAL - R801 - V_IRF - R808 - V_VAR("b")
+
+     Note first of all that the keyletters ACT_AI have been reused. They do not
+     represent the same metamodel element that they did in the previous example.
+     ACT_AI now represents 'Assign to Member' a generic assignment statement
+     subtype.
+
+7.2.1 Value Chain
+     Notice in the previous example that the functions of both the old R629 and
+     R630 are now satisfied with a single reference to the l-value across R689.
+     The required data is now held as a 'value chain'; a linked set of values
+     that together resolve the needed information. First of all, the l-value is
+     an attribute reference, referring to attribute "foo". But an attribute
+     value also needs an instance reference to resolve the value, this is
+     provided by navigating R807 to find the value on which this attribute value
+     is rooted; the instance reference value to variable "b".
+
+     This value chaining paradigm is leveraged to support structured data type
+     member references. In fact such chaining is required for this work, because
+     member references can now be arbitrarily deep (the previous design could
+     support references to only a single layer deep).
+
+     For example the syntax:
+
+     foo.bar.x = 0;
+
+     Requires a value chain three entries deep:
+
+                   ACT_AI - R609 - V_VAL - R801 - V_LIN(0)
+                     |
+                   R689
+                     |
+            (1)    V_VAL
+                     |
+                   R801
+                     |
+                   V_MVL - R836 - S_MBR("x")-------R44----+
+                     |                                    |
+                   R837                                   |
+                     |                                    |
+            (2)    V_VAL                                S_SDT
+                     |                                    |
+                   R801                                  R17
+                     |                                    |
+                   V_AVL - R806 - O_ATTR("bar") - R114 - S_DT
+                     | * (see below)
+                   R807
+                     |
+            (3)    V_VAL - R801 - V_IRF - R808 - V_VAR("foo")
+
+     The association loop O_ATTR->S_DT[R114]->S_SDT[R17]->S_MBR[R44] is
+     described in [3] and is shown here for completeness only.
+
+     Notice that an important feature of this change is that the V_AVL instance
+     at * may be replaced with a V_PVL instance to represent a structured data
+     type access on a parameter, or a V_EDV instance to represent a structured
+     data access on an event data item. Notice also that an V_MVL instance can
+     be substituted at * to represent nested structured data type access to an
+     arbitrary depth. Of course, with all the substitutions discussed, the
+     associations R806 and R807 will be replaced with others. These associations
+     apply specifically to the V_AVL subtype.
+
+     All value chains must ultimately end with a V_IRF (an instance), a V_PVL
+     (a parameter), a V_TVL (a transient) or a V_EDV (an event data item).
+
+     Finally, observe that these value chains are legal both as r-values across
+     R609 and as l-values across R689. This last rule has the notable exceptions
+     of a value chain ending with a V_EDV instance or ending with a V_PVL
+     instance where the associated parameter is not marked as passed by
+     reference. These specific value chains are legal as r-values only. This
+     is in order to be consistent with the semantics of xtUML execution rules.
+
+     The initial examples in 7.1 above represent the degenerate case where no
+     new syntax was used and the nesting is only one layer deep.
+
+     By this means, both Verifier and the model compilers have access to all
+     data needed to execute or generate code, even when data values are nested
+     very deeply.
+
+7.2.2 Required Changes
+
+7.2.2.1 Body Subsystem
+     The imported classes 'Assign to Transient' (ACT_AT) and 'Assign to
+     Parameter' (ACT_ATP) are removed. All references to ACT_AT and ACT_ATP are
+     removed.
+7.2.2.2 Domain
+     The 'Bridge Parameter' and 'Function Parameter' classes both have
+     references to ACT_ATP removed.
+7.2.2.3 Functions
+     The OAL Validation Functions are reworked to remove all references to
+     ACT_AT and ACT_ATP and instead instantiate the instance patterns described
+     above [7.2 and 7.2.1].
+
+     During Validation, the 'Member_access_start' function is called when syntax
+     for a value chain is first recognized. This happens before we know what
+     labels the user has referred to, but we need to chain the syntax handling
+     together with an id. Consequently, a value supertype is created and it's
+     id returned to allow subsequent Validation calls to contribute information
+     and subtypes to the Value. Function Member_access_loop11_end is called each
+     time a structured data type reference is matched. The reason it has 'loop'
+     in the name is that it will be called multiple times if a nested structured
+     data type such as 'w.x.y.z' is encountered. Finally, Member_access_end is
+     called by the parser when the end of the value chain is matched.
+7.2.2.4 Instance Access
+     ACT_AT and ACT_ATP are removed. The 'Assign to Attribute' (ACT_AI)
+     statement subtype is renamed 'Assign to Member'. All references to ACT_AT
+     and ACT_ATP are removed. The old R609 association is retained to represent
+     the r-value. A new association (R689) is added to represent the new l-value
+     concept.
+7.2.2.5 Subsystem
+     References to ACT_AI are removed from Attribute.dispose(). ACT_AI is no
+     longer directly associated with 'Attribute' (O_ATTR). The 'Operation
+     Parameter' dispose operation has a reference to ACT_ATP removed.
+7.2.2.6 Value
+     'Member Value Reference' (V_MVL) is added as a new subtype of Value. A new
+     association (R837) is added to support the value chain concept (7.2.1).
+     R807 is reused for the same purpose in 'Attribute Value Reference' (V_AVL).
+     It previously called out the related instance of an Variable representing
+     the instance variable that owned the desired attribute. It now points out
+     the 'Instance Reference' (V_IRF) value it is chained to.
+
+     Value has an isLValue attribute added to help simplify and clarify the
+     Validation Functions. A hasSubtype() operation is added to the Value class.
+     How a Value instance is created for a Structured Data Type is described
+     above [7.2.2.3]. However, some of the validation functions do not get
+     passed the Value id. This is because the parser code is generated and
+     this would require special casing in a highly reentrant/normalized part of
+     the design. Instead, we locate the value by looking for one which has no
+     subtype. The 'hasSubtype' operation provides this service.
+
+     'Value.isImplicit' is added to perform the same function as the boolean
+     attribute of the same name did when it was present in 'Assign to
+     Transient'. It calls out the case where a transient was assigned for the
+     first time.
+
+     Value setEndPosition is extended to handle the new 'Member Value Reference'
+     subtype and to remove code that made this function have side effects that
+     made it brittle in the case that it was called more than once on the same
+     Value instance.
+
+8. Work Required
+----------------
+The work required is outlined extensively above.
+
+9. Unit Test
+------------
+- See test note in 6.1.2.
+9.1     Update Unit Tests
+9.1.1   Most of the existing JUnit tests will need to be updated to work with
+        the new meta-model.  A large number of the existing tests use asserts to
+        validate the number of expected value instances matches the number of
+        actual value instances after parsing a piece of OAL.  The meta-model
+        changes will affect the number of value instances that are created.  In
+        many cases, the number of expected value instances will need to be
+        increased.
+9.1.2   We will need to create some new unit tests to specifically test
+        meta-model instance creation for SDTs.  These tests will be correlated
+        with a hand-drawn diagram of the expected instances.
+9.1.2.1 The SDT JUnit tests will consist of "positive" tests that check valid
+        syntax, and "negative" tests that check invalid SDT syntax.
+9.1.3   The positive tests will not attempt to be as exhaustive as for many of
+        the other OAL features.  Instead, a test model will be created that
+        contains every valid usage of an SDT.  The test model will be added to
+        the "ParseAllInDomain" test suite.  By exercising SDTs in this manner,
+        we will cover SDT testing.  A test matrix [4] has been created to
+        capture what usages of SDTs the test model actually covers.
+9.1.4   To test copying and pasting of the new data type, the SDT test model
+        just needs to be placed in the model_compilers/test folder.
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.17  2007/03/23 21:36:33  kbrown
+Job:478
+Completed updates to the design note.
+
+Revision 1.16  2007/03/23 20:59:05  campbell
+Job: 478
+Address review minutes.
+
+Revision 1.15  2007/03/23 20:12:22  tlondon
+Job: 478
+
+Add design section for copy/paste changes.  Also add note that placing the SDT test model under model_compilers/test will allow for testing of the SDT copy/paste functionality.
+
+Revision 1.14  2007/03/23 15:55:47  campbell
+Job: 478
+Added reference to array job BZ item.
+
+Revision 1.13  2007/03/23 15:37:26  campbell
+Job: 478
+Added more details of the changes to the Value subsystem.
+
+Revision 1.12  2007/03/23 14:48:29  campbell
+Job: 478
+Added details of the changes to the Value subsystem.
+
+Revision 1.11  2007/03/22 19:55:52  kbrown
+Job:478
+Added testing info to the design note.
+
+Revision 1.10  2007/03/06 20:05:16  campbell
+Job: 478
+Clarified that 7.2.1 is talking about the previous example. Corrected possible terminations of an value chain
+
+Revision 1.9  2007/03/06 19:07:08  campbell
+Job: 478
+Corrected incorrect references to association R629.
+
+Revision 1.8  2007/03/06 18:56:11  campbell
+Job: 478
+Clarified that the replaced classes are located in the Instance Access subsystem.
+
+Revision 1.7  2007/03/06 00:11:57  campbell
+Job: 478
+Add detailed description of Value and Instance Access subsystem rework.
+
+Revision 1.6  2007/02/08 20:10:12  kbrown
+Job:478
+Added some notes about parser changes.
+
+Revision 1.5  2007/02/08 03:09:05  campbell
+Job: 478
+Updated.
+
+Revision 1.4  2007/02/08 02:39:25  campbell
+Job: 478
+Updated.
+
+Revision 1.3  2007/02/07 18:23:02  campbell
+Job: 478
+Added comment about new associations likely between Structure Member and Value subsystem instances.Added cross reference to test note in test section.
+
+Revision 1.2  2007/02/07 17:54:07  campbell
+Job: 478
+Added metamodel change documentation.
+
+Revision 1.1  2007/02/07 17:21:01  kbrown
+Job:478
+Design note shell
+

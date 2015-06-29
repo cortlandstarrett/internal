@@ -1,0 +1,248 @@
+========================================================================
+
+File:      $RCSfile: i109.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Implement relationship phrases
+
+Abstract
+--------
+This note describes the changes to MC-Java to process relationship 
+phrases.
+
+History
+-------
+
+update i109-071404-01.rvm
+final  i109-071504-01.rvm
+
+Document References
+-------------------
+Issue 109
+
+Background
+----------
+
+MC-Java completely ignores relationship phrases.   This is especially
+inconvenient for reflexive relationship processing.
+
+Design
+------
+
+There are five fragment statements that have the relationship phrase
+as a parameter:
+
+stmt_relate
+stmt_unrelate
+stmt_relate_using
+stmt_unrelate_using
+chain_add_link
+
+The last fragment being used as part of a relationship chain in a 
+select ... related by statement. 
+
+i109.1  Fix schema declarations
+
+The classes that correspond to the fragments listed above have an
+attribute, Numb, that is supposed to be a referential to the related
+relationship.  Unfortunately, in these classes the attribute has a
+type of STRING, and R_REL.Numb has a type of integer.  This causes
+navigation from these classess to the R_REL class to not work.
+
+i109.1.1  The type of the Numb attribute is changed to INTEGER in the 
+following classes: ACT_REL, ACT_RU, ACT_UNR, ACT_URU, ACT_LNK.
+
+i109.1.2  fragment.inc is changed to generate integers instead of
+strings for the Numb attribute when creating INSERT statements 
+for the changed classes.
+
+i109.2  Add utility function
+
+The function is_reflexive, taking an R_REL instance, and returning
+a boolean attr_result is added to arch_names.inc.  This file is
+renamed to arch_utils.inc, since it's no longer just naming functions,
+and hasn't been for a while.
+
+i109.3  Implement relationship phrases
+
+When a relationship is reflexive, all relationship functions have 
+the phrases for the relationship added to them.
+
+i109.3.1 Relate/unrelate implementation
+
+The generation of the relate and unrelate functions are changed to
+add the phrase to the end of the function name if the relationship
+is reflexive.  Both the referring and referred to relate and
+unrelate functions are renamed.  Some additional tests are added
+for reflexive associative relationships, so that only the referential 
+attribute associated with the phrase is updated.
+
+i109.3.2 Select implementation
+
+The generation of the select functions are changed to
+add the phrase to the end of the function name if the relationship
+is reflexive.  Both the referring and referred to selection functions 
+are renamed.
+
+i109.3.3 Relate/unrelate invocation
+
+Generation of the relate and unrelate statements is changed to
+add the phrase for reflexive relationships.
+
+i109.3.4 Select invocation
+
+Generation of the select related by and select related by where
+statements are changed to add the phrase for reflexive relationships.
+
+i109.3.5 Framework changes
+
+There are two places where we need to take into account the 
+reflexive nature of the relationship.
+
+i109.3.5.1  batchRelateAll
+
+The relate invocation is changed to use the phrase if the relationship
+is reflexive.
+ 
+i109.3.5.2  propagateId
+
+The navigation function invocation is changed to use the phrase if the relationship
+is reflexive.
+
+i109.4  Change models to use reflexive relationships correctly
+
+i109.4.1  ooaofgraphics changes
+
+There is one reflexive relationship, R7.  The relationship is
+formalized correctly.
+
+- The attribute LineSegment.Next_GE_ID is renamed to Previous_GE_ID.
+- The operation Connector.Draw is changed to explictly select the
+first segment by adding a where (selected.Previous_GE_ID == 0) to the
+select at line 49.
+
+i109.4.2 ooaofooa changes
+
+There are five reflexive relationships in this domain:
+
+R103  O_ATTR ordering   - incorrectly formalized
+R112  O_REF ordering    - incorrectly formalized
+R604  ACT_LNK ordering  - correctly formalized
+R661  ACT_SMT ordering  - incorrectly formalized
+R816  V_PAR ordering    - incorrectly formalized
+
+For the incorrectly formalized relationships, the participant
+and formalizer roles are reversed by swapping the phrase positions.
+
+- The operation Selection.clear() is changed to remove the workaround
+code for R604.
+
+i109.4.3  OAL changes
+
+- The workarounds for navigating R604 are removed from process_related_by()
+  and clear_rel_data().
+
+- The phrases used for R816 are reversed in the following functions:
+
+  Invocation_parameters_loop4_end
+  Invocation_parameters_end 
+  Supp_data_loop6_end
+  Supp_data_end
+
+
+Work Required
+-------------
+
+i109.1  Fix schema declarations
+
+i109.1.1  The file ooa_schema.sql is updated with the changes.
+
+i109.1.2  The file fragment.inc is updated with the changes.
+
+i109.2  Add utility function
+
+The changes are made as described in the design.
+
+i109.3  Implement relationship phrases
+
+i109.3.1 Relate/unrelate implementation
+
+The changes are made to referred_to.inc and referring.inc.
+
+i109.3.2 Select implementation
+
+The changes are made to referred_to.inc and referring.inc.
+
+i109.3.3 Relate/unrelate invocation
+
+The changes are made to statement.inc.
+
+i109.3.4 Select invocation
+
+The changes are made to statement.inc.
+
+i109.3.5 Framework changes
+
+i109.3.5.1  batchRelateAll
+
+The changes are made to java.arc.
+ 
+i109.3.5.2  propagateId
+
+The changes are made to java.arc.
+
+i109.4  Change models to use reflexive relationships correctly
+
+i109.4.1  ooaofgraphics changes
+
+The changes are made to ooaofgraphics.bak.
+
+i109.4.2 ooaofooa changes
+
+The changes are made to ooaofooa.bak.
+
+The LineSegment.Next_GE_ID attribute name is also 
+changed in io.sql/sql/bp_gd.sql.
+
+i109.4.3  OAL changes
+
+The changes are made to function_import.sql.
+
+End
+---
+
+$Log: i109.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:17  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.158.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/07/15 18:25:14  greg
+Job: 109
+Made review changes
+
+Revision 1.2  2004/07/15 04:07:47  greg
+Job: 109
+Update from review
+
+Revision 1.1  2004/07/13 18:00:13  greg
+Job: 109
+Initial introduction
+

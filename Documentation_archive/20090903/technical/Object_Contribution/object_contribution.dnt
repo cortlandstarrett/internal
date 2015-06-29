@@ -1,0 +1,514 @@
+========================================================================
+
+File:      $RCSfile: object_contribution.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Generating Eclipse Object Contributions
+
+Abstract
+--------
+This document specifies the infrastructure provided to get Eclipse to
+add object contributions that invoke functions defined on a client
+model.
+
+History
+-------
+
+Document References
+-------------------
+[1] bp.core/doc/internal/technical/Object_Contribution/
+                                                 object_contribution.ant
+[2] bp.core/mdl/context_menu.bak
+[3] bp.core/doc/internal/technical/Wizard_Contribution/
+                                                 transaction_wizards.dnt
+[4] bp.core/doc/internal/technical/Action_Semantics/action_semantics.dnt
+
+Design Comments
+---------------
+During this work, it has become apparent that not all of the requirements
+identified under this task can be implemented by object contribution.
+The names of the design and implementation artifacts for this work are
+accordingly modified to 'context_menu' to reflect what most of the
+work is actually doing. The documentation names are retained for 
+traceability.
+
+Design
+------
+OC1.1    - Create the modeled generation infrastructure.
+
+OC1.1.1  - A new model, 'context_menu' is created.
+
+OC1.1.2  - The following entity is added:
+           - ContextMenuEntry (CME)
+             CME specifies that a given metamodel entity may have a
+             given function executed on it and that the function is
+             invoked when the user makes a context sensitive menu
+             choice.
+
+OC1.1.3   - Add the following attributes:
+            - Specialism (identifies the type of the entry)
+            - Label (the menu text),
+            - Key_Lett (the client entity referential)
+            - Icon (if not empty, specifies the icon Eclipse is to show
+              against the menu entry)
+            - Global (boolean indication that the action has global
+              scope, i.e. the menu entry appears in the global Eclipse
+              Menus).
+
+            If not empty, the 'Specialism' attribute specifies that some
+            specialized handling is to be carried out during the code
+            generation process. Possible values include:
+            - 'New'    causes the menu entry to be placed under the 
+                       'New >' menu (see OC1.6.1).
+            - 'Rename' causes specific the in-place renaming code to be
+                       generated for the action.
+
+            Entries marked as 'Global' have their client model classes
+            checked for in an 'instanceof' test in the retargetable
+            action specified in the 'Specialism' attribute. If multiple
+            entries marked as 'Global' share the same 'Specialism'
+            value, tests for them are combined into the same action
+            run method. These actions are hooked up by code in the
+            various editors and views (see OC1.5). Unless modified with
+            a Specialism such as 'New', all other entries are inserted
+            into the menu just above the global Cut, Copy, Paste group
+            of actions.
+
+            The 'Key_Lett' entry specifies which client model entity
+            has this menu entry added to it (using either an object
+            contribution or retargetable action as required).
+
+            The identifier for CME is made up of both the Label and
+            Key_Lett attributes. This allows otherwise ambiguous (in a
+            flat view) labels to co-exist on different objects. The 
+            context disambiguates the function for the user.
+
+            This model defines a schema for build time pre-existing 
+            instance data. See the context_menu model itself[2]
+            for full descriptions of the entity and its attributes. The 
+            build time data is used for the following purposes:
+
+            - to generate the plugin manifest that defines what context
+              menus are to be displayed.
+            - to generate action classes that carry out the behavior
+              specified in the corresponding functions defined in the
+              client model. 
+            - to generate instanceof tests and delegation inside the
+              actions associated with the retargetable actions for
+              'Delete' and 'Rename' (Eclipse does not currently support
+              Object Contributions to retargetable actions, so this work
+              will have to be repeated for Explorer and Outline Viewer
+              context menus now and for the Canvas Editor context menu
+              later).
+              
+OC1.1.4   - The following entities are added:
+            - Workflow     (W_WOF) This represents the workflow captured
+                                   by action language in a given function
+                                   created to service a Context Menu
+                                   Entry[OC1.3].
+            - Context Item (W_CTI) This represents a value available
+                                   when a given workflow is started
+                                   (specifically because the item is
+                                   selected when the context menu is
+                                   chosen).
+                                   
+OC1.1.5   - The following attributes are added:
+            - W_WOF.Name           The name of the workflow, set to the
+                                   value of CME.Label.
+            - W_WOF.Sync_ID        Referential to the Function that 
+                                   specifies the workflow.
+            - W_CTI.Name           The name of the action language
+                                   instance handle that was used in
+                                   the select statement that specified
+                                   this context item.
+            - W_CTI.Workflow Name  Referential to the workflow that has
+                                   this item as context.
+            - W_CTI.Statement_ID   Referential to the select statement
+                                   that specified this context item.
+            - W_CTI.Key_Lett       The type of client model object
+                                   selected.
+            - W_CTI.Type           The type of the context item, 'Ref'
+                                   or 'Set'.
+                                   
+            This part of the model is used to store information about
+            the required user interactions captured when scanning the
+            user supplied function action language[OC1.7].
+                                                          
+OC1.1.6   - The model is added in backup form at:
+            com.projtech.bp.core/mdl/context_menu.bak
+            
+OC1.1.7   - The model is added in sql form at:
+            com.projtech.bp.core/sql/context_menu.sql
+
+OC1.1.8   - The model is added in schema form at:
+            com.projtech.bp.core/sql/context_menu_schema.sql
+          
+OC1.2     - Create the pre-existing instances.
+
+OC1.2.1   - Create the file:
+            com.projtech.bp.core/sql/context_menu.pei.sql.
+
+OC1.2.2   - 10 CME entries are added to the new file. They specify:
+            - A Domain instance (S_DOM) for New Function and New
+              Subsystem.
+            - A Subsystem (S_SS) instance for New Class.
+            - A Class instance (O_OBJ) for New Operation.
+            - A Function instance (S_SYNC) for New Parameter and 
+              Change Return Type.
+            - An Operation instance (O_TFR) for New Parameter
+              and Change Return Type.
+            - A Function Parameter (S_SPARM) instance for Change Type.
+            - An Operation Parameter (O_TPARM) instance for Change Type.
+          - An additional 14 CME entries are added for Delete and Rename
+            of each level of the tree (Domain, Subsystem, Class,
+            Function, Operation, Function Parameter and Operation 
+            Parameter).
+             
+OC1.3     - The function bodies for the menu entries specified in the
+            analysis note are created and added to the client model,
+            ooaofooa.
+
+OC1.3.1   - The functions are generated, stored and maintained in a manner
+            similar to that employed by the action semantics work[4]. The
+            same motivations are at work here; we wish to keep the inter-
+            face functions partitioned and separately version controlled
+            from the rest of the client model.
+            
+            An archetype, 'function_gen.arc' scans the CME instances and
+            creates empty function specifications. Each function is
+            named ${CME.Key_Lett}${CME.Specialism}${CME.Label}. Each function
+            description contains:
+            
+            ContextMenuFunction: TRUE
+            
+            This keyword is used later to extract the generated
+            functions after they have had hand written action language
+            bodies added using the appropriate tool (BP or Tiger)[OC1.3.2].
+            All functions identify the instance on which to perform the
+            change using a 'select from instances of' statement. As
+            required by Eclipse, these functions are called from the
+            run method of a class extending the Action class. These
+            classes are generated by work described below[OC1.4].            
+
+OC1.3.2   - Create the function bodies by hand. Functions are required
+            for each of the 24 context menu entry instances created above
+            [OC1.2.2]. However, 'Retype' transactions require additional
+            processing with support developed by the wizard contribution
+            task[3] and so are not introduced here. That leaves 20
+            function bodies to be created by this work. The remaining 4
+            functions are generated by the work above[OC1.3.1] but no
+            bodies are supplied by this work.
+
+            Notes: Because the MC-Java architecture does not automatically
+            delete orphaned metamodel instances, each delete operation
+            is required to carry out this task explicitly prior to
+            deleting 'self'. Since MC-Java cannot derive the intent of
+            the analyst, creation operations must explicitly relate the
+            new instance to the instance running the delegated operation
+            across the appropriate relationship.
+
+OC1.4     - Create the archetype file create_context_menus.arc
+            This file is the main entry point for the plugin code
+            generation process. It calls the functions described below
+            to get the appropriate code generated. All the .arc and .inc
+            files discussed below are located in com.projtech.bp.core/arc.
+            All generated code is written to src/com/projtech/bp/core/ui.
+
+OC1.4.1   - Create the archetype function 'create_global_action'. This
+            function takes three parameters, the path, the action name
+            and an icon name. It generates a class declaration that
+            extends 'org.eclipse.jface.action.Action'. In the main 
+            archetype, 'create_context_menus.arc', the set of CME
+            instances marked as 'Global' is selected. The function
+            'create_global_action' is then called once for for each
+            unique value of 'Specialism' within this set, passing the
+            'Specialism' value as the name and the value of any 'Icon'
+            value found in the set.
+            
+            In each case, the function generates an action class with a
+            run method that uses 'instanceof' to identify the selected
+            object's class and then calls a function whose body is
+            generated from the appropriate client model function (as
+            specified by the returned value from getFunctionName(cme)').
+            The action function bodies are generated here because they
+            rely on the selection obtained from the Action context to
+            supply the set expected by the 'select from instances of'
+            statement. The action function body is generated by calling
+            the archetype function 'function_body'[OC1.8].
+            
+            If not empty, the icon parameter is used to generate code
+            that loads the nominated icon for the action. The icon
+            file must be present in 'bp.core/icons'. If conflicting Icon
+            values are present (recall that there may be more than one
+            entry for a given global action) then an error will be
+            reported and no icon will be set.
+            
+            The 'create_global_action' function is defined in the file,
+            'create_global_action.inc', which is included by 
+            create_context_menus.arc and called from there. The class
+            generated is named '${type}Action.java'.
+            
+OC1.4.2   - In order to provide an 'in-tree' renaming capability, the
+            specialism 'Rename' has additional implementation based on
+            code found in org.eclipse.ui.actions.RenameResourceAction.
+            When renaming is complete, an instanceof test identifies the
+            client model instance being edited and control is passed
+            to a function whose body is generated from the appropriate
+            client model function as described for create_global_action
+            above[OC1.4.1]. The rename action class is generated using
+            the archetype function 'create_rename_action', held in file
+            'create_rename_action.inc'.  This file is included and
+            called by create_context_menus.arc.
+
+OC1.4.3   - Create archetype functions to create Action handlers that
+            are invoked when the object contribution context menu entry
+            is selected by the user. Each CME instance that is not 
+            marked as 'Global' has an IAction implementor generated for
+            it. This implementor obtains the target instance (or
+            instance set) from the current selection maintained by
+            core. The expected selections are found by scanning the
+            appropriate client function action language in a separate
+            pass[OC1.7]. The body of the function that implements the
+            action is supplied by calling the archetype function,
+            'function_body'[OC1.8].
+            
+            If not empty, the 'Icon' attribute is used to generate
+            code to load the nominated icon for the action. This allows
+            icons to appear in the menus, reducing the time required
+            for the user to locate the appropriate menu entry for a
+            given task. This capability is not required for 'Rename'
+            (rename has no standard icon) or 'Delete' (delete has a
+            standard icon which is specified in the call to 'create_
+            global_action').
+            
+            These action classes are generated by the archetype function
+            create_object_contribution_action, declared in the file
+            'create_object_contribution_action.inc'. This file is
+            included and called by create_context_menus.arc.
+
+OC1.5     - The delete and rename actions generated in OC1.4.1 are called
+            from all BridgePoint plugins where the respective retargetable
+            actions would naturally appear to the user. These are; Model
+            Explorer, Outline and from the Canvas.
+
+OC1.5.1   - Model Explorer is modified to hook up the newly generated
+            global action classes to the delete and rename entries
+            in the Explorer menu, rather than creating instances of the
+            unspecialized Action class. Since Explorers createPartControl
+            already registers the rename and delete actions, this also
+            has the effect of registering the classes generated in OC1.4.1
+            as retargetable.
+
+OC1.5.2   - The ModelContentOutlinePage is modified to create and hook up
+            the Delete and Rename action classes in a similar manner to
+            that described above for the Model Explorer.
+
+OC1.5.3   - The canvas editor is unavailable at the time of this work.
+            An issue is raised to track the need to do the same work for
+            the canvas context menu when it is developed.
+
+OC1.6     - Create an archetype to generate a new Core plugin.xml file.
+
+OC1.6.1   - Create the archetype function 'create_core_plugin', specified
+            in the file 'create_core_plugin.inc' and include and call it
+            from 'create_context_menus.arc'. It defines all of the plugin
+            infrastructure that remains constant and generates the object
+            contributions for the plugin.
+
+            It iterates over all the CME instances not marked as 'Global'
+            an <objectContribution> element is added to the plugin for
+            the client model class. The archetype then generates an
+            <action> element. The archetype finds the function body (see
+            OC1.3 above) for the specified menu entry and finds any 
+            USER::selectX bridge calls. If a 'selectOne' is found for
+            the specified CME.Key_Lett value, the cardinality (in
+            Eclipse terminology, enables-for) is set to '1'. If a
+            'selectMany' bridge call is found, the cardinality is set to
+            '+'. This causes Eclipse to leave the menu entry enabled
+            when multiple instances of the client model object are
+            selected. The <action> element's 'label' attribute is set to
+            the value of 'CME.Label'. If a scan of the specified
+            function reveals that additional user interface is needed,
+            ellipses (...) are appended to the Label.
+          
+            If the CME.Specialism entry is 'New', the menu entry is
+            contributed to the menu path, 'com.projtech.bp.ui.newmenu'.
+            For example, a pre-existing CME instance:
+            
+            INSERT INTO CME VALUES ('New',
+                                    'Parameter',
+                                    'S_SYNC',
+                                    'create_func_param',
+                                    '',
+                                    'f');
+            
+            appears to the user as:
+            
+               New > Parameter
+
+            In this way, multiple new items can be accommodated at any
+            one point in the tree. For example, at the Domain level the
+            context menu will (eventually) show:
+            
+               New > Function
+                     Subsystem
+                     External Entity
+                     Data Type
+            
+            The menu path, 'com.projtech.bp.ui.context-internal' is used
+            for all other (i.e. not 'New' or 'Global') contributions.
+            
+OC1.6.2   - Since plugin.xml is now generated, the file bp/core/plugin.xml
+            is removed from CVS.
+
+OC1.7     Client model function action language must be scanned to obtain
+          the context items needed by the function. This is done in a 
+          separate pass using the main archetype wfl_pop.arc. This
+          archetype iterates over all functions defined in the generation
+          database. If a function defines a statement that 'selects from
+          instances of', and that statement has a where clause that makes
+          a bridge call on the USER external entity, then an instance of
+          Workflow (W_WOR) is created for the function and an instance of
+          context item (W_CTI) is created for each select statement. This
+          last task is carried out by the archetype function,
+          'wfl_blck_xlate', declared in wfl_block.inc. This archetype
+          function traverses instances in the ooa of oal subsystems. It
+          finds each select statement which passes the criteria above and
+          creates a corresponding W_CTI instance for it.
+
+OC1.8     Action methods must be generated to implement the action code
+          specified by the analyst in the function bodies. This is done
+          by the archetype function 'function_body' defined in the file,
+          'function_body.inc' The 'function_body' emits the code needed
+          to extract the selection(s) from the core model based on W_CTI
+          instances. Once the context instances are retrieved, control
+          passes to code generated from the same client function action
+          language. This code is generated using a modified action
+          language translator that skips code generation for the select
+          statements corresponding to the W_CTI instances. This is what
+          we want, because these instance handles are already set up
+          from the selections.
+
+Work Required
+-------------
+OC1.1.1 - Create the indicated model.
+OC1.1.2 - Create the indicated entity.
+OC1.1.3 - Add the indicated attributes.
+OC1.1.4 - Add the backup in the indicated place.
+OC1.1.5 - Add the sql file in the indicated place.
+OC1.1.6 - Add the schema in the indicated place.
+OC1.2.1 - Create the indicated file.
+OC1.2.2 - Add the specified CME entries.
+OC1.3.1 - Convert the action semantics function handling to work in the 
+          context of context menus.
+OC1.3.2 - Create by hand the indicated function bodies.
+OC1.4   - Create the archetype file, create_context_menus.arc
+OC1.4.1 - Create the archetype file, create_global_action.inc.
+OC1.4.2 - Create the archetype file, create_rename_action.inc.
+OC1.4.3 - Create the archetype, create_object_contribution_action.inc.
+OC1.5.1 - Make the indicated changes to
+          'com.projtech.bp.ui.explorer/arc/create_explorer_view.inc'
+OC1.5.2 - Make the indicated changes to
+          'com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                           ModelContentOutlinePage.java'
+OC1.5.3 - Raise an issue to track the outstanding canvas work.
+OC1.6.1 - Create the archetype file, 'create_core_plugin.inc'
+OC1.6.2 - Delete the hand written file 'com.projtech.bp.core/plugin.xml'.
+OC1.7.1 - Create the archetype file wfl_pop.arc
+OC1.7.2 - Create the archetype file wfl_block.inc
+OC1.8   - Create the archetype file function_body.inc
+
+End
+---
+$Log: object_contribution.dnt,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.17  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.16.168.1  2008/12/31 16:10:26  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.16  2003/08/08 17:49:25  campbell
+Job: 53
+Changed workflow archetype name.
+
+Revision 1.15  2003/08/07 00:41:51  campbell
+Job: 53
+Added further discussion about workflow.
+
+Revision 1.14  2003/08/06 21:02:51  campbell
+Job: 53
+Added further discussion about workflow.
+
+Revision 1.13  2003/08/06 20:50:02  campbell
+Job: 53
+Added discussion about workflow.
+
+Revision 1.12  2003/07/31 20:30:01  campbell
+Job: 53
+Minor change to function naming convention.
+
+Revision 1.11  2003/07/26 00:38:32  campbell
+Job: 53
+ Addressed review issues.
+
+Revision 1.10  2003/07/25 16:23:22  campbell
+Job: 53
+Final pre-review changes.
+
+Revision 1.9  2003/07/24 00:46:29  campbell
+Job: 53
+Address pre-review comments.
+
+Revision 1.8  2003/07/23 20:14:34  campbell
+Job: 53
+Reworked with in place editing.
+
+Revision 1.7  2003/07/18 20:05:54  campbell
+Job: 53
+Updated with pre-review comments.
+
+Revision 1.6  2003/07/16 17:11:38  campbell
+Job: 54
+Added comment aboutexplicit generation for
+retargetable actions.
+
+Revision 1.5  2003/07/16 17:03:03  campbell
+Job: 54
+Finalized for pre-review.
+
+Revision 1.4  2003/07/16 16:52:30  campbell
+Job: 54
+Updated.
+
+Revision 1.3.2.2  2003/07/16 16:18:30  campbell
+Job: 53
+Merged changes into sandbox
+
+Revision 1.3.2.1  2003/07/15 20:50:46  campbell
+Job: 11
+Merged changes into sandbox
+
+Revision 1.3  2003/06/12 16:10:45  campbell
+Job: 20
+Updated and renumbered
+
+Revision 1.2  2003/06/12 00:02:53  campbell
+Job: 20
+Broke out Object Contribution work separately from
+Explorer View stuff.

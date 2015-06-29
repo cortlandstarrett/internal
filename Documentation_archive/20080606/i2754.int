@@ -1,0 +1,149 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Fix 6.1 zoom on import
+
+1. Abstract
+-----------
+This note describes the changes required to fix the zoom level for any 6.1 model
+that is imported, where the model was created using a locale that makes use of
+the comma in place of a decimal.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2754
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2754
+[2] Bugzilla item 1564
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1564
+
+4. Background
+-------------
+BridgePoint 6.1 stored precise numbers (numbers with 6 decimal points) in the
+format determined by a user's locale.  The swedish locale happens to replace the
+decimal with a comma.  Today we parse sql files and xtuml files such that the
+comma is used to separate attributes in the SQL table.  Upon import of a model
+which makes use of a comma in place of a decimal point, BridgePoint will see the
+comma and split the two sides into two attributes.
+
+[2] fixed this issue for the eclipse based BridgePoint by forcing the export of
+numbers to use the english locale.
+
+5. Design
+---------
+There was no simple way to fix this appropriately, that is handle commas
+gracefully in the parser.  When investigated it was determined that there is
+only one attribute in the entire 6.1 metamodel that used a precise number.  This
+attribute was the GD_MD.ZoomFactor attribute.  We were afraid that the next
+attribute in the GD_MD class would lose its proper value (which it will), but
+the last attribute in the class is a boolean indicating whether or not a grid
+shall show.  Considering we do not support a visual grid this attribute value
+can be discarded.  And considering we can discard the last value we are left to
+worry about simply adjusting the zoom value if it is equal to zero (a zero value
+causes graphical placement issues on upgrade).
+
+In ImportHelper.java we already have a method which takes care of upgrading old
+GD_MD values.  In this method code was added to check for a zero value and
+modify the value to 1 in such a case.
+
+Due to this bug, models which were imported prior to this fix may be left with
+floating text that is off the screen.  In addition to the floating text being
+off the screen, the floating text may have bad dimension values causing the tool
+to believe that the floating text is larger than the entire possible canvas
+size.  This will cause certain associations to get selected when expecting a
+selection of an entirely different element.
+
+In order to fix these issues code was added to the zoom all code.  This code
+will first adjust all floating text's dimensions such that they are no larger
+than the actual text.  After doing this the code will find all floating texts
+that are not on the allowed canvas area (less than zero coordinate, or greater
+than the predefined BridgePoint canvas width and height), and move them to the
+top left corner such that no texts overlap.
+
+6. Implementation Comments
+--------------------------
+6.1 The change to adjust floating text resize boxes caused some association text
+    phrases to be split across multiple lines in test models.  When there is a 
+    newline in the text, the draw-text logging facility does not log it.  
+    Therefore, there were some differences where muti-word phrases previously 
+    had a space and now they do not.  The expected result was updated to account 
+    for this.
+
+
+7. Unit Test
+------------
+Manual test:
+
+_- Import the model attached to [1] named 6.1 test model.
+_- Open the SS diagram
+_R All text and shapes are correctly placed (not bunched in the left corner)
+
+_- Import the model attached in [1] named 1.5.3 test model.
+_- Open the SS diagram
+_R The shapes and floating texts are bunched in the top left corner
+_- Hit the zoom all button
+_R All shapes are zoomed, some floating texts are layed out at the top left
+   corner of the diagram
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.io.core/src/com/mentor/nucleus/bp/io/core/
+    ImportHelper.java
+
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Model/Model.xtuml
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasEditor.java
+
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/CopyTests_1/CopyTests_1-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/CopyTests_1/
+    CopyTests_1-5.jpg
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:19  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.4  2008/03/27 16:15:14  rmulvey
+Job:2754
+Added an implementation comment to explain why a couple of expected results in the canvas were updated.
+
+Revision 1.3  2008/02/04 20:29:33  tlondon
+Job: 2754
+
+Adjust according to review minutes.
+
+Revision 1.2  2008/02/04 18:57:48  tlondon
+Job: 2754
+
+Add xref to issue which fixed output of reals.
+
+Revision 1.1  2008/02/04 16:35:24  tlondon
+Job: 2754
+
+Introduce

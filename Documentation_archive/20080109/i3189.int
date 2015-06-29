@@ -1,0 +1,198 @@
+========================================================================
+
+File:      $RCSfile: i3189.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Stabilize existing unit tests
+
+1. Abstract
+-----------
+This note describes the changes required to allow all existing unit tests to
+pass.  It also describes the changes required to allow them to pass across
+multiple runs.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3189
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3189
+
+4. Background
+-------------
+Since the release of PLCM there have been certain tests that have failed.  These
+failures were always related to timing and thus have been ignored.  At this
+point we'd like a clean set of test suites.
+
+5. Design
+---------
+5.1 Shutdown delayed marker job on plug-in shutdown
+
+During the test runs a problem was noticed where the DelayedMarkerJob was found
+still running after the workbench had shutdown.  An error indicating this was
+causing unit tests failures.
+
+The DelayedMarkerJob has a method added, internal_cancel, which will empty the
+current event queue and cancel the job.  If the job cannot be cancelled by the
+eclipse platform, the method will join it until it finishes processing the last
+event.
+
+The archetype to generate the CorePlugin class is changed to call the method
+created above during plug-in shutdown.
+
+5.2 Treat a SQL comment as a line
+
+The SQL parser currently does not count a comment as a line.  The result of this
+is incorrect line numbers displayed in error messages.
+
+The parser is changed to count a comment as a line.  All SQL parser related
+expected test results are updated to account for this.
+
+5.3 Initialize SVN plug-ins before project creation
+
+The SVN plug-ins generate an NPE during xtUML project creation.  To avoid this
+during test runs the SVN plug-ins are initialized before any test project is
+created.
+
+5.4 Prevent contructor errors during test runs
+
+Occasionally a test suite will fail with a constructor error.  This is due to
+the project not having the xtUML nature added before the Persistable Model
+Component is setup.  The reason that the nature is not added is because the
+project has not yet been opened.
+
+The test project creation method is changed to wait for all platform jobs to
+complete before attempting to add the nature.
+
+5.5 Fix io.mdl tests
+
+The test, FileVsFolder_i1608Test, was not passing due to the expected result of
+a dirty file decoration being present when it was not.  The decoration could
+never be present as the tool's persistence was disabled.
+
+The persistence is enabled for the test.
+
+A few tests expected one less editor then actually opened.  This is due to the
+fact that now a System Model has a canvas editor.  The expected editors are
+increased by one.
+
+Another test expected that the system model file would not exist if deleted in
+the resource navigator.  This is not true as the resource listeners will
+recreate this file.  The test is updated to check that the file was recreated.
+
+The remaining failures are related to timing issues with respect to opening and
+closing editors.  These areas are changed to wait for all platform jobs and
+display events to process before checking the opened and closed editors.
+
+5.6 Fix canvas tests
+
+The auto reconciliation tests were failing because they relied on the VCS model
+in SVN to not change.  The test was originally pointed at the live version of
+the model.  The model is now tagged and the test is changed to point at the
+frozen tagged version.
+
+6. Implementation Comments
+--------------------------
+All places where the method BaseTest.dispatchEvents() was being called are
+changed to not specify a delay time.  This simply put the thread to sleep for a
+given amount of time.  This was not necessary, and it slows the total test time
+down.  There is not much speed increase, but non the less the delay was not
+required.
+
+7. Unit Test
+------------
+_- Run all existing tests
+_R All tests pass first try
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/marker/
+    DelayedMarkerJob.java
+
+com.mentor.nucleus.bp.io.core/src/com/mentor/nucleus/bp/io/core/sql_insert.g
+
+com.mentor.nucleus.bp.io.mdl.test/src/IOMdlTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/dangle/
+    DRBaseTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    CVSOperationsTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    DeleteTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    EditorTestUtilities.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    FileVsFolder_i1608Test.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    ModifyContentsTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    ModifyRelationTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMBaseTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMDeleteTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMModifyRelationTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    RenameTest.java
+
+com.mentor.nucleus.bp.io.sql.test/src/IOTest.java
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/BaseTest.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/CVSUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    ExplorerUtil.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/SVNUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    TestingUtilities.java
+
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    AutoReconciliationTests_1/AutoReconciliationTests_1-110
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    CanvasEditor_odms_test_35/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/
+    FreeFloatingConnectorTests_1/5-105
+com.mentor.nucleus.bp.ui.canvas.test/src/CanvasTestSuite.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    AutoReconciliationTests.java
+com.mentor.nucleus.bp.ui.canvas.test/generate.xml
+
+com.mentor.nucleus.bp.ui.explorer.test/src/com/mentor/nucleus/bp/ui/explorer/
+    test/ExplorerTest.java
+
+End
+---
+
+$Log: i3189.int,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.2  2007/10/16 19:31:13  tlondon
+Job: 3189
+
+Update according to review minutes.
+
+Revision 1.1  2007/10/15 22:32:37  tlondon
+Job: 3189
+
+Introduce

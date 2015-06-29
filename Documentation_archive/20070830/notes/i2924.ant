@@ -1,0 +1,245 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+New OAL syntax to support Components
+
+1. Abstract
+-----------
+This note analyses the requirements for supporting Components, Interfaces,
+Ports and Signals in OAL.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2924
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2924
+[2] UML Reference Manual 2nd ed. Definition of term 'message' pp 450.
+[3] Sally Shlaer and S. J. Mellor Object Lifecycles
+
+4. Background
+-------------
+The work to add component concepts to the BridgePoint tool is discussed
+elsewhere. This note is specific to the support required in the OAL for
+components.
+
+5. Analysis
+-----------
+5.1 We need to address the following high level requirements:
+
+5.1.1 Send a signal to another component.
+      Support for receiving incoming signals is addressed elsewhere.
+5.1.2 Call an operation on another component.
+      Support for receiving incoming calls is addressed elsewhere.
+5.1.3 Require as little knowledge of the sending component as possible.
+      The analyst should not have to cache component handles or otherwise know
+      how a component is addressed. Components should be as anonymous as
+      possible. The analyst should be able to interact with another component
+      knowing only the interface between them.
+5.1.4 Support implicit component addressing.
+      There are two cases where there is no ambiguity about which component is
+      the recipient of a given signal. Firstly when a component interface is
+      1 to 1, and secondly when architectural support is provided for cacheing
+      component identity for a given thread of control.
+5.1.5 Support explicit component addressing.
+      Where a port is decorated to indicate that more than one component may
+      interact across a given interface reference, it may be necessary to
+      explicitly identify the component to which a message should be directed.
+
+Note that, in line with the UML Reference Manual[2], the term 'message' is used
+below to mean either sending a signal or calling an operation on a component.
+
+5.2 Message Addressing
+    We need to provide syntax that allows the OAL writer to send a message.
+    Here is the proposal:
+    
+    send <Interface Name>::<Message Name>(<Message Parameter Name>: <value>);
+    
+    or
+    
+    send <Port Name>::<Message Name>(<Message Parameter Name>: <value>);
+    
+    If a port has no name, then the first syntax is mandatory. If a component
+    requires or provides the same interface more than once, then a uniquely
+    named port shall be required for one or both of the ports. The alternative
+    syntax proposed above shall be required for this situation. If the user
+    wishes to name a port to an interface they use only once, this shall be
+    allowed. In that case, either syntax above is legal. In both syntaxes
+    above, the keyword 'send' shall be optional.
+
+    Note that no nesting support for signals or ports is needed. For example:
+    
+    send Folder1::Folder2::<Interface Name>::<Signal Name>();
+    
+    Interface packages may be nested to be sure, but the syntax proposed here
+    refers to the Interface _reference_. These are always found on the boundary
+    of the Component/Domain and are thus all considered to be at the same level.
+    
+    Components may also be nested. Here, messages that cross component
+    boundaries shall be connected graphically using the delegation notation, so
+    no nesting syntax is needed to meet this requirement either.
+
+    This syntax addresses requirements 5.1.1 and 5.1.2 above. In other words,
+    the same syntax allows both synchronous and asynchronous inter-component
+    communication.
+    
+5.3 Component Identity
+    A new core data type 'component_ref', shall be added at the system level.
+    
+    The parser shall be extended to add a new keyword, 'sender'. This keyword
+    shall be legal in any activity. The 'sender' keyword shall be a value of
+    type 'component_ref'.
+
+    The 'component_ref' type shall be available in all places other core
+    types can be used; arguments, return value, event data, attributes and
+    structure members. This shall allow the user to pass the handle of a
+    component around at will.
+    
+    Because 'component_ref' is a core type, the user may create user defined
+    variants. These may be used by the model compiler to implement alternate
+    component handle implementations.
+    
+    This partially addresses requirement 5.1.5 above.
+    
+5.4 Optional Component Addressing
+    The syntax proposed in 5.2 above shall have an optional additional segment:
+    
+    to <component>
+    
+    where <component> is any value of type 'component_ref'.
+    
+    Since 5.3 permits values of type 'component_ref' to be freely passed
+    and cached throughout the model, adding 'to <component>' syntax to a message
+    allows it to be sent to an explicitly specified component.
+
+    This additional syntax completes coverage for requirement 5.1.5. 
+    
+    The Default Component (see 5.6 below) may be addressed using the syntax,
+    'to sender' or by omitting the 'to <component>' syntax altogether.
+
+    This syntax addresses requirement 5.1.4. The fact that the 'to component'
+    syntax is optional where possible addresses requirement 5.1.3.
+
+5.5 Disable Implicit Component Addressing
+    Implicit component addressing requires special architectural support, and
+    there are some cases where component abiguity exists (see the solicited
+    event case described in [3, pp 96]). To allow users to avoid potential
+    problems associated with these observations, a per model preference shall
+    force all signal references to use explicit component addressing only.
+    When this preference is selected, the 'sender' keyword specified in 5.3
+    shall be legal in interface activities only, where it shall refer to the
+    identity of the component that triggered the interface activity. The default
+    setting of this preference shall be to allow implicit component addressing.
+
+5.6 Default Component    
+    In the case described in [3, pp96] the default component is always the
+    initiator of the current thread of control segment. A thread of control
+    segment is that part of the overall thread of control currently being
+    executed inside the component being modeled. In other words, on the diagram
+    at the top of [3, pp 96], the sender of the _unsolicited_ event is the
+    default component for the first part of the top thread of control, and the
+    sender of the _solicited_ event is the default component for the part of
+    upper thread of control from the moment the locus of control recrosses the
+    domain boundary until it terminates.
+    
+    Implicit and explicit component addressing may be mixed (always provided
+    implicit component addressing is enabled), so where a component other than
+    the default component must be addressed, this can be achieved by cacheing
+    and explicitly addressing the desired component.
+
+5.7 Name Scoping and Precedence
+    The proposed syntax allows for ambiguities with other pre-existing model
+    elements. These are class operations and bridges. This shall be resolved
+    with a precedence hierarchy. Precedence shall flow from local to global;
+    i.e. operation, message then bridge. The default may be overridden as
+    required, using the 'send' or 'bridge' keywords.
+
+5.8 Examples
+5.8.1 Interface1::Signal2(parm1: 3);
+    
+5.8.2 send Port5::Signal1();
+    
+5.8.3 send Port3::Signal11(parm1:rcvd_evt.x, parm2:rcvd_evt.y) to
+                                                             rcvd_evt.requestor;
+5.8.4 UI::Update() to self.client;
+    
+5.8.5 result = Controller::RequestTime(unit:Time::milliseconds);
+
+5.8.6 send AnotherPort::ACK() to sender;
+
+    Note that if implicit component addressing is disabled, the last example is
+    legal only in an interface activity (assuming no previous OAL. Creating a
+    local variable of type 'component_ref' called 'sender' is perfectly legal in
+    all contexts).
+
+6. Work Required
+----------------
+
+7. Acceptance Test
+------------------
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.9  2007/05/22 00:39:33  campbell
+Job:2924
+Replace 'inst_ref<Component>' with 'component_ref'. Specify that the 'sender' keyowrd is valid everywhere unless implicit component addressing has been disabled.
+
+Revision 1.8  2007/05/18 17:03:29  cstarret
+job:2924
+fixed a few typos, sent to colleagues
+
+Revision 1.7  2007/05/17 23:03:38  campbell
+Job:2924
+Change to use signal in compliance with UML standard and to substitute the
+term message to mean either asynchronous or synchronous communication.
+
+Revision 1.6  2007/05/17 19:00:47  cstarret
+job:2924
+updates from Campbell after phone discussion
+
+Revision 1.5  2007/05/17 16:00:45  cstarret
+job:2924
+small readability changes, one new example and angle brackets
+
+Revision 1.4  2007/05/17 00:15:45  campbell
+Job:2924
+Default to implicit component addressing.
+
+Revision 1.3  2007/05/17 00:03:00  campbell
+Job:2924
+Clarify explicit versus implicit component addressing.
+
+Revision 1.2  2007/05/16 23:12:29  campbell
+Job:2924
+Updated.
+
+Revision 1.1  2007/05/16 23:00:45  campbell
+Job:2924
+Introduced.

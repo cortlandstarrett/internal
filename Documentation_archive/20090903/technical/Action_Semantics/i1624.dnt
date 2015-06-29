@@ -1,0 +1,890 @@
+========================================================================
+
+File:      $RCSfile: i1624.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add location information to OAL elements
+
+Abstract
+--------
+This note describes adding line and column information to the OAL 
+elements.
+
+History
+-------
+update i1624.dnt-20060208-01.rvm
+final  i1624.dnt-021706-01.rvm
+
+Document References
+-------------------
+
+[1] BZ issue 1624
+[2] BZ issue 313
+
+Background
+----------
+
+The Model Verifier needs to know the location of an OAL element in order
+to set breakpoints and display variable data in infopops.
+
+Analysis
+--------
+
+Each statement in OAL should have the associated line that statement
+is at in the activity.  The line number associated with multiline 
+statements is the line the statement begins on.  We also need to know
+the column the statement begins on, for the case of multiple statements
+on one line.
+Each variable needs to have the line and column information available so
+that infopops showing the variable's current value can be implemented.
+
+Design
+------
+
+1.  Add line information to statements.
+
+The attribute LineNumber (integer) is added to the Statement (ACT_SMT)
+class.  The attribute has the following description:
+
+The line in the activity at which this statement resides.  For multi-line
+statements, this is the line that the statement starts at.  It has
+a default value of -1, indicating that the location is not known.
+
+The attribute StartPosition (integer) is added to the Statement (ACT_SMT)
+class.  The attribute has the following description:
+
+The column in the activity at which this statement starts. It has
+a default value of -1, indicating that the location is not known.
+
+2.  Add location information to variables and values
+
+Note that we add location information to the value class so that the
+infopop information can be displayed when a variable is used as an r-value.
+
+2.1  The class VariableLocation (V_LOC) is added. It has the following 
+description:
+
+  A location in the activity where the variable appears.  VariableLocations
+  can be either l-values or r-values.  The variable which this location
+  applies to is either an instance of the Variable class (R835), or a by 
+  reference parameter acting as an l-value (R688).  Parameters acting as
+  r-values are captured by R835.
+  
+It has the following attributes:
+
+  Id (unique_id)
+  LineNumber (integer) 
+    The line in the activity for this variable location.
+  StartPosition (integer)
+    The column in the activity at which this variable location starts.
+  EndPosition (integer)
+    The column in the activity at which this variable location ends.
+    
+There is an association added (R835) from Variable to VariableLocation
+that is 1:*.  
+
+The Variable.dispose() operation is updated to delete related V_LOC 
+instances.
+
+There is an association added (R688) from VariableLocation to 
+AssignToParameter (ACT_ATP) that is 1:0..1.  The referential attribute is
+in the ACT_ATP class.  See section 5.1.4 for additional discussion.
+
+The Assign To Parameter.dispose() operation is updated to delete related 
+V_LOC instances.
+
+2.2  The instance operation Variable.addLocation() is added. It has 
+the following activity:
+
+  create object instance loc of V_LOC;
+  loc.LineNumber = param.line;
+  loc.StartPosition = param.col;
+  loc.EndPosition = loc.StartPosition + GD::strlen(s: self.Name) - 1;
+  relate loc to self across R835;
+
+Note that the bridge GD::strlen(s: string): integer was created to support
+this.  It has a native implementation that returns s.length().
+
+2.3  The attribute LineNumber (integer) is added to the Value (V_VAL)
+class. The attribute has the following description:
+
+    The line in the activity at which this value resides. It has a default 
+    value of -1, indicating that the location is not known.
+
+2.4  The attribute StartPosition (integer) is added to the Value (V_VAL)
+class. The attribute has the following description:
+
+    The column in the activity at which this value starts. It has a default 
+    value of -1, indicating that the location is not known.
+
+2.5  The attribute EndPosition (integer) is added to the Value (V_VAL)
+class. The attribute has the following description:
+
+    The column in the activity at which this value ends. It has
+    a default value of -1, indicating that the location is not known.
+    
+2.6  The instance operation Value.setEndPosition() is added. The activity
+is listed in Appendix A.
+
+
+3.  Add support functions
+
+3.1  The function getLineNumber( rule_token: Token): integer is created.
+The function has a native implementation that returns the result of 
+rule_token.getLine();
+
+3.2  The function getColumn( rule_token: Token): integer is created.
+The function has a native implementation that returns the result of 
+rule_token.getColumn();
+
+4.  Add parser support for recording statement start position
+
+The parser is currently not structured to remember the start position of
+a statement.  We need to make the following changes to support it.
+
+4.1  Add scratchpad values to Block class
+
+The following attributes are added to the Block (ACT_BLK) class:
+
+   CurrentLine (integer)
+   CurrentCol (integer)
+   
+4.2  Add parser utility function to update Block scratchpad data
+
+The parser utility function rememberLocation() is added. It has the
+following activity:
+
+  current_scope = ::get_current_scope();
+  select any blk from instances of ACT_BLK 
+     where (selected.Block_ID == current_scope);
+  blk.CurrentLine = ::getLineNumber(rule_token: param.rule_token);
+  blk.CurrentCol = ::getColumn(rule_token: param.rule_token);
+
+4.3  Changes to grammar
+
+The file oal.bnf describes the grammar of OAL.  The following method
+is added:
+
+	public void rememberLocation(Token t) throws RecognitionException 
+	{
+	   m_oal_context.Rememberlocation(getModelRoot(), t);
+	}
+
+In each place in the grammar where we want to define the beginning of
+a statement, we add the following action: { rememberLocation(LT(0)); } .
+For example, the break statement rule would now be:
+
+break_statement
+  : "break"!  { rememberLocation(LT(0)); } 
+  ;
+
+4.4 Changes to parser to support grammar changes
+
+There is a parser that changes the oal.bnf file into pre-existing instance
+data for the grammar_enhancer archetype. This parser ignores actions in 
+rules.  This parser is changed to not ignore those actions.  The version 
+of the parser is changed from '2.7.2-pt' to '2.7.2-pt.1'.
+
+The grammar_enhancer archetype is changed to output actions that are
+parts of rules.
+
+5.  Add support function invocations
+
+5.1  Statement line numbers
+
+5.1.1 Currently all instances of ACT_SMT are created in the function
+statement_create(), with the exception of one case, Control_statement_end().
+Control_statement_end() is refactored to call statement_create().
+
+5.1.2 The OAL validation function Statement_validate() is changed to the
+following:
+
+  select any stmt from instances of ACT_SMT 
+      where ( selected.Statement_ID == param.a6_current_rule_id );
+  if ( not_empty stmt )
+    select one if_stmt related by stmt->ACT_IF[R603];
+    select one elif_stmt related by stmt->ACT_E[R603];
+    select one else_stmt related by stmt->ACT_EL[R603];
+    // the if statement handles the numbering itself
+    if ( empty if_stmt and empty elif_stmt and empty else_stmt )
+      select one blk related by stmt->ACT_BLK[R602];
+      stmt.LineNumber = blk.CurrentLine;
+      stmt.StartPosition = blk.CurrentCol;
+    end if;
+  end if;
+  return param.a6_current_rule_id;
+
+5.1.3 If statement processing
+
+The if_statement rule is special, because it can cause three different
+types of statements (if, elif, and else) to be created. 
+
+5.1.3.1 If statement type
+
+The statement location for the if statement must be remembered before any
+of the other statements are parsed.  The if_statement rule is changed to 
+invoke ifStatementRemember() when the "if" token is parsed:
+
+    "if"!   { rememberLocation(LT(0)); 
+              ifStatementRemember(upperRule_iD, rule_begin_id); }
+
+The ifStatementRemember() method is added to oal.bnf:
+
+	private void ifStatementRemember(long blk_id, 
+	  long stmt_id) throws RecognitionException {
+		m_oal_context.Ifstatementremember(getModelRoot(),
+				blk_id, stmt_id);
+	}
+
+The parser utility function ifStatementRemember(blk_id: unique_id, 
+stmt_id: unique_id) is added. It has the following activity:
+
+	select any root_blk from instances of ACT_BLK 
+	   where selected.Block_ID == param.blk_id;
+    select any stmt from instances of ACT_SMT 
+       where selected.Statement_ID == param.stmt_id;
+    stmt.LineNumber = root_blk.CurrentLine;
+    stmt.StartPosition = root_blk.CurrentCol;
+
+5.1.3.2 Elif statement type
+
+When the parser detects an elif statement it enters a loop to process 
+each elif statement. The If_statement_loop3_end() function is changed to 
+add the following when an elif statement instance is created:
+
+        select any root_blk from instances of ACT_BLK 
+           where selected.Block_ID == param.a2_upper_rule_id;
+        stmt.LineNumber = root_blk.CurrentLine;
+		stmt.StartPosition = root_blk.CurrentCol;
+
+5.1.3.3 Else statement type
+
+The If_statement_end() function is changed to add the following 
+when an else statement instance is created:
+
+        select any root_blk from instances of ACT_BLK 
+           where selected.Block_ID == param.a2_upper_rule_id;
+        stmt.LineNumber = root_blk.CurrentLine;
+		stmt.StartPosition = root_blk.CurrentCol;
+
+5.1.4  Assignment to Parameter
+
+The operation ACT_ATP.addLocation() is created with the
+following activity:
+
+  create object instance loc of V_LOC;
+  loc.LineNumber = param.line;
+  loc.StartPosition = param.col;
+  loc.EndPosition = loc.StartPosition + GD::strlen(s: param.name) - 1;
+  relate loc to self across R688;
+
+The validation function Param_data_access_validate() is modified to
+invoke addLocation for the three cases where the parameter is used as
+an l-value.
+
+5.2  Variable location data
+
+5.2.1  Variable location position information
+
+The following action language to assign the location information to the 
+V_VAR instance is added to Local_variable_validate(), 
+Inst_ref_var_validate(), Inst_ref_set_var_validate(), and
+Inst_ref_var_or_ee_keyletters_validate() :
+
+    l = ::getLineNumber(rule_token: param.a1_rule_token);
+    c = ::getColumn(rule_token: param.a1_rule_token);
+    var_inst.addLocation(line: l, col: c );
+
+Local_variable_validate also adds a test for a l-value reference for an
+already defined variable, and invokes addLocation for that case.
+
+5.2.2  Value location position information
+
+The following action language to assign the location information to the 
+V_VAL instance:
+
+        val.LineNumber = ::getLineNumber(rule_token: param.a3_token);
+        val.StartPosition = ::getColumn(rule_token: param.a3_token);
+        val.setEndPosition();
+
+is added to the following validation functions:
+
+Local_variable_validate
+Param_data_access_validate (3 places)
+Attribute_access_end
+Event_data_access_validate
+
+5.2.3  Generate using an attribute value
+
+The Event subsystem currently relates the Generate Preexisting Event (E_GPR)
+class directly to the Attribute class for the case of a generate using an
+Attribute value.  This is changed to associate the E_GPR class to an
+Attribute Value (V_AVL) class.  The rest of the ooaofooa model is updated
+to be consistent with this change.
+
+Design Comments
+---------------
+
+- The 'selected' variable has no position information.
+
+- The position information provided by the parser is subject to [2].  
+In other words, the position information will be incorrrect when there are
+multi-line comments or tabs in the activity being parsed until [2] is
+resolved.
+
+- Preliminary testing found the following functions returned the incorrect
+token id.  This is fixed.
+
+   Assignment_statement_end
+   For_statement_end
+   If_statement_end
+   While_statement_end
+
+- The OAL instances for the following statements are not populated 
+correctly:
+
+transform param.s = D_D::testStringNoParm();
+bridge param.s = T::testStringNoParm();
+
+The param_data_access_validate() function was using a parameter that
+didn't always have the correct value for the statement id when creating 
+the Assign To Parameter instance.
+Secondly, the bridge_statement_end() and transform_statement_end() functions
+were trying to find an instance of Variable, instead of an instance of 
+Assign To Parameter for the case when the l-value was a by reference 
+parameter.  Both of these problems are fixed.
+
+Work Required
+-------------
+
+All work is described in the design section.  
+
+Unit Test
+---------
+
+The following tests are automated in the als.oal.test JUnit. Note that
+ODMS (with additions) is the underlying test model.
+
+- Validate line and start column are correct for all statement types.
+Each test is run separately, in an activity that supports the needed
+context for each test. For example, a by reference parameter s of type 
+string.  The list of statements to test is taken from oal.bnf.
+
+VariableLocation and Value locations are specified by the triple 
+{ <line>, <start column>, <end column> }
+
+Unless otherwise specified, all instances of Value have { -1, -1, -1 }.
+
+                                                  Linenumber  Column
+implicit_ib_transform_statement
+  create object instance h of D_H;                       1      1
+  h.test1();                                             2      1
+  x = h.test4();                                         3      1
+  h.Row_Number = h.test4();                              4      1
+  param.s = h.testStringNoParm();                        5      1
+  VariableLocation['h'] == { 1, 24, 24 }
+  VariableLocation['h']	== { 2, 1, 1 }
+  VariableLocation['h']	== { 3, 5, 5 }
+  VariableLocation['h'] == { 4, 1, 1 }
+  VariableLocation['h'] == { 4, 16, 16 }
+  VariableLocation['h'] == { 5, 11, 11 }
+  VariableLocation['x'] == { 3, 1, 1 }
+  VariableLocation['s'] == { 5, 7, 7 }
+
+function_statement
+   ::test1();                                            1      2
+
+implicit_assignment_statement
+  create object instance d of D_D;                       1      1
+  x = "";                                                2      1
+  d.string_attr = "";                                    3      1
+  param.s = "";                                          4      1
+  VariableLocation['d'] == { 1, 24, 24 }
+  VariableLocation['d'] == { 3, 1, 1 }
+  VariableLocation['x'] == { 2, 1, 1 }
+  VariableLocation['s'] == { 4, 7, 7 }
+
+implicit_bridge_or_transform_statement
+   D_D::test1();                                         1      2
+  x = D_D::testStringNoParm();                           2      1
+  create object instance d of D_D;                       3      1
+  d.string_attr = D_D::testStringNoParm();               4      1
+  param.s = D_D::testStringNoParm();                     5      1
+  T::test1();                                            6      1
+  x = T::testStringNoParm();                             7      1
+  d.string_attr = T::testStringNoParm();                 8      1
+  param.s = T::testStringNoParm();                       9      1
+  VariableLocation['x'] == { 2, 1, 1 }
+  VariableLocation['x'] == { 7, 1, 1 }
+  VariableLocation['d'] == { 3, 24, 24 }
+  VariableLocation['d'] == { 4, 1, 1 }
+  VariableLocation['d'] == { 8, 1, 1 }
+  VariableLocation['s'] == { 5, 7, 7 }
+  VariableLocation['s'] == { 9, 7, 7 }
+
+assignment_statement
+  create object instance d of D_D;                       1      1
+  assign x = "";                                         2      8
+  assign d.string_attr = "";                             3      8
+  assign param.s = "";                                   4      8
+  VariableLocation['d'] == { 1, 24, 24 }
+  VariableLocation['d'] == { 3, 8, 8 }
+  VariableLocation['x'] == { 2, 8, 8 }
+  VariableLocation['s'] == { 4, 14, 14 }
+
+break_statement
+  while (false)                                          1      1
+    break;                                               2      2
+  end while;
+
+bridge_statement
+  bridge T::test1();                                     1      8
+  bridge x = T::testStringNoParm();                      2      8
+  create object instance d of D_D;                       3      1
+  bridge d.string_attr = T::testStringNoParm();          4      8
+  bridge param.s = T::testStringNoParm();                5      8
+  VariableLocation['x'] == { 2, 8, 8 }
+  VariableLocation['d'] == { 3, 24, 24 }
+  VariableLocation['d'] == { 4, 8, 8 }
+  VariableLocation['s'] == { 5, 14, 14 }
+
+continue_statement
+  while (false)                                          1      1
+    continue;                                            2      2
+  end while;
+
+control_statement
+  control stop;                                          1      1
+
+create_object_statement
+  create object instance d of D_D;   // declare          1      1
+  create object instance d of D_D;   // already declared 2      1
+  create object instance of D_D;                         3      1
+  VariableLocation['d'] == { 1, 24, 24 }
+  VariableLocation['d'] == { 2, 24, 24 }
+
+create_event_statement
+  create object instance t of D_TST;                     1      1
+  create event instance e of D_TST1 to t;                2      1
+  create event instance e of D_TST_A1 to D_TST class;    3      1
+  create event instance e of D_TST1 to D_TST creator;    4      1
+  VariableLocation['t'] == { 1, 24, 24 }
+  VariableLocation['t'] == { 2, 38, 38 }
+  VariableLocation['e'] == { 2, 23, 23 }
+  VariableLocation['e'] == { 3, 23, 23 }
+  VariableLocation['e'] == { 4, 23, 23 }
+  
+delete_statement
+  create object instance d of D_D;                       1      1
+  delete object instance d;                              2      1
+  VariableLocation['d'] == { 1, 24, 24 }
+  VariableLocation['d'] == { 2, 24, 24 }
+
+for_statement
+  select many ds from instances of D_D;                  1      1
+  for each d in ds                                       2      1
+  end for;
+  VariableLocation['ds'] == { 1, 13, 14 }
+  VariableLocation['ds'] == { 2, 15, 16 }
+  VariableLocation['d'] == { 2, 10, 10 }
+  
+generate_statement
+  create object instance t of D_TST;                     1      1
+  generate D_TST1 to t;                                  2      1
+  generate D_TST_A1 to D_TST class                       3      1
+  generate D_TST1 to D_TST creator                       4      1
+  create event instance e of D_TST1 to D_TST creator    5      1
+  generate e;                                           6      1
+  generate t.evt_inst;                                   7      1
+  VariableLocation['t'] == { 1, 24, 24 }
+  VariableLocation['t'] == { 2, 20, 20 }
+  VariableLocation['t'] == { 7, 10, 10 }
+  VariableLocation['e'] == { 5, 23, 23 }
+  VariableLocation['e'] == { 6, 10, 10 }
+  Value['evt_inst'] == { 7, 12, 19 }
+
+if_statement1
+  if ( true)                                             1      1
+  end if;
+
+if_statement2
+  if ( true)                                             1      1
+  elif ( false )                                         2      1
+  end if;
+
+if_statement3
+  if ( true)                                             1      1
+  elif ( false )                                         2      1
+  elif ( false )                                         3      1
+  end if;
+
+if_statement4
+  if ( true)                                             1      1
+  else                                                   2      1
+  end if;
+
+if_statement5
+  if ( true)                                             1      1
+  elif ( false )                                         2      1
+  else                                                   3      1
+  end if;
+
+if_statement6
+  if ( true)                                             1      1
+  elif ( false )                                         2      1
+  elif ( false )                                         3      1
+  else                                                   4      1
+  end if;
+  
+relate_statement
+  select any d from instances of D_D;                    1      1
+  select any h from instances of D_H;                    2      1
+  relate d to h across R4;                               3      1
+  create object instance q of D_QP;                      4      1
+  create object instance dq of D_DQ;                     5      1
+  relate d to q across R1 using dq;                      6      1
+  VariableLocation['d'] == { 1, 12, 12 }
+  VariableLocation['d'] == { 3, 8, 8 }
+  VariableLocation['d'] == { 6, 8, 8 }
+  VariableLocation['h'] == { 2, 12, 12 }
+  VariableLocation['h'] == { 3, 13, 13 }
+  VariableLocation['q'] == { 4, 24, 24 }
+  VariableLocation['q'] == { 6, 13, 13 }
+  VariableLocation['dq'] == { 5, 24, 25 }
+  VariableLocation['dq'] == { 6, 31, 32 }
+  
+return_statement (void)
+  return;                                                1      1
+
+return_statement (value)
+  return 1;                                              1      1
+
+select_statement
+  select any d from instances of D_D;                    1      1
+  select any d from instances of D_D;                    2      1
+  select many ds from instances of D_D;                  3      1
+  select many ds from instances of D_D;                  4      1
+  select one h related by d->D_H[R4];                    5      1
+  select one h related by d->D_H[R4];                    6      1
+  select any dq related by d->D_DQ[R1];                  7      1
+  select any dq related by d->D_DQ[R1];                  8      1
+  select many dqs related by d->D_DQ[R1];                9      1
+  select many dqs related by d->D_DQ[R1];               10      1
+  VariableLocation['d'] == { 1, 12, 12 }
+  VariableLocation['d'] == { 2, 12, 12 }
+  VariableLocation['ds'] == { 3, 13, 14 }
+  VariableLocation['ds'] == { 4, 13, 14 }
+  VariableLocation['h'] == { 5, 12, 12 }
+  VariableLocation['h'] == { 6, 12, 12 }
+  VariableLocation['dq'] == { 7, 12, 13 }
+  VariableLocation['dq'] == { 8, 12, 13 }
+  VariableLocation['dqs'] == { 9, 13, 15 }
+  VariableLocation['dqs'] == { 10, 13, 15 }
+				
+  Value['d'] == { 5, 25, 25 }
+  Value['d'] == { 6, 25, 25 }
+  Value['d'] == { 7, 26, 26 }
+  Value['d'] == { 8, 26, 26 }
+  Value['d'] == { 9, 28, 28 }
+  Value['d'] == { 10, 28, 28 }			
+
+transform_statement
+  transform D_D::testVoidNoParm();                       1      1
+  transform x = D_D::testStringNoParm();                 2      1
+  create object instance d of D_D;                       3      1
+  transform d.string_attr = D_D::testStringNoParm();     4      1
+  transform param.s = D_D::testStringNoParm();           5      1
+  VariableLocation['x'] == { 2, 11, 11 }
+  VariableLocation['d'] == { 3, 24, 24 }
+  VariableLocation['d'] == { 4, 11, 11 }
+  VariableLocation['s'] == { 5, 17, 17 }
+
+while_statement
+  while (false)                                          1      1
+  end while;
+  
+unrelate_statement
+  select any d from instances of D_D;                    1      1
+  select any h from instances of D_H;                    2      1
+  unrelate d from h across R4;                           3      1
+  select any q from instances of D_QP;                   4      1
+  select any dq from instances of D_DQ;                  5      1
+  unrelate d from q across R1 using dq;                  6      1
+  VariableLocation['d'] == { 1, 12, 12 }
+  VariableLocation['d'] == { 3, 10, 10 }
+  VariableLocation['d'] == { 6, 10, 10 }
+  VariableLocation['h'] == { 2, 12, 12 }
+  VariableLocation['h'] == { 3, 17, 17 }
+  VariableLocation['q'] == { 4, 12, 12 }
+  VariableLocation['q'] == { 6, 17, 17 }
+  VariableLocation['dq'] == { 5, 12, 13 }
+  VariableLocation['dq'] == { 6, 35, 36 }
+
+debug_statement
+  _debug _on;                                            <none>
+
+- Parse the following OAL in the context of a function:
+
+    x = 1;
+    yy = x + 1;
+    select any z 
+      from instances of D_D;
+    q = not_empty z;
+    r = z.Disk_ID;
+    s = param.i;
+    ::test2( i: x );
+    D_D::test2( i: yy );
+	select any t from instances of D_TST;  generate D_TST2(i: s) to t; 
+    
+The following assertions are true:
+
+                LineNumber   StartPosition
+  Statement[0]      1             1
+  Statement[1]      2             1
+  Statement[2]      3             1
+  Statement[3]      5             1
+  Statement[4]      6             1
+  Statement[5]      7             1
+  Statement[6]      8             1
+  Statement[7]      9             1
+  Statement[8]     10             1
+  Statement[9]     10            40
+  
+  VariableLocation['x'] == { 1, 1, 1 }
+  VariableLocation['yy'] == { 2, 1, 2 }
+  VariableLocation['z'] == { 3, 12, 12 }
+  VariableLocation['z'] == { 6, 5, 5 }
+  VariableLocation['q'] == { 5, 1, 1 }
+  VariableLocation['r'] == { 6, 1, 1 }
+  VariableLocation['s'] == { 7, 1, 1 }
+  VariableLocation['t'] == { 10, 12, 12 }
+  VariableLocation['t'] == { 10, 65, 65 }
+  
+  Value['x'] == { 2, 6, 6 }
+  Value['z'] == { 5, 15, 15 }
+  Value['Disk_ID'] == { 6, 7, 13 }
+  Value['i'] == { 7, 11, 11 }
+  Value['x'] == { 8, 13, 13 }
+  Value['yy'] == { 9, 16, 17 }
+  Value['s'] == { 10, 59, 59 }
+
+- Parse the following OAL in the context of a Disk ISM state:
+
+    s = rcvd_evt.i;
+    t = self.u_int;
+    
+The following assertions are true:
+
+                LineNumber   StartPosition
+  Statement[0]     1              1
+  Statement[1]     2              1
+  VariableLocation['s'] == { 1, 1, 1 }
+  VariableLocation['t'] == { 2, 1, 1 }
+  VariableLocation['self'] == { 2, 5, 8 }
+  Value['i'] == { 1, 14, 14 }
+  Value['u_int'] == { 2, 10, 14 }
+
+- Parse the following OAL in the context of an operation:
+
+    s = param.i;
+    
+The following assertions are true:
+
+                LineNumber   StartPosition
+  Statement[0]     1              1
+  VariableLocation['s'] == { 1, 1, 1 }
+  Value['i'] == { 1, 11, 11 }
+
+- Parse the following OAL in the context of a bridge:
+
+    s = param.i;
+    
+The following assertions are true:
+
+                LineNumber   StartPosition
+  Statement[0]     1              1
+  VariableLocation['s'] == { 1, 1, 1 }
+  Value['i'] == { 1, 11, 11 }
+
+Appendix A  Value.setEndPosition() activity
+----------
+
+if ( self.StartPosition == -1 )
+  self.EndPosition = -1;
+else
+  select one lin related by self->V_LIN[R801];
+  if ( not_empty lin )
+    self.EndPosition = self.StartPosition + GD::strlen(s: lin.Value) - 1;
+    return;
+  end if;
+
+  select one lbo related by self->V_LBO[R801];
+  if ( not_empty lbo )
+    self.EndPosition = self.StartPosition + GD::strlen(s: lbo.Value) - 1;
+    return;
+  end if;
+
+  select one lst related by self->V_LST[R801];
+  if ( not_empty lst )
+    // include the surrounding quotes
+    self.StartPosition = self.StartPosition - 1;
+    self.EndPosition = self.StartPosition + GD::strlen(s: lst.Value); // + 1 - 1
+    return;
+  end if;
+
+  select one lrl related by self->V_LRL[R801];
+  if ( not_empty lrl )
+    self.EndPosition = self.StartPosition + GD::strlen(s: lrl.Value) - 1;
+    return;
+  end if;
+
+  select one bin related by self->V_BIN[R801];
+  if ( not_empty bin )
+    select one lop related by bin->V_VAL[R802];
+    select one rop related by bin->V_VAL[R803];
+    self.StartPosition = lop.StartPosition;
+    self.EndPosition = rop.EndPosition;
+    return;
+  end if;
+
+  select one unary related by self->V_UNY[R801];
+  if ( not_empty unary )
+    select one op related by unary->V_VAL[R804];
+    self.EndPosition = op.EndPosition;
+    return;
+  end if;
+
+  select one len related by self->V_LEN[R801];
+  if ( not_empty len )
+    select one enum related by len->S_ENUM[R824];
+    self.EndPosition = self.StartPosition + GD::strlen(s: enum.Name) - 1;
+    return;
+  end if;
+
+  select one irf related by self->V_IRF[R801];
+  if ( not_empty irf )
+    select one var related by irf->V_VAR[R808];
+    self.EndPosition = self.StartPosition + GD::strlen(s: var.Name) - 1;
+    return;
+  end if;
+
+  select one isr related by self->V_ISR[R801];
+  if ( not_empty isr )
+    select one var related by isr->V_VAR[R809];
+    self.EndPosition = self.StartPosition + GD::strlen(s: var.Name) - 1;
+    return;
+  end if;
+
+  select one slr related by self->V_SLR[R801];
+  if ( not_empty slr )
+    // selected references are ignored
+    return;
+  end if;
+
+  select one fnc related by self->V_FNV[R801];
+  if ( not_empty fnc )
+    // not supported
+    return;
+  end if;
+
+  select one brv related by self->V_BRV[R801];
+  if ( not_empty brv )
+    // not supported
+    return;
+  end if;
+
+  select one trv related by self->V_TRV[R801];
+  if ( not_empty trv )
+    // not supported
+    return;
+  end if;
+
+  select one var related by self->V_TVL[R801]->V_VAR[R805];
+  if ( not_empty var )
+    self.EndPosition = self.StartPosition + GD::strlen(s: var.Name) - 1;
+    return;
+  end if;
+  
+  select one edi related by self->V_EDV[R801]->SM_EVTDI[R834];
+  if ( not_empty edi )
+    self.EndPosition = self.StartPosition + GD::strlen(s: edi.Name) - 1;
+    return;
+  end if;
+
+  select one attr related by self->V_AVL[R801]->O_ATTR[R806];
+  if ( not_empty attr )
+    self.EndPosition = self.StartPosition + GD::strlen(s: attr.Name) - 1;
+    return;
+  end if;
+
+  select one parm related by self->V_PVL[R801];
+  if ( not_empty parm )
+    select one bparm related by parm->S_BPARM[R831];
+    if ( not_empty bparm )
+      self.EndPosition = self.StartPosition + GD::strlen(s: bparm.Name) - 1;
+      return;
+    end if;
+    select one sparm related by parm->S_SPARM[R832];
+    if ( not_empty sparm )
+      self.EndPosition = self.StartPosition + GD::strlen(s: sparm.Name) - 1;
+      return;
+    end if;
+    select one tparm related by parm->O_TPARM[R833];
+    if ( not_empty tparm )
+      self.EndPosition = self.StartPosition + GD::strlen(s: tparm.Name) - 1;
+      return;
+    end if;
+    // unknown parameter type
+    self.StartPosition = -1;
+    self.EndPosition = -1;
+    USER::logError(msg: "Unknown parameter subtype");
+  end if;
+
+  // unknown subtype of V_VAL
+  self.StartPosition = -1;
+  self.EndPosition = -1;
+  USER::logError(msg: "Unknown value subtype");
+end if;
+
+End
+---
+
+$Log: i1624.dnt,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.28.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2006/02/18 00:28:41  greg
+Job: 1624
+Address review observations
+
+Revision 1.3  2006/02/16 20:06:27  greg
+Job: 1624
+Ready for re-review
+
+Revision 1.2  2006/02/11 01:05:50  greg
+Job: 1624
+Update from review
+
+Revision 1.1  2006/02/07 00:39:08  greg
+Job: 1624
+Introduce
+

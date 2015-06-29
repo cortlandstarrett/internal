@@ -1,0 +1,148 @@
+========================================================================
+
+File:      $RCSfile: i451.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Locate correct counterpart client instance for imported Subtype connectors
+
+Abstract
+--------
+This document covers the changes required to correctly pair up subtype
+connectors with their Class as Subtype client counterpart instances.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 451
+
+Background
+----------
+This problem was first observed in the OOA of OOA in the Body subsystem. This
+subsystem contains a large number subtypes represented by imported objects. It
+was noticed that when some subtype lines were selected, the diagram showed two
+subtype connectors as selected, only one of which was the connector clicked
+over. This was found to be commutative (i.e. if one subtype line caused
+selection of another, clicking on the other would cause selection of the first).
+If a subtype line was deleted, both lines (of a pair as described above) would
+be removed, but manipulation of a supertypes identifier attribute names showed
+that even though the connector was gone, the subtype relationship was still
+established in the client meta-model. Finally, yet other subtype lines could not
+be selected at all. 
+
+Design
+------
+When importing BridgePoint SQL data, subtype connectors are assigned a
+counterpart instance based on the ooa_id of the participating subtype. The
+current strategy assumes that all participating counterpart instances return the
+correct ooa id value. For Imported Classes however, this breaks down because the
+ooa id of an imported class is not the correct value. The correct value is the
+ooa id of the class represented by the imported class symbol.
+
+The ooa id of the imported class symbol will sometimes match another (incorrect)
+class by coincidence in the same subsystem. When the match happens with a class
+that is a subtype, the pairing behavior described above happens. Sometimes, no
+match will be found in the current subsystem and the selection behavior fails
+altogether.
+
+The solution is to check during import specifically for imported classes and
+navigate to the class instance they actually represent and use the ooa id
+obtained from there. This will always pair up the subtype line with the correct
+client instance. Since imported classes are the only metamodel entities that
+actually represent other entities, no analogous failures are forseen elsewhere.
+
+Work Required
+-------------
+The changed behavior is required in the method fixUpGraphicalData generated in
+the classes ImportBPSql and importModel (this problem would have occurred with
+Tiger model files too). The change is made to gen_import_java.inc.
+
+fixUpGraphicalData is required for importBPSQL because the ooa_type values are
+set to '-1' for subtypes and associative links. No changes are needed for
+importModel because these connectors are given individual ooa_type values by
+tiger and can therefore be resolved by the simple call to getinstancefromooa_id
+in the common method, setRepresents.
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+_- Load ooa of ooa
+_- Open the Body Subsystem
+_- Select the subtype line associated with the Control class
+_R The subtype line associated with the Control class is highlighted
+_R The subtype line associated with the Return Stmt class is not highlighted
+_- Delete the Control class
+_R The subtype line associated with the Control class is deleted
+_R The subtype line associated with the Return Stmt class is not deleted
+
+_- Load canvastest
+_- Open the Imported Link Class Subsystem
+_R The Linked class is shown correctly
+_R The link connector can be selected individually.
+
+Code Changes
+------------
+
+com.projtech.bp.io.core/arc/gen_import_java.arc
+Initial Version: 1.8  Final Version: 1.11
+
+com.projech.bp.ui.canvas.test/expected_results/canvastest/7340046*
+Introduced: 1.1 
+
+com.projech.bp.ui.canvas.test/expected_results/canvastest/5242890-5
+Initial Version: 1.3  Final Version: 1.4
+
+com.projech.bp.ui.canvas.test/expected_results/canvastest/5242890-5.jpg
+Initial Version: 1.3  Final Version: 1.4
+
+com.projech.bp.ui.canvas.test/mdl/canvastest.bak
+Initial Version: 1.3  Final Version: 1.4
+
+End
+---
+
+$Log: i451.int,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.148.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/10/22 21:49:46  greg
+Job: 451
+Minor changes
+
+Revision 1.4  2004/10/20 23:14:02  campbell
+Job:451
+Updated revision.
+
+Revision 1.3  2004/10/20 00:04:50  campbell
+Job:451
+Updated revisions.
+
+Revision 1.2  2004/10/18 23:30:56  campbell
+Job:451
+Addressed review issues.
+
+Revision 1.1  2004/10/15 19:43:48  campbell
+Job: 451
+Introduced.

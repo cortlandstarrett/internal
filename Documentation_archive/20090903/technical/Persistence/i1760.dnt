@@ -1,0 +1,476 @@
+========================================================================
+
+File:      $RCSfile: i1760.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:28 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Gracefully handle dangling references in PLCM
+
+Abstract
+--------
+With the ability to spread models across multiple files it is possible for parts
+of the model to be deleted outside the tool.  This note explains how these 
+dangling references will be handled.  
+
+
+History
+-------
+update internal/review_minutes/PLCM/i1760-041906-01.rvm
+final  internal/review_minutes/PLCM/i1760-052006-01.rvm
+
+
+Document References
+-------------------
+[1] Bugzilla issue 1760 
+[2] Bugzilla issue 1845
+    The issue that requires PLCM to be created.
+[3] <CVS>/internal/technical/Persistence/i845-PLCM_1_0.ant
+    The analysis note that drives this issue.
+[4] Here is an article that discusses using Eclipse Decorators.
+    http://www.eclipse.org/articles/Article-Decorators/decorators.html
+[5] Article about using the built-in Eclipse problem marker decorator.
+    http://wiki.eclipse.org/index.php/FAQ_How_do_I_create_problem_markers_for_my_compiler%3F
+[6] Article about using the Eclipse problem marker.
+    http://www.eclipse.org/articles/Article-Mark%20My%20Words/mark-my-words.html
+[7] Bugzilla issue 1761
+    Add model compare functionality.
+[8] http://esdwiki.alm.mentorg.com/bin/view/Main/VerifySelects
+    This is a Wiki article that describes how to use verify_selects.
+                 
+Background
+----------
+With the introduction of PLCM [2] models have been split into separate pieces 
+[3 Section 1] to allow multiple team members to work on parts of a model without
+contention through the Eclipse team interface.  With the introduction of these 
+multi-file models, many new scenarios arise that make it possible to encounter 
+dangling references.  The tool currently handles the known null-pointer-
+exceptions (NPEs) caused by dangling references but it does not provide 
+sufficient information to the user about these problems.  This issue was raised 
+to assure there is an architectural solution that addresses dangling-references 
+so all dangling references encountered are handled consistently.
+
+Analysis
+--------
+The analysis is described in the preceding analysis note [3 - Analysis #2].
+Further analysis of the cross component associations reveals that not all 
+missing cross component elements are subject to a null pointer. For instance, a 
+RGO to RTO navigation may not return a null instance.  It may return a proxy  
+whose component may or may not exist.  Currently a proxy represents a model 
+element that is not yet loaded.  There are some reliability and consistency 
+concerns with this.   For example, if we think of a proxy as model element that 
+has not been loaded yet, and continue to use it in place of the real instance 
+with the assumption that it will be loaded when needed, a situation may be 
+encountered where the component represented by the proxy may be missing or may 
+have been replaced with an earlier version that does not contain the proxied 
+element.
+
+1. To help address and simplify proxies the following definition and rules are 
+   defined.
+1.1 A Proxy represents a model element that is not yet loaded as long as it is
+    not accessed.  
+1.2 A proxy is used to cache information about a missing RTO element. 
+1.3 When some navigation leads to a proxy instance, its component will be 
+    loaded.   
+1.4 In RTO to RGO navigations or 'select from instances of' statements, proxy
+    instances will not be returned.
+1.5 In RGO to RTO navigation proxy instances will only be returned after 
+    exhausting all means of loading the component.  This proxy instance is used 
+    to represent missing information.
+
+Design
+------
+Dangling references occur when a proxy refers to a resource that doesn't exist.
+To assure our solution handles all dangling references we will consider the 
+cases where proxies are used and assure that the code used to handle dangling 
+references is invoked at these places.  The goal of this design is to provide an
+architectural solution to identify dangling references and to use standard 
+Eclipse constructs for reporting errors to the user.
+
+1. Locate the locations of possible null-pointer-exceptions (NPEs).
+1.1 Use PLCM data and tools to identify where all the PLCM boundary conditions 
+    are. A boundary condition is where there is a navigatation from one 
+    component boundary to another.
+1.2 For each of the places located above, modify code as needed to assure that 
+    the return values of expressions at these locations are all conditional 
+    (this way the verify_selects tool [8] will take action on them).  Note that 
+    conditional above means it may or may not return a value.
+1.3 Run the verify_selects tool [8] to find the places that are at risk.
+1.4 The places identified will be fixed by checking for null return (and proxy 
+    return for RGO->RTO) and invoking error-handling (defined below) when a 
+    dangling reference is seen.  They will also be marked (using a comment) so 
+    that when the code to identify dangling references is implemented it can be 
+    utilized at these locations.
+
+2.  MC-JAVA changes
+2.1 Change MC-Java to load the component when a navigation to a proxy instance 
+    occurs.
+2.2 In RTO to RGO navigations or 'select from instances of' statements, proxy
+    instances are filtered (not returned).  
+2.3 In RGO to RTO navigation a proxy is only returned after a failed attempt at
+    loading the component.
+
+3.  Determining if a proxy is present.
+3.1 When traversing a cross-component relationship, a null may not be returned.   
+    When this happens, a proxy instance will be returned even when the 
+    component is not there.  We do not know if the component associated with the
+    proxy is present until an attempt to load it is made.  There are a couple of 
+    alternatives for handling this.
+3.1.1 If null is returned in place of the proxy, then our OAL is_empty check 
+      would work.   However, we would have to devise some way to obtain the
+      proxy for proper display of all UI aspects (Canvas, Explorer, Properties,
+      etc).  This is NOT the approach we will take.      
+3.1.2 If we return a proxy after a failed loading attempt, we would not have to 
+      do anything extra to handle UI updates.  Moreover, if we detect that a 
+      proxy was returned instead of the actual instance after a load attempt, 
+      then we can add additional problem annotations with the UI processing.  We
+      are exposing some persistence concepts to the modeler of 'ooa of ooa', 
+      but this is a simple approach to handling the problem.  This is the 
+      approach we will take.
+3.2 In java code we have access to the NonRootModelElement.isProxy() for proxy
+    determination.   The solution will take advantage of this.
+
+4.  Determining if a dangling reference is present.
+4.1 We may get a null pointer when navigating from RTO->RGO.  A check for null 
+    (oal is_empty) is sufficient, no further processing is required.
+4.2 For RGO->RTO navigation we will get a proxy instance when a component is 
+    missing.  Therefore, in RGO->RTO navigation a proxy check will be used after 
+    the null check. If the element returned is a proxy, then special dangling
+    reference handling code is invoked, otherwise normal processing 
+    occurs.
+   
+5. Handling of dangling references
+   The determination that a dangling reference is present is an architectural
+   feature.  The communication to the user that there is a dangling reference
+   is not really architectural.  The reason for this is simply that there are 
+   several places that must be considered with regard to informing the user of a 
+   dangling reference, and some of those places are in code that is hand-craft 
+   code. It is beyond the scope of this issue to refactor these.  The goal of 
+   dangling-reference reporting is to create a standard mechanism that is 
+   utilized by each of these places (using an Eclipse Decorator and problem 
+   marker).  This is a standard Eclipse mechanism used in error reporting (see 
+   Eclipse Marker [6], and Decorator [4]).
+5.1 Eclipse Marker 
+5.1.1 The built-in eclipse problem marker [6] will be used as the primary 
+      means for communicating to the user that a dangling reference is present.
+      In RGO->RTO navigation if an RTO instance is determined to be a proxy 
+      (thus a dangling reference), a marker will be created.
+5.1.2 In RGO->RTO navigation if the RTO is not a proxy, the problem marker will 
+      be removed if it exists.
+
+5.2 Dangling Reference Decorator
+    A Decorator will be used to annotate problems in Model Explorer.
+5.2.1 The decorator will be named "DanglingReferenceDecorator".
+5.2.2 The decorator will provide the ability to supply a dangling reference
+      icon (an overlayed icon).
+5.2.3 When decoration of any object is performed, all of its references will be
+      checked. If any one of them is a proxy, the problem annotation will be 
+      applied to the object decoration.
+5.2.4 The dangling reference decorator annotation will be applied all the way up 
+      the hierarchy that the problem exists in.  This is standard Eclipse 
+      Decorator behavior.
+
+5.3 Clearing Errors
+5.3.1 After a dangling reference is encountered the user may copy-in a model 
+      element that corrects the dangling reference.  The resource listener will 
+      be notified that a change has been made, and the model will be reloaded.  
+      This will cause the problem markers that were present to be cleared.
+
+6. User Interfacing
+
+6.1 Resource Navigator (RN)
+6.1.1 From the resource navigator there is no additional implementation 
+      required.  When a resource can not be successfully loaded from the 
+      resource navigator view, Eclipse displays window that reads:
+      "Resource <file path and name>"  does not exist.".  This meets our 
+      needs.
+      
+6.2 Model Explorer (ME)
+6.2.1 Model Explorer will be modified to use our new Dangling Reference 
+      Decorator (Design 5.2).
+6.2.2 When a dangling reference is detected in ME, the following behavior will
+       be observed.
+6.2.2.1 The icon of the component that contains the dangling reference will be 
+        overlaid with an error icon.
+6.2.2.2 The dangling reference will be reported in the "Problem View".  As 
+        specified in the analysis note, the following text will be displayed:
+        "<Component Name> - The selected element is no longer in the workspace".
+
+6.3 Canvas
+6.3.1  There will be no visual indication of a dangling reference present on the 
+       canvas itself completed as part of this issue.  
+
+7. Remove the generic "Orphaned" specification when identifying dangling 
+   elements.
+   The analysis note specifies that using the word "orphaned" to identify a 
+   dangling reference is not acceptable.  To prevent this, the analysis further
+   specifies that names of potential dangling references shall be cached 
+   where required [3 - Analysis section 2 paragraph 4].
+7.1 In ooaofooa there are several places where getOrphanedElementName() is 
+    returned when no element name can be found.  For example: 
+    "ooaofooa.xtuml -> Subsystem ->  Referential Attribute class -> method
+    get_root_name()"
+    These places must be modified to return a valid name.  Note 
+7.1.1 There is also a function named GetOrphandedKL (key letter).  This should
+      also be removed.
+7.1.2
+    The name of the proxy is already cached in the containing element.  The 
+    proxy information (*_PROXY) contains all the data from the proxy and a 
+    reference to the proxy.  The name of the proxy will be extracted from this 
+    cached data.
+7.1.3
+    If for some reason the proxy data is not available then "Orphaned" will be
+    used.  The only places where the "Orphaned" string may be used are:  O_ATTR 
+    and O_RATTR in the get_name and get_prefix functions.  This is required to 
+    handle cases where the referred to attributes get deleted.
+    
+Design Comments
+---------------
+None
+
+Work Required
+-------------
+1. Locate the places in OAL where NPEs may occur.  Use the verify_selects tool 
+   [8] for this.
+1.1 Modify the places found above to watch for null and mark these places
+    so that when the code to check the proxy is complete they can easily be
+    revisited.
+2.  Locate all places in hand-craft code where cross-component boundaries are
+    navigated.  Mark these places so they can be modified to test for dangling
+    references and invoke the dangling reference code.
+3. Modify MC-Java as described in Design #2.
+4. Create the DanglingReferenceDecorator
+5. Modify the hand-craft code to use the new decorator and problem marker in the 
+   places where dangling references are encountered.  Following are some places 
+   that will be modified (the rest will be identified with the work done in step 
+   1.1 above):
+5.1 bp/core/common/PersistableModelComponent.java
+5.2 bp/core/common/PersistanceManager.java
+5.3 bp.ui.explorer/arc/create_explorer_view.inc
+5.4 bp.ui.explorer/arc/create_content_provider.inc
+6. Modify the places in OAL marked in step 1.1 above to invoke the decorator/
+   problem marker code as needed.
+7. Assure the word "orphaned" is not displayed when a dangling reference
+   is encountered (as specified in [3 - Analysis section 2 paragraph 4])
+7.1 In ooaofooa there are several places where getOrphanedElementName() is 
+    returned when no element name can be found.  These places must be modified
+    to return a valid name as specified in the analysis note.
+7.1.1 An example where this is currently used is:
+      ooaofooa.xtuml -> Subsystem ->  Referential Attribute class -> method
+      get_root_name()
+
+
+Unit Test
+---------
+1. Dangling reference and handling by replacing with correct version
+_- Create one user Datatype dt1
+_- Create one Function f1 using newly created user Datatype as parameter.
+_- Replace datatype package from LH with old version that does not contain 
+   datatype dt1.
+_- Open Model Explorer
+_- In ME, expand the Function package that contains test Function f1.
+_R f1 and all parent hierarchy nodes has a problem annotation(icon)
+_R Problem view has an entry with description 'Datatype dt1 referred by Function
+   f1 is missing'.
+_- Replace datatype package with version that has dt1 instance.
+_R f1 and all parent hierarchy nodes has no problem annotation(icon) anymore.
+_R The problem view entry with description 'Datatype dt1 referred by Function f1
+   is missing' was removed.
+Repeat the above test case using BridgeParameter, Attribute, OperationParameter, 
+Event Data Item, FunctionParameter.
+
+2. Dangling reference and handling by replacing with correct version
+_- Create one user Datatype dt1
+_- Create one Function f1 using newly created user Datatype as return type.
+_- Replace datatype package from LH with old version that does not contain 
+   datatype dt1.
+_- Open Model Explorer
+_- In ME, expand the Function package that contains test Function f1.
+_R f1 and all parent hierarchy nodes has a problem annotation(icon)
+_R Problem view has an entry with description 'Datatype dt1 referred by Function
+   f1 is missing'.
+_- Replace datatype package with version that has dt1 instance.
+_R f1 and all parent hierarchy nodes has no problem annotation(icon) anymore.
+_R The problem view entry with description 'Datatype dt1 referred by Function f1
+   is missing' was removed.
+Repeat the above test case using BridgeParameter, Attribute, OperationParameter, 
+Event Data Item, FunctionParameter.
+
+3. Dangling reference and handling by changing referring element
+_- Create one user Datatype dt1
+_- Create one Function f1 using newly created user Datatype as parameter.
+_- Replace datatype package from LH with old version that does not contain 
+   datatype dt1.
+_- Open Model Explorer
+_- In ME, expand the Function package that contains test Function f1.
+_R f1 and all parent hierarchy nodes has a problem annotation(icon)
+_R The problem view has an entry with description 'Datatype dt1 referred by 
+   Function f1 is missing'.
+_- Double click on problem view entry.
+_R Function f1 is selected in the model explorer.
+_- Change the return datatype of Function f1 to some other available type.
+_R f1 and all parent hierarchy nodes has no problem annotation(icon) anymore.
+_R Problem view entry with description 'Datatype dt1 referred by Function f1 is
+   missing' has removed.
+Repeat the above test case using BridgeParameter, Attribute, OperationParameter, 
+Event Data Item, FunctionParameter.
+
+4. Dangling reference and handling by changing referring element
+_- Create one user Datatype dt1
+_- Create one Function f1 using newly created user Datatype as return type.
+_- Replace datatype package from LH with old version that does not contain 
+   datatype dt1.
+_- Open Model Explorer
+_- In ME, expand the Function package that contains test Function f1.
+_R f1 and all parent hierarchy nodes has a problem annotation(icon)
+_R The problem view has an entry with description 'Datatype dt1 referred by 
+   Function f1 is missing'.
+_- Double click on problem view entry.
+_R Function f1 is selected in the model explorer.
+_- Change the return datatype of Function f1 to some other available type.
+_R f1 and all parent hierarchy nodes has no problem annotation(icon) anymore.
+_R Problem view entry with description 'Datatype dt1 referred by Function f1 is
+   missing' has removed.
+Repeat the above test case using BridgeParameter, Attribute, OperationParameter, 
+Event Data Item, FunctionParameter.
+
+5. Non Explorer visible class dangling reference
+_- Create one ModelClass mc1.
+_- Create one ImportedClas ic1 pointing to mc1.
+_- Remove mc1.
+_R mc1's component is unloaded.
+_- Replace the SubSystem file with local history that contain the Imoported 
+   Class.
+_R The problem view has an entry with description 'ImportedClass is referring to 
+   Missing ModelClass'.
+_R Class diagram containing ic1 has an invalid diagram.
+_- Double click on problem view entry.
+_R Class Diagram editor containing ImportedClass ic1 is opened.
+
+6. Dangling referencial Attribute
+_- Create one ModelClass mc1.
+_- Create one ModelClass mc2 that relates with mc1.
+_- Remove mc1 (mc1's identifier is used to formalize the relation).
+_R mc1's component is unloaded.
+_- Replace the mc2 file with local history that contain the identifier of mc1.
+_R The problem view has an entry with description 'AttributeReferenceInClass is 
+   referring to Missing ReferredToIdentifierAttribute'.
+_R Class diagram containing mc2 has an orphaned attribute.
+_- Double click on problem view entry.
+_R Class Description editor is opened.
+
+End
+---
+
+$Log: i1760.dnt,v $
+Revision 1.1  2009/09/03 18:22:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.24  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.23.16.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.23  2006/06/30 13:22:20  satta
+Job:1760
+Dangling Reference Tests updated.
+
+Revision 1.22  2006/06/23 16:03:00  rmulvey
+Job:1760
+Addressed review minutes
+
+Revision 1.21  2006/06/23 09:42:12  araza
+Job:1760
+Added one more test case.
+
+Revision 1.20  2006/06/23 06:57:03  araza
+Job:1760
+Introduced new unit tests.
+
+Revision 1.19  2006/06/22 17:22:57  araza
+Job:1760
+Explained 1.1.
+
+Revision 1.18  2006/06/22 17:17:58  rmulvey
+Job:1760
+A few more changes for clarification
+
+Revision 1.17  2006/06/22 15:10:00  rmulvey
+Job:1760
+Fixed a few typos
+
+Revision 1.16  2006/06/22 14:39:49  rmulvey
+Job:1760
+Reworded a bit
+
+Revision 1.15  2006/06/22 14:27:17  rmulvey
+Job:1760
+Addressed pre-review comments and updated work-required.
+
+Revision 1.14  2006/06/22 07:32:15  araza
+Job:1760
+Addressed Greg, Campbell pre-review comments.
+
+Revision 1.13  2006/06/20 18:27:01  rmulvey
+Job:1760
+Added comments about the dangling reference decorator.
+
+Revision 1.12  2006/06/20 18:19:19  rmulvey
+Job:1760
+Fixed numbering and grammar.
+
+Revision 1.11  2006/06/20 17:44:41  rmulvey
+Job:1760
+Added more detail and fixed a couple problems.
+
+Revision 1.10  2006/06/20 16:07:03  araza
+Job:1760
+Made design changes, expect more.
+
+Revision 1.9  2006/05/17 16:26:20  rmulvey
+Job:1760
+Fixed a numbering problem in the Wrok Required section.
+
+Revision 1.8  2006/04/24 20:34:46  rmulvey
+Job:1760
+Addressed review minutes
+
+Revision 1.7  2006/04/19 21:32:47  rmulvey
+Job:1760
+Addressed the last review observation (observation 17).
+
+Revision 1.6  2006/04/19 18:27:46  rmulvey
+Job:1760
+Addressed most of the review minute observations (all but observation 17).
+
+Revision 1.5  2006/04/19 13:46:40  rmulvey
+Job:1760
+Addressed pre-review comments.
+
+Revision 1.4  2006/04/17 01:27:52  rmulvey
+Job:1760
+Fixed a numbering problem.
+
+Revision 1.3  2006/04/14 00:06:42  rmulvey
+Job:1760
+Small changes after proofreading.
+
+Revision 1.2  2006/04/13 23:44:51  rmulvey
+Job:1760
+Added content after talking to many people and investigating the issue.
+
+Revision 1.1  2006/04/12 10:55:08  rmulvey
+Job:1760
+The start of a dnt note

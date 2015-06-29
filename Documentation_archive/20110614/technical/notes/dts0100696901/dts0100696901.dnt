@@ -1,0 +1,241 @@
+========================================================================
+
+File:      $RCSfile: dts0100696901.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Errors found while running the SMA QA Verifier Test plan.
+
+
+1. Abstract
+-----------
+While performing the manual verifier test [2], some of the test steps fail.
+This issue to fix them.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100696901 - Errors found while running the SMA QA 
+	Verifier Test plan.
+[2] ClearQuest DEI dts0100696697 - Verifier test plan.
+
+4. Background
+-------------
+None.
+
+5. Analysis
+-----------
+No analysis needed, see the design section.
+
+6. Design
+---------
+6.1 The issue report six test failure : 
+	 
+6.1.1  Issue 1 Title: Session explorer is not cleared after a terminate 
+  	  configuration is issued.
+	  _- Import GPS and MicrowaveOven into BP
+	  _- select GPS project, right click and select "Launch Verifier"
+	  _- From Session explorer, navigate, right click and execute 
+	     UI>TestCases>Init
+	  _- Select GPS configuration from debug window and terminate
+	  _R all entries in session explorer should be cleared
+	  _R Error! Session explorer is not cleared and some GPS entries still 
+	     exist.
+	 	
+		Fix : the test no longer fails.
+	
+	
+	
+6.1.2  Issue 2 Title: Not all pre-selected models are marked by default in "Edit 
+ 	  Configurations" wizard
+	  _- Import Two projects (GPS and Microwave Oven)
+	  _- Select both models in both projects
+	  _- Right Click and choose "launch Verifier"
+	  _R Both projects are marked in "Edit Configurations" Wizard
+	  _R Error! Currently only one model is marked as selected while the other 
+	  	 is not.
+		
+		Analysis : 
+		 multiple domains selection works if the two domains reside in 
+		the same project, otherwise the user can select both domains using the 
+		"Launch Verifier" window.
+			
+		Fix : 
+		 This test will replaced with :  
+		_- Create new xtUML project 		
+		_- Add three domains to it, "One", "Two", and "Three"
+		_- Select domains "One" and "Two"
+		_- Launch Verifier
+		_R Both domains are checked and domain "Three" unchecked.
+
+
+
+6.1.3  Issue 3 title: Launch Verifier is not in the pop-up menu when component 
+  	  package diagram and components underneath are selected
+	  _- Import GPS Watch project
+	  _- Under Library, select Component package diagram and all components 
+	     underneath it and right click
+	  _R Launch Verifier should be part of the pop-up menu
+	
+		Analysis : 
+		 The user can not select the parent component package and some of 
+		its component child to eliminate other child. Either select the parent 
+		component package to use all components, or select some of the child 
+		components without selecting the parent package. Also selection must be 
+		from Model explorer view only.
+		
+		Fix :  
+		 Reword the test step as follows : 
+		_- Import GPS Watch project
+		_- Under Library, select "Location" and "Tracking" components.
+		_R Launch Verifier should be part of the pop-up menu	
+		_- Launch the verifier.
+		_R Only components "Tracking" and "Location" are checked.
+		
+		
+	
+6.1.4  Issue 4 title:A function execution in a model halts when another model 
+	  gets terminated
+	  _- Launch verifier on GPS model
+	  _- Launch verifier on MicroWaveOven model
+	  _- Execute GPS Watch::Library::UI>TestCases>RunTestCase
+	  _- while the above is running, terminate microwave oven model
+	  _R GPS RunTestCase resumes and is un-interrupted.
+	  _R Error! execution of GPS RunTestCase function halts
+		
+		Analysis : 
+		 The timers that run by different models are kept in one list, this list 
+		is cleared by TIM.terminate() method that is invoked when terminate any
+		project or execute ARCH::shutdown(). 
+		By the timers list wipe, this cause interruption in all running 
+		projects. What is required is to clear only the timers that related by 
+		the terminated project and leave the other timers running normally.
+		
+		Fix : 
+		 Change TIM.terminate() signature by adding method argument of ModelRoot
+		type. Compare the timer modelRoot with the argument, if matched then 
+		clear this timer.
+		
+		public static void terminate(ModelRoot modelRoot){
+		suspended = false;
+		allIdle = false;
+		suspendTime = 0;
+		eelist.clear();
+		synchronized (idleBusyLock) {
+			for (int i = 0; i < eelist.size(); i++) {
+				if (eelist.get(i).getModelRoot() == modelRoot) {
+					eelist.remove(i);
+					eeIdleList.remove(i);
+				}
+			}
+		}
+		synchronized (timerLock) {
+			for (int i = 0; i < timersList.size(); i++) {
+				if (timersList.get(i) != null) {
+					if (timersList.get(i).getModelRoot() == modelRoot) {
+						timersList.remove(i);
+					}
+				}
+			}
+		}
+	}
+		
+	
+6.1.5  Issue 5 title: Terminate and re-launch of multiple configurations does 
+	  not load the existing configurations properly.
+	  _- Launch verifier on GPS model
+	  _- Launch verifier on Microwave Oven model
+	  _- Select both configurations in the debug window, right click and select 
+	     "Terminate and re-launch"
+	  _- both configurations and models get loaded to debug and session explorer 
+	     windows correctly.
+	  _R Error! a prompt window appears saying, "Verifier is currently in use".
+	     When clicking OK on the prompt window,, one configuration remains in 
+	     the debug window, while both projects appear in the session explorer.
+	
+	 	Analysis :  
+		 Terminate and re-launch is important for a single model,For multiple 
+		models, it is not so important and it is recommended to use single 
+		launcher to execute two more than one project in verifier.
+		Launching two configurations tends to be about timing, that is why it is 
+		recommended to avoid it.
+		
+		Fix : 
+		 Change the test as follows :
+		_- Create launcher configuration for GPS and Microwave model.
+		_- Start this launcher configuration.
+		_- Select configuration in the debug window, right click and select 
+		   "Terminate and re-launch"
+		_- The configuration and models get loaded to debug and session explorer 
+		   windows correctly.
+		
+	
+
+6.1.6  Issue 6 title: Re-assigning models to already running configurations:
+	  _- Launch verifier on GPS Model
+	  _- Launch verifier on microwave oven Model
+	  _- Select and edit the GPS configuration from the debug window
+	  _- update the configuration to link it with the Microwave Oven project as 
+	     opposed to GPS project and press continue
+	  _- A prompt window appears asking to save changes, click 'Yes'
+	  _- From modeling perspective, select GPS, right click and launch Verifier
+	  _R No errors take place and two instances of each UI appear under GPS 
+	     project in session explorer.
+	  _R Error! Launch verifier is not part of the pop-up menu
+	
+		Analysis : 
+		 After changing the launch configuration of GPS model, this
+		Launcher is no longer associated with this project because it does not 
+		launch any of its module. So when the user right click on it and select 
+		"Launch Verifier", the tool asks him to select the project needed to be 
+		execute in the verifier. If the user select GPS and clicks "Debug", 
+		this will rejected by the verifier because the GPS project is already 
+		running.
+		
+		Fix : 
+		 Change the test as follows :
+		_- Launch verifier on GPS Model
+		_- Launch verifier on microwave oven Model
+		_- Open 'Debug Configuration'
+		_- Select the GPS configuration from the debug window
+		_- update the configuration to link it with the Microwave Oven project 
+		   as opposed to GPS project and press 'Apply'
+		_- Press 'Close'
+		_- From modeling perspective, select GPS, right click and launch 
+		   Verifier _- Select GPS project and press 'Debug'
+		_R A new window will prompt because the GPS project is already running 
+		   in the verifier.
+		
+
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully outlined in the design note.
+
+9. Unit Test
+------------
+9.1 Perform manual test [2].
+
+End
+---
+
+$Log: dts0100696901.dnt,v $
+Revision 1.1  2011/05/16 14:19:01  nmohamad
+job:dts0100696901
+Create
+

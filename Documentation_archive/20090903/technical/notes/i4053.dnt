@@ -1,0 +1,314 @@
+========================================================================
+
+File:      $RCSfile: i4053.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Migrate from Bugzilla to ClearQuest
+
+
+1. Abstract
+-----------
+This note describes the migration of the BridgePoint team's bug tracking from
+Bugzilla to ClearQuest.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 4053
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=4053
+[2] ClearQuest/XML Interface User Guide
+    http://devnet.wv.mentorg.com/env/change_mgmt/MGC_CQ_Specifics/xmldocs/index.html
+[3] ClearQuest/ClearCase Integration
+    http://code.google.com/p/cqccintegrated/
+
+4. Background
+-------------
+4.1 The engineering teams in SLE and other Mentor divisions primarily use
+    ClearQuest for defect tracking.  The customer support organization also uses
+    ClearQuest as part of their standard procedures.  The support techs are well
+    versed in connecting service requests to CQ defects.
+
+4.2 The BridgePoint team has been using Bugzilla for several years now.  It has
+    served the team well.  However, as we integrate more tightly into SLE and
+    use Mentor Customer Support to help manage the field installations, the
+    overhead of our non-standard bug tracker is becoming too burdensome.
+    Therefore, we have decided to switch our engineering process to work against
+    ClearQuest instead of Bugzilla.
+
+5. Analysis
+-----------
+5.1 The ClearQuest XML (CQ/XML) Interface provides an interface to ClearQuest
+    that allows you to both read and write to the ClearQuest database.  We will
+    leverage this interface to connect our CVS and SVN commits to the
+    corresponding defect in ClearQuest.
+  5.1.1 The interface details are described in [2].
+
+5.2 CVS provides modifiable hooks where operations (commits, tags, etc.) will
+    trigger the execution of scripts to perform additional processing.  These
+    hooks live under the repository's CVSROOT directory.  So, for our
+    development CVS repository, the hooks are at:
+    /arch1/products/tiger/repository/CVSROOT/
+  5.2.1 loginfo - The "loginfo" file controls where "cvs commit" log information
+                  is sent.  Note that this script is called after checkin has
+                  already occurred.  That means that error checks that happen
+                  here DO NOT prevent the checkin from happening.
+  5.2.2 taginfo - The "taginfo" file is used to control pre-tag checks
+  5.2.3 verifymsg -  The "verifymsg" file is used to allow verification of
+                     logging information.  This script is called BEFORE checkin
+                     happens.  Error checks during this script can cause the
+                     checkin to be aborted.
+
+5.3 Bugzilla provides perl scripts that do the actual data management chores
+    when a CVS action is taken.  These scripts process the data from the CVS
+    action and update the appropriate bug(s) accordingly.  The scripts are
+    located on phoenix at: /opt/bugzilla-2.16.4/src/cvssupport/
+  5.3.1 These scripts are what the CVS hooks specified in 5.2 call.
+
+5.4 SVN provides modifiable hooks in a similar manner to CVS.
+  5.4.1 pre-commit - Used to verify the log information before the commit occurs
+  5.4.2 post-commit - Used to perform processing after a commit has occurred.
+  5.4.3 The SVN hooks are located on phoenix at:
+          /arch1/products/tiger/svn_repository/hooks
+
+5.5 Casey Stewart of the Mentor ClearQuest Help Team has written and published
+    some Perl scripts for ClearQuest/ClearCase integration.  These are meant to
+    be used in the same paradigm where actions on the ClearCase repository
+    trigger the scripts to perform actions on ClearQuest.  While we obviously
+    cannot use these scripts verbatim, they should be able to be leveraged for
+    this project.
+
+6. Design
+---------
+6.1 The general strategy is to follow the flow of control of the CVS/BZ
+    interface, substituting BZ database operations with creation and
+    transmission of XML data through the CQ/XML interface.
+
+6.2 The CVS hooks in 5.2 will now call scripts in /opt/cqcvslink/.  SVN hooks
+    will live in /opt/cqsvnlink/.
+  6.2.1 The general flow of the scripts is:
+      - User checks in file(s) specifying the keyword "Defect: <dts #>" or
+        "defect: <dts #>" as the first line
+      - CVS/SVN hooks call verify glue script to process checkin data
+      - The checkin data: files, comment, etc are parsed apart by the script
+      - The verifymsg or pre-commit script checks that the given bug numbers are
+        valid and the issues have not been marked as resolved.
+      - If the comment passes verify, the data is checked in to the repository
+      - The loginfo or post-commit script is called
+      - The glue script creates an XML buffer that contains the appropriate info
+        - The CVS checkin comments are added to the associated DEI(s) in CQ in
+          the form of a note of type 'Comments'.
+          (DEI = Defect/Enhancement/Issue)
+      - The glue script then sends the CQ/XML file over a socket connection to
+        the CQ server and reads the response.
+      - An e-mail update is sent to the appropriate parties
+
+7. Design Comments
+------------------
+7.1 For checkin comments, the job line can be indicated with: "Job:", "job:",
+    "Bug:", "bug:", "dts:", "Defect:", or "defect:"
+
+7.2 As before, users may specify more than one defect on the job line to check
+    in against.
+
+7.3 The ClearQuest/XML interface requires user's CQ password to perform actions
+    against the CQ database.  Several options were considered:
+  7.3.1 Create a generic CQ user that could be used to perform actions against
+        the database.  We could then log the actual committer info as the
+        first line in the checkin comments.  The CQ administrators were not
+        keen on this idea.
+  7.3.2 Hardcode user's CQ password into the cq*link script.  This option
+        would work, but is not very aesthetic.  It would also require users
+        to update the cq*link scripts when they change their CQ password.
+  7.3.3 The chosen solution is to have each user create a file named ".cqpass"
+        in their home directory on the CVS/SVN server.  The cq*link scripts
+        can then access this file to get the user's ClearQuest password.  The
+        password should be the first line of this file.
+
+7.4 Security
+  7.4.1 CVS runs the commit scripts as the UID of the committer, whereas SVN
+        does not.  Instead it runs the scripts as the UID of the owner of the
+        svnserve process.
+  7.4.2 Therefore, the user has to take care to give appropriate permissions to
+        their home directory (755 is suggested) and .cqpass itself (644).  This
+        will allow the SVN server processes access to the file.
+  7.4.3 Of course, if the user updates their password in ClearQuest, they must
+        update the .cqpass file on all the CVS/SVN servers that use the cq*link
+        scripts (currently tucson and beta).
+  7.4.4 Because the password files are readable by any user, it is highly
+        recommended that users not make their ClearQuest password their MGC
+        password.
+
+7.5 Transactions and file lists
+  7.5.1 CVS
+    7.5.1.1 CVS batches files together by directory before calling the hook
+            scripts verifymsg and loginfo.  This means that for a single checkin
+            that spans muliple files and directories, the hook scripts will be
+            called once for each unique directory in the checkin.  It would be
+            very annoying to the user to potentially get spammed with quite a
+            few e-mails for a single commit.  Therefore, a rudimentary trans-
+            action mechanism is used.  In the Bugzilla link scripts, this was
+            done using some add-on tables to the Bugzilla db itself.  For
+            cqcvslink a new mechanism had to be designed.
+    7.5.1.2 This new mechanism is simply a file-based approach.  There is a
+            directory /opt/cqcvslink/txns.  In this directory lives a file named
+            for the committer (e.g. kbrown, cstarret).  This file contains the
+            comments of this user's last commit.  If the user has additional
+            commits within a hardcoded time window (currently 10 mins) that have
+            the *EXACT* same comment, the additional commit will be considered
+            to be part of the same transaction and no additional note will be
+            added to the CQ bug or e-mail sent out. If the commit comment
+            differs in the least bit or is outside the timeout, the commit will
+            be deemed to be a new transaction and a new note and e-mail will
+            placed.
+    7.5.1.3 The practical offshoot of this is that the user will not see a
+            complete file list of all the file that were part of the checkin
+            in the commit followup e-mail.
+  7.5.2 SVN
+    7.5.2.1 SVN creats its own transaction before the post-commit hook is
+            called.  This means that the post-commit hook passes a full file
+            list to the cqsvnlink scripts and the user will see a full file list
+            in the commit followup e-mail.
+
+TODO - Add info about the configuration of beta
+
+8. Work Required
+----------------
+The work required is described in previous sections.
+
+9. Unit Test
+------------
+Unit testing will be done against the practice ClearQuest database by creating
+several test issues for CVS and SVN tests.  The same tests apply for CVS and SVN
+with the exception that e-mails in SVN should contain a list of all the files
+in the checkin.
+
+9.1 Test single file commit against open issue. Verify it is allowed and an
+    e-mail is sent with the file name.  Verify a note is placed in the bug with
+    the checkin comments.
+
+9.2 Test single file commit against closed issue. Verify it is not allowed and
+    the file is left uncommitted.
+
+9.3 Test single file commit against invalid issue number. Verify it is not
+    allowed and the file is left uncommitted.
+
+9.4 Test multi file commit against open issue. Verify it is allowed and an
+    e-mail is sent with one of the file names called out.  Verify a note is
+    placed in the bug with the checkin comments.
+
+9.5 Test multi file commit against closed issue. Verify it is not allowed and
+    the files are left uncommitted.
+
+9.6 Test multi file commit against invalid issue number. Verify it is not
+    allowed and the files are left uncommitted.
+
+9.7 Test project add against a open issue. Verify it is allowed and an
+    e-mail is sent.  Verify a note is placed in the bug with the checkin
+    comments.
+
+9.8 Test project add against closed issue. Verify it is not allowed and
+    the project is left uncommitted.
+
+9.9 Test project add against invalid issue number. Verify it is not allowed and
+    the project is left uncommitted.
+
+9.10 Test file add with only the issue number (no "job:") as the first line.
+    Verify it is not allowed and the file is left uncommitted.
+
+9.11 Test file add with only the "job:" (no issue number) as the first line.
+    Verify it is not allowed and the file is left uncommitted.
+
+9.12 Test file add with only the job line as the commit comment (no followup
+    explanation). Verify it is not allowed and the file is left uncommitted.
+
+9.13 Test file add with alpha characters intermixed in the job number. Verify it
+    is not allowed and the file is left uncommitted.
+
+9.14 Test file add with no ".cqpass" file in place for this user on the server.
+    Verify it is not allowed and the file is left uncommitted.
+
+9.15 Test single file commit specifying more than one open issue on the job
+    line. Verify it is allowed and an e-mail is sent with the file name
+    called out.  Verify a note is placed in both bugs with the checkin comments.
+
+9.16 Test multi file commit specifying more than one open issue on the job
+    line. Verify it is allowed and an e-mail is sent with one of the file names
+    called out.  Verify a note is placed in both bugs with the checkin comments.
+
+9.17 Test single file commit specifying one open issue and one closed/invalid
+    issue on the job line. Verify it is not allowed and the file is left
+    uncommitted.
+
+9.18 Test multi file commit specifying one open issue and one closed/invalid
+    issue on the job line. Verify it is not allowed and the files are left
+    uncommitted.
+
+CVS only
+---------
+9.19 Test the transaction grouping mechanism by submitting several individual
+     commits but using the same comment.  Verify only the first commit is added
+     to the bug note and only one e-mail is sent.
+
+9.20 Perform another commit but change the checkin comment by only one letter.
+     Verify that a new note is added and a new e-mail is sent.
+
+9.21 Wait 12 minutes.  Submit a new commit using the exact same comment as in
+     9.20.  Verify that a new note is added and a new e-mail is sent.
+
+End
+---
+
+$Log: i4053.dnt,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/02/11 18:56:12  kbrown
+Job: dts0100563943
+This isn't a meaningful checkin.  It is a test.
+
+Revision 1.7  2009/02/09 18:39:48  kbrown
+job: 0100563943
+Updated the dnt for the issue (named for the originating bz issue).
+
+Revision 1.6  2009/01/29 22:19:51  kbrown
+Job:4053
+Updated post-review.
+
+Revision 1.5  2009/01/29 20:07:10  kbrown
+Job:4053
+Updated DNT.
+
+Revision 1.4  2009/01/26 16:18:22  kbrown
+Job:4053
+Commit work in progress.
+
+Revision 1.3  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.2.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2008/12/12 13:23:01  kbrown
+Job:4053
+Research so far captured.
+
+Revision 1.1  2008/12/10 15:28:28  kbrown
+Job:4053
+Started design note.
+

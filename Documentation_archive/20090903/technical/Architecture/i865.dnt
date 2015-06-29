@@ -1,0 +1,336 @@
+========================================================================
+
+File:      $RCSfile: i865.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+
+Prework for i473; Incorporating batch event delivery mechanism
+
+
+Abstract
+--------
+This note deals with the design details of the solution for implementing 
+event batching.
+
+History
+-------
+  final - i865-051805-01.rvm
+
+Document References
+-------------------
+[1]  Bugzilla issue # 865
+[2]  Bugzilla issue # 473
+
+Background
+----------
+Issue 473 [2] deals with the undo-redo of the actions that a user can perform on 
+a model. Implementation of issue 473 requires event batching for its working 
+because undoing a user action is proposed to be done by reversing all the events 
+in the reverse sequence that originated as a result of a given user action. 
+Event batching will moreover provide an opportunity of optimization in the 
+implementation of the model change listeners, where possible.
+
+Analysis
+--------
+i865.1  Improve ModelChangeListener design
+
+The IModelChangeListener interface is modified to further facilitate the 
+implementations and to make them more organized. For each event type the 
+interface provides a separate method. Moreover an abstract adapter class is 
+provided with empty implementations for all methods, thus allowing the 
+implementations to over-ride only the concerned methods. The guideline for this 
+approach is taken from the Java Component API. 
+
+i865.2  Transaction Handling and Event Batching
+
+A transaction is defined as an atomic action performed by the user that results 
+in one or more elementary changes in the model. Currently an event is fired for 
+every change in the model. Since a collection of changes (deltas) may take place 
+due to a single action, it seems logical to fire a single event against each 
+single action. This single event shall however provide all model deltas that
+took place as a result of a transaction.
+
+Design
+------
+i865.1  ModelChangeListener's Design Improvement
+
+Modify IModelChangeListener interface by adding the following methods and 
+modify all ModelChangeListeners.
+
+  - modelElementDeleted(ModelChangedEvent, IModelDelta)
+  - modelElementAttributeChanged(ModelChangedEvent, IModelDelta)
+  - modelElementCreated(ModelChangedEvent, IModelDelta)
+  - modelElementRelationChanged(ModelChangedEvent, IModelDelta)
+  - modelElementLoaded(ModelChangedEvent)
+  - modelElementReloaded(ModelChangedEvent)
+  - modelElementUnloaded(ModelChangedEvent)
+  - modelElementAboutTobeDeleted(ModelChangedEvent)
+  - modelElementAboutTobeReloaded(ModelChangedEvent)
+
+Create an adapter class 'ModelChangeAdapter' that provides default (i.e. empty)
+implementations for the methods described by the IModelChangeListener interface.
+
+Existing method modelChanged(ModelChangedEvent) will be used to handle batched
+events (Please see section i865.3 for batched events), whereas the above methods
+will be used to handle single model delta related to a given model event.
+
+Update the ModelRoot class to add specialized fire event methods, which are:
+
+  - fireModelElementDeleted(IModelDelta)
+  - fireModelElementAttributeChanged(IModelDelta)
+  - fireModelElementCreated(IModelDelta)
+  - fireModelElementRelationChanged(IModelDelta)
+  - fireModelElementLoaded(ModelElement)
+  - fireModelElementReloaded(ModelElement)
+  - fireModelElementUnloaded(ModelElement)
+  - fireModelElementAboutToBeDeleted(ModelElement)
+  - fireModelElementAboutToBeReloaded(ModelElement)
+
+i865.2  Transaction Control
+
+As described earlier, a transaction represents an action executed by a user on 
+some model e.g. deletion of a class, renaming a domain, etc. The life span of
+a transaction embodies one or more than one model delta from one or more than 
+one model roots. For example a user action may result in changes in both 
+Ooaofooa and Ooaofgraphics.
+
+Define a class com.mentor.nucleus.bp.core.common.Transaction that have 
+the following methods:
+
+  - protected Transaction(String displayName)
+    Constructor for creating an instance of transaction with given display name.
+
+  - public int getID()
+    Returns the unique ID of this transaction. 
+   
+  - public String getDisplayName()
+    Returns the complete display name of this transaction. 
+
+  - public ModelRoot[] getParticipatingModelRoots()
+    Returns the instances of the model roots in which changes occurred as part 
+    of this transaction.
+
+  - public IModelDelta[] getDeltas(ModelRoot)
+    Returns array of model delta for a given model root. 
+    
+  - protected void setDeltas(ModelRoot, IModelDelta[])
+    A protected method for associating a collection of model delta with this 
+    transaction.
+    
+i865.2.1 Create class com.mentor.nucleus.bp.core.common.TransactionManager 
+
+This class shall serve as a singleton class for managing Transactions. It has 
+the following methods:
+
+  - Transaction startTransaction(String displayName) throws 
+                                            ConcurrentModelTransactionException 
+    Starts a transaction with a given name using a default instance of 
+    IDeltaCollector. The concept of delta collector is described in the next 
+    section.
+    
+  - Transaction startTransaction(String name, IDeltaCollector deltaCollector) 
+                                     throws ConcurrentModelTransactionException
+    Starts a transaction with a given name and instance of IDeltaCollector.
+    
+    Calling two startTransaction() methods without an intervening 
+    endTransaction(), causes a ConcurrentModelTransactionException.
+  
+  Note: Although the API is designed so that multiple transactions can be 
+  executed simultaneously, the current implementation will allow synchronous 
+  execution of transactions for simplicity.
+                 
+  - void endTransaction(Transaction transaction)
+    Ends a given transaction.
+                 
+  - Transaction getActiveTransaction()
+    Returns an active transaction or null if no transaction is being executed.
+
+  - TransactionManager getDefaultInstance()
+    Returns the default instance of the transaction manager.
+
+  - setDefaultDeltaCollector(IDeltaCollector deltaCollector)
+    Sets the default delta collector for this transaction manager.
+
+  - void addTransactionListener(ITransactionListener listener)
+    Adds a transaction listener.
+
+  - void removeTransactionListener(ITransactionListener listener)
+    Removes a transaction listener.
+
+i865.2.2 Define com.mentor.nucleus.bp.core.common.IDeltaCollector interface.
+
+The term delta collector refers to the method of collecting the model delta. 
+In our case there might be different implementations of delta collector. A 
+simple implementation may collect model delta of a particular model. Whereas 
+another collector may require to co-relate model delta of two model roots with a 
+single transaction. For example, one implementation may collect data from 
+ooaofooa and notify canvas, so that delta of ooaofgraphics can be collected and 
+reported against a single transaction. Moreover this interface allows the 
+transaction manager to instruct the collector to start or end collecting of 
+model delta. The IDeltaCollector interface defines the following methods:
+
+  - public void startCollecting(Transaction)
+    Instructs the model delta collector to start collecting for a given 
+    transaction.
+    
+  - public void endCollecting()
+    Instructs the model delta collector to stop collecting and associate the 
+    collected model deltas to the transaction for which it started collection.
+
+i865.2.3 Define com.mentor.nucleus.bp.core.common.ITransactionListener 
+         interface.
+
+This interface defines methods that will be invoked for notifying start and end
+of a transaction. One example of such a class can be a class that manages undo 
+and redo stacks. The ITransactionListener interface has the following methods:
+
+  - void transactionStarted(Transaction)
+    Notifies that a transaction has started. However delta in the transaction 
+    object may be null or incomplete.
+    
+  - void transactionEnded(Transaction)
+    Notifies that a transaction has ended and the transaction passed as an 
+    argument has the complete set of model deltas that took place in this 
+    transaction.
+  
+Please note that listening to model change event with multiple model delta is
+different from listening to transaction (start and end). Although both are 
+facilitated using the same mechanism, a model change event contains model delta 
+of the model to which listener is added, where as transaction listener provides 
+access to model delta of all model roots that took place as a result of a user 
+action represented by a transaction.
+
+i865.3 Event Batching
+
+The class ModelRoot will be modified to to provide the batching of deltas. 
+Following method shall be added to it:
+
+- protected IDeltaCollector getDeltaCollector()
+  Returns an instance of the IDeltaCollector for this model root.
+    
+An internal class ModelRoot.DeltaCollector is implemented, which provides 
+implementation of IDeltaCollector. This class shall be responsible for event 
+batching. With the help of transaction manager, it shall determine the start and 
+end of a transaction and deliver a single event containing all delta against the 
+transaction.
+
+i865.3.1
+
+Another class CompoundDeltaCollector shall implement IDeltaCollector interface 
+and shall use two collectors in order to relate deltas from two model roots with 
+a single transaction..
+
+i865.3.2 Update the IModelChangeListener to indicate event delivery mechanism
+
+A scenario may exist in which a certain model change listener may fire further 
+model change events that are to be processed before the end of a transaction and 
+be made part of it. This is made possible by adding a method in 
+IModelChangeListener, which indicates if the listener required batched event 
+notification or instant real-time notification. Real-time notification will 
+allow the specialized listener to execute consequent model changes so that these 
+can be collected as a part of that transaction.
+
+- boolean isBatchedNotificationRequired()
+  Returns true if listener is interested in receiving batched event 
+  notification.
+
+i865.3.3  Support of locking, implementing ISchedulingRule
+
+The Eclipse API provides an interface ISchedulingRule which can be run using the 
+IJobManager.beginRule() and IJobManager.endRule() methods to provides locking 
+of certain code. 
+
+This issue considered the support of ISchedulingRule, but will not undergo 
+implementation of it at the moment. A new issue shall be raised to provide 
+comprehensive implementation of scheduling rules. The undo/redo [2] considers 
+that all events are fired synchronously and hence transaction handling does not 
+need to have support of scheduling rules for this issue or undo/redo [2]. 
+
+Work Required
+-------------
+
+i865.1        Update the IModelChangeListener.java and ModelRoot.java and create 
+              class AbstractModelChangeListener.java as specified in the design 
+              section. 
+              Also make appropriate changes in all the implementations of 
+              IModelChangeListener
+              Update the tiger code base to use the appropriate method for 
+              firing of events.
+
+i865.2        Create Transaction.java as specified in the design section.
+i865.2.1      Create TransactionManager.java as specified in the design section.
+i865.2.2      Create IDeltaCollector.java as specified in the design section.
+i865.2.3      Create ITransactionListener.java as specified in the design 
+              section.
+
+i865.3        Make changes to ModelRoot.java and define internal class
+              ModelRoot.DeltaCollector as specified in the design section.
+i865.3.1      Create CompoundDeltaCollector.java as specified in the design 
+              section.
+i865.3.2      Update IModelChangeListener interface as specified in the design 
+              section. Update any implementations that are affected by this 
+              change.
+i865.3.3      Raise an issue for incorporating scheduling.
+
+Unit Test
+---------
+
+Since no new feature is being introduced and only architectural improvements 
+have been made, no new unit test is required. Stable execution of tiger and all 
+other unit tests are the only tests that are needed to be carried out.
+
+End
+---
+
+$Log: i865.dnt,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.34.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2005/05/20 12:05:41  siddique
+Job:865
+Review observations addressed.
+
+Revision 1.6  2005/05/18 13:11:41  babar
+Job:865
+Made some corrections revealed during partial
+implemenation and improved explanations.
+
+Revision 1.5  2005/05/16 13:24:39  siddique
+Job:865
+Updated the design. Removed typos.
+
+Revision 1.4  2005/05/16 10:27:39  siddique
+Job:865
+Added work req and unit test sections. Updated the event related
+design.
+
+Revision 1.3  2005/05/13 13:18:54  siddique
+Job:865
+Incremental checking. Few design updates.
+
+Revision 1.2  2005/05/12 13:27:34  farrukh
+Job:865
+minor changes
+
+Revision 1.1  2005/05/12 12:16:32  farrukh
+Job:865
+Initial draft introduced.

@@ -1,0 +1,145 @@
+========================================================================
+
+File:      $RCSfile: dts0100776288.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Copy/Cut/Paste of a system level package does not work
+
+1. Abstract
+-----------
+Copy/Cut/Paste of a system level package does not work
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100776288
+[2] ClearQuest DEI dts0100685590
+    Veifier crash: Can not pass struct typed value with inst_ref<class> typed 
+    struct members
+    
+4. Background
+-------------
+When a system-level package (EP_PKG) is pasted multiple problems can be seen.
+There are 3 possible destinations for a system-level package:
+	System Model
+	Package
+	Component
+The problems seen are dependent on which of the 3 above destinations are used.  
+However, in general, what is seen is that pasted element is placed into multiple
+places. For example, when the destination is under a component, the package
+appears to be pasted under the component AND under the system.  The user then
+observes that selection of either of these copies has an effect on both copies.
+
+
+5. Analysis
+-----------
+5.1	The system instance is still associated with the copied package across 
+    both R1401 and R1405 after the paste.   These need to be torn down no matter
+    where the package is pasted.  The paste OAL in there 3 destinations is 
+    currently inconsistent.  This was done properly in EP_PKG.pastePackage(),
+    but not in the other 2 pastePackage operations (C_C, S_SYS).
+    
+5.2 When pasting the package the tool must setup R1405 for all child packages of
+    the copied packages.  This is not currently happening in all the possible
+    destinations:
+	System Model
+	Package
+	Component
+	
+	This is another situation where the OAL in the different paste destinations 
+	in not consistent.  In this case, the {EP_PG & S_SYS}.pastePackage are 
+	doing the correct thing (calling EP_PKG.associatePackagesWithSystem()), but
+    C_C.pastePackage is not.
+
+6. Design
+---------
+6.1 To resolve the problem called out in 5.1, {C_C & S_SYS}.pastePackage() are
+    modified to dis-associate the pasted package from the old S_SYS on 
+    R1401/R1405 before hooking up the pasted package with the destination
+    system instance.  EP_PKG.pastePackage is not modified, because it was 
+    already doing the correct thing.
+6.2 To resolve the problem called out in 5.2, C_C.paste package shall be 
+    modified to call EP_PKG.associateWithSystem() to assure all packages
+    are properly connected on R1405.
+
+    
+
+7. Design Comments
+------------------
+7.1 While making the above changes, it was observed that EP_PKG contains 3 
+    copies of an operation that is meant to do the same thing:
+    EP_PKG.associatePackagesWithSystem()
+    EP_PKG.associatePackageWithSystem()
+    EP_PKG.associateWithSystem()
+    
+    EP_PKG.associateWithSystem() was not being called anywhere.  As for the 
+    other 2:
+    EP_PKG.associatePackageWithSystem()
+    	This version existed before generic package functionality.  It contained
+    	OAL to support specialized packages and ALSO contained a small bit of
+    	generic package functionality (which was not complete).  This was
+    	being called only from places where the destination element was under
+    	a specialized package.
+    EP_PKG.associatePackagesWithSystem()
+    	This version was introduced to support generic package functionality.
+    	It was being called only from places where the destination was under a
+    	generic package.  
+7.1.1 To resolve the above duplicate, only 1 copy of the above operations were
+      kept, and the others were deleted.  The one kept is named:
+      EP_PKG.associateWithSystem.
+      This operation is called from places where the destination model 
+      is both generic and specialized package    	
+      
+    
+8. Work Required
+----------------
+Fully specified in the design section.
+
+9. Unit Test
+------------
+9.1 
+_- Use the workspace from /wv/bridgepoint/field_data/dts0100685590 [2]
+_- Export the model
+_- Delete the project
+_- Import the model with Convert to generics checked.
+_- Copy the UplinkChannelEstimate package in the system root
+_- Paste the selection into the system root
+_R UplinkChannelEstimate-1 is created in the system root
+_- Navigate to LTE-A_Testbed > UplinkChannelEstimate component and open it.
+_- Paste
+_R The package is pasted into the component
+_R The package is NOT also pasted back at the system level.
+-- Selection test starts here
+_- Select link with editor
+_- Open LTE-A_Testbed > UplinkChannelEstimate > UplinkChannelEstimate
+_- Select the model elements one at a time.
+_R The proper corresponding element is highlighted in ME
+_- Open UplinkChannelEstimate-1
+_- Select the model elements one at a time.
+_R The proper corresponding element is highlighted in ME
+_- Restart the tool
+_- Repeat the steps above starting at "Selection test starts here"
+
+End
+---
+
+$Log: dts0100776288.dnt,v $
+Revision 1.2  2011/06/21 18:03:11  rmulvey
+job:dts0100776288
+Addressed observations
+
+Revision 1.1  2011/06/21 12:08:28  rmulvey
+job:dts0100776288
+Introduced
+

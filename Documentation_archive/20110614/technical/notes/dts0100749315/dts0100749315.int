@@ -1,0 +1,200 @@
+========================================================================
+
+File:      $RCSfile: dts0100749315.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Complete support for send .. to syntax
+
+1. Abstract
+-----------
+This note describes the implementation carried out to fully support OAL of the
+form, send message(parameterlist) to component_ref. NOTE that the issues
+referenced by [4] though [7] below are also addressed by this work and should be
+resolved on promotion.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100749315 - Misrouted interface message when using
+    attribute of type component_ref as destination.
+[2] cvs://Documentation/internal/technical/notes/R3_2_5/dts0100749315/
+    dts0100749315.ant
+[3] cvs://Documentation/internal/technical/notes/R3_2_5/dts0100749315/
+    dts0100749315.dnt
+[4] ClearQuest DEI dts0100749317 - Erroneous message when creating instance of
+    class with attribute of type component_ref.
+[5] ClearQuest DEI dts0100631471 - inter-component pass-by-ref
+[6] ClearQuest DEI dts0100749318 - Verifier displays component_ref values
+    incorrectly.
+[7] ClearQuest DEI dts0100758853 - Components defined within components cannot
+    receive/send events in Verifier.
+[8] ClearQuest DEI dts0100772447 - PersistableModelComponent can mask
+    exceptions.
+
+4. Background
+-------------
+See [2].
+
+5. Design
+---------
+See [3].
+
+6. Implementation Comments
+--------------------------
+6.1 Mismatch in expected results
+Some test failures were traced to some user invoked operations being lost when
+the user executed them while Verifier execution was paused. The reason for this
+was that the deterministic execution loop did not account for the stack state
+STEPPING and spun when it should not. A test in the deterministic run loop in
+BPDebugTarget was modified to force the loop to enter a wait state when the
+stack state is anything other than RUNNING. Some commented out code was also
+removed.
+
+6.2 Corrected debug test hang
+Many developers have reported that the debug.ui.test frequently hangs when
+bringing up the Launcher dialog. This is fixed by forcing the dialog to become
+active in testUtil.dismissDialog(). The change is specific to Launcher dialogs,
+so it cannot affect the behavior of other tests.
+
+6.3 Fix spotlight for Generic packages
+It was noticed that spotlight elements were not showing up in the view when
+running Generic Package models. The Spotlight Viewer generation script is
+extended to show Generic package elements.
+
+6.4 Remove premature removal of the process during termination
+In the deterministic run mode, a call is made during termination to remove the
+process from the launch. This had the effect of clearing the console view
+earlier than it was in other run modes. This call is removed. The process is
+removed when the user clicks either of the Remove terminated launch buttons.
+A new convenience function, clearDebugView() is added to DebugUITestUtilities
+that allows tests to remove launches before moving on to the next test.
+VerifierTest.tearDown() has a call to this convenience function added.
+
+6.5 Cosmetic changes
+During investigation of 6.1 above, experiments were made which discovered that
+resuming execution in the failing test in VerifierInterfaceExecutionTests
+before the interface operation was invoked would fix the problem. Accordingly, a
+convenience method, resume() was added to DebugUITestUtilities. When the true
+cause of the failure described in 6.1 was discovered, the calls to this
+convenience method were seen to be unnecessary and test reverted to its HEAD
+revision. The convenience method was seen as having potential use in the future
+and is left in place.
+
+6.6 Collision with changes for dts0100696901
+The fix for the above issue removes only the timer instances from a specific
+model root. To merge it with the changes to TIM for this issue it is merely
+necessary to replace the three calls:
+
+		eelist.clear();
+		eeIdleList.clear();
+		timersList.clear();
+
+With the loops in the issue for that branch.
+
+6.7 Back out proposed change to PersistableModelComponent
+The change to log errors when catching exceptions in PersistableModelComponent
+create() is backed out because it causes lots of error log entries during JUnit
+testing. An issue [8] is raised to get this addressed instead.
+
+7. Unit Test
+------------
+Unit tests are not running successfully at this time. Please consult me.
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100749315-01
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    PersistableModelComponent.java
+com.mentor.nucleus.bp.core/src/lib/ARCH.java
+com.mentor.nucleus.bp.core/src/lib/TIM.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Body/Body.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type/Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Attribute Value/Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In Engine/Class In Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Interface Operation Invocation/
+    Interface Operation Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Signal Invocation/Signal Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Invocation.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Local Value/Local Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Component Reference Value/Component Reference Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Simple Value/Simple Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Message Value/Message Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value.xtuml
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui/
+    ModelElementLocation.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.launch/
+    BPDebugUtils.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPDebugTarget.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPProcess.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPThread.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPValue.java
+
+com.mentor.nucleus.bp.debug.ui.test/>src/(default package)/
+    VerifierTestSuite.java
+com.mentor.nucleus.bp.debug.ui.test/>src/com.mentor.nucleus.bp.debug.engine/
+    VerifierMessageTest.java
+com.mentor.nucleus.bp.debug.ui.test/>src/com.mentor.nucleus.bp.debug.test/
+    VerifierTest.java
+com.mentor.nucleus.bp.debug.ui.test/>src/com.mentor.nucleus.bp.debug.ui.test/
+    DebugUITestUtilities.java
+com.mentor.nucleus.bp.debug.ui.test/>expected_results/verifier/
+    Declared to Declared Root to Root.result
+com.mentor.nucleus.bp.debug.ui.test/>expected_results/verifier/
+    Declared to Referenced Root to Root.result
+com.mentor.nucleus.bp.debug.ui.test/>expected_results/verifier/
+    Referenced to Declared Root to Root.result
+com.mentor.nucleus.bp.debug.ui.test/>expected_results/verifier/
+    Referenced to Referenced Root to Root.result
+
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test/TestUtil.java
+
+com.mentor.nucleus.bp.ui.explorer/arc/create_mon_content_provider.inc
+
+
+
+End
+---
+
+$Log: dts0100749315.int,v $
+Revision 1.2  2011/05/19 17:30:17  campbell
+Job: dts0100749315
+Added comment about collision.
+
+Revision 1.1  2011/05/19 14:04:07  campbell
+Job: dts0100749315
+Introduced.

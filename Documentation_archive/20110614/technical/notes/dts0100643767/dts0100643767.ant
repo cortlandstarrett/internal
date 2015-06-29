@@ -1,0 +1,189 @@
+========================================================================
+
+File:      $RCSfile: dts0100643767.ant,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Handle determinism in Verifier.
+
+1. Abstract
+-----------
+This note sets out the requirements for determinism in multi-component Verifier
+simulations.
+
+2. History
+----------
+.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100643767 - Handle determinism in verifier behavior.
+[2] http://en.wikipedia.org/wiki/Monte_Carlo_method.
+[3] ClearQuest DEI dts0100748427 - Support stochastic execution analysis.
+
+4. Background
+-------------
+There have been customer requests for repeatability in Verifier simulations
+launched from multi component configurations.
+
+5. Analysis
+-----------
+5.1 Causes of non-determinacy
+Non deterministic behavior in Verifier is seen because to simulate component
+execution independence, each component is allocated a separate thread on which
+its execution engine operates. Synchronization between threads is limited to
+ensuring the reliable transfer of execution data between the simulation spaces.
+
+Therefore, without explicit modeled synchronization, individual models execute
+independently. This leads to non repeatable simulation outcomes. The solution to
+this problem would be to make all component engines execute on the same
+operating system thread and carry out execution interleaving explicitly within
+the Verifier implementation.
+
+5.2 Retirement of multiple execution threads
+It might seem appropriate to retire the existing execution method as part of
+this work. This section discusses this requirement.
+
+Verifier has two use cases relevant to this question; its use as a model test
+host and secondly, its use as a means of early detection of inter-component race
+conditions. Deterministic execution clearly has advantages for the test use
+case, since test outcomes are repeatable in this mode. However, execution
+determinism masks possible problems in the second scenario. If we assume the
+selected model compiler follows the same execution interleaving policies as
+Verifier, and we further assume that all component execution is carried out in
+a single hardware execution unit, then consistency of behavior between Verifier
+and generated code in the target is assured.
+
+These assumptions cannot always be met and so it is recommended that multi-
+threaded Verifier execution be retained as an option. A new option on the launch
+configuration page shall therefore be added to allow specification of this
+behavior.
+
+It can be argued that the use of operating system dependent thread scheduling is
+of limited utility for detecting inter-component race conditions. A better
+solution would be for Verifier to provide Monte Carlo style simulation[2];
+providing detailed stochastic analyses of execution profiles. For this to work,
+Verifier would need to be calibrated with stochastic models of the target
+execution units. This is outside of the scope of making Verifier behavior
+deterministic. A separate issue is raised to track this requirement[3]. Further
+analysis will establish a priority for this capability and establish its place
+in the product road map. Until stochastic execution analysis is available, the
+simple multi-threaded execution approach has some utility in helping identify
+areas where more attention to inter-component synchronization is required.
+
+5.3 Suggested single threading execution interleave policy
+The suggested activity interleaving policy is based on the order the component
+instances are found in the configuration. Each component shall execute a single
+activity to completion before releasing control to the next component. A single
+activity is defined as the entire contents of a section of OAL, including any
+calls made to subordinate activities. A sent event in this context is enqueued,
+but any activity it might trigger is not executed until the next visit from the
+interleaving mechanism.
+
+The only exception to this shall be where a synchronous inter-component message
+is sent, where the activity shall be suspended to allow the remote component to
+perform the requested work and return a value if required. In this case,
+execution in the sending component shall resume from the point immediately
+following the inter-component invocation at the next visit from the interleaving
+mechanism.
+
+In general, the Verifier execution interleaving policy shall be as close as
+practical to that implemented by MC-3020.
+
+5.4 UI changes
+As discussed in 5.2 above, a new check box shall be added to the Verifier
+launch configuration. The box shall be labeled 'Run deterministically'. When
+'Run deterministically' is selected, the 'Use simulated time' option shall be
+disabled and forced to true.
+
+A new BridgePoint preference shall be added to specify the default value for
+this new launch option.
+
+In all other respects, the user debugging experience shall be consistent with
+that already presented by Verifier.
+
+5.5 Suggested design
+5.5.1 Currently, the BridgePoint plugin, com.mentor.nucleus.bp.debug.ui handles
+Verifier launch. Eclipse instantiates an instance of BPDebugTarget, which calls
+the BPThread.setupSelectedModels() method which reads the launch configuration
+to determine which components to launch. This method then calls the method,
+BPThread.launchElement() for each component that needs to be started.
+
+5.5.2 Inside launchElement(), a new java thread is started for each component in
+the simulation. It is suggested that the state of the 'Run deterministically'
+launch property is tested just prior to launching the thread and separate
+threads only started if the property is false. Finally if the property is false,
+a single java thread will need to be launched prior to exiting the method,
+setupSelectedModels(). To provide guaranteed repeatability, timers shall
+also be managed on the same java thread.
+
+5.5.3 A private ArrayList, 'threads' is already available inside BPDebugTarget
+which contains a list of the BPThread instances started for the simulation
+(BPThread instances are part of the Eclipse debug model and are not associated
+with java threads). This collection can be used to iterate over the started
+component instances in the single thread started as suggested in 5.4.2.
+
+5.5.4 The body of the event loop executed by the single thread can be similar to
+that already in existence in the BPThread.runModel() method. However, the event
+loop can be considerably simplified, since there is no need to perform locking
+on event or inter-component message queues. This locking is only required in a
+multi-threaded context.
+
+6. Work Required
+----------------
+6.1 Add deterministic execution mode selector
+This is done in the debug.ui.launch.VerifiableElementComposite class.
+
+6.2 Don't start separate threads
+This is done by making suggested modifications to BPDebugTarget.launchElement()
+and associated methods.
+
+6.3 Start single execution thread
+This is achieved by making recommended modifications to the method,
+BPDebugTarget.setupSelectedModels().
+
+7. Acceptance Test
+------------------
+The Verifier JUnit tests must pass with the deterministic execution selector
+turned on and off.
+
+End
+---
+
+$Log: dts0100643767.ant,v $
+Revision 1.7  2011/02/02 15:36:15  campbell
+Job: dts0100643767
+Address review observations.
+
+Revision 1.6  2011/02/02 12:53:37  campbell
+Job: dts0100643767
+Add reference to new CQ issue.
+
+Revision 1.5  2011/01/31 13:16:37  campbell
+Job: dts0100643767
+Add test section, correct some typos.
+
+Revision 1.4  2011/01/31 12:51:49  campbell
+Job: dts0100643767
+Adjust section numbering.
+
+Revision 1.3  2011/01/31 12:50:41  campbell
+Job: dts0100643767
+Clarify suggested interleaving policy.
+
+Revision 1.2  2011/01/31 12:34:37  campbell
+Job: dts0100643767
+Added reference to Monte Carlo simulation.
+
+Revision 1.1  2011/01/31 12:23:21  campbell
+Job: dts0100643767
+Introduced.
+

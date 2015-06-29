@@ -1,0 +1,316 @@
+========================================================================
+
+File:      $RCSfile: dts0100530239.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Constants - Phase 1
+
+1. Abstract
+-----------
+This note describes the design for implementing support of constants in
+BridgePoint.  The focus is on phase 1 of a multi-phase delivery.  Here
+we intend to add initial support for simple constants as part of our existing
+datatype infrastructure.  This phase will not address structured constants or
+enumerator constants.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 1879 (Constants)
+      http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1879
+[2] ClearQuest dts0100530239
+      (Support for Constants still not in place in BridgePoint)
+[3] i1879-01.ant - Constants Analysis Note
+[4] <CVS>/Models/Constants/Constants-Stage1
+[5] <CVS>/Documentation/external/requirements/Constants.SRS.txt
+[6] dts0100530239-TestMatrix-01.txt
+[7] dts0100530239-TestMatrix-02.txt
+[8] dts0100530239-TestMatrix-03.txt
+[9] ClearQuest dts0100571956
+      {Add constant (phase 1) support to model compilers}
+
+4. Background
+-------------
+4.1  Many customers have requested the ability to specify named fixed values in
+     BridgePoint.  These symbolic constants fall into two broad categories,
+     primitive and structured, where a primitive symbolic constant represents a
+     single value and a structured one provides values for every member of the
+     corresponding structured data type.
+
+4.2  The engineering team has made the decision to deliver primitive symbolic
+     consts in a first phase, then structured symbolic consts and other
+     enhancements will be delivered in another phase.
+
+4.3  This phase will also not include the ability to set the value of a constant
+     using another constant or via an expression of values.
+
+5. Analysis
+-----------
+5.1  For the original analysis, see [3].
+
+5.2  SRS Fulfillment.  This list details what parts of the SRS will be satis-
+     fied by this first phase of work.
+  5.2.1  Const-1 to Const-6 will be met in full
+  5.2.2  Const-7 to Const-9 will not be addressed by this work
+  5.2.3  Const-10a to Const-10d will be met in full
+  5.2.4  Const-10e will not be addressed by this work.  See [3].
+  5.2.5  Const-11 will be partially met.  UDTs based on allowed core types
+         will be supported.
+  5.2.6  Const-12a will be met in full
+  5.2.7  Const-12b to Const-14b will not be addressed by this work.  See [3].
+  5.2.8  Const-15 will be met in full
+  5.2.9  Const-16 will not be addressed by this work.  See [3].
+  5.2.10 Const-17 will be met in full
+  5.2.11 Const-18a will not be addressed by this work.  See [3].
+  5.2.12 Const-18b will be met in full
+  5.2.13 Const-18c to Const-19c will not be addressed by this work.  See [3].
+  5.2.14 Const-20a will be met in full
+  5.2.15 Const-20b to Const-23 will not be addressed by this work.  See [3].
+
+6. Design
+---------
+6.1  A model [4] was created to help clarify the expected metamodel changes.
+  6.1.1  A new subsystem in Ooaofooa (in bp.core) named "Constants" will be
+         created to contain the new classes to support this work.
+  6.1.2  The metamodel changes will be designed with phase 2 support for
+         structured constants in mind.
+  6.1.3  The subsystem will contain the following classes:
+    6.1.3.1  Constant Specification (CNST_CSP) - A grouping of constants. The
+             name is informal and does not imply any scoping. It is used by the
+             parser to locate the constant.
+    6.1.3.2  Symbolic Constant (CNST_SYC) - A constant with a name as opposed to
+             a literal constant that has a value only.
+    6.1.3.3  Leaf Symbolic Constant (CNST_LFSC) - A constant that requires no
+             further definition by the analyst. This is a supertype for other
+             constant classes that represent various types of fully defined
+             constants (e.g. Literal Symbolic, Enum, Predefined).
+    6.1.3.4  Literal Symbolic Constant (CNST_LSC) - A symbolic constant
+             containing a single value. Unlike a simple literal constant, this
+             represents a tuple; name _and_ value. A simple literal constant
+             represents only a value and is not captured in this subsystem
+             (see the Value subsystem, Literal * classes for these).
+  6.1.4  Relationships
+              CNST_CSP(1)------(*)CNST_SYC(*)------(1)S_DT
+                                    /\
+                                    |
+                                    |
+                                  CNST_LFSC
+                                    /\
+                                    |
+                                    |
+                                  CNST_LSC(*)------(1)S_CDT
+
+6.2  Context Menu Additions
+  6.2.1  In the SRS[5], Const-5 states "Context menu entries allow adding and
+         deleting constants to and from a symbolic constant specification."
+         Some clarification is needed in regard to how this will be satisfied.
+         We will handle context menu manipulation of Constant Specification
+         classes like we currently handle SDTs and EDTs.  That is, the context
+         menu on these classes support adding new elements, but not deleting
+         them.  Deletion of contained elements occurs on the element itself, not
+         via the container (in this case CNST_CSP).
+  6.2.2  Constant Specification (CNST_CSP)
+    6.2.2.1  Delete - Remove this element.  Dispose of all contained elements.
+    6.2.2.2  New > Constant - Adds a new CNST_LSC of type int to this CNST_CSP.
+    6.2.2.3  Rename - Change the name of this element.
+  6.2.3  Literal Symbolic Constant (CNST_LSC)
+    6.2.3.1  Delete - Remove this element.  Dispose of associated supertypes and
+             relationship to CNST_CSP.
+    6.2.3.2  Rename - Change the name of this element.
+    6.2.3.3  Set Type... - Indicate what core type this constant uses.  A
+             default value (corresponding to Verifier's default for this type)
+             is automatically populated.  We will use the data type chooser for
+             this feature.  We will need to be able to restrict the available
+             types to the valid core types and UDTs.
+    6.2.3.4  Set Value... - Provide a value for this constant.  Expressions with
+             operators are not allowed.  The value entered here is stored as a
+             string in CNST_LSC.  We must perform data type validation to make
+             sure the value entered corresponds to the underlying type.  We must
+             also handle embedded quotes and tick marks.  The implementation
+             chosen will be documented in the implementation note.
+  6.2.4  Add entries to context menu entries instances set. Add entries corres-
+         ponding to items in 6.2.2 and 6.2.3 to context_menu.pei.sql.
+
+6.3  Verifier Support
+  6.3.1  Value.computeValue() - Update to support constant data in V_SCV inst-
+         ances.  Changes should be localized to the area where the existing
+         literal constant types are handled.
+
+6.4  Infrastructure Changes
+  6.4.1 Metamodel
+    6.4.1.1  Add a new subtype of V_VAL named Symbolic Constant Value (V_SCV) to
+             the Value SS in the metamodel.
+    6.4.1.2  Relationships
+                 V_SCV(*)------(1)CNST_SYC
+
+  6.4.2  Literal Symbolic Constant (CNST_LSC) Value Handling
+    6.4.2.1  CNST_LSC will provide getter functions that retrieve the value as
+             the appropriate type (following similar functionality that exists
+             in the Value SS for Literal datatypes).
+  6.4.3  Persistence
+    6.4.3.1  Update file_io.pei.sql and stream.pei.sql to include the new
+             metamodel elements.
+  6.4.4  Add the new elements to the Explorer tree.  Modify UITree.sql to
+         include the Constant Specification and its Literal Symbolic Constants.
+
+6.5  Parser Changes
+  6.5.1  constant_validate(string name, UUID rule_token, boolean reportError)
+         Add to OAL Validation Utility Functions.  This function will search
+         for a constant with the given name in the appropriate data type pack-
+         ages and return its UUID if found.
+  6.5.2  Local_variable_validate (near top) - Add call to constant_validate.  If
+         a non-null UUID is returned, migrate the variable value instance we are
+         currently validating to a Symbolic Constant Value (V_SCV) instance.
+  6.5.3  Assignment_expr_end (near line 18) - We currently try to select an lval
+         from the value instances based on a UUID.  If none exists we clear
+         the AST and exit, which causes a parse error.  In this block we need to
+         add a check to first see if the lval is a constant and exit with the
+         error about constants being readonly as specified in [3, §6.3].
+  6.5.4  data_types_compatible should not need to be changed, but callers of
+         this function will need to be changed.  The caller will have to get the
+         const's datatype before calling here.
+  6.5.5  Validation functions will check for conflicting constants with the same
+         name.
+
+6.6  Support for Alternative Display of Integers
+  6.6.1  We will provide a way where int-based constants can specify their
+         values using hex or binary.  The free form string that contains the
+         value of the CNST_LSC will allow this.  The user can specify hex values
+         using 0xNNNN notation and binary values using 0bNNNN notation.  The
+         infrastructure for converting the string value to an integer for an
+         int-based const will handle these two notations.
+
+6.7  Add new symbols to the Data Type diagram
+  6.7.1  Add canvas API
+         The standard operations; get_compartments(), get_entries(),
+         get_compartment_text(), get_style(), get_text_style(), get_ooa_id() etc
+         are added to Constant Specification class.
+  6.7.2  Add plugin declarations to ui.canvas's plugin.xml
+    6.7.2.1  Add new symbol element for Constant Specification. It depends on
+             Data Type so that it will always update when someting is changed.
+    6.7.2.2  Add the new Constant Specification symbol to the legal symbols for
+             the Data Type Package Diagram declaration.
+  6.7.3  Add Constant Specification and Literal Symbolic Constant to the
+         ooaofooa_hierarchy (ooaofooa_hierarchy.pei.sql).  Add two new tree node
+         specifications and two new tree parenthood specifications (one for
+         CNST_CSP and CNST_LSC in the two cases).  This ties the icons to the
+         tree elements and lays out where they live in the tree structure of
+         Model Explorer.
+  6.7.4  Add new OOAType enumeration to ooaofgraphics
+         In ui.canvas's ooaofgraphics model, in the Datatypes, there is an
+         enumeration called OOAType which is used to identify which ooaofooa
+         classes have graphical elements.  Add a new enumerator here for
+         Constant Specification with description set to "Value: 109".
+  6.7.5  Add case to Getinstancefromooa_id()
+         Add case for Constant Specification to ui.canvas's
+         Cl_c.Getinstancefromooa_id(...).  This function is used to get an
+         instance of the class which was passed in using it's OOAType enumerator
+         form.
+  6.7.6  Create new icons
+         Three new icons, one each to represent Constant Specification and
+         Literal Symbolic Constant. A third is for the canvas tool for drawing
+         new Constant Specifications.  The design will follow the pattern of the
+         current icons for SDTs, EDTs, and UDTs.  Contact Bill Chown and give
+         him the opportunity to improve all of these icons.
+  6.7.7  The creation of CNST_CSPs will mirror closely the creation of
+         S_EDTs. Display of the box and it's constants will satisfy [5,Const-3].
+
+6.8 Add support for cut/copy/paste of Constant Specifications
+  6.8.1  In order to support cut/copy/paste of constant specifications, two new
+         operations are added:
+             Data Type Package.pasteConstantSpecification(unique_id)
+             Literal Symbolic Constant.resolveDataType()
+
+  6.8.2  The S_DPK.pasteConstantSpecification(unique_id) operation hooks up the
+         pasted constant specification to the destination parent, whether it be
+         a domain level data type package or a system level package.  It also
+         handles naming the new constant specification uniquely.  Of course,
+         this will not have an effect until we enforce data types to have unique
+         names.
+
+  6.8.3  The CNST_LSC.resolveDataType() operation searches the destination for a
+         data type of the same name, if found it hooks the pasted Literal
+         Symbolic Constant to the resolved data type.  If a data type is not
+         found the integer data type is used.
+
+  6.8.4  When a Constant Specification is exported by itself, the data type
+         proxy must always get exported.  To handle this, a special case is
+         added to the export archetype "export_functions.inc".  The same type of
+         special case already exists for User Data Types.
+
+6.9  Add Unit Tests
+  6.9.1  Update Models/ContextMenuTests to have CME tests for constants.
+  6.9.2  Verify that the appropriate context menu tests are created by
+         com.mentor.nucleus.bp.core.test/arc/create_context_menu_tests.arc.
+  6.9.3  Add test to verify unicode values for string Literal Symbolic Constants
+         are stored and retrieved correctly.
+  6.9.4  Use the unit test generator for test matrices to create unit tests for
+         the parser[6], properties[7], and canvas[8].
+  6.9.5  Add tests for embedded quotes and ticks in the "Set Value..." dialog.
+
+6.10  Model Compilers
+  6.10.1  Model compiler support for constants is handled separately [9].
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is outlined in section 6.
+
+9. Unit Test
+------------
+9.1  Run all JUnit tests, verify they pass.  This includes the test additions
+     specified in 6.9 as well as the new test matrix based tests outlined in
+     [6], [7], and [8].
+
+End
+---
+
+$Log: dts0100530239.dnt,v $
+Revision 1.5  2010/01/05 04:29:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.4  2009/03/13 20:36:13  kbrown
+job:dts0100530239
+Updated to address review comments.
+
+Revision 1.3  2009/03/12 02:20:36  kbrown
+job:dts0100530239
+Finished first version of note.
+
+Revision 1.2  2009/03/10 13:21:56  kbrown
+job:dts0100530239
+Design note nearly complete.
+
+Revision 1.1  2009/02/27 20:26:03  kbrown
+job:dts0100530239
+Design note as work in progress.  I think I've captured all the areas that need to be worked on, but several still need to be filled in with details.
+
+Revision 1.2  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/30 16:15:37  rmulvey
+Job:1879
+Introduced
+

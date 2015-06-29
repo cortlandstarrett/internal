@@ -1,0 +1,129 @@
+========================================================================
+
+File:      $RCSfile: dts0100773342.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Parse all activities does not always descend the hierarchy correctly
+
+1. Abstract
+-----------
+During testing of release 3.2.5 it was noted that the multilevel parsing
+behavior was not working for the test model, EventLabelTest. This note describes
+the fix for this problem.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100773342 - Parse all activities does not always descend
+    the hierarchy correctly.
+
+4. Background
+-------------
+Multi-level parsing was introduced with generic packages. The idea is that a
+user should be able to click anywhere in the project hierarchy and choose 'Parse
+all activities'. Then everything from that level down would be parsed. This is
+a time saver in large models where a user may have been working on only a tiny
+part of it and does not need a full parse. This functionality will also be
+useful when we come to do incremental builds.
+
+5. Analysis
+-----------
+On examination of the add<ActivityName>sToList() methods in the class,
+AllActivityModifier, it is seen that there is no code anywhere which descends
+from a package to its contained components. In the case of the model that high-
+lighted the problem, there was a top package that contained two components, so
+the algorithm did not descend the components.
+
+6. Design
+---------
+In each of the add<ActivityName>sToList() methods , we add a new Component
+array, comp_set to mirror the existing pkg_set. This is populated everywhere the
+pkg_set is populated except traversing the PackageableElement sub-type hierarchy
+to the component rather than the package. At the end of each method, we descend
+the component hierarchy by iterating the comp_set exactly as the pkg_set is
+currently iterated.
+
+The following activity containers are affected:
+
+- Bridges
+- Functions
+- MDAs
+- Operations
+- ProvidedOperations
+- ProvidedSignals
+- RequiredOperations
+- RequiredSignals
+- States
+- Transitions
+
+There are two overloaded methods per activity container, giving 20 affected
+methods. In addition, there is one other method, resetPackagesBelow() which must
+also descend the package to component hierarchy. This means that a total of 21
+methods are affected.
+
+Normally this would not meet the criteria for an implementation note only job.
+However, the changes are very regular across all methods.
+
+7. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+_- Load the EventLabelTest model
+_- Set the Test class in the root TestPackage to public.
+_- Right click on the TestPackage and choose 'Parse All Activities'
+_R Two errors are shown
+_- Set the Test class in the root TestPackage to private.
+_- Right click on the TestPackage and choose 'Parse All Activities'
+_R No errors are shown
+_- Set the Test class in the root TestPackage to public.
+_- Right click on the component TestComp1 and choose 'Parse All Activities'
+_R One error is shown
+_- Right click on the component TestComp2 and choose 'Parse All Activities'
+_R Two errors are shown
+_- Set the Test class in the root TestPackage to private.
+_- Right click on the component TestComp1 and choose 'Parse All Activities'
+_R One error is shown
+_R The error is from TestComp2
+
+In addition, the text test, all io tests and Verifier test JUnits must pass as
+these plugins use AllActivity modifier.
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100773342
+
+com.mentor.nucleus.bp.ui.text/src/com.mentor.nucleus.bp.ui.text.activity/
+    AllActivityModifier.java
+
+End
+---
+
+$Log: dts0100773342.int,v $
+Revision 1.4  2011/05/26 15:49:59  campbell
+Job: dts0100773342
+Address review obs.
+
+Revision 1.3  2011/05/26 15:31:35  campbell
+Job: dts0100773342
+Add extra required tests.
+
+Revision 1.2  2011/05/26 15:26:20  campbell
+Job: dts0100773342
+Fix reference.
+
+Revision 1.1  2011/05/26 14:12:26  campbell
+Job: dts0100773342
+Introduced.

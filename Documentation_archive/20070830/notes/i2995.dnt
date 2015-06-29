@@ -1,0 +1,253 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Address various post 1.4.5 issues
+
+1. Abstract
+-----------
+This note describes the design to fix the following issues:
+
+1.1 Imported Component actionFilter does not allow assignment in certain cases.
+1.2 After Component formalization link with editor does not work for children.
+1.3 It is possible to get into an infinite loop when a loading error occurs.
+1.4 Canvas editor tab and file entry in ME show Domain Package Diagram Editor
+    and should show Component Diagram Editor.
+1.5 The list of data types in properties for children of a formal component is
+		incorrectly showing domain data types instead of the system level data
+		types.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2995
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2995
+    
+4. Background
+-------------
+
+5. Analysis
+-----------
+
+5.1 Imported Component actionFilter does not allow assignment in certain cases.
+
+The Imported Component actionFilter operation had duplicated logic for the case
+where a single component was found for assignment and for when multiple
+components were found for assignment.  The latter case did not handle cases
+where a component was determined to be unusable.
+
+5.2 After Component formalization link with editor does not work for children.
+
+The generated code for domain children will always look for the domain as a
+parent before the component.  The domain will always exist, so when a component
+is the desired parent the code will fail.
+
+5.3 It is possible to get into an infinite loop when a loading error occurs.
+
+A modelElementLoaded event triggers code in CanvasEditorListener to reset
+graphical representation.  This code calls Cl_c.Getinstancefromooa_id() which
+will trigger loading of any type that is searched for.  If an element was not
+loaded properly the load code can be called again within the same stack.
+
+5.4 Canvas editor tab and file entry in ME show Domain Package Diagram Editor
+    and should show Component Diagram Editor.
+    
+The canvas editor tab needs to indicate that a user is editing a Component
+Diagram when opening a Component that is formalized to a domain.
+
+5.5 The list of data types in properties for children of a formal component is
+		incorrectly showing domain data types instead of the system level data
+		types.
+		
+The property source code in ui.properties needs to traverse R14 when looking for
+available data types to domain children.  Currently a search in the given
+model-root is used.
+
+6. Design
+---------
+6.1 Imported Component actionFilter does not allow assignment in certain cases.
+
+The actionFilter operation shall be modified to remove the duplicated code.
+The new code shall be changed to handle both the single component and multiple
+component cases.  The code shall be changed to correctly handle unusable
+components.
+
+The logic in the Imported Component.componentHasUnusableInterfaces operation was
+reversed.  The operation returned whether or not a component had a usuable
+interface, when it should have returned true if the component had any unusable
+interface.  This logic shall be corrected.
+
+6.2 After Component formalization link with editor does not work for children.
+
+A new attribute shall be added to the Tree_Parenthood_Specification class of the
+UITree model.  This attribute shall capture the parent search order.  Valid
+values shall be "first".  Currently no support for last shall be required.
+
+The UITree pei data shall be modified to set this attribute for the TPS entries
+of the formal component children to "first".
+
+The create_adapters.inc archetype shall be modified to account for this new
+attribute.  Returning those parents which have this attribute set to "first"
+before all other parents.
+
+6.3 It is possible to get into an infinite loop when a loading error occurs.
+
+The listener shall be changed to avoid using the Cl_c.Getinstancefromooa_id()
+method.  This method is not required, instead all that is required is a
+comparison of the GD_GE.OOA_ID value of the current GD_GE and the loaded
+element's id.  If they are the same the current GD_GE shall have it's represents
+value updated.
+
+6.4 Canvas editor tab and file entry in ME show Domain Package Diagram Editor
+    and should show Component Diagram Editor.
+    
+When a component is formalized to a domain, that domain should appear to not
+exist anymore.  Currently when double-clicking a formal component, the Domain
+Package Diagram is opened as expected.  The problem is that the editor tab still
+indicates that the editor is a Domain Package Diagram when it should indicate
+that it is a Component Diagram Editor.  The file entry in ME uses the same code
+as the editor tab to get the text for display.
+
+The code shall be changed so that the correct text is returned when a component
+is formal.
+
+Another issue was found where the Outline Page was showing the Domain's outline
+instead of the Components.  The CanvasEditor class shall be changed to return
+the Component's Outline if the editor opened represents a domain that is the
+formal content of a Component.
+
+6.5 The list of data types in properties for children of a formal component is
+		incorrectly showing domain data types instead of the system level data
+		types.
+		
+The archetype for generating the properties code shall be changed to use R14
+if the current entry has the S_DT key letters.  The system level data types are
+already handled separately.
+
+7. Design Comments
+------------------
+7.1
+
+An issue was found where after a CVS Replace With... the cut and copy canvas
+actions were not being enabled.  This was due to the caching of the Model_c
+instance, upon reloaded it becomes the incorrect instance.  We already cache the
+CanvasEditor instance will always have the right Model_c instance.  The code is
+changed to get the Model_c from the cached CanvasEditor instance.
+
+8. Work Required
+----------------
+The design section covers the work that is required.
+
+9. Unit Test
+------------
+Testing the 6.1 changes:
+
+_- Create an imported component
+_- Create a component, with one formal interface that is out of scope for the
+   imported component
+_- Right click on the imported component
+_R The Assign menu item is not available
+
+_- Change the above interface to one which is in scope
+_- Right click on the imported component
+_R The Assign menu item is available
+
+_- Create another component with a formal interface that is out of scope for the
+   imported component
+_- Right click on the imported component
+_R The Assign menu item is available
+
+_- Change both components so that they only have out of scope interfaces
+_- Right click on the imported component
+_R The Assign menu item is not available
+
+Testing 6.2 changes:
+
+_- Create a domain
+_- Create a component
+_- With the tree expanded only to the component's package level formalize the
+   component to the domain
+_- Double-click the component
+_- Select the Link With Editor button
+_- Click on the "External Entities" element in the opened diagram
+_R The tree is expanded to that child element
+
+Testing 6.4 changes:
+
+_- Formalize a component to a domain
+_- Open ME to show the component
+_R The formal name of the component is shown for the file entry
+_R The text "Component Diagram Editor" is shown for the file entry
+_- Double click the component
+_R The domain package diagram contents are shown
+_R The editor tab shows the text "Component Diagram Editor"
+
+Testing 6.5 changes:
+
+_- Formalize a component to a domain which has a class operation
+_- Select the class operation and open the properties view
+_- Select a core data type (different from the currently selected one) from the
+   drop down list for the Return Type attribute
+_R The operation is related to a system level data type not a suppressed domain
+   level data type.
+   
+Testing 7.1 changes:
+
+_- Move a graphical element (which has cut support) on a diagram which is
+   version controlled
+_- Replace with the latest version
+_- Right click on the element
+_R The "Cut" menu item is present
+
+_- Move a graphical element (which has copy support) on a diagram which is
+   version controlled
+_- Replace with the latest version
+_- Right click on the element
+_R The "Copy" menu item is present
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:56  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.3  2007/07/19 22:23:15  tlondon
+Job: 2995
+
+Address review minutes.
+Add design comment about cut/copy bug.
+Add test for design comment change.
+
+Revision 1.2  2007/07/16 15:32:43  tlondon
+Job: 2995
+
+Correct test
+
+Revision 1.1  2007/07/16 14:50:02  tlondon
+Job: 2995
+
+Introduce
+

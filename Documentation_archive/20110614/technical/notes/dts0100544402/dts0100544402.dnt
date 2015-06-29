@@ -1,0 +1,208 @@
+========================================================================
+
+File:      $RCSfile: dts0100544402.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Generate sequence diagrams from Verifier execution runs.
+
+1. Abstract
+-----------
+This note describes the first steps towards fully supporting the generation of
+sequence diagrams from Verifier runtime data.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100544402 - [BZ 3618] Request to add generation of
+    sequences in Verifier runtime.
+[2] ClearQuest DEI dts0100733113 - Prepare BP infrastructure for Sequence
+    Diagram generation.
+
+4. Background
+-------------
+Several customers and potential customers have expressed the desire to generate
+sequence diagrams automatically from Verifier runtime data.
+
+5. Analysis
+-----------
+
+5.1 Requirements
+The basic initial requirements are as follows:
+
+5.1.1 Component references only to be generated.
+5.1.2 Inter-component communication only.
+5.1.3 Components to be created as required
+5.1.4 Lifespan connectors to be automatically added as required.
+5.1.5 Messages to be drawn between the relevant lifespan connectors, angled
+      slightly down the page.
+5.1.6 If possible, the diagram is to scroll to follow the addition of new
+      messages.
+
+5.2 Alternative strategies
+Two alternate strategies were considered:
+
+5.2.1 Active push notification from Verifier
+With this strategy, Verifier would explicitly notify listeners when specific
+notable execution events occurred.
+
+5.2.2 Passive model change listener
+With this strategy, a general model change listener is installed. It listens for
+model changes on specific associations and specific instance creations and
+constructs the diagram from this information.
+
+5.3 Strategy selection.
+The push notification strategy has the advantage that it does not add undue
+overhead to the Verifier runtime engine. The disadvantages are that it adds
+complexity to the engine, and that this complexity growth is not bounded. Every
+time a requirement to generate a new diagram and/or diagram feature must be
+satisfied, additional maintenance on Verifier will be required. Since Verifier
+is already very complex, this is a significant disadvantage.
+
+The model change listener strategy must process every change that Verifier makes
+to the model database, so the disadvantage here is runtime overhead. However, no
+runtime penalty is taken when no diagram construction is required, making this
+option have a lower overall impact on Verifier performance except when active.
+The design shall be arranged to quickly return control when a change is reported
+that is not of interest to the diagram capture. Another advantage with this
+approach is that it is completely non intrusive to Verifier. All diagram capture
+code lies in a separate plugin that requires no co-operation from Verifier. This
+means that future enhancements to this technology need not affect Verifier's
+internals.
+
+The model change listener based strategy described in 5.2.2 is therefore
+preferred.
+
+5.4 Work partitioning
+We need to get this functionality into the hands of the sales and marketing
+teams as early as possible. Accordingly, we need to make it easy to get access
+to this functionality ahead of a fully qualified sequence capture product. The
+work shall therefore be split into two parts:
+
+5.4.1 The work required on the existing infrastructure
+5.4.2 The work required to expose the functionality to the user.
+
+This note shall cover the work for 5.4.1. A later note shall take the new UI
+required by 5.4.2 through the development process. In the meantime, Mentor staff
+can have access to a pre-release sequence capture plugin.
+
+6. Design
+---------
+6.1 Required Verifier changes.
+Section 5.3 above stated that Verifier would not need to be changed given the
+strategy selected. However, early prototyping quickly showed that some necessary
+information was missing from Verifier's runtime database. This information was
+the knowledge of what the component sender of a given message was. This
+information was not previously required by Verifier, since the the black box
+nature of components means that sender of an inter-component message is not
+needed when processing it. There are two cases when this information must be
+captured:
+
+6.1.1 When a signal event is enqueued
+An association, R2976 is added between Pending Event and Component Instance.
+When the event is enqueued, an additional statement in Pending Event.fire() sets
+up this association.
+
+6.1.2 When a stack frame is enqueued to initiate port OAL execution.
+The existing association R2966 is promoted to a linked association, adding a new
+class IntercomponentQueueEntry (I_ICQE). This class now holds the referential
+attributes formalizing R2966. Since none of these classes are persisted, there
+are no data upgrade issues with doing this. A new association (R2977) is drawn
+between I_ICQE and Component Instance (I_EXE). This captures the sender for
+interface operations and signals implemented with port OAL. This association is
+established in multiple places where the OAL is set up for execution.
+
+6.2 Infrastructure changes
+Early prototyping established that the existing BridgePoint asynchronous
+notification mechanism is not adequate. Events and stack frames are frequently
+processed by Verifier before a model change listener can be invoked to gather
+data about the occurrence. Additionally, Verifier turns off model change
+notification completely for performance reasons.
+
+Accordingly, the IModelChangeListener is extended to require two new boolean
+methods, isSynchronous() and isMaskable(). The listener notification infra-
+structure is modified to implement the semantics of these two new methods.  All
+existing listeners implement these methods so that the semantics and timing of
+their invocation are unchanged, i.e. returning false from isSynchronous() and
+true from isMaskable(). Most listeners extend ModelChangeAdapter, so this is
+changed as described above to effect this change for most listeners. The
+VerifierModelChangeListener and core ProblemModelChangeListener implement
+the IModelChangeListener interface directly and so require these changes to be
+made explicitly.
+
+The new sequence builder listener shall return true for isSynchronous() and
+false for isMaskable().
+
+The EclipseOoaofooa and ModelRoot classes are modified to support synchronous
+and non-maskable listener invocations.
+
+Note that specifying a synchronous listener has the following threading and
+performance implications:
+
+- A synchronously invoked listener may or may not be invoked on the UI thread.
+  By contrast, an asynchronous listener invocation always occurs on the UI
+  thread.
+- In the case of a listener synchronously invoked from Verifier, execution
+  completes entirely in the Verifier execution thread. This will therefore
+  directly degrade Verifier performance.
+
+The sequence builder listener shall be designed such that it gathers the data it
+needs on the synchronous thread, and will then use asynchExec to transfer
+control to the UI thread to actually create the diagram artifacts. This strategy
+addresses both of the implications stated above. All future uses of a
+synchronous listener must consider these implications. A comment is placed in
+the interface declaration to this effect.
+
+7. Design Comments
+------------------
+7.1 BPThread
+A recurring Null Pointer Exception was traced to a failure in the method
+BPThread.internalSuspend() to check for a non null component instance before
+using it as a lock. An additional if test is added to prevent this error.
+
+7.2 Issue number change
+In the interests of providing change traceability for the Release Notes without
+closing this customer visible issue, downstream work on this job is carried out
+under[2].
+
+8. Work Required
+----------------
+Fully described in the design section.
+
+9. Unit Test
+------------
+Since the functionality being promoted here does not add any user visible
+features, no new tests are required. However, the changes detailed above are
+introduced in areas through which many code paths flow. It is therefore a
+requirement that all existing unit tests pass.
+
+End
+---
+
+$Log: dts0100544402.dnt,v $
+Revision 1.4  2010/11/24 13:36:22  campbell
+Job: dts0100544402
+Cross refer to downstream issue dts0100733113 which takes over this work.
+
+Revision 1.3  2010/11/24 11:11:01  campbell
+Job: dts0100544402
+Address review observations.
+
+Revision 1.2  2010/11/23 20:14:25  campbell
+Job: dts0100544402
+Ready for review.
+
+Revision 1.1  2010/10/13 15:50:44  campbell
+Job: dts0100544402
+Introduced.
+

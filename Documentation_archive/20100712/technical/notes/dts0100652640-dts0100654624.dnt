@@ -1,0 +1,304 @@
+========================================================================
+
+File:      $RCSfile: dts0100652640-dts0100654624.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Introducing an ordered timers list and maintaining an "expiration time" for
+timers instead of "time_left".
+
+1. Abstract
+-----------
+This note describes the design needed to keep an ordered list of timers.
+It also describes the replacement of the reliance of timers on "time_left"
+to "expiration".
+
+2. History
+----------
+N/A
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100652640
+Maintain ordered timers in verifier
+[2] ClearQuest DEI dts0100654624
+Modify the verifier timers to be based on expiration time rather than the time
+left
+[3] ClearQuest DEI dts0100570181
+Timer jitter in Verifier
+[4] Timer test model
+(A new model that will be added to the Models folder on CVS)
+
+4. Background
+-------------
+4.1 [3] describes an issue with accumulating error in the verifer. That is; if
+a timer is ticked X times, the error in the timer will be equal to X*error in
+each tick. This issue was resolved and the error in the timer now is equal to
+the error of a single tick.
+
+5. Analysis
+-----------
+5.1 Within our current real-time verifier scheme, we select all timers attached
+to each model root and tick each one of them with the timer thread's interval 
+(30 ms). Each tick decrements the "time_left" of the timer with the passing
+time.
+
+5.2 After each decrement, the check (time_left - p_interval/2 <= 0) is made. If
+the condition evaluates to true, the timer fires. The largest possible error is
+equal to:
++15 ms + execution time
+where
+execution time = time elapsed in ticking all existing timers + time elapsed in
+any thread interruptions since the interval has been calculated
+
+currentTime = System.nanoTime();
+while (true) {
+	try {
+	long startTime = currentTime;
+	synchronized(this) {
+	  this.wait(TIMER_RESOLUTION_MILLISECS);
+	  currentTime = System.nanoTime();
+	}
+	int intervalUs = Math.round((currentTime - startTime) / 1000);
+	Iterator it = roots.iterator();
+	while (it.hasNext()) {
+		ModelRoot modelRoot = (ModelRoot) it.next();
+		ExecutionEngine_c ee = ExecutionEngine_c.ExecutionEngineInstance(modelRoot);
+		if (ee != null) {
+		  try {
+	      ModelRoot.disableChangeNotification();
+	      Timer_c[] timers = Timer_c.TimerInstances(modelRoot);
+		  for (int i = 0; i < timers.length; i++) {
+			if (timers[i] != null) {  // can go null during shutdown
+				timers[i].Tick(intervalUs);
+			}
+		  }
+		  }
+		  catch (Exception e) {
+			  CorePlugin.logError("Exception found during verifier timer execution.", e);
+		  }
+		  finally {
+              ModelRoot.enableChangeNotification();
+		  }
+		  notifyCount--;
+		  if (notifyCount <= 0) {
+			  //Need to refresh Views: BPThread.refreshVerifierViews();
+			  ee.Notify();
+			  notifyCount = NOTIFY_COUNT_INTERVAL;
+		  }
+	    }
+	}
+	} catch (InterruptedException e) {
+		// Normal behavior
+	}
+}
+
+5.3 As for the simulated time verifier, it scans all the available timers and
+marks the closest timer and jumps to it. It then decrements all of the other
+timers with the "jump" that was made.
+
+5.4 Maintaining an ordered list of timers and switching to expiration, will
+provide simpler code and smaller error for the verifier execution. 
+
+6. Design
+---------
+6.1 Updates to the Data types
+A new User Data type (UDT) "long" is created. This will be translated to the
+java data type "long".
+
+6.2 Updates to the Utilities External Entity
+
+6.2.1 A bridge operation "add_int_to_long" adds an integer parameter
+and a long parameter and return the "long" result.
+
+6.2.2 A bridge operation "diff_longs_to_int" gets the difference
+between two long parameters, cast the result to an integer and return it. 
+
+6.3 Updates to the Timer class model
+
+6.3.1 A new private attribute "expiration" of type long is added to the Timer
+class. It holds the absolute time at which the timer will expire. This attribute
+will be the basis for all timer checks and updates.
+
+6.3.2 The attribute "time_left" will be removed.
+
+6.3.3 Two operations "insertTimer" and "removeTimer" are added to call the TIM
+class corresponding opreations. The reason these operations are created is to
+leave the OAL code of "fire" and "tick" operations parsable. These operations
+(tick, fire) have parsable OAL code and thus cannot include calls to methods in
+the TIM class. Accordingly, these two "native" operations are added to perform
+this functionality of calling operations in the TIM class. 
+
+6.3.4 The "fire" removes the timer from the orfered list of timers. And if the
+timer is recurring, it sets its expiration and re-inserts it in the timers
+list.
+
+6.3.5 The "tick" operation makes the check (getExpiration() <= CurrentTime()),
+and calls the "fire" operation if the condition evaulates to true.
+
+6.3.6 The "Label" attribute is modified to use "getExpiration() - CurrentTime()"
+instead of "getTime_Left()".
+
+6.4 Updates to TIM class
+To maintain an ordered timer list, two static methods are added; insertTimer and
+removeTimer.
+6.4.1 "insertTimer" will insert the timer in the timers list in an
+orderly manner i.e. if (new time expiration < existing timer expiration), then
+the new timer will be placed in the list above the existing timer.
+6.4.2 "removeTimer" will find the timer in the list and remove it
+
+6.5 The real-time verifier thread will look as follows:
+while (true) {
+	try {
+		synchronized(timerLock) {
+			if (!timersList.isEmpty() && !suspended){
+				remTime = timersList.get(0).getExpiration()-getCurrentTime();
+				if (remTime > VIEWERS_REFRESH_RATE_MILLISECS*1000)
+					timerLock.wait(VIEWERS_REFRESH_RATE_MILLISECS);
+				else if(remTime > 0)
+					timerLock.wait(remTime/1000,(int)((remTime-(remTime/1000)*1000)*1000));
+				}
+			else {
+				timerLock.wait();
+			}
+		}
+						
+		if (!timersList.isEmpty() && !suspended){
+			ExecutionEngine_c ee = ExecutionEngine_c.ExecutionEngineInstance(timersList.get(0).getModelRoot());
+			if (ee != null){
+				try {
+	                ModelRoot.disableChangeNotification();
+					timersList.get(0).Tick();
+   			  	}
+				catch (Exception e) {
+					CorePlugin.logError("Exception found during verifier timer execution.", e);
+		      	}
+				finally {
+                	ModelRoot.enableChangeNotification();
+			  	}
+				ee.Notify();
+			}
+		}
+	} catch (InterruptedException e) {
+		// Normal behavior
+	}
+}
+
+6.5.1 Basically, the thread will only Tick the first timer on the list. If the
+timer remaining for the timer to fire is more than 1 second, the timer is
+ticked. Else the timer is ticked with its remaining time. The refresh rate of
+the timers in the viewers is once per second.
+
+6.5.2 In this new verifier design, we wait for the time remaining for the timer
+to fire in contrast to waiting for short fixed time intervals. This will
+eliminate the +/- 15ms inaccuracy and limit it to an inaccuracy in the execution
+time till the timer fires.
+
+6.5.3 If the list of timers is empty, the timer thread will "wait" and will be
+"notified" once a new timer gets added to the list.
+
+6.5 The simulated-time verifier thread will look as follows:
+while (true) {
+	try {
+		idleBusyLock.wait();
+
+		if (allIdle && !suspended){	
+			if (!timersList.isEmpty() && timersList.get(0) != null){
+				ExecutionEngine_c ee = ExecutionEngine_c.ExecutionEngineInstance(timersList.get(0).getModelRoot());
+				if (ee != null){
+					try {
+						ModelRoot.disableChangeNotification();
+						simulatedTime = timersList.get(0).getExpiration();
+						timersList.get(0).Tick();
+					}
+					catch (Exception e) {
+						CorePlugin.logError("Exception found during verifier timer execution.", e);
+					}
+					finally {
+						ModelRoot.enableChangeNotification();
+					}
+				}
+			}						
+		}							
+	} catch (InterruptedException e) {
+		// Normal behavior
+	}
+}
+
+The simulated timer thread is notified when all execution engines are idle. It
+ticks and fires the first timer on the list.
+
+6.6 Handling suspend and resume
+6.6.1 Real-time Verifier
+The Wall clock is used as the "current time" for the real time verifier.
+However, when a model is suspended and resumed, the expiration of the timers
+is not modified while the wall clock is still ticking. To account for this
+suspension time, the time for which the execution was suspended is always
+subtracted from the current time (wall clock) during the model's execution.
+
+6.6.2 Simulated-time verifier
+For simulated time, we do not need to keep the time between the leaps made to
+fire the timers. The current time in this case is always updated to the
+expiration time of the most recently fired timer.
+
+7. Design Comments
+------------------
+N/A
+
+8. Work Required
+----------------
+Mentioned in the design section.
+
+9. Unit Test
+------------
+9.1 Run the verifier unit test.
+
+9.2 Re-running the whole verifier unit test while simulated time is enabled.
+(not automated due to an issue with reloading the same test twice).
+
+9.3 Test with the SeatHeater model.
+
+9.4 Test with the SeatHeater model.
+_- Manually modify the SimTime static variable in TIM class to true
+_- Execute the SeatHeater model
+_R Successful fast execution of the model
+
+9.5 Test with the Tick model.
+
+9.6 Test with the Tick model.
+_- Manually modify the SimTime static variable in TIM class to true
+_- Execute the Tick model
+_R Successful fast execution of the model
+
+9.7 Test with the TimeTest model.
+
+9.8 Test with the TimeTest model.
+_- Manually modify the SimTime static variable in TIM class to true
+_- Execute the TimeTest model
+_R Successful fast execution of the model
+
+
+End
+---
+
+$Log: dts0100652640-dts0100654624.dnt,v $
+Revision 1.3  2010/02/25 19:15:26  hkashif
+job:dts0100654624
+Minor updates
+
+Revision 1.2  2010/02/24 15:22:46  hkashif
+job:dts0100654624
+Modifying details of the real time verifier
+
+Revision 1.1  2010/02/23 16:22:01  hkashif
+job:dts0100654624
+Introducing design note
+

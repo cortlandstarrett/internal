@@ -1,0 +1,111 @@
+========================================================================
+
+File:      $RCSfile: dts0100600557.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Parser crash occurs in OAL that reuses a variable after an OAL  syntax error
+   
+1. Abstract
+-----------
+After a syntax error on any OAL expression that performs an assignment, if the
+target variable of that assignment is reused a parser crash occurs.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100600557
+[2] ClearQuest DEI dts0100589755
+    Parser failures during parse all can mask OAL errors.
+
+4. Background
+-------------
+In OAL Validation Functions::Function_invocation_end() we assume that R820 is 
+unconditional (as it should be), but in this situation there is a stale V_VAL 
+instance, and there is no S_DT associated with it on R820.   Here is an 
+example:
+
+1) select many foos related by <some valid stuff that returns a good inst set>
+2) select many foos from instances of <bad keyletters> where ( false );
+3) ::DomainFunction(foos:foos);    // Error! Crashing here
+
+In the case above, <bad keyletters> refers to keyletters that do not exist in 
+the model.  Because of the <bad keyletters> in the statement above the crash 
+R820 is torn down.   
+
+5. Design
+---------
+5.1 Find all places in the parser that may have a problem similar to the
+    one that led to this crash.
+5.1.1 Perform a search of all files under bp.core and look for places that match 
+    the following search template:
+    select one .* related by .*->S_DT.?R820.?;
+5.1.2 The following places were found:
+	OAL Validation Functions
+	------------------------
+	- Function_invocation_end
+	- Generate_statement_end
+	- Transform_invocation_end
+	
+	OAL Validation Utility Functions
+	--------------------------------
+	- inst_ref_operator_validate
+	- is_valid_sm_event_data		
+	- is_valid_ee_event_data
+5.1.3 For each of the places found in 5.1.2, modify the oal to check the result 
+    of the select statement for null.  If it is null, then report an appropriate
+    error message for the context.  
+5.1.3.1 The messages in each context are slightly different, but contain the 
+    following general form:
+    "Value has unknown data type"
+        
+
+6. Implementation Comments
+--------------------------
+6.1 The parser should never be allowed to crash.  Of course it is best if nice,
+    context sensitive error messages are reported, but parser crashes are never 
+    acceptable.  A separate issue is raised to catch all exceptions from the 
+    parser to prevent such crashes in the future [2].
+
+7. Unit Test
+------------
+7.1 The issue that led us to find this problem (as described in the 
+    background) shall be re-tested to assure the problem is fixed.
+7.2 Only als.oal.test unit tests shall be performed.    
+
+8. Code Changes
+---------------
+Changes are in branch R2_2_3-RWM-dts0100600557
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+
+
+
+End
+---
+
+$Log: dts0100600557.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/07/15 19:52:01  rmulvey
+job:dts0100600557
+Updated after review
+
+Revision 1.1  2009/07/15 14:09:05  rmulvey
+job:dts0100600557
+introduced

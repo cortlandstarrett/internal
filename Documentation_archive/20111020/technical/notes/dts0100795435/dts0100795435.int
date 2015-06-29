@@ -1,0 +1,275 @@
+========================================================================
+
+File:      $RCSfile: dts0100795435.int,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Upgrade BridgePoint/EDGE projects to BridgePoint/CDT projects
+
+
+1. Abstract
+-----------
+The CDT perspective provides a tool on the context menu of a project: 
+"New > Convert to a C/C++ Project".  This is used to add the CDT natures and 
+builders to an existing project.  This tool is useful but insufficient for a
+complete migration from EDGE to CDT on existing projects.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100795435
+[2] ClearQuest DEI dts0100803782 - Remove automated CDT conversion check
+
+4. Background
+-------------
+In BridgePoint 3.4.0 we are migrating from EDGE to CDT for the underlying code
+compilation system.  We need to convert existing BridgePoint projects from EDGE
+to CDT.  CDT helps us, but doesn't do a complete job for all of our needs.
+
+5. Design
+---------
+5.1  Functionality
+       The model compiler plugin is enhanced to provide the extended conversion
+       we want to perform.
+5.1.1  The workspace projects are iterated over. If xtUML projects are found 
+       that have the EDGE nature, the user is notified that the conversion needs
+       to be performed via a query dialog:
+           Your workspace contains xtUML projects that need to be updated.  
+           BridgePoint requires support for the Eclipse C/C++ development 
+           toolkit (CDT) be added to each xtUML project.  Code compilation 
+           will not work until this update is performed.
+           
+           Do you wish to perform this update now?
+                                             Yes      No
+       A "No" answer will abort the conversion process.  A "Yes" answer will 
+       continue the process.
+5.1.2  For each xtUML Project that has the EDGE nature we perform the following
+       steps:
+         - Remove the EDGE nature
+         - Remove the EDGE builder
+         - Add CDT support.  This is done by effectively running the same 
+           functionality provided by the "Convert to a C/C++ Project" action.
+         - Move the CDT Builder to run last
+         - Move the Scanner Configuration Builder to run last
+         - Remove the .xpj file (EDGE project file)
+         - Remove the "Configuration 0/" folder (EDGE build folder)
+         
+5.2  Entry points
+       There are two entry points into the CDT conversion functionality this 
+       enhancement provides.
+5.2.1  The model compiler plugin is modified to check each xtUML Project in the
+       workspace on startup.
+5.2.2  A entry is available in the Model Explorer context menu under 
+       "BridgePoint Utilities > Enable xtUML Projects for CDT".  Invoking this
+       action runs the same check that is performed at startup.
+
+6. Implementation Comments
+--------------------------
+6.1  The MC3020Nature class provides a number of static functions that are used
+     to perform various configuration type actions on our xtUML Projects.  
+     Several of the functions were enhanced in this work to make them more 
+     generic so they can be used for builders other than the Pre-builder and 
+     MC-3020 builder.
+     
+6.2  We do not want to leave this automatic project iteration/check at BP 
+     start-up for ever.  It just becomes a performance drain.  Issue [2] is 
+     opened to revisit this feature and to disable it in a later release.
+
+6.3  Along the lines of 6.2, we have decided to disable the pre-builder check.  
+     This feature has been around for over a year.  Since there may be cases
+     where we still want access to the feature, a menu item is added to the
+     "BridgePoint Utilities" context menu: "Verify Projects Use Pre-builder".
+     The functionality is shipped disabled by commenting out the action 
+     extension point in bp.utilities/plugin.xml.  However, still being left in
+     place it can be enabled and used in the field as needed.
+
+6.4  Update core.test for the workspace setup for generics test to run the CDT
+     project conversion after all other tests are run.  This will prevent the
+     popup dialog about needing to convert to CDT projects when we run the 
+     existing projects for generics test.
+
+6.5  Launch configs are updated to include CDT plugins since the CDT project 
+     upgrade checker now requires CDT support.
+     
+7. Unit Test
+------------
+EDGE zipfile projects in \\wv\dfs\bridgepoint\test_data\dts0100795435\
+EDGE sample projects in <BP_SVN>/trunk/AE/SKB/Models/Test
+
+7.1 Existing JUnits must pass
+
+Right now, the following tests are manual
+
+7.2 Test 1
+_- import a zipfile edge project
+_- run xtUML CDT convert action
+_R .xpj and Configuration 0/ are deleted
+_R .cproject is added
+_- build the project
+_R an EXE is built
+_- delete the project
+  
+7.3 Test 2
+_- check out an CM'd edge project  
+_- run xtUML CDT convert action
+_R .xpj and Configuration 0/ are deleted
+_R .cproject is added
+_- build the project
+_R an EXE is built
+_- delete the project
+
+7.4 Test 3
+_- import a zipfile edge project
+_- restart BP
+_R see notification on startup about need for CDT conversion
+_- run xtUML CDT convert action
+_R .xpj and Configuration 0/ are deleted
+_R .cproject is added
+_- build the project
+_R an EXE is built
+_- delete the project
+
+7.5 Test 4  
+_- create a new xtUML project
+_- add a domain
+_- open .project
+_- remove pre-builder (the build command section for exportbuilder)
+_- Open the context menu in ME and expand BridgePoint Utilities
+_R The "Verify projects for pre-builder" action is not present
+_- exit BP
+_- modify bp.utilities/plugin.xml to uncomment the verify for pre-builder action
+_- start BP
+_- no notification on startup
+_- run add pre-builder action
+_- build the project
+_- an EXE is built
+_- delete the project
+_- exit BP
+_- modify bp.utilities/plugin.xml to comment the verify for pre-builder action,
+     we want to commit the file with the action commented out/disabled
+
+7.6 Test 5
+_- Check out both SVN EDGE projects
+_- run xtUML CDT convert action
+_R .xpj and Configuration 0/ are deleted in both projects
+_R .cproject is added in both projects
+_- build the projects
+_R an EXE is built for each
+    
+8. Code Changes
+---------------
+Branch name: R3_3_3-SKB-dts0100795435
+
+Documentation/internal/process/templates/launch_configs/BP Application.launch
+Documentation/internal/process/templates/launch_configs/Compare Test.launch
+Documentation/internal/process/templates/launch_configs/
+    ConvertInformalDiagramsToGenerics.launch
+Documentation/internal/process/templates/launch_configs/
+    CopyPasteSourceDestinationTestLong.launch
+Documentation/internal/process/templates/launch_configs/
+    CopyPasteSourceDestinationTestShort.launch
+Documentation/internal/process/templates/launch_configs/Core Test.launch
+Documentation/internal/process/templates/launch_configs/Core Test 2.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test 2Generics.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test - Consistency.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test - Existing Projects.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test - Existing ProjectsGenerics.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test Generics.launch
+Documentation/internal/process/templates/launch_configs/Core Test Results.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test - RTO Move.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test - System Level Tests.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test - Workspace Setup.launch
+Documentation/internal/process/templates/launch_configs/
+    Core Test - Workspace SetupGenerics.launch
+Documentation/internal/process/templates/launch_configs/
+    Debug - Verifier Test.launch
+Documentation/internal/process/templates/launch_configs/
+    IO MDL PkgCM Test Suite.launch
+Documentation/internal/process/templates/launch_configs/
+    IO MDL PkgCM Test Suite Generics.launch
+Documentation/internal/process/templates/launch_configs/IO MDL Tests.launch
+Documentation/internal/process/templates/launch_configs/IO MDL Tests 2.launch
+Documentation/internal/process/templates/launch_configs/
+    IO MDL Tests 2 Generics.launch
+Documentation/internal/process/templates/launch_configs/
+    IO MDL Tests Generics.launch
+Documentation/internal/process/templates/launch_configs/IO SQL Test.launch
+Documentation/internal/process/templates/launch_configs/Parse All Test.launch
+Documentation/internal/process/templates/launch_configs/
+    Parse All Test Generics.launch
+Documentation/internal/process/templates/launch_configs/Search Test.launch
+Documentation/internal/process/templates/launch_configs/
+    UI Canvas CCP Test.launch
+Documentation/internal/process/templates/launch_configs/UI Canvas Test.launch
+Documentation/internal/process/templates/launch_configs/UI Explorer Test.launch
+Documentation/internal/process/templates/launch_configs/
+    UI Properties Test.launch
+Documentation/internal/process/templates/launch_configs/UI Text Test.launch
+Documentation/internal/process/templates/launch_configs/Welcome Test.launch
+
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    TestTigerNatureWorkspaceSetupTestsGenerics.java
+com.mentor.nucleus.bp.core.test/generate.xml
+
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020Nature.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ModelCompiler.java
+com.mentor.nucleus.bp.mc.mc3020/generate.xml
+com.mentor.nucleus.bp.mc.mc3020/plugin.xml
+
+com.mentor.nucleus.bp.utilities/src/com.mentor.nucleus.bp.utilities.ui/
+    BPCDTConversionAction.java
+com.mentor.nucleus.bp.utilities/src/com.mentor.nucleus.bp.utilities.ui/
+    VerifyPreBuilderPresentAction.java
+com.mentor.nucleus.bp.utilities/META-INF/MANIFEST.MF
+com.mentor.nucleus.bp.utilities/generate.xml
+com.mentor.nucleus.bp.utilities/plugin.xml
+
+
+End
+---
+
+$Log: dts0100795435.int,v $
+Revision 1.6  2011/10/11 04:49:44  kbrown
+job:dts0100795435
+Updated INT.
+
+Revision 1.5  2011/10/10 20:36:01  kbrown
+job:dts0100795435
+Updated INT.
+
+Revision 1.4  2011/09/30 22:23:01  kbrown
+job:dts0100795435
+INT updates.
+
+Revision 1.3  2011/09/30 21:07:12  kbrown
+job:dts0100795435
+INT updates.
+
+Revision 1.2  2011/09/30 20:47:38  kbrown
+job:dts0100795435
+INT updates.
+
+Revision 1.1  2011/09/30 17:14:14  kbrown
+job:dts0100795435
+Initial pass at the INT.

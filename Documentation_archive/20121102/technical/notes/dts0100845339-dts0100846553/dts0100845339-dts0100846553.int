@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile: dts0100845339-dts0100846553.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Prevent model corruption
+
+1. Abstract
+-----------
+This note describes the code changes for the issue.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] /Documentation/internal/technical/notes/dts0100845339-dts0100846553/
+    dts0100845339-dts0100846553.dnt
+[2] See [1] Document References
+
+4. Background
+-------------
+See [2]
+
+5. Requirements
+---------------
+See [2]
+
+6. Work Required
+----------------
+
+7. Implementation Comments
+--------------------------
+
+7.1 Resolve pasteFunction issue
+
+An issue was found while onsite with a customer.  The Function
+Package.pasteFunction() operation was not correctly hooking the pasted function
+up with the destination domain (if present).  This is resolved by this work.
+
+7.2 Prevent rename which would result in overwriting existing folder
+
+In section 7.5 of [2] we attempted to merge folder contents.  SVN still
+considered merged files as marked for deletion.  This is harder to get around in
+SVN, as the restore action will replace the files with a possibly incorrect
+version of the files.  The merge code has been removed and in place we prevent
+the rename and display a dialog explaining why the rename was not allowed.
+
+7.3 Testing problems with model root deletion
+
+Testing showed that removal of a model root from the model root map can occur
+before later elements are fully removed.  This resulted in the model root being
+recreated, which led to left over instances that were not consistent with the
+removed model root.
+
+To address this the listener that previously removed model roots is changed from
+a ModelChangeListener to a TransactionListener.  This still leaves cases where
+the model root can be deleted before processing other deletion data.  One case
+is with graphical editor transaction listeners, these are added when an editor
+is opened which is after the model root transaction listener has been added.  To
+address this support is added to allowing firing transaction events to a new
+list of transaction listeners.  This list is of transaction listeners that shall
+be notified last or after all other transaction listeners. 
+
+7.4 Always delete model root as last event
+
+Now that model roots are being disposed of properly we must guarantee that it is
+the last operation.  During testing it was noticed that batched model change
+notification was occurring after the model roots had been disposed of.  The
+transaction listeners that have been registered to run at the end of
+notification are now called after the batch notifications. 
+
+7.5 Dispose of all model roots under a system
+
+During testing it was noticed that a resource deletion of the system model xtuml
+file was removing the components, but not all model roots underneath.  Logic is
+added that removes all model roots found under the system.
+
+8. Unit Test
+------------
+See [2]
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100846553-2
+
+com.mentor.nucleus.bp.core/arc/create_rename_action.inc
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function Package/Function Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Sequence/
+    Message In Sequence/Message In Sequence.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/OoaofooaBase.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ComponentTransactionListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    Transaction.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    TransactionManager.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/
+    OoaofgraphicsUtil.java
+
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTest_LoadUseCaseDiagramOnRestart/
+    TigerNatureTest_LoadUseCaseDiagramOnRestart-112
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTest_LoadUseCaseDiagramOnRestart/
+    TigerNatureTest_LoadUseCaseDiagramOnRestart-112.jpg
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTestSetup_CreateUseCaseDiagramInSystem/
+    TigerNatureTestSetup_CreateUseCaseDiagramInSystem-108
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTestSetup_CreateUseCasePackageContents/
+    TigerNatureTestSetup_CreateUseCasePackageContents-112
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTestSetup_CreateUseCasePackageContents/
+    TigerNatureTestSetup_CreateUseCasePackageContents-112.jpg
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite2Generics.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureExistingProjectsTestGenerics.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureTestGenerics.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureWorkspaceSetupTestGenerics.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ValidateEditTests.java
+
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/engine/
+    VerifierAuditTest.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/test/
+    DebugUITestUtilities.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/test/
+    execute/VerifierExecuteActionTests.java
+
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/odms.exp
+com.mentor.nucleus.bp.io.mdl.test/expected_results/odmsGenerics.imp
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    PkgCMBaseTest.java
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/TestUtil.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/BaseTest.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    UITestingUtilities.java
+
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Model/Model.xtuml
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    OoaofgraphicsBase.java
+
+com.mentor.nucleus.bp.ui.graphics/src/com/mentor/nucleus/bp/ui/graphics/
+    figures/DecoratedPolylineConnection.java
+com.mentor.nucleus.bp.ui.graphics/src/com/mentor/nucleus/bp/ui/graphics/
+    listeners/GraphicsEditorListener.java
+com.mentor.nucleus.bp.ui.graphics/src/com/mentor/nucleus/bp/ui/graphics/
+    utilities/ClientUtil.java
+
+com.mentor.nucleus.bp.ui.properties.test/src/com/mentor/nucleus/bp/ui/
+    properties/test/PropertiesViewTest2.java
+
+
+End
+---
+
+$Log: dts0100845339-dts0100846553.int,v $
+Revision 1.5  2012/02/02 15:44:13  tlondon
+Job: dts0100846553
+
+Promote remaining changes to allow tests to pass.
+Non-test code related changes have been documented in the implementation note.
+
+Revision 1.4  2012/01/31 18:06:53  tlondon
+Job: dts0100845339 dts0100846553
+
+update int to include changes made during testing.
+
+Revision 1.3  2012/01/30 18:28:16  tlondon
+Job: dts0100845339 dts0100846553
+
+Update code changes
+
+Revision 1.2  2012/01/26 18:54:12  tlondon
+Job: dts0100845339 dts0100846553
+
+Add design note and implementation note
+
+Revision 1.1  2012/01/26 17:13:23  tlondon
+Job: dts0100845339 dts0100846553
+
+Add code changes for promotion

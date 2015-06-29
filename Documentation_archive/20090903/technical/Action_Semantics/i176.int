@@ -1,0 +1,211 @@
+========================================================================
+
+File:      $RCSfile: i176.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement self variable
+
+Abstract
+--------
+
+This note describes the changes to the OAL validation routines
+to properly parse the self variable.
+
+History
+-------
+
+final i176-040504-01.rvm
+
+Document References
+-------------------
+Issue 176
+Issue 96
+
+Background
+----------
+
+The self variable is present in instance-based activities, namely
+instance operations and instance statechart states.  It will also
+be present in the mathematically dependent attribute activity when
+that is implemented.
+
+These changes will also fix the problems raised in issue 96.
+
+Design
+------
+
+i176.1  Add operation to determine if self is valid
+
+The instance operation self_is_valid() returning boolean is
+added to the Action Specification (ACT_ACT) class.  The operation
+returns true if this is an activity for either an instance operation
+or an instance statechart state.  Otherwise it returns false.
+
+i176.2  Add self variable validation
+
+i176.2.1  Add self_validate() utility function
+
+The validation utility function self_validate(text: string, isLval:boolean,
+token: Token) is created. The function has no return value.  The function
+tests the text parameter for the values "self", "Self", or "SELF". If
+it is one of those values, we first test that self is valid, then we test 
+that isLval is false, and raise a separate error if either condition is 
+not met.  Otherwise, we search for a variable defined with a name of
+param.text.  If one does not exist, we create instances of the 
+Instance (V_INT) and Variable (V_VAR) classes, and initialize them
+with the variable name and class it refers to.  Note that we are not
+using the Self (V_SLF) class, since the self variable is just another
+inst_ref<Object> variable.  Actually using the Self class would force
+us to add tests everywhere we search for an Instance class instance to also
+search for a Self class instance.
+
+i176.2.2  Use self_validate() utility function
+
+The validation function local_variable_validate() is changed
+to remove its current self validation code, and replace it
+with an invocation of self_validate().
+
+The validation function inst_ref_var_validate() has an
+invocation of self_validate() added at its beginning.
+
+i176.3  Fix attribute_access_start()  
+
+The validation function attribute_access_start() returns either
+the current rule id (if this is an l-value access) or the id of
+an Attribute Value (V_AVL) instance if this is an r-value.  In the
+obscure case that the current rule id matches the id of an instance
+of Value that isn't an Attribute Value (or is the incorrect V_AVL
+instance), the validation function attribute_access_end() will 
+generate a null pointer exception.
+
+The validation function attribute_access_start() is changed to 
+return a null id value if this is an l-value access.  The 
+attribute_access_end() function is changed to test for the null value.
+
+i176.4  Remove Self class
+
+The Self class (V_SLF) is removed, since it is not used.
+It is only referenced in the validation function local_variable_validate()
+and the operation Variable.clear().
+
+Work Required
+-------------
+
+i176.1  Add operation to determine if self is valid
+
+The change is made to ooaofooa.bak.
+
+i176.2  Add self variable validation
+
+The changes are made to function_imports.sql.
+
+i176.2.1  Add self_validate() utility function
+i176.2.2  Use self_validate() utility function
+
+i176.3  Fix attribute_access_start()  
+
+The changes are made to function_imports.sql.
+
+i176.4  Remove Self class
+
+The change is made to ooaofooa.bak and function_imports.sql.
+
+Implementation Comments
+-----------------------
+
+- The action_start() validation function was changed to distinguish
+the names for class vs. instance statecharts.  Also, 'synchronous service'
+was changed to 'function'.
+
+- In OalParserTest.java, all literal strings constants have the //NON-NLS 
+comment added to them.
+
+- In ooaofooa.bak, 	R521 was changed to biconditional (* - 0,1).  This
+change was supposed to be made during the i173 work, but apparently didn't
+make it in.
+
+- In ooaofooa.bak, many attribute descriptions 'This is the attribute description.'
+were changed to the empty string.
+
+Unit Test
+---------
+
+The following tests are added to OalParserTest.java:
+
+// testAttributeWriteIssue176_3
+create object instance d1 of D_D; x = 5 + 1; d1.Disk_ID = 2;
+
+// testAttributeWriteSelf (from D_H.testVoidNoParm)
+self.Row_Number = 1;
+
+// testSelectOneRelatedByImplicitFromSelf (from D_H.testVoidNoParm)
+select one d related by self->D_D[R4];
+
+// testSelectOneRelatedByImplicitWhereFromSelf (from D_H.testVoidNoParm)
+select one d related by self->D_D[R4] where ( selected.Disk_ID == 1);
+
+// testAccessSelfFromIBOp (from D_H.testVoidNoParm)
+sr2 = Self;
+
+// testAccessSelfFromInstanceAction (from D_TST instance statechart, state 'one')
+sr2 = Self;
+
+--- Error case ----
+
+// testAccessSelfFromClassAction (from D_TST class statechart, state 'one')
+sr2 = Self;
+
+The tests for accessing self from a function, class operation and bridge were
+already written.
+
+Code Changes
+------------
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.17  Final version: 1.18
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/OalParserTest.java
+Initial version:  1.2   Final version: 1.3
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.25  Final version: 1.26
+
+End
+---
+
+$Log: i176.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/04/05 21:55:39  greg
+Job: 176
+Updated after review
+
+Revision 1.2  2004/03/26 23:10:02  greg
+Job: 176
+Added NON-NLS changes to OalParserTest.java
+
+Revision 1.1  2004/03/25 21:03:45  greg
+Job: 176
+Initial introduction
+
+

@@ -1,0 +1,155 @@
+========================================================================
+
+File:      $RCSfile: i3094.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Unable to assign parameter SDT to local variable in interface signal
+
+1. Abstract
+-----------
+This note describes the changes required to make SDTs and system-level datatypes
+accessible in interface messages.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 3094
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3094
+
+4. Background
+-------------
+During testing for the R1.5.0 release of BridgePoint it was discovered that an
+SDT passed as a parameter to an interface message was not usable in an activity
+that implemented the message in an interface reference.  When used the parser
+error message "-><variable name><- is not a class or structured data type" is
+displayed.
+
+5. Analysis
+-----------
+5.1     Parameters are parsed in the param_validate function.  The code to
+        handle interface messages is missing and marked by the comment
+        "// TODO Set up V_PVL"
+
+6. Design
+---------
+6.1     OAL Validation Utility Fucntions/param_validate
+6.1.1   Replace "//TODO Set up V_PVL" comments with OAL code blocks that
+        associate the interface message parameter (a C_PP Property Parameter
+        instance) with Parameter Value (V_PVL) and Value (V_VAL) instances. Call
+        Value::setEndPosition() to finish configuring the value instance usage.
+
+6.2     Value::setEndPosition
+6.2.1   Handle the case where the value being processed is a Property Parameter.
+
+6.3     OAL Validation Functions/Terminal_tok_number_validate
+6.3.1   Exploratory work on this issue found that even once the Property
+        Parameter is made available to the parser, there is an issue with data-
+        types.  Namely, there are quite a few places in the code where a data-
+        type is being searched for in the domain.  If it is not found in the
+        domain, a blind select (select any dt from instances of S_DT where
+        selected.Name == "integer";) is performed.  This will not work, however,
+        for interfaces because datatypes are not stored in the model roots from
+        which this select is being called.
+6.3.2   Similar blind selects are called in the OAL Validation Functions:
+            - Create_event_statement_end
+            - Terminal_tok_fraction_validate
+            - Terminal_tok_string_validate
+            - String_literal_false_validate
+            - String_literal_true_validate
+6.3.3   Similar blind selects are called in the OAL Validation Functions:
+            - data_types_compatible
+            - binary_operator_create
+            - sender_validate
+6.3.4   The blind select usages in 6.3.2 and 6.3.3 were found while doing ex-
+        ploratory code.  Locate all the cases in the BP code were datatypes are
+        being searched for in the domain using this UNIX command:
+          find . -name "*.java" -exec grep -H "DataType_c.getOneS_DTOnR14" {} \;
+6.3.4.1 Look at each usage and what happens if the datatype is not found in the
+        domain.  Determine if the datatypes can then be searched for using a
+        blind select or if it needs to be explicitly located in the system.
+
+6.4     Locating the datatype in the system
+6.4.1   Add a OAL Validation Utility Function called getSystemName().  This
+        function will return the system name for the model root currently being
+        parsed.
+6.4.2   Replace the blind select called out in 6.3.1 with code that explicitly
+        looks for the datatype at the system level.  The navigation can use
+        the associations called out in the subsystem "System Level Datatypes".
+6.4.3   The select to locate core datatypes will search S_CDT (instead of S_DT)
+        using Core_Typ and an enumeration of the core types.
+
+6.5     There are additional "// TODO" comments in Value::setEndPosition() in
+        blocks to handle:
+            Function Value (V_FNV)
+            Bridge Value (V_BRV)
+            Operation Value (V_TRV)
+6.5.1   These value instances maintain transitional return values for the
+        given calls.
+6.5.2   Since these instances are not actually represented as text in the
+        activity, there is no end position to be determined.  The TODOs can
+        simply be replaced with a comment indicating it is ignored.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+See section 6.
+
+9. Unit Test
+------------
+9.1     Verify all JUnit tests run successfully
+
+9.2     Add a unit test that checks usage of SDTs as data parameters.  The SDT
+        should have several members of the various types that need to be tested.
+        In the OAL for the interface message, save the SDT to a local, then
+        assign values to the members of the local.
+
+9.3     Add other JUnit tests as necessary to test any other new functionality.
+
+End
+---
+
+$Log: i3094.dnt,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.4  2007/09/24 20:10:58  kbrown
+Job:3094
+Partially addressed review minutes changes.
+
+Revision 1.3  2007/09/20 21:30:40  kbrown
+Job:3094
+Updated design note.
+
+Revision 1.2  2007/09/20 19:16:27  kbrown
+Job:3094
+Completed design note.
+
+Revision 1.1  2007/09/19 21:31:20  kbrown
+Job:3094
+Started note to capture the design and code changes that will likely be requried  to fix the issue.
+

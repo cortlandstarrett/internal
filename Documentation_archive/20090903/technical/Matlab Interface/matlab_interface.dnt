@@ -1,0 +1,234 @@
+========================================================================
+
+File:      $RCSfile: matlab_interface.dnt,v $
+Version:   $Revision: 1.1 $
+Modified   $Date: 2009/09/03 18:25:39 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Design Note
+Matlab Editor Interface
+
+Abstract
+--------
+This document discusses how editing Matlab m-files will be implemented
+in the Eclipse based toolsuite.
+
+History
+-------
+
+Document Reference
+------------------
+[1] bp.core/doc/Matlab_Interface/matlab_interface.ant
+[2] bp.core/doc/Dedicated_Text_Editor/dedicated_text_editor.ant
+[3] bp.core/doc/Editor_Extension_Point/editor_extension_point-i81.dnt
+[4] bp.core/doc/Matlab Interface/matlab_interface_prototype.dnt
+
+Background
+----------
+Some initial research was done to establish that Matlab could integrate
+with the new BridgePoint replacement. The results of this successful
+research are documented elsewhere[4]. This document proposes a design
+that specifies the details of the integration of the Matlab interface
+with Eclipse and Tiger. The design presented here also supports the
+requirement that the new generation BridgePoint tool support multiple
+action language syntaxes.
+
+Design
+------
+
+User Experience
+MLI.1    New Action Semantics Element
+         No work required. Works as for Tiger standard behavior.
+
+MLI.2    'Open With' to show all registered editors
+MLI.2.1  Register Editors
+         Editors are already registered using the existing editor 
+         registration plugin protocol introduced by i81.
+MLI.2.2  Show all editors with new action semantics element.
+         The editor registration schema [3] is modified to include an
+         'OAL Type' attribute. When first created, an action semantics
+         model element sets 'OAL Type' to a unique constant indicating
+         an unknown action language type.
+MLI.2.3  Show all editors when the action language type is unknown
+         The IActionFilter interface (see MLI.5.3 below) will always
+         return true when OAL Type is unknown. 'Open With >' will there-
+         fore show all registered action language editors.
+
+MLI.3    Open on new element invokes default editor.
+MLI.3.1  If the user initiates the 'Open' behavior (i.e. they select
+         'Open' or perform a double-click), the user preferences are
+         consulted to see which is the default editor to open.
+
+MLI.4    Change default editor
+MLI.4.1  Add 'Default Action Editor' drop down list to the Bridge-
+         Point | Editors preference page.
+MLI.4.2  Set BP OAL Editor as default at install.
+
+MLI.5    Editor behavior with existing action semantics
+MLI.5.1  Provide an 'Always use Default Editor on Open' user preference.
+         Default is off (unchecked).
+MLI.5.1  For any given model element, the first time the user chooses an
+         editor (either by default with 'Open' or explicitly from the
+         'Open With' submenu) the chosen editor is launched and 'OAL Type'
+         is set to the value specified for the editor (see discussion of
+         unique 'OAL Type' below). If the 'Always use Default Editor on
+         Open' user preference is unchecked, the 'OAL Type' attribute is
+         always written (this gives the behavior that the last editor
+         used is the next one opened, whereas writing it once will ensure
+         that the same editor is always opened based on the first editor
+         used).
+MLI.5.2  An editor may specify that it can edit more than one 'OAL Type',
+         but it must specify one unique default 'OAL Type'. Once the user
+         has chosen an editor, the 'OAL Type' attribute is updated. After
+         this point, the context menu entry 'Open With >' shows only
+         those editors that specify they can edit the current 'OAL Type'
+         (Note that both of the Matlab editors introduced here specify
+         both of the m-file 'OOA Type' values. Thus, when a model element
+         is selected whose action semantics are marked as either Internal
+         BridgePoint Matlab Editor or External Mathworks Matlab Editor,
+         both editors appear in the 'Open With >' sub-menu. The stored
+         'OOA Type' is used to determine which editor to use by default
+         when the Eclipse open behavior is invoked).
+MLI.5.3  The plugin.xml file enables these contributions only if an
+         'editorEnabled' property is true. This is provided using the
+         Eclipse IActionFilter interface. This allows the Object 
+         Contribution manager to test the value returned by a known
+         function (an attribute accessor) to see if matches a given 
+         value.
+MLI.5.4  Ensure unique OOA_Type values
+         During startup, the com.projtech.bp.core plugin checks that the
+         registered editors provide unique 'OOA Type's. If two editors
+         define clashing values, an error will be noted in the log and
+         only the first editor found for that value will be presented as
+         an option to the user. When setting the 'OOA Type' when first
+         started, all editors will use the value read from the registry.
+         That way, the user can resolve confilcts by hand when they do
+         arise. Project Technology will maintain and publish a register
+         of unique 'OAL Type' values to help keep conflicts from
+         ocurring.
+
+MLI.6    Allow any editor to be used on any action semantics element
+MLI.6.1  Provide 'Restrict Visible Action Language Editors' user
+         preference. Default is on.
+MLI.6.2  Read this value when using the IActionFilter interface introduced 
+         above (MLI.5.3).
+        
+MLI.7    Provide two new action editors.
+MLI.7.1  The first editor is a normal built-in Eclipse editor that
+         operates inside the standard Eclipse editor area. To the user,
+         it offers the same facilities as the BridgePoint Dedicated Text
+         Editor[2] except dynamic syntax checking, syntax highlighting
+         and command completion help. Internally, it uses the contents of
+         a remote m-file to show in its edit area (see MLI.8).
+MLI.7.2  The second editor does not use the standard Eclipse editor area.
+         Instead, it launches a standard Matlab editor in a separate
+         window. This offers all the same facilities as the Matlab m-file
+         editor but runs in a window external to the Eclipse IDE.
+
+MLI.8    Store the location of the remote m-file in the action semantics
+         meta-model attribute.
+         Matlab m-files are typically stored outside the Eclipse work-
+         space. However, this is not enforced and m-files could at a
+         later date be managed using the Eclipse environment. When the
+         user opens an action semantics containing model element with a
+         matlab m-file editor, the following things occur:
+MLI.8.1.1  The action semantics text of the element is scanned for a
+           valid file path type URL (e.g. file:///D:/matlab/m-files/surf.m).
+MLI.8.1.2  If one is found, it is followed and the resulting file opened.
+MLI.8.1.3  If no file path is found, or no file is found at the specified
+           location, a file chooser dialog is shown. As well as supporting
+           unusual cases where files have been deleted or moved, this
+           behavior covers the first time edit case where no m-file editor
+           has been specified before. The file chooser will open starting
+           at:
+           - the unsuccessfully followed path (if one was found, see above)
+           - the last location visited by the user in this context
+           - the Eclipse workspace root
+           in that order.
+
+MLI.9    Store the file path in an action language comment.
+MLI.9.1  Write the path before the attribute contents.
+MLI.9.2  Provide a 'Use Action Language comment' user preference on the
+         BridgePoint| Editors | Matlab preference page. Default is '//'.
+
+MLI.10   Scan Matlab file for the function signature.
+MLI.10.1 Scan for function name
+MLI.10.2 Scan for parameters
+MLI.10.3 Scan for parameter names
+MLI.10.4 Scan for parameter types
+MLI.10.5 Scan for return type
+
+Changes to MC-2020
+MLI.11   Scan for action semantics marked as m-files
+MLI.12   Generate Matlab wrapper functions
+MLI.13   Link single executable
+MLI.14   Impedance match Matlab interface
+MLI.15   Create dummy Matlab code generator interface
+MLI.16   Accept a bak file as input to the code generation process
+MLI.17   Test with Model Debugger
+
+Demo model
+MLI.18   Create Demonstration Model
+
+Console Window
+MLI.19   Create Console window
+
+User Preferences
+MLI.20   Create the preferences page
+MLI.20.1 Create the BridgePoint page (contributed by bp.core)
+MLI.20.2 Create the Editors page (contributed by bp.core)
+MLI.20.3 Create the Matlab page (contributed by matlab plugin)
+
+Work Required
+-------------
+
+End
+---
+
+$Log: matlab_interface.dnt,v $
+Revision 1.1  2009/09/03 18:25:39  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:49  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.166.1  2008/12/31 16:11:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2003/10/21 20:18:55  campbell
+Job: 91
+Expanded to include MC-2020 work, Console and User Preferences
+
+Revision 1.6  2003/10/21 16:30:03  campbell
+Job: 91
+Added details about use of IActionFilter.
+
+Revision 1.5  2003/10/21 00:28:28  campbell
+Job: 91
+Completely rewritten to trace to new analysis note.
+
+Revision 1.4  2003/10/20 19:35:06  campbell
+Job: 91
+Added requirement for default action language.
+
+Revision 1.3  2003/10/15 00:53:39  campbell
+Job: 91
+Changed comment from \\ to //.
+
+Revision 1.2  2003/10/14 17:05:47  campbell
+Job: 91
+Added overview.
+
+Revision 1.1  2003/10/13 22:47:02  campbell
+Job: 91
+Introduced.

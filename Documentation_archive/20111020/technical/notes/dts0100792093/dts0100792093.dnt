@@ -1,0 +1,201 @@
+========================================================================
+
+File:      $RCSfile: dts0100792093.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Instance data for model elements under generic packages are not being 
+properly exported
+
+
+1. Abstract
+-----------
+If there's an xtuml model defined with generic packages and it has 
+no OAL instances, when it gets built these instances don't get created
+properly as expected. 
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100792093 
+    "Instance data for model elements under generic packages are not 
+     being properly exported"
+
+4. Background
+-------------
+
+
+5. Analysis
+-----------
+5.1 Steps to re-produce the problem 
+_- Import the models_sf/testOAL1 model into a workspace
+_- Select the BridgePoint preference to export the model with OAL
+_- Export the model to testOAL1_withOAL.xtuml
+_- Create a new xtUML project (testOAL1_withOAL)
+_- Import testOAL1_withOAL.xtuml model into this new project and select the
+   “convert to generic packages option” during import
+_- Export this generic package model to testOAL1_withOAL_GP.xtuml
+_- Open testOAL1_withOAL_GP.xtuml
+_R testOAL1_withOAL_GP.xtuml export does contain V_VAL and ACT_ACT instances
+_- build the model testOAL1_withOAL
+_- Open the code_generation/_system.sql in a text editor
+_R The file does contain V_VAL and ACT_ACT instances
+_R The above test sequence makes it appear that export of OAL instance data 
+   under generic packages is working.
+   However, it is not.  The instance data is not being properly parsed and 
+   exported.  In the above sequence, the export of instance data in the 
+   specialized package model was imported into the GP model and that data was 
+   reused and NOT recreated as it should be.  
+   
+   The following steps illustrate this:
+
+_- Import the models_sf/testOAL1 mode into a workspace
+_- Make sure the BridgePoint preference to export the model with OAL instances 
+   is NOT turned on
+_- Export the model to testOAL1_withNoOAL.xtuml
+_- Create a new xtUML project (testOAL1_withNoOAL)
+_- Import testOAL1_withNoOAL.xtuml model into this new project and select the 
+   “convert to generic packages option” during import
+_- Export this generic package model to testOAL1_withNoOALGP.xtuml
+_- Open testOAL1_withNoOALGP.xtuml
+_R testOAL1_withNoOALGP.xtuml export does NOT contain V_VAL and ACT_ACT 
+   instances
+_- build the model testOAL1_withNoOALGP
+_- Open the code_generation/_system.sql in a text editor
+_R ERROR! The file does NOT contain V_VAL and ACT_ACT instances
+
+The following unit test should have caught this problem:  
+bp/io/mdl/test/OALPersistenceTestsGenerics.java::testPersistOAL(). When this 
+problem is fixed, that unit test must be fixed to assure that the model being 
+imported into GP format does not already contain instance data.  That unit test 
+contains the same problem described above and it must be addressed by this issue
+
+
+
+6. Design
+---------
+6.1 The root cause to the problem was that the package instances were not 
+    parsed properly during the pre-build parse.
+
+6.2 The method collecting elements to parse getElementsToParse() is modified to
+    consider package instances in the _determine what to parse_ loop
+    all the packages related to the system across R1405 are collected 
+    and if in generics context these instances are added to the result list. 
+    
+    The is "isInGenericPackage" flag condition is modified to check for 
+    the package instance if it's in generics using the method 
+    verifyPackageAsGeneric()
+    
+    The condition that existed before was depending on the old hierarchy of 
+    generics where packages were to contain SpecificationPackages.  That Old 
+    style traversal to components still needs to be there for legacy models.
+    
+    
+6.3 The method getLaunchableElementsInSystemModel() is given a system model 
+    and it returns the list of components and domains that need to be parsed to 
+    assure everything in the system is parsed and parsed only once.     
+    
+    This method is modified to add the package instances to the list of elements 
+    to be parsed too. 
+6.3.1  An additional modification is to replace Launchable in 
+       getLaunchableElementsInSystemModel() with Parsable.
+       The method name should become more informative about what it does it'll 
+       be getParsableElementsInSystemModel()
+       
+6.4  There's a bug found in the performance work that will cause us to not 
+     export all data properly in the prebuilder.  The new code that was 
+     introduced to delete instance data before a re-parse happens was not
+     deleting things at the appropriate moment and thus some instance data is 
+     deleted prior to the export.
+     In short, in head right now the prebuilder is broken for many models.  
+     It will be broken for any model that has more then one system-level package
+     (specialized or generic) that may contain executable elements. 
+      There are two optimization related modifications:    
+6.4.1 In the method parseAllForExport() there is a loop that gets the 
+      elementsToParse list and parse them one by one. There is another loop 
+      that is added before that loop and it calls the  method 
+      AllActivityModifier.disposeAllBodies() for each
+      element in the list. This is done for optimization to clear instance data 
+      prior to the parse.  
+      The parse is much faster when there is no instance data to have to search 
+      through.  
+      This is done in a separate loop instead of in the same loop because 
+      there may be a shared model root in the selected elements that are parsed 
+      individually .
+     
+6.4.2 In CoreExport.java::parseOneElement() the the parameter "false" is added 
+      to the all three calls to aam.processAllActivities()
+      That will prevent the dispose from being called on the individual parse
+      lines.
+ 
+7. Design Comments
+------------------
+
+
+
+8. Work Required
+----------------
+Stated in the Design section 
+
+9. Unit Test
+------------
+9.1 
+_- Import the models_sf/testOAL1 mode into a workspace
+_- Make sure the BridgePoint preference to export the model with OAL instances 
+   is NOT turned on
+_- Export the model to testOAL1_withNoOAL.xtuml
+_- Create a new xtUML project (testOAL1_withNoOAL)
+_- Import testOAL1_withNoOAL.xtuml model into this new project and select the 
+   “convert to generic packages option” during import
+_- Export this generic package model to testOAL1_withNoOALGP.xtuml
+_- Open testOAL1_withNoOALGP.xtuml
+_R testOAL1_withNoOALGP.xtuml export does NOT contain V_VAL and ACT_ACT 
+   instances
+_- build the model testOAL1_withNoOALGP
+_- Open the code_generation/_system.sql in a text editor
+_R The file does contain V_VAL and ACT_ACT instances
+
+9.2 Modify the bp/io/mdl/test/OALPersistenceTestsGenerics.java::testPersistOAL()
+    to exercise the above issue
+9.2.1 Add the test testOALInstancesCreatedWhileBuild() the test does the
+      following:
+      _-Import an xtuml file that has no OAL instances into project
+      _-Execute build for that model
+      _-Export the model after being built
+      _-Compare the exported model with the expected result that has the same 
+        model built properly and that to assure the existence of the OAL 
+        instances.
+      _-setting seed to IDassigner to insure the UUIDS generated will be the 
+        same as expected for results compare.   
+        
+    
+    
+9.3 Run all JUnits
+
+End
+---
+
+$Log: dts0100792093.dnt,v $
+Revision 1.3  2011/09/19 12:10:29  hkhaled
+job:dts0100792093
+updating the dnt and rvm and adding int
+
+Revision 1.2  2011/09/13 17:24:57  hkhaled
+job:dts0100792093
+add the put off work section on the analysis
+
+Revision 1.1  2011/09/13 15:50:58  hkhaled
+job:dts0100792093
+committing design note
+

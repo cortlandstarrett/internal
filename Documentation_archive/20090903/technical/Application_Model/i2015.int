@@ -1,0 +1,302 @@
+========================================================================
+
+File:      $RCSfile: i2015.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:18 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Add associations between messages and their formal elements.
+
+Abstract
+--------
+This note describes changes to the generation of the dependency class
+for properties in order to address a problem where the property view for 
+certain Sequence Diagram entities is not refreshing properly.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 2015
+
+Background
+----------
+After being formalized, the properties window for a synchronous message 
+object does not refresh unless the user re-selects the object.
+
+<Reproduction>
+
+1. Create a sequence diagram
+2. Create an instance
+3. Create an external entity 
+4. Formalize the external entity
+5. Draw a synchronous message from the instance to the external entity
+6. Observe that the properties view shows the synchronous message 
+   'Is Formal' attribute to be false
+7. Formalize the synchronous message
+8. Observe that the properties view still shows the synchronous message 
+   'Is Formal' attribute to be false
+9. Select another item in the diagram
+10. Re-select the synchronous message
+11. Observe that the properties view now shows the synchronous message 
+    'Is Formal' attribute to be true
+
+</Reproduction>
+
+Design
+------
+ooaofooa_hierarchy.pei.sql did not include the formal elements as children, and 
+because of this the Synchronous / Asynchronous message 'Is Formal' property 
+was not refreshing properly.
+
+To resolve this, associations between messages and their formal elements in 
+ooaofooa_hierarchy.pei.sql are now defined so that the existing code that 
+generated the dependency class will include the new associations, causing 
+the properties to refresh properly.
+
+List of all the classes affected:
+
+	Formal External Entity
+	Formal Function Package
+	Formal Class
+	Formal Instance
+	Formal Attribute
+
+	Formal Bridge Operation
+	Formal Class Operation
+	Formal Function
+	Formal Event
+	
+	Formal Bridge Operation Parameter
+	Formal Class Operation Parameter
+	Formal Function Parameter
+	Formal Event Data Item
+	
+List of all formal elements of compare.test model:
+
+	External Entity
+	Imported Class
+	Instance
+	Function Package
+	Synchronous Message - formalized against the following
+  		- Function (with one parameter)
+  		- Class Operation (with one parameter)
+  		- Bridge Operation (with one parameter)
+	Asynchronous Message - formalized against an event 
+	(with one data item assigned)
+ 
+Implementation Comments
+-----------------------
+
+Originally the work was being done under a branch from HEAD called 
+Review-i2015, but during the implementation process a new branch from R1_3_HEAD
+called Review-i2015-01 was created. The changes in Review-i2015 were merged 
+into Review-i2015-01, and implementation continued. Shortly after, Greg made 
+some changes under his own branch, and these had to be merged into 
+Review-i2015-01.
+
+bp.compare.test
+---------------
+test.xtuml had to be modified to add the formal elements stated in the Design 
+section. Once test.xtuml was updated, the expected results had to be updated 
+to reflect the model changes; thus the reason for changes to testOAL1.txt.
+
+bp.core
+----------------
+ooaofooa_hierarchy.pei.sql had to be modified to create associations between 
+messages and their formal elements so that the existing code that generated 
+the dependency class would include the new associations.
+
+bp.core.test
+----------------
+RefreshTestCore.java was created to contain a set of tests to make sure the 
+'IsFormal' property of the messages was properly updating after the 
+associations had been added to the ooaofooa_hierarchy.pei.sql.
+
+CoreTestSuite.java was modified to include RefreshTestCore.java into the 
+CoreTestSuite JUNIT test.
+
+SequenceTestModel.xtuml was modified to include a sequence diagram called 
+RefreshTest to hold the formalized objects, messages, and parameters needed for 
+the test implemented in RefreshTestCore.java. Once SequenceTestModel.xtuml was 
+updated, the expected results had to be updated to reflect the model changes; 
+thus the reason for changes to SequenceTest_42/4-1 & SequenceTest_42/4-1.jpg
+
+See Greg's note regarding ModelTransactionTest.java & TigerNatureTest.java 
+
+bp.ui.properties
+----------------
+See Greg's note 
+
+bp.ui.properties.test
+---------------------
+RefreshTestProp.java was created to contain a set of tests to make sure the 
+property display reflected the associations added to the 
+ooaofooa_hierarchy.pei.sql.
+
+PropertiesTestSuite.java was modified to include RefreshTestProp.java into the 
+PropertiesTestSuite JUNIT test.
+
+TestProp.xtuml was modified to include the formalized objects, messages, and 
+parameters needed for the test implemented in RefreshTestProp.java.
+
+See Greg's note regarding DeleteUDTWithPropertyShowing.java, 
+EnumRangeTest.java, NumberRangeTest.java, create_readonly_view_test.arc, and 
+create_view_test.arc
+
+Greg's note
+-----------
+When making the changes to ooaofooa_hierarchy.pei.sql, it was noticed that
+the properties view for MSG_A was incorrect.  This was due to there being
+two T_TNS instances that both referenced the MSG_A class.  The fix for this
+was to change how the 'PropertySource' classes are named.  The previous
+name was "$r{class.Name}PropertySource".  It was changed to 
+"$r{node.CategoryName}${class.Key_Lett}PropertySource".  This change was
+made in BuildPropertySource.arc, create_readonly_view_test.arc, and
+create_view_test.arc.  Places where handwritten code (test cases) referenced
+the old naming style were changed to use the new naming style.
+
+Other files changed were generate.xml, ModelTransactionTest.java, 
+TigerNaturetest.java, DeleteUDTWithPropertyShowing.java, EnumRangeTest.java, 
+and NumberRangeTest.java
+
+Unit Test
+---------
+A new test, RefreshTestCore.java, under 
+/com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/ui will 
+test the 'IsFormal' value of the affected classes / formal elements while 
+Informal & Formal.
+
+A new test, RefreshTestProp.java, under 
+/com.mentor.nucleus.bp.ui.properties.test/src/com/mentor/nucleus/bp/ui/
+properties/test will test the properties display of each affected 
+class / formal element to make sure the appropriate item is listed.
+
+Modify bp.core.test/generate.xml to add RefreshTestCore.java to property
+'cvs_java_files', the list of hand-written java files.
+
+Modify ui.properties.test/generate.xml to add RefreshTestProp.java to property
+'cvs_java_files', the list of hand-written java files.
+
+Code Changes
+------------
+
+Review branch is Review-i2015-01
+
+/com.mentor.nucleus.bp.compare.test
+  /expected_results
+    /testOAL1.txt
+  /models
+    /test.xtuml
+
+/com.mentor.nucleus.bp.core
+  /sql/
+    ooaofooa_hierarchy.pei.sql
+
+/com.mentor.nucleus.bp.core.test
+  /generate.xml
+  /expected_results
+    /SequenceTest_42/4-1
+    /SequenceTest_42/4-1.jpg
+  /src
+    /CoreTestSuite.java
+  /src/com/mentor/nucleus/bp/core
+    /test
+      /ModelTransactionTest.java
+      /TigerNatureTest.java
+      /RefreshTestCore.java [new]
+
+/com.mentor.nucleus.bp.ui.properties
+  /generate.xml
+  /arc
+    /BuildPropertySource.arc
+
+/com.mentor.nucleus.bp.ui.properties.test
+  /generate.xml
+  /arc
+    create_readonly_view_test.arc
+    create_view_test.arc
+  /models/testProp.xtuml
+  /src
+    /PropertiesTestSuite.java
+    /com/mentor/nucleus/bp/ui/properties/test
+      /RefreshTestProp.java [new]
+      /DeleteUDTWithPropertyShowing.java
+      /EnumRangeTest.java
+      /NumberRangeTest.java
+      /PropertiesViewTest2.java
+
+/Models/models/SequenceTestModel.xtuml
+
+End
+---
+
+$Log: i2015.int,v $
+Revision 1.1  2009/09/03 18:21:18  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.12  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.11.16.1  2008/12/31 16:10:17  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.11  2006/07/11 15:01:11  greg
+Job: 2015
+Add PropertiesViewTest2.java to code changes list
+
+Revision 1.10  2006/06/16 16:42:42  pablo
+Job: 2015
+ In Code Changes section, mark RefreshTestProp.java as [new].
+
+Revision 1.9  2006/06/16 16:36:42  pablo
+Job: 2015
+Add core.test/generate.xml and ui.properties.test/generate.xml to the Code Changes section.
+
+Revision 1.8  2006/06/16 03:51:43  mpowell
+Job: 2015
+Updated Implementation process
+
+Revision 1.7  2006/06/14 18:48:28  greg
+Job: 2015
+Add implementation comment
+
+Revision 1.6  2006/06/14 16:24:30  mpowell
+Job: 2015
+Updated to reflect changes made by Greg
+
+Revision 1.5  2006/06/06 21:00:49  mpowell
+Job: 2015
+Merged changes from Review-i2015
+
+Revision 1.4  2006/06/06 16:00:16  mpowell
+Job: 2015
+Added Compare.test model & properties.test model to Code Changes
+
+Revision 1.3  2006/06/05 19:55:31  mpowell
+Job: 2015
+Added SequenceTestModel.xtuml to CodeChanges
+
+Revision 1.2  2006/06/05 14:49:46  mpowell
+Job: 2015
+Modified due to review observations
+
+Revision 1.1  2006/05/31 19:25:07  mpowell
+Job: 2015
+Modified due to review observations
+
+Revision 1.2  2006/05/30 22:10:22  mpowell
+Job: 2015
+Updated to reflect pre-review suggestions

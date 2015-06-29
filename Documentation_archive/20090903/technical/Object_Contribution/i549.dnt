@@ -1,0 +1,375 @@
+========================================================================
+
+File:      $RCSfile: i549.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Allow referentials to be combined and split
+
+Abstract
+--------
+BridgePoint builder allows the user to document formal constraints on the
+formation of relationships between instances in a model. This is done by
+combining referentials where they have the same base attribute. Once an
+attribute may be combined, the ability to split it is also needed. This
+note addresses the provision of both of these pieces of functionality.
+
+History
+-------
+
+Document References
+-------------------
+Documentation/internal/technical/Object_Contribution/combine_refs-i549.ant
+
+Background
+----------
+The functionality provided by BridgePoint 6.1 is re-created in Tiger to
+combine and split referential attributes.
+
+Design
+------
+
+i549.1   Referential Combination
+
+i549.1.1 Add new CME entry
+
+A new CME instance is added to context_menu.pei.sql, with the following values:
+
+INSERT INTO CME VALUES ('',       
+   'Combine With',  
+   'O_ATTR',    '', false, 'Select attribute to combine with this one' );
+
+The CME class has the following attributes: Specialism, Label, Key_Lett,
+  Resultant_Class, Global, WizardDescription
+
+i549.1.2 Create new CME Function, O_ATTR_CombineWith
+
+A new CME function O_ATTR_CombineWith is created that has a wizard that
+allows the user to select the attribute to combine with.  The function has
+the following processing:
+
+// UI: there is at least one other attr to combine with
+select any o_attr from instances of O_ATTR
+   where USER::selectOne(id:selected.Attr_ID);
+select one rattr related by o_attr->O_RATTR[R106];
+select one base_attr related by rattr->O_BATTR[R113];
+select any Combine_with related by 
+    o_attr->O_OBJ[R102]->O_ATTR[R102]->O_RATTR[R106]
+    where USER::selectOne(id:selected.Attr_ID) and 
+       selected.BAttr_ID == base_attr.Attr_ID and 
+       selected.BObj_ID == base_attr.Obj_ID and
+       not rattr.alreadyCombinedWith( id: selected.Attr_ID );
+rattr.combine_refs( other_id: Combine_with.Attr_ID );
+
+The function makes use of the following operations:
+
+ReferentialAttribute.alreadyCombinedWith( id: unique_id ): boolean
+   returns true if the referential attribute identifed by 'id' is already
+   combined with self
+   
+	select any ref related by self->O_REF[R108] 
+	    where ( selected.Attr_ID == param.id );
+	return not_empty ref;
+
+ReferentialAttribute.combine_refs( other_id: unique_id ): void
+   combines the referential attribute identified by 'other_id' with self
+
+The following code is a pseudo-code example of the combine_refs processing:
+
+select any other_attr related by self->O_ATTR[R106]->O_OBJ[R102]->O_ATTR[R102]
+    where selected.Attr_ID == param.other_id;
+select one other_rattr related by other_attr->O_RATTR[R106];
+select many other_ref_set related by other_rattr->O_REF[R108];
+// TODO: find last O_REF in self's ref list R112
+for each other_ref in other_ref_set
+  unrelate other_ref from other_rattr across R108;
+  relate other_ref to self across R108;
+  // TODO: add other_ref to self's ref list R112
+end for;
+select any oida related by other_attr->O_OIDA[R105];
+if ( not_empty oida )  // attribute is identifying
+  other_rattr.migrateToBase();
+else
+  other_attr.dispose();
+end if;
+
+i549.1.3 Add new Action Filter to Attribute
+
+A MEF instance is added to context_menu.pei.sql, with the action filter
+arguments 'can' 'combine'.  The Attribute.actionFilter operation is updated
+to process these parameter values.
+
+i549.2   Referential Split
+
+i549.2.1 Add new CME entry
+
+A new CME instance is added to context_menu.pei.sql, with the following values:
+
+INSERT INTO CME VALUES ('',       
+	'Split',
+	'O_ATTR',    '', false, 'Select reference to split from this one' );
+
+i549.2.2 Create new CME Function, O_ATTR_Split
+
+A new CME function O_ATTR_Split is created that has a wizard that
+allows the user to select the reference to split.  The function has
+the following processing:
+
+// UI: there is at least one other reference to split from
+select any o_attr from instances of O_ATTR
+   where USER::selectOne(id:selected.Attr_ID);
+select one rattr related by o_attr->O_RATTR[R106];
+select any Split_from related by rattr->O_REF[R108]
+    where USER::selectOne(id:selected.Attr_ID);
+rattr.split_refs( other_id: Split_from.ARef_ID );
+
+The function makes use of the following operations:
+
+ReferentialAttribute.split_refs( other_id: unique_id ): void
+   splits the Attribute Reference in Class identified by 'other_id' from self
+
+The following code is a pseudo-code example of the split_refs processing:
+
+select any other_ref related by self->O_REF[R108]
+    where selected.ARef_ID == param.other_id;
+// TODO: remove other_ref from self's R112 list
+unrelate other_ref from self across R108;
+// create referential attribute
+select one mc related by self->O_ATTR[R106]->O_OBJ[R102];
+newAttr_id = mc.newReferentialAttribute(ref_obj_id: other_ref.RObj_ID, 
+    ref_oid_id: other_ref.ROid_ID, ref_attr_id: other_ref.RAttr_ID, id: -1 );
+
+select any newRattr related by mc->O_ATTR[R102]->O_RATTR[R106] 
+     where selected.Attr_ID == newAttr_id;
+relate other_ref to newRattr across R108;
+
+i549.2.3 Add new Action Filter to Attribute
+
+A MEF instance is added to context_menu.pei.sql, with the action filter
+arguments 'can' 'split'.  The Attribute.actionFilter operation is updated
+to process these parameter values.
+
+i549.3  Change Referential Attribute.get_name operation
+
+The value returned by the Referential Attribute.get_name() operation should
+include all the relationships the attribute formalizes.  
+
+select one attr related by self->O_ATTR[R106];
+result = attr.Name;
+select many ref_set related by self->O_REF[R108];
+for each ref in ref_set
+  select one rel related by ref->R_RGO[R111]->R_OIR[R203]->R_REL[R201];
+  result = result + " (" + rel.get_name() + ")";
+end for;
+return result;
+
+i549.4  Create O_REF.get_text operation
+
+Since the code in i549.3 is very similar to code in 
+ModelClass.get_compartment_text, it will be refactored to a utility operation 
+O_REF.get_text():
+
+ result = "R???";
+ select one rel related by self->R_RGO[R111]->R_OIR[R203]->R_REL[R201];
+ if ( not_empty rel )
+   result = rel.get_name();
+ end if;
+ //
+ // Append constrained marker if required
+ //
+ if (self.Is_Cstrd)
+   result = result + "c";
+ end if;
+ return result;
+
+This operation can then be invoked by both Referential Attribute.get_name
+and ModelClass.get_compartment_text.
+
+Design Comments
+---------------
+
+The CME function names specified in the analysis note didn't follow the 
+convention used by the archetypes.  The proper names are used here.
+
+The contents of the chooser for 'Combine With ...'  are referential attribute
+instances, and are formatted as described in section i549.3.  The contents
+of the 'Split ...' wizard are O_REF instances, which have the formatting 
+specified in the analysis note.
+
+Work Required
+-------------
+
+i549.1   Referential Combination
+
+i549.1.1 Add new CME entry
+
+The change is made to context_menu.pei.sql as described in the design.
+
+i549.1.2 Create new CME Function, O_ATTR_CombineWith
+
+The changes are made to cme_functions.sql as described in the design.
+The new operations are added to ooaofooa.mdl and .bak as described in the 
+design.
+
+i549.1.3 Add new Action Filter to Attribute
+
+The change is made to context_menu.pei.sql as described in the design.
+The Attribute.actionFilter operation is updated in ooaofooa.mdl and .bak.
+
+i549.2   Referential Split
+
+i549.2.1 Add new CME entry
+
+The change is made to context_menu.pei.sql as described in the design.
+
+i549.2.2 Create new CME Function, O_ATTR_Split
+
+The changes are made to cme_functions.sql as described in the design.
+The new operations are added to ooaofooa.mdl and .bak as described in the design.
+
+i549.2.3 Add new Action Filter to Attribute
+
+The change is made to context_menu.pei.sql as described in the design.
+The Attribute.actionFilter operation is updated in ooaofooa.mdl and .bak.
+
+i549.3  Change Referential Attribute.get_name operation
+
+The changes are made to ooaofooa.mdl and .bak as described in the design.
+
+i549.4  Create O_REF.get_text operation
+
+The changes are made to ooaofooa.mdl and .bak as described in the design.
+
+Unit Test
+---------
+
+The following tests are added to core.test:
+
+- Select a non-referential attribute
+R Combine With menu entry is not present
+R Split menu entry is not present
+
+- Select a referential attribute in a class with only one referential attribute
+R Combine With menu entry is not present
+R Split menu entry is not present
+
+- Select a referential attribute in a class with another referential attribute
+with a different base type
+R Combine With menu entry is not present
+R Split menu entry is not present
+
+- Select a referential attribute in a class with two (uncombined) ref attrs 
+of the same base type
+R Combine With menu entry is present
+R Split menu entry is not present
+- Select Combine With
+R Wizard showing other ref attr appears
+- Select Finish
+R Attributes are combined
+
+- Select the combined referential attribute
+R Combine With menu entry is not present
+R Split menu entry is present
+- Select Split
+R Wizard showing other ref attr appears
+- Select Finish
+R Attributes are split
+
+- Select a referential attribute in a class with two (uncombined) ref attrs 
+of the same base type, and one of a different base type
+R Combine With menu entry is present
+R Split menu entry is not present
+- Select Combine With
+R Wizard showing other ref attr with same base type appears
+- Select Cancel
+R Wizard closes, no changes
+
+- Select a combined referential attribute in a class with two combined ref attrs 
+R Combine With menu entry is present
+R Split menu entry is present
+- Select Split
+R Wizard showing other ref attr appears for selected attr
+- Select Cancel
+R Wizard closes, no changes
+
+- Select a referential attribute in a class with three (uncombined) ref attrs 
+of the same base type
+R Combine With menu entry is present
+R Split menu entry is not present
+- Select Combine With
+R Wizard showing two other ref attr appears
+- Select Finish
+R Attributes are combined
+- Select combined ref attr
+R Combine With menu entry is present
+R Split menu entry is present
+- Select Combine With
+R Wizard showing one uncombined ref attr appears
+- Select Finish
+R Attributes are combined
+- Select the ref attr with three references
+R Combine With menu entry is not present
+R Split menu entry is present
+- Select Split 
+R Wizard showing two references appears
+- Select reference that was combined first
+- Select Finish
+R Attribute is split
+- Select the ref attr with two references
+R Combine With menu entry is present
+R Split menu entry is present
+- Select Split 
+R Wizard showing one reference appears
+- Select Finish
+R Attribute is split
+
+- Test combining two referential attributes that both have two references
+
+- Test combining referential with identifying referential, so that 
+identifying base attribute is left behind
+
+End
+---
+
+$Log: i549.dnt,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.62.1  2008/12/31 16:10:26  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/12/30 21:48:35  greg
+Job: 549
+Fix typos
+
+Revision 1.4  2004/12/30 18:34:05  greg
+Job: 549
+Expanded work and tests
+
+Revision 1.3  2004/12/29 20:16:58  greg
+Job: 549
+Add comment calling out pseudocode
+
+Revision 1.2  2004/12/29 19:05:04  greg
+Job: 549
+Added OAL for operations
+
+Revision 1.1  2004/12/29 17:16:12  greg
+Job: 549
+Ready for review
+

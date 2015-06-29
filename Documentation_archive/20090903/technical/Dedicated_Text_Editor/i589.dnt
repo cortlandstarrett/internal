@@ -1,0 +1,254 @@
+===============================================================================
+
+File:      $RCSfile: i589.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:28 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+===============================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+===============================================================================
+
+Tiger Project Design Note
+Editor cleanup when model elements are deleted
+
+Abstract
+--------
+This document describes the design details of solution that addresses the 
+problem of un-closed editors after the model elements being edited are deleted. 
+
+History
+-------
+- i589-011405-01.rvm v 1.1
+
+Document References
+-------------------
+[1] Bugzilla issue # 589
+
+
+Background
+----------
+See Bugzilla issue # 589 [1]
+
+Analysis
+--------
+The editor plug-in stores key letters and the identifiers of the model element
+whose description or action is being edited, in a placeholder file. The
+following describes two different internal workflows that result in the 
+reported error:
+
+i589.1  
+
+The Activity editor or description editor of a model element remains open after
+the element under editing is deleted without saving the text in editor. In this
+workflow underlying placeholder is deleted but unsaved editor remains open. 
+When user mistakenly, attempts to save the editor, it results in error. 
+
+This behavior does not conform to Eclipse's default behavior. This default 
+behavior, however differs based on the implementation of Views (i.e., Package 
+Explorer and Navigator) that can be used to delete the file under edit. However
+please note that there could be additional views that may provide delete 
+operation. To maintain a proper and stable execution, this problem requires 
+two fixes:
+
+i589.1.1 
+
+If Package Explorer is used to delete the file, the view checks the dirty state 
+of editor. If the corresponding editor has unsaved changes then it displays a 
+user targeted message saying that it cannot save the file. If the editor does 
+not have any unsaved changes, then the Package Explorer closes the 
+corresponding editor as well on deletion of the file.
+  
+If a model element is deleted from Model Explorer, it is a limitation in our 
+case that EditorListener receives the deletion event after the Model element 
+has been deleted. Hence, the above mentioned behavior can not be implemented. As 
+an alternative the editor should be closed when the model element has been 
+deleted.
+
+i589.1.2
+
+If Navigator is used to delete the place holder file, the editor is left open 
+if corresponding editor has unsaved changes. When user edits the text in 
+editor, the editor remains unaware of the fact that the underlying place holder 
+file has been deleted. And when user tries to save the file, an error message 
+tells the user that the file has been deleted and opts the user to close the 
+editor.  Changes are desired which should close the editor when a place holder 
+file is deleted from the Navigator view. Please note that if an editor has no 
+unsaved changes, deletion of the file from Navigator already results in the 
+closure of the required Activity or Description editors.
+
+i589.2 
+
+If a model element such as an attribute of a class is deleted through the model 
+explorer while its description/activity editor is open, the description/
+activity editor does not close and its place holder file is also not deleted.
+
+Design
+------
+i589.1 
+
+Above analysis implies that check of underlying place holder file deletion 
+can be done at two levels as described under.
+
+i589.1.1
+
+The class EditorListener should close the editor if there is one, associated 
+with place holder file that is about to be deleted. This will avoid scenario 
+where place holder file is deleted and unsaved editor is left open. It 
+requires following changes:
+
+  - Add method closeEditor(Object deletedElement) in EditorListener.java
+    The method shall iterate all opened editors to see if any EditorInput 
+    represents the given Object.
+
+EditorListener will find and close the editor using above method, prior to 
+deletion of the place holder file.
+
+i589.1.2
+
+Editorlistener shall also listen for the changes done to the place holder 
+files. It is required to implement 
+org.eclipse.core.resources.IResourceChangeListener, so that when a
+place holder file is deleted from Navigator, a resource changed event will be 
+fired and the listener will close the corresponding editor.
+
+
+i589.2
+
+Editor plug-in uses file place holders and store key letter and unique 
+identifiers of model element, whose description/action is being edited. This 
+information is used to map place holders with model elements on receiving 
+events from model root. However if a model element have composite identifier
+with any of the composing attribute as a referential attribute, model change 
+listener from editor cannot locate the place holder just because one of 
+attribute's Identifier id has become zero. This is because the delete event is 
+called _after_ dispose is called, which means all relations have been 
+unrelated.  
+Model compiler generates supplementary method with postfix "BatchRelateValue"
+to return cached referential attribute. This method can be used instead of 
+default accessor, thus the Model element will return a valid value even 
+after it is disposed. To avoid ambiguity and confusion it is suggested that 
+the above mentioned supplimentary method should be renamed(by changing the 
+postfix) to "CachedValue". Hence The signatures of that method would be 
+get...CachedValue(). Also, we need to cache values of referential attributes at 
+the time of unrelate of a model element across the relation whose other end has 
+the referential attribute as its identifier. In this way EditorListener will 
+get correct values from the model element and will be able to find and delete 
+the corresponding placeholder file.
+Hence, changes to MC-JAVA are required to cache the values of referential 
+attributes. ModelAdapter is a generated class, so a change to 
+create_modeladapter_java.arc is required to get the cached values of 
+referential attributes. 
+
+Work Required
+-------------
+i589.1    
+
+i589.1.1  Implement changes to close the editor after the deletion of Model 
+          Element as specified in the design section.
+          
+i589.1.2  Make an inner class EditorResourceChangeListener that implements 
+          IResourceChangeListener. When a place holder file gets 
+          deleted listener should close the corresponding editor. 
+          Add an instance of this listener to the workspace to listen for 
+          changes.
+       
+i589.2    Rename all BatchRelateValue accessor methods as specified in design 
+          section.
+          Modify MC-JAVA and the generated class ModelAdapter so that cached 
+          values of referential attributes are brought to play by using the 
+          get..CachedValue() accessor methods. 
+           
+Unit Test
+---------
+i589.UT.1
+
+i589.UT.1.1
+
+_- For all model elements that have description or activity field, follow 
+   following procedure.
+_- Open Activity/Description editor for the given model element, change the 
+   text in the editor.
+_- Without saving the text in editor, select and delete the model element 
+   from the model explorer.
+_R Model element is deleted successfully.
+_R Corresponding editor is closed even if it is in unsaved state.
+_R Place holder files are deleted.
+ 
+i589.UT.1.2
+
+_- Open Description editor for a model element having description, change the 
+   text in the editor.
+_- Open Activity editor for a model element having activity, change the 
+   text in the editor.
+_- In the view 'Navigator', select and delete the place holder files which 
+   corresponds to both opened editor.
+_R Editors for the corresponding placeholder file close.
+
+i589.UT.2
+
+i589.UT.1.1 covers this scenario and hence no test is required.   
+
+End
+---
+$Log: i589.dnt,v $
+Revision 1.1  2009/09/03 18:24:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.12  2009/01/01 23:13:41  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.11.50.1  2008/12/31 16:10:55  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.11  2005/01/26 12:58:01  farrukh
+Job:589
+Limited the document according to the scope of the problem.
+
+Revision 1.10  2005/01/24 12:08:27  farrukh
+Job:589
+Addressed Observations mentioned in i589-011405-01.rvm.
+
+Revision 1.9  2005/01/14 14:04:27  babar
+Job:589
+Added clarification
+
+Revision 1.8  2005/01/14 13:19:19  babar
+Job:542
+Cosmetics
+
+Revision 1.7  2005/01/14 12:33:48  farrukh
+Job:589
+Cosmetic changes only
+
+Revision 1.6  2005/01/14 11:55:56  farrukh
+Job:589
+Analysis and Design Sections updated to reflect the suggested solution to 
+produce the standard behavior of eclipse in the editors.
+
+Revision 1.5  2005/01/14 01:14:24  campbell
+Job: 589
+Format changes.
+
+Revision 1.4  2004/12/29 17:55:01  babar
+Job:589
+Updated unit test section
+
+Revision 1.3  2004/12/29 15:48:09  babar
+Job:589
+Improved text of i589.1.*
+
+Revision 1.2  2004/12/28 11:34:14  farrukh
+Job:589
+Design Section update with the proposed solution for closing the editors.
+
+Revision 1.1  2004/12/27 13:19:21  farrukh
+Job:589
+Introduced.
+

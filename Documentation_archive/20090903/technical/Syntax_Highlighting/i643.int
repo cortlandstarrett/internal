@@ -1,0 +1,148 @@
+========================================================================
+
+File:      $RCSfile: i643.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:28:36 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+
+Abstract
+--------
+This note describes the changes to the ui.text.editor.oal package so that it 
+finds correct word boundaries to determine keywords and does not result in 
+partial highlighting of variables ending with keywords.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 643
+[2] Bugzilla Issue 297
+[3] javadoc://org.eclipse.jface.text.rules.WordRule
+
+Background
+----------
+Issue 297[2] introduced code that intended to make case-insensitive recognition 
+of keywords possible. This required over-riding the following method defined in 
+WordRule:
+
+public IToken evaluate(ICharacterScanner)
+
+According to the documentation of WordRule[3], it allows the return of a default
+token for any words that do not exactly match the given set of keywords. In our
+case, these words are defined as "Others" and have a highlighting preference in 
+the preferences page. The over-ridden method did not take the notion of the 
+default token  into account, causing the scanner to advance a single character 
+at a time and jump to next iteration of rule matching. In the next iteration, 
+our word rule may incorrectly return a recognized token because the word 
+starting from current index matches with a keyword in our dictionary (despite 
+the fact that the previous character(s) did not represent a correct word 
+boundary).
+
+Moreover, issue 297[2] modified the implementation of IWordDetector to determine
+the start and end of a word on the basis of keywords alone. The strategy
+specified in the previous paragraph requires that the implementation of
+IWordDetector just detects words based on valid word boundaries (such as space
+or linefeed), irrespective of whether the detected word is a keyword or not. 
+
+Design
+------
+
+i643.1  Modify OALKeywordRule.evaluate(ICharacterScanner) method
+
+The method is modified to return a default (i.e. Other) token if the detected 
+word is not present in our hashmap of keywords.
+
+i643.2  Modify OALKeywordRule.OalKeywordDetector
+
+Since the boundary rules for a valid word in OAL matches with those of Java, 
+the implementation of IWordDetector is modified to use the following utility 
+methods:
+
+Character.isJavaIdentifierStart(char)
+Character.isJavaIdentifierPart(char)
+
+Implementation Comments
+-----------------------
+- The class OALKeywordRule.OalKeywordDetector is renamed to 
+  OALKeywordRule.OALWordDetector for better clarity.
+
+- /com.mentor.nucleus.bp.ui.text.test/models/testDescrip1.xtuml did not have
+  the correct domain name. On editing with Tiger, the name of the domain was
+  synchronized. All tests that matched the domain name are therefore updated to
+  check for the corrected domain name.
+
+Unit Test
+---------
+_- Open Activity editor
+_- Enter 'select any xyz_to from instances of XYZ'
+_R The string 'to' within the variable 'xyz_to' is not highlighted as keyword
+_R The variable 'xyz_to' is highlighted according to preferences set for 
+   "Others".
+
+Code Changes
+------------
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/editor/oal/
+    OALKeywordRule.java
+
+com.mentor.nucleus.bp.ui.text.test/models/testDescrip1.sql
+com.mentor.nucleus.bp.ui.text.test/models/testDescrip1.xtuml
+com.mentor.nucleus.bp.ui.text.test/src/UITextSuite.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    activity/I643OALKeywordsHighlightingTest.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    description/CloseDescriptionEditor.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    description/DescriptionEditorInteraction.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    description/OpenDescriptionEditor.java
+
+End
+---
+
+$Log: i643.int,v $
+Revision 1.1  2009/09/03 18:28:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:21  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.36.1  2008/12/31 16:10:30  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/04/21 08:09:47  siddique
+Job:643
+Review observations addressed.
+
+Revision 1.4  2005/04/20 22:53:20  campbell
+Job: 643
+Minor cosmetic typo corrections.
+
+Revision 1.3  2005/04/20 16:00:24  babar
+Job:643
+Updated code changes section.
+
+Revision 1.2  2005/04/20 15:19:24  babar
+Job:643
+Minor changes
+
+Revision 1.1  2005/04/20 14:59:23  babar
+Job:643
+Moved the implementation note to
+Syntax_Highlighting folder.
+
+Revision 1.1  2005/04/20 14:18:54  babar
+Job:643
+Introduced

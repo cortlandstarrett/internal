@@ -1,0 +1,813 @@
+========================================================================
+
+File:      $RCSfile: i124.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement bridge and operation invocations
+
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+invocations of bridges and operations.
+
+History
+-------
+
+update i124-022704-01.rvm
+final  i124-022704-02.rvm
+
+Document References
+-------------------
+Issue 124
+action_semantics.dnt
+i121.int  - Function invocation unit test
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so invocations of bridges and operations are 
+semantically validated.
+
+This work is part of implementing the action semantics 
+design (action_semantics.dnt), section AS1.4.3.
+
+The Tiger reduced parser (oal.bnf) has the following rules
+regarding these statements:
+
+bridge_statement
+  :
+    "bridge"!
+    (
+      ( local_variable[true]
+      | attribute_access[true]
+      )
+      TOK_EQUAL!
+    )?
+    bridge_invocation
+  ;
+
+transform_statement
+  :
+    "transform"!
+    (
+      (  attribute_access[true] TOK_EQUAL )=>
+      attribute_access[true]
+      TOK_EQUAL!
+    |
+      local_variable[true]
+      TOK_EQUAL!
+    )?
+    (
+      (   transform_ib_invocation )=>
+      transform_ib_invocation
+    |
+      transform_invocation
+    )
+  ;
+
+rval
+  :
+    ( transform_ib_invocation )=>
+    transform_ib_invocation
+  |
+    ( bridge_or_transform_expr )=>
+    bridge_or_transform_expr
+  |
+    bridge_expr
+  |
+    transform_expr
+  |
+... etc...
+
+bridge_expr
+  :
+  "bridge"!
+  bridge_invocation
+  ;
+
+transform_expr!
+  :
+  "transform"
+  transform_invocation
+ ;
+
+bridge_invocation
+  :
+    ee_keyletters
+    TOK_DOUBLECOLON!
+    bridge_function
+    TOK_LPAREN!
+    (
+      invocation_parameters
+    )?
+    TOK_RPAREN!
+  ;
+
+transform_invocation
+  :
+    object_keyletters
+    TOK_DOUBLECOLON!
+    transformer_function
+    TOK_LPAREN!
+    (
+      invocation_parameters
+    )?
+    TOK_RPAREN!
+  ;
+
+transform_ib_invocation
+  :
+    inst_ref_var
+    TOK_DOT!
+    transformer_function
+    TOK_LPAREN!
+    (
+      invocation_parameters
+    )?
+    TOK_RPAREN!
+  ;
+
+implicit_bridge_or_transform_statement
+  :
+  bridge_or_transform_invocation
+  ;
+bridge_or_transform_expr
+  :
+    bridge_or_transform_invocation
+  ;
+implicit_ib_transform_statement
+  :
+    transform_ib_invocation
+  ;
+bridge_or_transform_invocation
+  :
+    obj_or_ee_keyletters
+    TOK_DOUBLECOLON!
+    function_name
+    TOK_LPAREN!
+    (
+      invocation_parameters
+    )?
+    TOK_RPAREN!
+  ;
+
+The implicit cases complicate things slightly, since
+a bridge and class-based operations have the same syntactic
+form: <keyletters>::<function name>.
+
+Design
+------
+
+There are the following different forms of bridge invocations:
+
+bridge EE::void_brg(<parm_list>);
+EE::void_brg(<parm_list>);
+bridge x = EE::rval_brg(<parm_list>);
+bridge h.Row_Number = EE::rval_brg(<parm_list>);
+x = bridge EE::rval_brg(<parm_list>);
+x = EE::rval_brg(<parm_list>);
+
+and the corresponding operation invocations:
+
+transform D_D::void_op(<parm list>);
+D_D::void_op(<parm list>);
+transform x = D_D::rval_brg(<parm_list>);
+transform h.Row_Number = D_D::rval_brg(<parm_list>);
+x = transform D_D::rval_brg(<parm_list>);
+x = D_D::rval_brg(<parm_list>);
+
+d.void_inst_op(<parm list>);
+x = d.rval_inst_op(<parm list>);
+
+where d is an inst_ref<D_D>.
+
+Note that no changes are needed for the rval rule; it
+all just happens automatically.
+
+i124.1 Changes to oal.bnf
+
+i124.1.1  Make rule more specific
+
+The rule bridge_or_transform_invocation currently uses
+the function_name sub rule to verify the function being
+invoked.  We need to make this more specific so that
+we validate a bridge or operation, rather than a function.
+The function_name sub rule is replaced with the newly
+created bridge_or_transform_function rule:
+
+bridge_or_transform_invocation
+  :
+    obj_or_ee_keyletters
+    TOK_DOUBLECOLON!
+    bridge_or_transform_function
+    TOK_LPAREN!
+    (
+      invocation_parameters
+    )?
+    TOK_RPAREN!
+  ;
+
+bridge_or_transform_function!
+  :
+    function_name
+  ;
+  
+  
+i124.1.2 Add r-value parameters to invocation rule
+
+In i121.int, the function_invocation rule had a 
+parameter added to indicate if the rule was being used
+as an r-value or not.  The same parameter (boolean isRval)
+must be added to the bridge and operation invocation rules
+for the same reason.  The following rules have the isRval
+parameter added to them:
+
+bridge_invocation
+bridge_or_transform_invocation
+transform_ib_invocation
+transform_invocation
+
+i124.1.3  Add parameter to flag transformer type
+
+The rule transformer_function is used as a subrule for
+both instance and class based operation invocations.
+The rule needs a parameter to indicate if the previous
+rule was for an inst_ref variable, or for object keyletters.
+The parameter isKeyLett, boolean, is added to the rule.
+
+i124.1.4  Remove transform keyword
+
+Due to ambiguities caused by the transform_statement rule
+when trying to add the isRval parameter to its transform_invocation
+subrule,  the transform keyword is removed from the parser.
+This is implemented by deleting the transform_statement rule,
+the transform_expr rule, and the "transform" literal from the 
+kw_as_id2 rule.
+
+i124.2  Changes to ooa
+  
+i124.2.1 New attributes
+
+The following attributes are added:
+
+Bridge Value (V_BRV) ParmListOK (boolean)
+Transform Value (V_TRV) ParmListOK (boolean)
+Block (ACT_BLK) TempBuffer (string)
+
+i124.2.2  Add relationship R830  V_TRV - V_VAR
+
+It is possible for an instance-based operation to 
+return a value.  The relationship R830 from Transform Value
+(V_TRV) to Variable (V_VAR) *-0,1 is added.  A variable 
+can be used for more than one invocation of an instance-based
+operation.  A class-based operation does not have an associated
+variable.  
+
+i124.2.3  Clear operations
+
+The following clear operations are added:
+
+Bridge Value (V_BRV)
+Transform Value (V_TRV)
+Bridge Invocation (ACT_BRG)
+Transform Invocation (ACT_TFM)
+
+The following clear operations are updated:
+
+Statement.clear() - Add checks for ACT_BRG, ACT_TFM
+Value.clear() - Add checks for V_BRV, V_TRV
+
+i124.3 Implement validation
+
+i124.3.1   Parameter list validation
+
+i124.3.1.1  The validation function data_item_validate()
+is changed to add validation of bridge and operation parameters.
+The validation checks that there is exactly one parameter with
+the name supplied for the given bridge or operation.  If there
+is zero or more than one, the appropriate error is raised. 
+On success, the function returns the id of the parameter.
+
+i124.3.1.2  The invocation_parameters_loop4_end() validation
+function is changed to add checks for bridge and operation
+parameters, analogous to checks added for functions (see i121.int).
+
+i124.3.1.3  The invocation_parameters_end() validation
+function is changed to add checks for bridge and operation
+parameters, analogous to checks added for functions (see i121.int).
+
+
+i124.3.2  validate functions
+
+The following validation functions ending in _validate()
+have similar functionality.  
+
+ee_keyletters_validate() - If there is an external entity
+with the given key letters, the EE_ID of the external entity
+is returned.  Otherwise, an error is raised.
+
+obj_or_ee_keyletters_validate() - If an object or external
+entity exists with the given keyletters, the keyletters
+are written to the Block.TempBuffer attribute for the 
+block with the current scope. If there is a problem, 
+an error is raised.
+
+transformer_function_validate() - This function determines
+the class keyletters, either directly or via the inst_ref
+variable. It then passes the keyletters and transform name
+on to utility function is_valid_transform().
+
+bridge_function_validate() - This function gets the external
+entity keyletters, and then passes the keyletters and 
+bridge name on to utility function is_valid_bridge().
+
+bridge_or_transform_function_validate() - This function uses
+the keyletters saved in Block.TempBuffer to
+find a class or external entity with the given keyletters.
+Operations are searched first.  If neither a bridge or
+operation can be found for a class or external entity
+with the given keyletters, an error is raised.  Otherwise,
+either is_valid_bridge() or is_valid_transform() is called.
+
+is_valid_bridge() - This utility function checks if there
+is exactly one bridge defined for the given external entity
+with the given bridge name.  If there are zero or more than one,
+the appropriate error is raised.  Otherwise, an instance
+of Bridge Value (V_BRV) and the associated Value instance 
+are created.  The identifier of the Bridge Value instance
+is returned.
+
+is_valid_transform() - This utility function checks if there
+is exactly one operation defined for the given class with 
+the given transform name.  If there are zero or more than one,
+the appropriate error is raised.  Otherwise, an instance
+of Transform Value (V_TRV) and the associated Value instance 
+are created.  The identifier of the Transform Value instance
+is returned.
+
+i124.3.3  Invocation end functions
+
+Each of the following functions ending with _invocation_end
+validates that the parameter list is correct.  Each function
+verifies that there are the correct number of parameters, 
+and that each parameter is in the list once.
+
+bridge_invocation_end()
+transform_invocation_end()
+
+bridge_or_transform_invocation_end() - This function determines
+if a bridge or operation is being invoked, and then calls either
+bridge_invocation_end() or transform_invocation_end().
+
+transform_ib_invocation_end() - This function returns the
+result of calling transform_invocation_end().
+
+i124.3.4  Invocation validate functions
+
+bridge_invocation_validate() - This function passes the bridge
+information to the is_valid_invocation() utility function.
+
+transform_ib_invocation_validate() - This function passes the operation
+information to the is_valid_invocation() utility function.
+
+bridge_or_transform_invocation_validate() - This function determines
+if a bridge or operation is being invoked, and then calls is_valid_invocation()
+with the appropriate data.
+
+bridge_expr_validate() - This function returns the value
+of the function bridge_invocation_validate().
+
+bridge_or_transform_expr_validate() - This function returns
+the value of the function bridge_or_transform_invocation_validate().
+
+is_valid_invocation() - This function determines, given the invocation's
+return type, and if the invocation is being used as an r-value, if 
+there is an error condition. The error could be either that an invocation
+returning void is used where an r-value is expected, or an invocation
+returning something other than void is used where no r-value is 
+expected.  The invocation's id is returned on success.
+
+i124.3.5  Statement start functions
+
+Each of these functions creates an instance 
+of ACT_SMT, using the statement_create() utility function.
+This is the statement that will eventually be the resultant statement
+when the statement parsing is complete.  The statement needs
+to be created at the beginning to allow the attribute access
+processing to function correctly. The statement id is returned.
+
+bridge_statement_start()
+implicit_bridge_or_transform_statement_start()
+implicit_ib_transform_statement_start()
+
+i124.3.6  Statement end functions
+
+bridge_statement_end() - This function performs the final
+processing to create the bridge statement.  If the statement
+is either an assignment to a local variable or an attribute,
+then the function assignment_expr_end() is invoked with the
+appropriate parameters.  If this is a void bridge statement,
+then we migrate the data from the instance of Bridge 
+Value (V_BRV) created by is_valid_bridge() to a newly 
+created instance of Bridge Invocation (ACT_BRG).  We then delete the
+V_BRV instance.  The id of the Statement instance is returned.
+
+implicit_ib_transform_statement_end() - This function performs the final
+processing to create the transform statement.  The function
+can process either a class-based or instance-based operation.
+We migrate the data from the instance of Transform Value (V_TRV) 
+created by is_valid_transform() to a newly created instance 
+of Transform Invocation (ACT_TFM).  We then delete the
+V_TRV instance.  The id of the Statement instance is returned.
+
+implicit_bridge_or_transform_statement_end() - This function
+determines if the invocation is either a bridge or an operation.
+It then invokes either bridge_statement_end() or 
+implicit_ib_transform_statement_end().
+
+i124.4  Add statement_create()
+
+i124.4.1  The function statement_create() creates an instance of Statement
+(ACT_SMT), and relates it to the block that is the current scope.
+The id of the new statement is returned.
+
+i124.4.2  Use statement_create()
+
+All functions that previously directly created instances of ACT_SMT
+are changed to call statement_create().  These functions are:
+
+Assignment_statement_start
+Break_statement_end
+Continue_statement_end
+Control_statement_end
+Create_object_statement_end
+Delete_statement_end
+For_statement_start
+Function_statement_end
+If_statement_end
+If_statement_loop3_end
+If_statement_start
+Object_spec_end
+Relate_statement_end
+Return_statement_end
+Unrelate_statement_end
+While_statement_start
+
+
+Work Required
+-------------
+
+i124.1 Changes to oal.bnf
+
+i124.1.1  Make rule more specific
+
+Change the bridge_or_transform_invocation rule as described
+in the design. Add the bridge_or_transform_function rule.
+  
+i124.1.2 Add r-value parameters to invocation rule
+
+Add boolean isRval parameter to rules listed in the
+design.  Add parameter values to all invocations of
+the rules.
+
+i124.1.3  Add parameter to flag transformer type
+
+Add the isKeyLett parameter to the transformer_function
+rule.  Add parameter values to all invocations of the
+rule.   Modify grammar_enhancer.arc to add isKeyLett
+as a possible parameter.
+
+i124.1.4  Remove transform keyword
+
+The changes are made as described in the design.
+
+i124.2  Changes to ooa
+  
+i124.2.1 New attributes
+
+Add the indicated attributes to ooaofooa.bak.
+
+i124.2.2  Add relationship R830  V_TRV - V_VAR
+
+Add the indicated relationship to ooaofooa.bak.
+
+i124.2.3  Clear operations
+
+Make the indicated changes to the clear operations
+in ooaofooa.bak.
+
+i124.3 Implement validation
+
+i124.3.1   Parameter list validation
+
+The following validation functions are 
+changed in function_import.sql:
+
+i124.3.1.1  data_item_validate()
+i124.3.1.2  invocation_parameters_loop4_end()
+i124.3.1.3  invocation_parameters_end() 
+
+i124.3.2  validate functions
+
+The following validation functions are 
+changed in function_import.sql:
+
+ee_keyletters_validate()
+obj_or_ee_keyletters_validate()
+transformer_function_validate()
+bridge_function_validate()
+bridge_or_transform_function_validate()
+
+The following utility functions are 
+implemented in function_import.sql:
+
+is_valid_bridge()
+is_valid_transform()
+
+i124.3.3  Invocation end functions
+
+The following validation functions are 
+changed in function_import.sql:
+
+bridge_invocation_end()
+transform_invocation_end()
+bridge_or_transform_invocation_end()
+transform_ib_invocation_end()
+
+i124.3.4  Invocation validate functions
+
+The following validation functions are 
+changed in function_import.sql:
+
+bridge_invocation_validate()
+transform_invocation_validate()
+bridge_or_transform_invocation_validate()
+transform_ib_invocation_validate()
+bridge_expr_validate()
+transform_expr_validate()
+bridge_or_transform_expr_validate()
+
+The following utility function is
+implemented in function_import.sql:
+
+is_valid_invocation()
+
+i124.3.5  Statement start functions
+
+The following validation functions are 
+changed in function_import.sql:
+
+bridge_statement_start()
+transform_statement_start()
+implicit_bridge_or_transform_statement_start()
+implicit_ib_transform_statement_start()
+
+i124.3.6  Statement end functions
+
+The following validation functions are 
+changed in function_import.sql:
+
+bridge_statement_end()
+transform_statement_end()
+implicit_bridge_or_transform_statement_end()
+implicit_ib_transform_statement_end()
+
+i124.4  Add statement_create()
+
+i124.4.1  The function statement_create() is created in 
+function_import.sql
+
+i124.4.2  Use statement_create()
+
+The following validation functions are 
+changed to use statement_create in function_import.sql:
+
+Assignment_statement_start
+Break_statement_end
+Continue_statement_end
+Control_statement_end
+Create_object_statement_end
+Delete_statement_end
+For_statement_start
+Function_statement_end
+If_statement_end
+If_statement_loop3_end
+If_statement_start
+Object_spec_end
+Relate_statement_end
+Return_statement_end
+Unrelate_statement_end
+While_statement_start
+
+
+Implementation Comments
+-----------------------
+
+- The validation function phrase_validate created a Literal String
+instance to save the phrase.  This is changed to save the phrase to
+the Block.TempBuffer attribute.  The following functions are changed
+to get the phrase from the Block.TempBuffer attribute instead of
+the Literal String instance:
+
+has_valid_phrase
+instance_chain_loop5_end
+relate_statement_end
+unrelate_statement_end
+
+- The clear_rel_data function also assumed that the phrase data was
+saved in a V_VAL instance.  The parameter was also used to delete where
+clause expressions.  The parameter phrase_val is changed to where_val,
+and the following functions are changed to use the new parameter:
+
+has_valid_phrase
+is_valid_assoc_relationship
+is_valid_relationship
+object_spec_end
+relate_statement_end
+
+- The bridge_statement (and similarly the transform_statement) rule
+presents problems for determining if the parameter to bridge_invocation
+(isRval) should be true or false:
+
+bridge_statement
+  :
+    "bridge"!
+    (
+      ( local_variable[true]
+      | attribute_access[true]
+      )
+      TOK_EQUAL!
+    )?
+    bridge_invocation[????]
+  ;
+
+The rule is changed as follows so that we can determine the
+parameter value:
+
+bridge_statement
+  :
+    "bridge"!
+    (
+	    (
+	      ( local_variable[true]
+	      | attribute_access[true]
+	      )
+	      TOK_EQUAL!
+	      bridge_invocation[true]
+	    )
+    	|
+	    bridge_invocation[false]
+    )
+  ;
+
+- Changed the timeout for the validate_gen target to 5 minutes
+in build.xml.
+
+Unit Test
+---------
+
+We will reuse the tests for the function invocations
+for the bridge and operation tests.  We first define
+the methods for an EE and class the same as the
+function tests were structured:
+
+// The Test (T) bridge definitions are:
+//   void test1()
+//   void test2( i:int )
+//   void test3( s: string, i: int )
+//   int  test4()
+//   int  test5( i: int )
+//   string test6( s: string, i: int )
+//   boolean test7( r: real, s: string, i: int )
+
+// The class-based operations defined for the 
+//   Disk (D_D) class are:
+//   void test1()
+//   void test2( i:int )
+//   void test3( s: string, i: int )
+//   int  test4()
+//   int  test5( i: int )
+//   string test6( s: string, i: int )
+//   boolean test7( r: real, s: string, i: int )
+
+// The instance-based operations defined for the 
+//   Permanent Home in Library (D_H) class are:
+//   void test1()
+//   void test2( i:int )
+//   void test3( s: string, i: int )
+//   int  test4()
+//   int  test5( i: int )
+//   string test6( s: string, i: int )
+//   boolean test7( r: real, s: string, i: int )
+
+Each unit test named 'testFunction*' is renamed to
+'testInvocation*'.  The test action is then executed
+for a function, bridge (implicit and explicit), and
+instance-based and class-based operations.
+For example, the testFunctionRetVoidParmNone test 
+becomes testInvocationRetVoidParmNone, with the 
+following action language:
+
+::test1();
+
+bridge T::test1();
+
+T::test1();
+
+D_D::test1();
+
+create object instance h of D_H;
+h.test1();
+
+Note that the bridge and transforms returning values
+need to test both assignments to transient variables and
+assignments to attributes.
+
+The only additional tests are for verifying that the 
+error-checking logic is OK for bridges and operations
+where name mismatches occur:
+
+// testMissingBridgeWithExistingOperation
+T::noSuchBrg();    where D_D::noSuchBrg is defined and T::noSuchBrg is not
+
+// testMissingOperationWithExistingBridge
+D_D::noSuchOp();  where T::noSuchOp  is defined and D_D::noSuchOp is not
+
+Error checking must also be done for using instance-based
+operations with the class-based syntax, and vice versa:
+
+// testIBOperationWithCBSyntax
+D_H::test1();
+
+// testRvalIBOperationWithCBSyntax
+x = D_H::test4();
+
+// testCBOperationWithIBSyntax
+select any d from instances of D_D;  d.test1();
+
+// testRvalCBOperationWithIBSyntax
+select any d from instances of D_D;  x = d.test4();
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version:  1.9   Final version: 1.10
+
+com.projtech.bp.als/build.xml
+Initial version:  1.10  Final version: 1.11
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version:  1.18  Final version: 1.19
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.10  Final version: 1.11
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.12  Final version: 1.13
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.14  Final version: 1.15
+
+
+End
+---
+
+$Log: i124.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/02/28 00:52:38  greg
+Job: 124
+Updates from second review
+
+Revision 1.2  2004/02/27 23:51:22  greg
+Job: 124
+Changes from review
+
+Revision 1.1  2004/02/26 23:24:08  greg
+Job: 124
+Initial introduction
+

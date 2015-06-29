@@ -1,0 +1,195 @@
+========================================================================
+
+File:      $RCSfile: dts0100898994-899360.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+- DocGen launch problem with new-style MC plugins
+- Default new project to generic packages and global native types.
+
+
+1. Abstract
+-----------
+Fix issue with DocGen tool on projects that use new-style model compiler plug-
+ins.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI 898994 - DocGen launch problem with new-style MC plugins
+[2] ClearQuest DEI 899360 - Default new project to generic packages and global 
+    native types.
+[3] SVN://trunk/Models/Test/CFMon
+
+4. Background
+-------------
+4.1  Fix issues with DocGen [1]
+4.1.1  With release 3.5.0, BridgePoint introduced the ability for the user to 
+select among several available model compilers when the project is created.  
+Under the hood, this means that the project has a nature the corresponds to the 
+MC chosen and that the <project>/.externalToolBuilers/Model Compiler.launch file
+has a path to xtumlmc_build.exe that is specific to the install location of 
+BridgePoint on disk and the model compiler plug-in that corresponds to the model
+compiler nature chosen.
+
+4.1.2  The DocGen tool inside BridgePoint relies on xtumlmc_build.exe to perform 
+some post-export processing on the model before it is used by the next step in 
+the DocGen toolchain.  DocGen uses the model compiler launch file to get the 
+path to xtumlmc_build.exe on disk.
+
+4.1.3  Before inspecting the model file for the EXE location, the DocGen plug-in 
+tells the appropriate model compiler plug-in to make sure the launch file is up 
+to date.  This update accounts for BridgePoint install location differences. 
+
+4.1.4  It was found that this update was only configured to work for projects 
+that use the "old-style" com.mentor.nucleus.bp.mc.mc3020 model compiler plug-in.
+If the project was configured to use a "new-style" plug-in 
+com.mentor.nucleus.bp.mc.* (c.binary, c.source, cpp.source, systemc.source, 
+vhdl.source), the update did not update the model compiler launch file, which 
+could lead to DocGen tool failures because it was unable to find and invoke 
+xtumlmc_build.exe.
+
+4.2  Default new projects to use globals [2]
+4.2.1  The Caelum release removes support for specialized packages from the user
+interface.  To be consistent, new xtUML Projects created by the user should not
+include the specialized datatypes package, but instead use the global types.
+
+All new xtUML Projects shall default to generic packages and global native types.
+5. Requirements
+---------------
+5.1  DocGen must update the location to xtumlmc_build.exe for projects that use
+new-style MC plug-ins as well as the old-style MC plug-in.
+
+5.2  Add unit tests to run DocGen and verify its operation.  
+     
+6. Work Required
+----------------
+6.1  Add support in the bp.docgen Generator.java class that determines if the
+project uses a new-style MC plug-in.  If it does, determine the MC it uses and
+invoke the launch file update for this MC plug-in.
+
+6.2  Add a new JUnit to test the operation of DocGen.
+6.2.1  Invoke DocGen on the test models
+6.2.2  Spot check existence of a few files that are output from various pieces 
+       of the doc gen flow.  This will test that the toolchain worked all the
+       way through.  This includes testing the update of the launch file as the
+       test project has a non-standard path to xtumlmc_build.exe.  Check for:
+           "doc/images/DataType.gif" - tests icon copying
+           "doc/images/<model>-System Model Package Diagram.png" - tests 
+                image creation
+           "doc/docgen.xsl" - tests that docbook support files are copied into
+                place
+           "doc/techpub.css" - tests that docbook support files are copied into
+                place
+           "doc/doc.xml" - tests that docgen.exe produced an output file
+           "doc/doc.html" - tests that docbook translated the xml file to HTML
+6.2.3  Difference the contents of the key output files with expected files that
+       are known to be good:
+           "doc.xml" - this file has a workspace specific path that is replaced
+                out before comparing with the expected results, which also has
+                the path replaced.
+           "doc.html"
+6.2.4  Run the JUnit on a new test model "DocGenTest" that uses the new-style MC
+       plug-ins and the existing CFMon test model that uses the old-style MC
+       plug-ins.
+
+6.3  Modify the new project wizard to upgrade a newly created project to use
+     global types.  Perform this action immediately after the project is
+     created.  Thus the user will not see or be able to create any special-
+     ized packages in any new project.
+     
+7. Implementation Comments
+--------------------------
+7.1  A number of places were found in the classes in com.mentor.nucleus.bp.mc
+where a static class attribute (typically a text string) or a member function
+was accessed using an instance-based approach.  These all gave Java warnings.
+I changed these places to access the data and operations statically.  This
+cleared up the Java warnings.
+
+8. Unit Test
+------------
+8.1  JUnits - Because the changes are localized and specific to individual
+functionality, we do not have to run the entire test suite.
+  - Run the Core2 JUnit test Suite where the DocGen test is added.
+  - Run the bp.welcome JUnit
+  - Run the bp.core WorkspaceSetup and ExistingProjects JUnit test suites
+
+8.2  Since we don't have automated tests for model compilation, perform manual
+testing, building several different models, making sure to cover models that use
+both style of model compiler.
+  - Build GPS Watch and MicrowaveOven from the Welcome page.
+  - In a clean workspace, check out Looper [3] from SVN and build the project
+        _- Switch to C/C++ perspective
+        _- Right-click > New > Convert to C/C++ project (accept default settings in popup)
+        _- Right-click > Properties > Builders
+        _- Enable Model Compiler Pre-build, and MC-3020 Model Compiler
+        _- Select CDT Builder, move it down to be after MC-3020 Model Compiler
+        _- Select OK
+        _- Right-click > Build Project
+
+9. Code Changes
+---------------
+Branch name: R3_5_3-SKB-dts0100898994
+
+com.mentor.nucleus.bp.core.test/src/(default package)/CoreTestSuite2.java
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test.ui/
+    DocGenTest.java
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/CFMon_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/CFMon_doc.xml
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/DocGenTest_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/DocGenTest_doc.xml
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTestSetup_CreatePackage/TigerNatureTestSetup_CreatePackage-108
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTestSetup_CreatePackage/
+    TigerNatureTestSetup_CreatePackage-108.jpg
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTestSetup_CreateUseCaseDiagramInSystem/
+    TigerNatureTestSetup_CreateUseCaseDiagramInSystem-108
+com.mentor.nucleus.bp.core.test/expected_results/
+    TigerNatureTestSetup_CreateUseCaseDiagramInSystem/
+    TigerNatureTestSetup_CreateUseCaseDiagramInSystem-108.jpg
+com.mentor.nucleus.bp.core.test/generate.xml
+
+
+
+com.mentor.nucleus.bp.docgen/src/com.mentor.nucleus.bp.docgen.generator/
+    Generator.java
+com.mentor.nucleus.bp.docgen/generate.xml
+com.mentor.nucleus.bp.docgen/plugin.xml
+
+com.mentor.nucleus.bp.mc/src/com.mentor.nucleus.bp.mc/AbstractActivator.java
+com.mentor.nucleus.bp.mc/src/com.mentor.nucleus.bp.mc/AbstractNature.java
+com.mentor.nucleus.bp.mc/src/com.mentor.nucleus.bp.mc/
+    AbstractNewProjectWizard.java
+com.mentor.nucleus.bp.mc/src/com.mentor.nucleus.bp.mc/
+    MCBuilderArgumentHandler.java
+
+
+
+
+End
+---
+
+$Log: dts0100898994-899360.int,v $
+Revision 1.2  2012/06/29 19:47:56  kbrown
+job:dts0100898994 dts0100899360
+Modify INT title.
+
+Revision 1.1  2012/06/29 19:23:20  kbrown
+job:dts0100898994 dts0100899360
+Remove the INT that was only for 898994 and rename the INT to capture both 898994 and 899360.
+
+Revision 1.1  2012/06/28 19:35:07  kbrown
+job:dts0100898994
+Updated int.

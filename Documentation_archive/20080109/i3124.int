@@ -1,0 +1,122 @@
+========================================================================
+
+File:      $RCSfile: i3124.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Prevent unnecessary persistence during paste
+
+1. Abstract
+-----------
+This note describes the changes required to prevent persisting model files which
+are not participating in a paste.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3124
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3124
+[2] Bugzilla item 3131
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3131
+    
+4. Background
+-------------
+In certain circumstances it is possible to cause persistence to a project when
+pasting data into another project.
+
+5. Design
+---------
+5. Prevent updating model-root id for default root
+
+5.1 Do not change default root id
+
+During a paste the tool will temporarily place the pasted elements onto the
+destination model-root.  When pasting system level elements this model-root is
+the default root.  A listener, OoaofooaBase.ModelChangeListener, will call a
+method which will in turn update a model-root id if the root element's name has
+changed.  This listener is being called for the unique name setting that is
+occuring during the paste.  This results in two separate issues, one is that the
+id of the default root should never change.  The second issue is more specific
+to this issue.  The code which updates the model-root id searches the instance
+database for a root element.  This causes loading of all element's in the
+workspace with that type.  This is due to the design of the loading code, if the
+model-root is the default-root then all persistable model components of that
+type are loaded.
+
+During the loads upgrade code is being called which in turn creates and relates
+instances.  In normal loading situations the tool is not notified of these
+creates and relates.  During a paste there is a transaction running which picks
+up the deltas for these changes.  This raises another issue with the tool which
+has been captured in [2].
+
+A simple test is added to the OoaofooaBase.updateId method to return without
+doing any work if the root id is that of the default root.
+
+5.2 Remove unnecessary select
+
+During the investigation it was noticed that a select from instances of S_DT was
+present in the S_SYS.pasteComponentPackage operation.  This select was not
+needed and was causing unnecessary loading.
+
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+Manual test:
+
+_- Check out bp.core, bp.welcome, and bp.ui.canvas
+_- Create a new project (src)
+_- create an interface package (ip1)
+_- create an interface (i1)
+_- create a component pkg (cp1)
+_- create component (c1)
+_- c1 provides and requires i1
+_- create nested component in c1 (cn1)
+_- delegate from both interface references to the nested component
+_- create a new project (target)
+_- copy cp1 to target
+_R None of the checked out projects are dirtied
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    System Model/System Model.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/OoaofooaBase.java
+
+End
+---
+
+$Log: i3124.int,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.2  2007/09/18 17:09:05  tlondon
+Job: 3124
+
+Add note about raised issue.
+
+Revision 1.1  2007/09/18 17:04:52  tlondon
+Job: 3124
+
+Introduce

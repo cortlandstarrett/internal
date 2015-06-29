@@ -1,0 +1,244 @@
+========================================================================
+
+File:      $RCSfile: dts0100641626.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Fix BP Core Action Test Suite
+
+
+1. Abstract
+-----------
+BP Core Action Test Suite unit tests sometimes fail when updating 
+property view
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100641626
+
+
+4. Background
+-------------
+This is quoted from the description of the note in the ClearQuest [1]
+
+"It is a bit of a mystery why this suite of tests is only now failing 
+consistently for me.  Some team members have sometimes seen this failure in the
+past (Campbell), but it went away.  The issue is that the selection change 
+listeners are executed asynchronously and evidently when the tests pass the 
+selection change listener code, which verifies that the created data type is 
+hooked-up properly, is not fired before the test is executed and torn down 
+(thus the tests are not fully testing that new elements are properly hooked up).  
+In the case I have been looking at the problem is that the test data is not 
+properly setup.  This archetype has special cases for all of the model elements 
+that need relationships setup (other then domain data types which are defined 
+in setup()).  This special case code is incomplete in some of the tests which 
+causes NPEs which in turn cause cascading failures.  For example, in the 
+C_IO case (testNewC_IOParameter), an Executable Property is created and 
+related across R4003, but R4004 is not related nor is R4303/R4304.  
+The resource change listener fires code in 
+InterfaceOperation_c::Isallowedreturntype() 
+that requires these relationships to be setup. This example test, 
+and others like it in the suite, do actually point us to potential problems in
+the product and the test data needs to be modified to work appropriately.  
+However, this is not a new test problem and to work around the issue right now
+we can pass false to the setSelection(sel) calls in the archetype to prevent 
+the model from being refreshed.  Doing this is essentially causing the test to
+run as it did prior to the failures.  The tests are not checking that the data
+is hooked up.  Issue dts0100627277 is where I observed this problem.  However,
+there is no reason why that issue should have caused this problem (it didn't 
+even modify bp.core.  
+Therefore, this issue must have been present in the product for a long time."
+
+
+5. Analysis
+-----------
+5.1 To reproduce the issue 
+_- In project com.mentor.nucleus.bp.core.test 
+   Open create_action_test.arc 
+_- In function create_new_action_test
+   Change Selection.getInstance().setSelection(sel, false); 
+   to Selection.getInstance().setSelection(sel, true); 
+_- In function create_delete_action_test    
+   Change Selection.getInstance().setSelection(sel, false); 
+   to Selection.getInstance().setSelection(sel, true); 
+_- Perform clean and rebuild to project com.mentor.nucleus.bp.core.test
+_- Run CoreTestSuite 
+R- 13 Failures are shown
+
+5.2.1 failure testNewC_IOParameter
+      The .log file is not empty because of a null pointer exception that
+      occurs in the function InterfaceOperation_c.Isvoid()
+      because when this function gets a data type across the relation R4008
+      it is null but the function returns this datatype.getName().equals("void") 
+      and that occurs because the interface operation under test was created 
+      using the constructor InterfaceOperation_c(ModelRoot modelRoot)
+      which initializes the data type id field with  NULL_UUID
+      then no data type is related to it later to change that.
+
+5.2.2 failure testNewC_ASParameter
+      The .log file is not empty because of an ArrayIndexOutOfBounds exception
+      that occurs in the function SignalsC_ASPropertySource.getPropertyValue()
+      because when this function gets the direction value it is returned as
+      an index of the array Direction_vals. 
+      i.e. Direction_vals[m_inst.getDirection()].
+      while the value returned by getDirection() is "-1"
+      This occurs because the interface signal under test was created 
+      using the constructor InterfaceSignal_c(ModelRoot modelRoot)
+      which initializes the direction field with OOA_UNINITIALIZED_ENUM
+      which is "-1" then no initialization function is called later to change 
+      this. 
+
+5.2.3 failure testNewS_SYNCParameter
+      The .log file is not empty because of a null pointer exception that
+      occurs in the function Function_c.Isvoid()
+      because when this function gets a data type across the relation R25
+      it is null but the function returns this datatype.getName().equals("void") 
+      and that occurs because the function under test was created 
+      using the constructor Function_c(ModelRoot modelRoot)
+      which initializes the data type id field with  NULL_UUID
+      then no data type is related to it later to change that.
+      
+5.2.4 failure testNewS_BRGParameter
+      The .log file is not empty because of a null pointer exception that
+      occurs in the function Bridge_c.Isvoid()
+      because when this function gets a data type across the relation R20
+      it is null but the function returns this datatype.getName().equals("void") 
+      and that occurs because the bridge under test was created 
+      using the constructor Bridge_c(ModelRoot modelRoot)
+      which initializes the data type id field with  NULL_UUID
+      then no data type is related to it later to change that.
+     
+5.2.5 failure testNewO_TFRParameter
+      The .log file is not empty because of a null pointer exception that
+      occurs in the function Operation_c.Isvoid()
+      because when this function gets a data type across the relation R116
+      it is null but the function returns this datatype.getName().equals("void") 
+      and that occurs because the operation under test was created 
+      using the constructor Operation_c(ModelRoot modelRoot)
+      which initializes the data type id field with  NULL_UUID
+      then no data type is related to it later to change that. 
+
+5.2.6 failure testDeleteC_AS
+      The Exact same reason as [5.2.2]     
+      
+5.2.7 failure testDeleteC_IO
+      The Exact same reason as [5.2.1]
+      
+5.2.8 failure testDeleteC_PP
+      The .log file is not empty because of a null pointer exception that
+      occurs in the function PropertyParameter_c.Isallowedtype()
+      because when this function returns a call to another function 
+      Util_c.Isallowedparametertype(v_system.Converttoinstance() )
+      The problem here is that the function can't resolve 
+      a v_system intstance related to the property parameter
+      under test.
+      
+5.2.9 failure testDeleteS_SYNC
+      The Exact same reason as [5.2.3]
+      
+5.2.10 failure testDeleteS_BRG
+       The Exact same reason as [5.2.4]      
+      
+5.2.11 failure testDeleteO_ATTR
+       The .log file is not empty because of a null pointer exception that
+       occurs in the function AttributeO_ATTRPropertySource.getPropertyValue()
+       because when this function gets a data type across the relation R114
+       it is null but the function returns this datatype.getName()
+       and that occurs because the attribute under test was created 
+       using the constructor Attribute_c(ModelRoot modelRoot)
+       which initializes the data type id field with  NULL_UUID
+       then no initialization function is called later to change that.
+       
+5.2.12 failure testDeleteO_TFR
+       The Exact same reason as [5.2.5].
+       
+5.2.13 failure testDeleteCOMM_LNK
+       The .log file is not empty because of an ArrayIndexOutOfBounds exception
+       that occurs in the function 
+       CommunicationLinksCOMM_LNKPropertySource.getPropertyValue()
+       because when this function gets a StartVisibility value it is returned as
+       an index of the array StartVisibility_vals[]. 
+       i.e. StartVisibility_vals[m_inst.getStartvisibility()];
+       while the value returned by getStartvisibility() is "-1"
+       This occurs because the communication link under test was created 
+       using the constructor CommunicationLink_c(ModelRoot modelRoot)
+       which initializes the startvisibility field with OOA_UNINITIALIZED_ENUM
+       which is "-1" then no initialization function is called later to change 
+       that. 
+      
+6. Design
+---------
+
+6.1  For failures testNewC_IOParameter and  testNewC_ASParameter
+      Create a SystemModel_c instance then relate to it a created 
+      InterfacePackage_c instance. 
+      Create an Interface_c instance and relate it to the interface package. 
+      Use the interface to create a new executable property and relate it to 
+      interface operation or signal parameter then call the initialization
+      function. 
+      for the interface operation in testNewC_IOParameter relate it to void
+      datatype.
+      
+      
+
+6.2 For failure testDeleteC_IO and failure testDeleteC_PP    
+      Create a SystemModel_c instance then relate to it a created 
+      InterfacePackage_c instance. 
+      Create an Interface_c instance and relate it to the interface package. 
+      Use the interface to create a new executable property and relate it to 
+      interface operation or property parameter.
+      For the interface operation in testDeleteC_IO relate it to void
+      datatype then initialize it.
+      
+      
+6.3 For the failures testNewS_SYNCParameter, testNewS_BRGParameter,
+    testNewO_TFRParameter, testDeleteC_AS ,  testDeleteS_SYNC ,
+    testDeleteS_BRG ,testDeleteO_ATTR, testDeleteO_TFR and testDeleteCOMM_LNK.
+    call the initialization function.
+
+
+
+
+7. Design Comments
+------------------
+7.1 Since the ActionTest class is auto generated the modifications are
+    added to the file create_action_test.arc 
+
+8. Work Required
+----------------
+ Stated in the design section 
+
+9. Unit Test
+------------
+_- Run CoreTestSuiteI
+_- 0 Errors 0 Failures
+
+
+End
+---
+
+$Log: dts0100641626.dnt,v $
+Revision 1.3  2010/05/28 12:31:54  hkhaled
+job:dts0100641626
+committing modifications to the design notes
+
+Revision 1.2  2010/05/28 10:00:48  hkhaled
+job:dts0100641626
+committing a  dnt
+
+Revision 1.1  2010/05/27 18:16:41  hkhaled
+job:dts0100641626
+committing a  dnt
+

@@ -1,0 +1,157 @@
+========================================================================
+
+File:      $RCSfile: dts0100904395-904555.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+- Broken images in final HTML
+- Make sure XML IDs are unique
+
+
+1. Abstract
+-----------
+This note describes fixes to a couple of issues in DocGen.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100904395: docgen - broken images in final HTML
+[2] ClearQuest DEI dts0100904555: Make sure XML IDs are unique
+[3] ClearQuest DEI dts0100632985: Update Docgen to work with generic packages
+[4] ClearQuest DEI dts0100795016: Support image generation for a single element
+
+4. Background
+-------------
+4.1  We have had a lingering issue where the generated HTML file sometimes 
+     contains a rather ugly looking error message like this:
+
+doc.xml:1313: element figure: validity error : ID FunctionsPackageDiagram-figure
+already defined ^ doc.xml:1314: element title: validity error : ID 
+FunctionsPackageDiagram-figure-title already defined 
+
+     [2] was raised to resolve this problem.
+     
+4.2  During the implementation work to fix [3], we found cases where images in
+     the generated HTML showed up as large broken image links.  A separate issue
+     [1] was raised to fix this issue.
+    
+5. Requirements
+---------------
+5.1  Do not allow broken image links for canvases in the generated HTML.
+
+5.2  Resolve issues that cause the error message shown in 4.1.
+
+6. Work Required
+----------------
+6.1  As the headline for [2] states, the error message from 4.1 is due to XML
+     IDs not being unique for all figures.  The solution is to make sure all
+     figure ids use the fully recursive "path" to the image in the ID.  
+     
+     The current XML data looks like this:
+     
+     <figure id='FunctionsPackageDiagram-figure'>
+     <title id='FunctionsPackageDiagram-figure-title'>Functions Package Diagram</title>
+     <mediaobject><imageobject>
+     <imagedata fileref='images/GPS Watch-Library-HeartRateMonitor-Functions-Package Diagram.png' scalefit='1' width='100%'/>
+     </imageobject></mediaobject>
+     </figure>
+     
+     The fully specified name is already used in the image name, we simply need
+     to use this to form the ID as well.  The result XML will look like this:
+     
+     <figure id='GPSWatch-Library-HeartRateMonitor-Functions-PackageDiagram-figure'>
+     <title id='GPSWatch-Library-HeartRateMonitor-Functions-PackageDiagram-figure-title'>Functions Package Diagram</title>
+     <mediaobject><imageobject>
+     <imagedata fileref='images/GPS Watch-Library-HeartRateMonitor-Functions-Package Diagram.png' scalefit='1' width='100%'/>
+     </imageobject></mediaobject>
+     </figure>
+6.1.1  Update figure::populate() to set DOC_FIG.ident attribute using the passed
+       in image_target attribute (the fully specified name) rather than passed
+       in image title string.
+       
+6.2  The broken image links in the generated HTML [1] are due to the current
+     functionality of the bp.io.image plugin and docgen tool.  For canvases that
+     have no model elements, bp.io.image simply generates no image at all.  
+     However, as docgen is processing packages, if it finds a package it expects
+     there to be a corresponding image.
+6.2.1  A couple of options were considered.  Both options use a new file named
+       blank_canvas.png, which is simply an image with a light gray background
+       that contains the text "< This diagram is blank >".
+6.2.1.1  Post-process the doc.xml in the bp.docgen plug-in looking for 
+         "...[Diagram|Machine].png", then check if file exists.  If it doesn't, 
+         copy in blank_canvas.png to that file name.
+6.2.1.2  Change bp.io.image, if the canvas has no elements, read the contents of
+         blank_canvas.png and use this as the image data for this canvas.
+6.2.1.3  The second option, 6.2.1.2 is the functionality implemented.
+     
+6.3  Update the DocGenTest model that is used in the Core2 test suite to test 
+     DocGen against a generic package model.
+6.3.1  Add OAL to class operation and domain function
+6.3.2  Add package named "Functions" in both compone and comptwo.  This tests
+       both the empty canvas functionality as well as the duplicate ID issue.
+6.3.3  Update the expected results XML and HTML in bp.core.test for the 
+       DocGenTest model.
+     
+6.4  Add the check for project validity and assignment specified in [4].  This
+     will allow any caller (e.g. SDM) to directly create images.
+        
+7. Implementation Comments
+--------------------------
+None.
+
+8. Unit Test
+------------
+8.1  Run Core2 JUnit test.  The changes are specific to DocGen, so all of the 
+     JUnits do not need to be run.  In order to run the JUnit successfully, the
+     tester will need to first update their DocGenTest model from SVN and to
+     get ftp://mentorweb/pub/BP/dropoff/kbrown/docgen.exe and put it into their
+     <VSx_Dev install>/tools/docgen/ folder.
+     
+9. Code Changes
+---------------
+Branch name: R3_5_5-SKB-dts0100904395
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/CFMon_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/CFMon_doc.xml
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/DocGenTest_doc.html
+com.mentor.nucleus.bp.core.test/expected_results/DocGen/DocGenTest_doc.xml
+
+com.mentor.nucleus.bp.io.image/src/com.mentor.nucleus.bp.io.image.generator/
+    Generator.java
+com.mentor.nucleus.bp.io.image/resources/images/blank_canvas.png
+com.mentor.nucleus.bp.io.image/.classpath
+com.mentor.nucleus.bp.io.image/build.properties
+
+
+Branch name: MC-C  (change already committed)
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Document/figure/figure.xtuml
+
+Branch name: <none> (committed directly to SVN trunk)
+Updates to trunk/Models/Test/DocGenTest
+
+End
+---
+
+$Log: dts0100904395-904555.int,v $
+Revision 1.3  2012/07/30 13:36:49  kbrown
+job:dts0100795016 dts0100904395
+Updated INT.
+
+Revision 1.2  2012/07/27 17:40:40  kbrown
+job:dts0100904395 dts0100904555
+Updated for review mins.
+
+Revision 1.1  2012/07/26 19:31:58  kbrown
+job:dts0100904395 dts0100904555
+INT for these issues.

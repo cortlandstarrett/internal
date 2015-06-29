@@ -1,0 +1,374 @@
+========================================================================
+
+File:      $RCSfile: i438.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:29:47 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+
+Setup installer for the Model Debugger and Generator.
+
+Abstract
+--------
+
+The first release of Tiger will include the non-Eclipse-based Generator and
+Model Debugger.  This note describes the tasks needed to be accomplished by
+the install program in order to install these products so that they work
+seamlessly with the new Model Builder.
+
+History
+-------
+
+Document References
+-------------------
+
+[01] Bugzilla i438
+
+[02] BridgePoint 7.0 Model Debugger and Generator deliverables directory
+     \\svr-azt-fil-01\software_archive\bp_releases\win32\7.0B\mgc_tape
+     \BridgePoint
+     
+Background
+----------
+
+The BridgePoint 6.1 installer was created using InstallShield.  The new
+Nucleus BridgePoint 7.0 installer will be created in Mobile using
+Anywhere.
+
+Analysis
+--------
+
+The install program must install Model Debugger and Generator along with the new
+Eclipse-based Model Builder.  
+
+It must be check for previous BridgePoint installations.  If no existing
+BridgePoint installation exists, it shall install all the components of
+BridgePoint 7.0, including the ObjectStore database server needed by the
+Generator.  If BridgePoint 6.1 is installed the install program shall install
+BridgePoint 7.0 so that the Generator will use the existing version of
+ObjectStore.
+
+A repair or reinstallation shall re-install all of the files installed during
+the initial install.  If the ObjectStore database server was installed, it
+shall first stop the ObjectStore server, checkpoint the transaction log - rather
+than initializing it, and the restart it.
+
+An uninstall shall check if the install had setup an ObjectStore server.  If
+ObjectStore was installed, the uninstall shall first stop the ObjectStore server
+and remove it as a Windows service before removing all files that were copied
+onto the system by the installation.  The one exception being if the installer
+overwrote an existing msvcrt.dll.  If an older msvcrt.dll existed, the new
+version shall remain in place.
+
+Design
+------
+
+i438.1 Check for Administrator privileges.
+
+i438.2 Check for previous BridgePoint installations.
+
+i438.3 Install files.
+
+i438.4 Setup BridgePoint Registry key entries.
+
+i438.5 Setup ObjectStore database server.
+
+i438.6 Repair or Reinstallation
+
+i438.7 Removal
+
+Design Comments
+---------------
+
+Work Required
+-------------
+
+i438.1 Check for Administrator privileges.
+    If the user does not have Admistrator privileges abort the installation. 
+
+i438.2 Check for previous BridgePoint installations.
+    Check for existance of the Registry key: 'HKEY_LOCAL_MACHINE | Software |
+    Project Technology | BridgePoint'.
+
+    .2.1 If this key does not exist, proceed with the installation.  Install
+    a complete ObjectStore database server as described in i438.5.
+    
+    .2.2 If in this key the string value 'CURRENT_VER' exists and the value is
+    '6.1', proceed with the installation.  Setup the installation to use the
+    existing ObjectStore server as described in i438.5.
+    
+    .2.3 If in this key the string value 'CURRENT_VER' does not exist or it has
+    a value other than '6.1', display a message saying that the existing version
+    of BridgePoint must first be uninstalled before installing BridgePoint 7.0.
+    The install program should then stop.
+
+i438.3 Install files
+
+    .3.1 Default install root directory shall be "C:\mgc\embedded\bridgepoint".
+    
+    .3.2 Create directories.
+    
+    .3.2.1 Immediately below the root directory create a directory named
+    'BridgePoint_7.0'.
+    
+    .3.2.2 Below 'BridgePoint_7.0' create the following directories:
+    'bin', 'doc', 'log_dir', 'samples', 'stylesheets', 'win32'.
+    
+    .3.3 Copy the contents of the BridgePoint deliverables [2] 'bin' directory
+    into the 'BridgePoint_7.0\bin' directory.
+    
+    .3.4 Copy the contents of the BridgePoint deliverables 'doc' directory
+    into the 'BridgePoint_7.0\doc' directory.  Use bp_relnotes.txt to display
+    release notes to the user during installation.
+    
+    .3.5 Copy the contents of the BridgePoint deliverables 'samples' directory
+    into the 'BridgePoint_7.0\samples' directory.
+    
+    .3.6 Copy the contents of the BridgePoint deliverables 'stylesheets'
+    directory into the 'BridgePoint_7.0\stylesheets' directory.
+    
+    .3.7 Copy the contents of the BridgePoint deliverables 'win32' directory
+    into the 'BridgePoint_7.0\win32' directory.
+    
+    .3.8 Move the files 'BridgePoint_7.0\win32\client\bin
+    \gen_*.exe.nodebug_opt' to 'gen_*.exe'.
+    
+    .3.9 Move the file 'BridgePoint_7.0\win32\client\bin\ptgetenv.exe into
+    the Windows\system32 directory.
+    
+    .3.10 Copy the BridgePoint deliverable file win32_VERSION into the
+    'BridgePoint_7.0' directory.
+    
+    .3.11 Copy the BridgePoint deliverable file windows\vc++6.0\dll\msvcrt.dll
+    into the Windows\system32 directory _only_ if it is a newer version of the
+    dll.
+        
+i438.4 Setup BridgePoint Registry key entries
+
+    Root location: HKEY_LOCAL_MACHINE | Software | Project Technology
+
+    Registry Key string value name          Nominal Value
+    ------------------------------          -------------
+
+    BridgePoint | CURRENT_VER				"7.0"
+
+    BridgePoint | 7.0 | MGC_MD_ECLIPSE      "<path to Eclise home directory>"
+
+    BridgePoint | 7.0 | MGC_MD_JVM          "<path to Java virtual machine>
+                                            \javaw.exe"
+
+    BridgePoint | 7.0 | MGC_MD_HELP         "/com.mentor.nucleus.bp.doc/
+                                            <path the Model Debugger help page>"
+                                     
+    BridgePoint | 7.0 | OS_COMMSEG_SIZE     "524288"
+
+    BridgePoint | 7.0 | OS_ROOTDIR          If BP 6.1 is not installed: 
+                                            "<path to BridgePoint_7.0>
+                                            \BridgePoint_7.0\win32\dbserver"
+                                            If BP 6.1 is installed:
+                                            "<value of OS_ROOTDIR in 
+                                            HKEY_LOCAL_MACHINE|Software|Project
+                                            Technology|BridgePoint|6.1>"
+                                       
+    BridgePoint | 7.0 | OS_SERVER_HOST      "<installed computer hostname>"
+
+    BridgePoint | 7.0 | PT_HOME             "<path to BridgePoint_7.0>\
+                                            BridgePoint_7.0"
+
+    BridgePoint | 7.0 | PT_HOME_DRIVE       "<drive letter of volume where
+                                            BridgePoint is installed>"
+
+    BridgePoint | 7.0 | PT_LM_NAME          "<installed computer hostname>"
+
+    BridgePoint | 7.0 | PT_LOG_DIR          "%PT_HOME_DRIVE%%PT_HOME%\log_dir"
+    
+    BridgePoint | 7.0 | PT_MD_URL           "<same value as PT_MD_URL in
+                                              BridgePoint | 6.1>" or
+                                              "http://www.projtech.com
+                                              /prods/bp/md/"
+
+    BridgePoint | 7.0 | PT_OOA_DIR          "%PT_HOME_DRIVE%%PT_HOME%\ooa_dir"
+
+    BridgePoint | 7.0 | PT_OS_PLATFORM      "win32"
+
+    BridgePoint | 7.0 | PT_PLATFORM         "win32"
+
+    BridgePoint | 7.0 | PT_REPOSITORY_HOME  "%PT_HOME_DRIVE%%PT_HOME%
+                                            \repository"
+
+i438.5 Setup ObjectStore database server
+
+    .5.1 Patch the executables 
+    Run ossetasp to patch the paths to the ObjectStore schemas into the
+    generator executables.  The path to ossetasp is:
+    <path to BridgePoint_7.0>\BridgePoint_7.0\win32\dbserver\bin\ossetasp.exe
+    
+    .5.1.1 Patch gen_import.exe
+    'ossetasp.exe <path to BridgePoint_7.0>\BridgePoint_7.0\client\bin
+    \gen_import.exe <hostname>:<path to BridgePoint_7.0>\BridgePoint_7.0
+    \win32\client\bin\gen.app_schema'.
+       
+    .5.1.2 Patch gen_file.exe
+    'ossetasp.exe <path to BridgePoint_7.0>\BridgePoint_7.0\client\bin
+    \gen_file.exe <hostname>:<path to BridgePoint_7.0>\BridgePoint_7.0\win32
+    \client\bin\gen.app_schema'.
+    
+    .5.1.3 Patch o6_coll1.dll
+    'ossetasp.exe <path to BridgePoint_7.0>\BridgePoint_7.0\client\bin
+    \o6_coll1.dll <hostname>:<path to BridgePoint_7.0>\BridgePoint_7.0
+    \win32\dbserver\bin\os_col1.adb'.
+    
+    .5.1.4 Patch o6alloc.dll
+    'ossetasp.exe <path to BridgePoint_7.0>\BridgePoint_7.0\client\bin
+    \o6alloc.dll <hostname>:<path to BridgePoint_7.0>\BridgePoint_7.0
+    \win32\dbserver\bin\os_alloc.adb'.
+    
+    .5.1.5 Patch o6cmpct1.dll
+    'ossetasp.exe <path to BridgePoint_7.0>\BridgePoint_7.0\client\bin
+    \o6cmpct1.dll <hostname>:<path to BridgePoint_7.0>\BridgePoint_7.0
+    \win32\dbserver\bin\oscmpct.adb'.
+    
+    .5.1.6 Patch o6query1.dll
+    'ossetasp.exe <path to BridgePoint_7.0>\BridgePoint_7.0\client\bin
+    \o6query1.dll <hostname>:<path to BridgePoint_7.0>\BridgePoint_7.0
+    \win32\dbserver\bin\osquery.adb'.
+    
+    .5.1.7 o6sevol1.dll
+    'ossetasp.exe <path to BridgePoint_7.0>\BridgePoint_7.0\client\bin
+    \o6sevol1.dll <hostname>:<path to BridgePoint_7.0>\BridgePoint_7.0
+    \win32\dbserver\bin\ossevol.adb'.
+    
+    .5.2 Setup Registry keys
+    
+    Root location: HKEY_LOCAL_MACHINE | Software | Object Design Inc.
+    
+    Registry Key string value name          Nominal Value
+    ------------------------------          -------------
+     
+    ObjectStore 6.0 | Server | Auto Start Server    "1"
+    ObjectStore 6.0 | Server | Log File             "<path to BridgePoint_7.0>
+                                                    \BridgePoint_7.0\win32
+                                                    \dbserver\transaction_log"
+    ObjectStore 6.0 | Server | Log Version          "300"
+    ObjectStore 6.0 | Server | LogInPartition       "1"
+    ObjectStore 6.0 | Server | Server Initialized   "1"
+       
+    .5.3 Initialize the transaction_log.
+       
+    <path to ObjectStore root directory>\bin\osserver.exe -con -ReallocateLog   
+   
+    .5.4 Create the ObjectStore Windows Services
+   
+    Service Name    Service Display Name   Service Executable
+    ------------    --------------------   ------------------
+   
+    "ObjectStore 6.0 Cache Manager" 
+                   "BridgePoint 7.0 Cache Manager"
+                                         "<path to BridgePoint_7.0>\
+                                         BridgePoint_7.0\bin\oscmgr6.exe"
+   
+    "ObjectStore 6.0 Database Server" 
+                   "BridgePoint 7.0 Database Server"
+                                         "<path to BridgePoint_7.0>\
+                                         BridgePoint_7.0\bin\osserver.exe"
+
+i438.6 Repair or Reinstallation
+
+    .6.1 Checkpoint the ObjectStore database server
+    Rather than re-initializing the database server, checkpoint it to clear
+    any pending transactions.
+    
+    .6.1.1 Stop the database server
+    
+    <path to ObjectStore root directory>\bin\ossvrshtd.exe  <hostname>  
+
+    .6.1.2 Stop the cache manager
+
+    <path to ObjectStore root directory>\bin\oscmshtd.exe
+    
+    .6.1.3 Checkpoint the database server
+    
+    <path to ObjectStore root directory>\bin\osserver.exe -con -c
+    
+    .6.2 Recopy all the files copied in by the initial installation.
+    
+    .6.3 Start the database server
+    
+     <path to ObjectStore root directory>\bin\osserver.exe  <hostname>
+
+i438.7 Removal
+
+    .7.1 If installed by the installation program, stop and remove the
+    ObjectStore database server.
+    
+    .7.1.1 Stop the database server
+    
+    <path to ObjectStore root directory>\bin\ossvrshtd.exe  <hostname>     
+
+    .7.1.2 Stop the cache manager
+
+    <path to ObjectStore root directory>\bin\oscmshtd.exe
+        
+    .7.1.3 Remove ObjectStore as a Windows service.
+    
+    .7.1.4 Remove installed files
+    With the exception of msvcrt.dll, remove all files copied in by the
+    installation.  
+
+Unit Test
+---------
+
+- Log in as an unprivileged user.
+- Start installation program.
+R The installation program displays a dialog box saying it could not proceed
+  because the user does not have the necessary privileges.
+- Press the 'OK' button on the dialog box.
+R The installation program stops.
+- Log in as a privileged user on a computer with a pre-6.1 version of
+  BridgePoint installed.
+- Start the installation program.
+R The installation program displays a dialog box saying that BridgePoint 7.0
+  cannot be installed with the old version of BridgePoint.
+- Press the 'OK' button on the dialog box.
+R The installation program stops.
+- Log in as a privileged user on a computer with BridgePoint 6.1 installed.
+- Start the installation program.
+R The installation program installs BridgePoint 7.0 using the BP 6.1 ObjectStore
+  database server.
+- Uninstall BridgePoint 7.0.
+R BridgePoint 7.0 is uninstalled.
+R The BP6.1 ObjectStore server remains installed.
+- Log in as a privileged user on a computer that does not have any version of
+  BridgePoint installed.
+- Start the installation program.
+- Install BridgePoint 7.0.
+R BridgePoint 7.0 and the ObjectStore database server are installed.
+
+End
+---
+
+$Log: i438.dnt,v $
+Revision 1.1  2009/09/03 18:29:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:46  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.38.1  2008/12/31 16:11:01  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2005/04/18 20:57:01  pablo
+Job: 438
+incremental checkin
+

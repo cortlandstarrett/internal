@@ -1,0 +1,148 @@
+========================================================================
+
+File:      $RCSfile: i1002.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:25:48 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Fix property view changes to system/domain
+
+Abstract
+--------
+This note describes two fixes to the property view editor.
+
+History
+-------
+
+Document References
+-------------------
+Bugzilla issue 1002
+
+Background
+----------
+
+There are two problems:  1) when the system is renamed from the property view,
+there is an NPE; 2) the property view allows the user to rename a domain or
+system to an existing name.  
+
+Design
+------
+
+1. Remove NPE on system rename
+
+The EclipseOoaofooa.persist() method tries to update the model file with the
+change, but the SystemModel instance doesn't have a model file associated with 
+it, so the getFile() call returns null, which is then dereferenced, causing the
+exception.   The project (which is what the SystemModel instance corresponds to)
+is updated anyway, so in the end all the data is updated correctly, we just 
+get this NPE.
+
+To fix this, at the start of EclipseOoaofooa.persist(), if the result of 
+getFile() is null, return immediately.
+
+2. Add checks for changing system and domain names in property view
+
+2.1  Refactor to expose name checking routines
+
+The create_rename_action.inc archetype is changed to generate two public static
+methods for the RenameAction class:
+
+	public static boolean validateDomainName(Domain_c element, String New_name)
+	public static boolean validateSystemModelName(SystemModel_c systemModel,
+		String New_name)
+
+These operations are now invoked from the existing S_SYS and S_DOM rename 
+operations.  They return true if the name is valid.
+
+2.2  Add checking to property view
+
+2.2.1  Create entry validation classes
+
+The classes SystemModelNameValidator and DomainNameValidator are created. These
+classes implement the ICellEditorValidator interface, and implement the isValid()
+method.  The isValid() method implementation invokes the RenameAction validate
+method, and returns a string if there is an error, or null if there is not 
+(per the specification of isValid).  The strings returned in the case of an
+error are:
+
+"Another project already exists with that name"
+"Another xtuml Model already exists with that name"
+
+2.2.2  Use the validation classes
+
+The BuildPropertySource.arc archetype is changed to associate the validation
+class with the System Model.Name or Domain.Name property descriptor.  This 
+causes the validation routine to be called whenever that property is changed.
+
+Implementation Comments
+-----------------------
+
+- The new files are added to ui.properties/generate.xml cvs_java_files property.
+
+Unit Test
+---------
+
+Start Tiger
+- Select an xtUML project
+R Properties view shows System Name
+- Change System Name to something that matches another project
+R 'Another project already exists with that name' appears in the lower left
+corner of the window.
+- Change System Name to a non-conflicting name
+R message disappears
+- Press enter
+R System name changes
+R There are no errors in the error log
+
+- Select an xtUML project with at least two domains
+- Select one domain, and open tree
+R Properties view shows domain data
+- Change Domain name to something that matches another domain in the project
+R 'Another xtuml Model already exists with that name' appears in the lower left
+- Change Domain name to something that matches another domain in another project
+R message disappears
+- Press enter
+R Domain name changes
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.core/arc/create_rename_action.inc
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+com.mentor.nucleus.bp.ui.properties/src/com/mentor/nucleus/bp/ui/properties/DomainNameValidator.java [added]
+com.mentor.nucleus.bp.ui.properties/src/com/mentor/nucleus/bp/ui/properties/SystemModelNameValidator.java [added]
+com.mentor.nucleus.bp.ui.properties/generate.xml
+
+End
+---
+
+$Log: i1002.int,v $
+Revision 1.1  2009/09/03 18:25:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:44  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.30.1  2008/12/31 16:10:59  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/06/03 02:27:49  campbell
+Job: 1002
+Observations addressed.
+
+Revision 1.1  2005/06/03 01:31:59  greg
+Job: 1002
+Introduce

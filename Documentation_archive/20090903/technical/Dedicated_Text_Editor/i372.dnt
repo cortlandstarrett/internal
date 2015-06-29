@@ -1,0 +1,711 @@
+========================================================================
+
+File:      $RCSfile: i372.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:29 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Physical file resource for dedicated editors deleted too early
+
+Abstract
+--------
+This document deals with problem of opening dedicated editors for a model 
+element from the Workbench's Editor Navigation History, when the placeholder
+file is deleted.
+
+History
+-------
+
+update i372-013105-01.rvm
+update i372-021105-01.rvm
+final  i372-022805-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue # 372
+
+Background
+----------
+When a Description or Activity editor is closed, the editor deletes the place 
+holder file related to it if it does not contain any markers. After this 
+pressing the 'Back' button from Navigation bar results in an Exception because 
+the editor is unable to find the underlying placeholder file.
+
+Analysis
+--------
+NavigationHistory in Eclipse uses instances of NavigationLocations (one for each
+entry) for maintaining navigation history. Each navigation location has a 
+reference of an instance of IEditorInput or memento containing state of editor 
+input for previously/currently opened editors. When a user presses the ‘back’ 
+button from the Navigation bar, NavigationHistory attempts to open the 
+corresponding editor against the information contained in NavigationLocation.
+This is done either by using the cached editor input or by restoring the editor
+input from memento. In our case, cached editor input is either 
+DescriptionEditorInput or ActivityEditorInput and restored editor input is 
+FileEditorInput.
+
+As mentioned in 'Background' section, the editor deletes the placeholder file 
+on dispose() if it doesn’t have any markers. Navigating back in the 
+navigation history causes a ResourceException to be thrown when doSetInput() 
+method of editor accesses the EditorInput's file that actually has been 
+deleted.  
+
+When a model element is deleted, Navigation History of any ActivityEditor or 
+DescriptionEditor stays in Eclipse, which upon access from Navigation bar 
+results in a ResourceException as the placeholder file is not found. 
+
+Design
+------
+
+i372.1      Restoration of NavigationLocation containing DescriptionEditorInput 
+            or ActivityEditorInput
+
+Initially it was proposed that DescriptionEditorInput or ActivityEditorInput 
+may re-create a file in getFile() method. However this solution is infeasible 
+due to the fact that FileEditorInput.getFile() may get called even after the 
+underlying file has been deleted. A good example of this is the cleanup code, 
+present in FileDocumentProvider that uses 
+getFile().getWorkspace().removeResourceChangeListener to remove resource change
+listener after the file of a connected FileEditorInput is deleted from 
+workspace.
+
+Instead of re-creating file in getFile(), a public method 
+createPlaceHolderFile() is introduced in the editor input (as described in 
+i372.3.4.2), which re-creates the file if necessary. This method is called by 
+the respective editor in doSetInput(IEditorInput) method, so that place holder 
+file could be re-created if not present (please see i372.3.4.5).
+
+i372.2      Restoration of NavigationLocation containing memento.
+
+NavigationHistory requests the editor input to save its state into a memento and 
+releases this editor input whenever possible. The unit tests specified under 
+this issue encounters a scenario, in which navigation location saves its state 
+in memento and then editor input is restored from this memento. Due to this 
+reason it is required to provide the implementation of memento. In our case, 
+functions related to memento are not over-ridden, therefore FileEditorInput is 
+created from memento. If the place holder file is deleted, restored 
+FileEditorInput will not be able to restore the editor even if model element is 
+present as we cannot determine which model element the file represented. 
+Therefore we need to over-ride methods of the IPersistableElement and provide
+implementation(s) of IElementFactory that could save and restore 
+DescriptionEditorInput or ActivityEditorInput rather than FileEditorInput.
+
+Implementation of IPersistableElement is provided by 
+AbstractModelElementPropertyEditorInput class and its sub classes as described 
+in i372.3.4.2, whereas implementation of IElementFactory is described under 
+Factories section i372.3.3 and specifically i372.3.3.1
+
+i372.3      Refactoring
+
+In order to implement suggested changes this issue performs some refactoring
+described in following sub sections.
+
+i372.3.1    Refactoring of EditorModelId
+
+The class EditorModelId is used to uniquely identify an editable model element. 
+It is currently used to relate a place holder file with a model element. This
+class is further modified to add support for memento. It is renamed to 
+ModelElementID for better clarity and it implements Serializable in order to 
+avoid cluttering all different data in a single array. Following class elements 
+are added or changed.
+
+ - attribute   String modelRootID  [added]
+               Id of the model root of the model element.
+ - attribute   String type         [added]
+               Class name of the model element.
+ - method      public boolean equals(Object)    [added]
+               Compares the two id objects.
+ - method      public int hashCode()            [added]
+               Since equals is implemented, hashCode is also over-ridden as per
+               java.lang.Object documentation.
+ - method      public void saveTo(IFile)        
+               Saves the state into a file.
+ - method      public void saveTo(IMemento)     [added]
+               Saves the state into a memento.
+ - method      public static ModelElementID createInstance(IFile)
+               Creates an instance from a file.
+ - method      public static ModelElementID createInstance(IMemento)
+               Creates an instance by loading state from a memento.
+ - method      public NonRootModelElement resolve()    [added]
+               This method uses unique id information contained in this class to 
+               resolve/find a model element that it represents in the loaded 
+               models.
+
+i372.3.2    Refactoring of ModelAdapter
+
+ModelAdapter contains generated query classes for editable model elements for
+providing different services. These services are now formalized by defining an
+interface ModelAdapter.IModelElementAdapter. It contains following methods
+
+ - public ModelElementID createModelElementID(NonRootModelElement)
+   Creates the ModelElementID for a given model element.
+
+ - public NonRootModelElement resolveModelElement(ModelElementID)
+   Finds the model element in the loaded model(s) against a ModelElementID.
+
+ - public String getName(NonRootModelElement)
+   Returns the name of the model element.
+
+ModelAdapter now contains generated implementation of IModelElementAdapter for 
+every model element for which query classes are generated. Previously different 
+classes generated a series of if-else constructs to instantiate the appropriate  
+query class and then invoked methods on it. Instead ModelAdapter provides the
+following methods to obtain the instance of the IModelElementAdapter against 
+type of model element, thus ruling out requirement to generate if-else 
+constructs at different places.
+
+ - public static IModelElementAdapter getModelElementAdapter
+                                              (NonRootModelElement modelElement)
+   Returns an instance of IModelElementAdapter for a given model element.
+ - public static IModelElementAdapter getModelElementAdapter(String type)
+   Returns an instance of IModelElementAdapter for a given class name.
+
+i372.3.3  Factories
+
+Any methods present in EditorInput, ActivityEditorInput or 
+DescriptionEditorInput which are static or should have been static and 
+logically fall into the domain of factory are now moved into factory classes. 
+An interface IModelElementEditorInputFactory is defined to formalize the 
+definition of factory. It is used to create editor inputs from different objects
+that it supports. It is extended from the Eclipse's IElementFactory interface so 
+that any implementation is also required to support IMemento. This also provides 
+an advantage of obtaining factories through factory id using framework method 
+PlatformUI.getWorkbench().getElementFactory(). This interface defines the 
+following methods.
+
+ - public boolean isSupported(Object);
+   This method allows clients to check whether a given object can be used to 
+   create an editor input, rather then catching Exception for 
+   createInstance(Object). For example; ActivityEditorInput can be created 
+   for specific types of NonRootModelElement and IFile (the place holder file).
+
+ - public IEditorInput createInstance(Object) throws CoreException;
+   This method serves as factory method for editor input and uses argument to 
+   create instance of IEditorInput.
+
+ - public NonRootModelElement getEditableModelElement(NonRootModelElement);
+   Returns the model element that is referenced by this editor input by 
+   navigating a navigation chain related by given model element. For example 
+   this method shall return any of the UserDataType or EnumerationDataType 
+   related to a DataType passed as an argument. This method returns null if 
+   the given argument is not related to any model element that is supported by 
+   editor input.
+
+ - public NonRootModelElement getRequiredModelElement(NonRootModelElement);
+   Returns the model element which is related to editable model element and is
+   required for the correct operation of editor input.This method implements 
+   the navigation chain in reverse order that getSupportedModelElementRelatedTo 
+   implements. This method returns null if there is no related model element. 
+
+i372.3.3.1  Abstract implementation of IModelElementEditorInputFactory
+
+An abstract factory AbstractModelElementEditorInputFactory is also provided for 
+any model element editor inputs that follow the following design patterns. 
+
+ - Provides a public constructor with two arguments (ModelElementID, IFile)
+ - Supports initialization from place holder files.
+ 
+This class does not use defaultFor attribute from com.projtech.bp.core.editors 
+extension point as suggested earlier because defaultFor attribute was not 
+correctly understood and was used for wrong purpose. Instead 
+getSupportedModelElementList is now generated for derived classes. This class 
+defines the following abstract methods:
+
+ - protected abstract int getType();
+   Returns any of the IPlaceHolder constants.
+
+ - protected abstract Class getEditorInputClass();
+   Returns the class of editor input that this factory will create.
+
+ - protected abstract List getSupportedModelElementList();
+   Returns a list of names of model element classes that 
+   AbstractModelElementEditorInputFactory supports.
+
+AbstractModelElementEditorInputFactory provides implementation of the following 
+methods:
+
+ - public boolean isSupported(Object)
+   Returns true if 
+   - Argument is a model element whose type or type of its related model 
+     element is present in the supported list.
+   - Argument is instance of IFile representing an existing place holder 
+     file
+   - Argument is ModelElementID, whose type is present in the supported list.
+
+ - public IEditorInput createInstance(Object)
+   Creates an instance of IEditorInput from NonRootModelElement, ModelElementID 
+   or place holder file. 
+
+ - public IAdaptable createElement(IMemento)
+   Creates Editor input from memento, this method creates editor input even if
+   the underlying model element does not exist, as per 
+   IElementFactory.createElement method documentation.
+   
+ - public void saveElement(AbstractModelElementPropertyEditorInput, IMemento)
+   Stores the state of editor input in memento. Its implementation is provided 
+   in this class so that logic to store and restore can be kept in a single 
+   place.   
+ 
+
+i372.3.3.2  Concrete Editor Input Factories
+
+Two classes com.projtech.bp.ui.text.activity.ActivityEditorInputFactory and 
+com.projtech.bp.ui.text.description.DescriptionEditorInputFactory are introduced 
+that extend from AbstractEditorInputFactory. These classes are generated using 
+the meta model, existing schema sql/clr_schema.sql and data clr_pei.sql. 
+
+Following files are introduced to generate factory classes
+/com.projtech.bp.ui.text/arc/create_editorinput_factories_java.arc
+/com.projtech.bp.ui.text/arc/create_description_editorinput_factory_java.inc
+/com.projtech.bp.ui.text/arc/create_activity_editorinput_factory_java.inc
+
+com.projtech.bp.ui.text/arc/create_plugin_xml.arc is modified to add extensions 
+for element factories.
+
+i372.3.4    Editor input classes
+
+Instead of replicating code in both ActivityEditorInput and 
+DescriptionEditorInput, a class hierarchy is defined as described in the 
+following sub sections.
+
+i372.3.4.1    
+A new abstract class AbstractModelElementEditorInput is created that intends to 
+provide the base for any editor input which will be created for a model element. 
+It requires a valid model element id for its instantiation. Any pre-work, such 
+as loading of model element id from a place holder is done by input factories. 
+This class implements IEditorInput and IPersistableElement and provide 
+implementation for the following methods. 
+
+  - protected IModelElementEditorInputFactory getFactory()
+	Returns the factory that is used to create it.
+	
+  - public ModelElementID getModelElementID()
+    Returns the id of the model element on which this editor is based, as the 
+    underlying model element may not necessarily exist in the model.
+	
+  - public NonRootModelElement getModelElement()	
+	This method resolves the model element (i.e., searches the model element
+	that model element id represents, in the models loaded in the workspace). 
+	Clients must be careful as this method may return null if the model element 
+	is not resolved. This method uses ModelElementID.resolve() method to resolve 
+	the model element.
+  
+  - public Ooaofooa getModelRoot()
+    Returns the model root of the model element that is being edited.
+
+  - public Object getAdapter(Class)
+	Provides adapters for ModelElementID, NonRootModelElement and Ooaofooa, 
+	according to the guideline provided by the implementation of 
+	FileEditorInput, which adapts to IFile. This method is provided to satisfy 
+	IAdaptable interface and the implementation provided is not used at the 
+	moment.
+	
+  - public ImageDescriptor getImageDescriptor()
+	Obtains the image descriptor from CorePlugin, so that the correct image for 
+	the model element can be displayed.
+
+  - public boolean equals(Object)
+	Compares two inputs on the basis of the contained ModelElementID.
+	
+  - public int hashCode()
+	Returns the hashCode by calling the hashCode method of ModelElementID.
+
+  - public boolean exists()
+	Checks whether the underlying model element exists in the model or not.
+	
+  - public IPersistableElement getPersistable()
+	Returns a valid instance of IPersistableElement only if the underlying model 
+	element exists in the model, otherwise it returns null. As a result 
+	NavigationHistory removes the corresponding editor's entry. 
+	NavigationHistory does so whenever any editor is closed. In our case, the 
+	editor is automatically closed when a model element is deleted.
+
+i372.3.4.2  Abstraction of model editor inputs that edit the property of a model 
+            element.
+            
+For any editors that provide editing of an attribute of a meta model object, an
+abstract class AbstractModelElementPropertyEditorInput is introduced that 
+extends from AbstractModelElementEditorInput and implements IFileEditorInput as
+it may create place holder files. It defines/implements the following methods.
+
+  - public NonRootModelElement getModelElementContainingProperty()
+	Returns the model element that contains the property which is actually being 
+	edited.
+
+  - public void createPlaceHolderFile() throws PartInitException
+	Creates a place holder file if the underlying model element exists and the 
+	place holder file does not exist. Clients can invoke this method to re-create 
+	the place holder file if necessary.
+
+  - public String getName()
+	Returns the name of model element that is used by the editors. It uses 
+	IModelElementAdapter.getName(NonRootModelElement) to get the appropriate 
+	name.
+	
+  - public final IStorage getStorage() throws CoreException
+	Creates a storage instance for this model element editor input.
+
+  - protected abstract ModelElementPropertyStorage createStorage()
+	Forces derived classes to use ModelElementPropertyStorage as underlying
+	storage (please see i372.3.4.4 for details on ModelElementPropertyStorage).
+
+  - public void doSaveDocument(IProgressMonitor, Object, IDocument, boolean)
+	Utility method provided for document provider to save the document back
+	into the property of model element
+
+  - public String getToolTipText()
+	Uses getName to return the tip.
+
+  - public boolean equals(Object)
+	Method over-ridden so that it can compare property's name based inputs in 
+	addition to model element ids. It also provides equality for 
+	IFileEditorInput, if the place holder file is created.
+
+  - public IFile getFile()
+	Returns the place holder file.
+
+  - public IPath getPath()
+	Returns the path of the place holder file.
+
+  - public ImageDescriptor getImageDescriptor()
+	Over-ridden to provide image registered for place holder file.
+
+  - public void saveState(IMemento)
+	Uses factory to save the state of editor input if the factory is an 
+	instanceof AbstractModelElementEditorInputFactory. Clients must over-ride 
+	if they a use factory that does not derive from 
+	AbstractModelElementEditorInputFactory.
+
+i372.3.4.3  Concrete implementations of AbstractModelElementPropertyEditorInput
+
+The ActivityEditorInput and DescriptionEditorInput are changed to 
+ - Extend from AbstractModelElementPropertyEditorInput class.  
+ - Remove any code that has been moved to base classes 
+   AbstractModelElementEditorInput and AbstractModelElementPropertyEditorInput
+ - Provide implementation of abstract methods
+ - Incorporate any other necessary changes resulting from above changes.
+
+Static methods setInput(Object) present in both classes, are renamed to
+createInstance(Object) for improved clarity. Although createInstance is moved to 
+IModelElementEditorInputFactory, it is also left here for backward compatibility 
+and marked as deprecated. An issue will be raised that will update the
+com.projtech.bp.core.editors extension point to use factories instead of the 
+editor input class itself.
+
+EditorInput class is no longer needed, as most of the logic contained in this 
+class is split between the following classes:
+. AbstractModelElementEditorInput
+. AbstractModelElementPropertyEditorInput
+. ActivityEditorInput 
+. DescriptionEditorInput
+
+NOTE:
+Because of a bug in a FileEditorInput, which caused a duplicate editor to be 
+opened using place holder or markers; AbstractModelElementEditorInput extends 
+from FileEditorInput as a temporary fix to avoid this bug, by maintaining 
+previous class definition.
+
+Refer to following link for more details.
+https://bugs.eclipse.org/bugs/show_bug.cgi?id=85292
+
+An issue (720) is raised to remove any code that this issue introduces or will 
+introduce to work around this bug. This issue will also move 
+AbstractModelElementEditorInput to bp.core, so that other modules may use it.
+
+i372.3.4.4  Property based generalized input storage.
+
+The class EditorStorage was previously generated to create appropriate storage 
+for a model element editor using if/else statements. Introduction of 
+AbstractModelElementPropertyEditorInput allows us to implement a generalized
+implementation of IEditorStorage that uses the reflection API to store or 
+retrieve text from the property of the model element. Because the model element 
+being edited may not directly have the attribute to be edited, the method 
+getModelElementContainingProperty() in AbstractModelElementPropertyEditorInput
+returns a model element containing the required property against the model 
+element being edited. Therefore EditorStorage is not generated any more. It is 
+also renamed to ModelElementPropertyStorage for better clarity.
+
+i372.3.4.5   Updating Editors according to refactoring of Editor Inputs
+
+The classes ActivityEditor and DescriptionEditor are modified to reflect the 
+above changes. These classes call createPlaceHolderFile() in their doSetInput() 
+methods so that the place holder gets created if not present.
+
+init(IEditorSite, IEditorInput) methods from both classes have been removed 
+as init() from super implementation internally calls doSetInput method.
+
+The class ActivityEditor.Listener is modified to add a null check for model 
+element. This is done due to a race condition in the tests which caused the 
+parsing thread to access a model element after its deletion. 
+
+i372.4  Add equals(Object) in model elements
+
+It is required to compare two model elements for equality at various places in 
+ui.text. Although for this issue, the given requirement is specific, but is 
+more general in nature and can provide benefit to other modules. Therefore 
+MC-Java is modified to generate an equals() method for each model element class. 
+The criterion for comparing two objects is:
+- Use '==' operator to check for same instance references, if this is not true 
+  then:
+  . Check that both objects are of same type (i.e. instances of same class).
+  . Compare the modelRootIDs of both the objects.
+  . Compare objects based on object's identifier attributes (i.e. I1, I2 or 
+    I3, based on the availability in their respective order).
+    Note: If the value of any referential attribute is 0, then the cached value 
+    is used for comparison.
+    
+Since the equals method for each model element is now implemented, the 
+InstanceList now over-rides two methods that used the equals method to locate an 
+instance. Logically speaking an InstanceList should use the == operator to 
+locate an instance rather then using the equals method which may be true for two 
+different instances of same type of model element containing the same data, such 
+as clones (obtained using clone method).
+
+ - public int indexOf(Object, int)
+ - public int lastIndexOf(Object, int)
+ 
+Work Required
+-------------
+i372.1        The design called out in section i372.1 is satisfied by the work
+              specified by i372.3.4.2, createPlaceHolderFiler() and i372.3.4.5,
+              doSetInput()  which calls createPlaceHolderFiler() of EditorInput.
+
+i372.2        The design called out in this section is satisfied by the work
+              specified by i372.3.4.2, IPersistableElement and i372.3.3.1,
+              IElementFactory.
+
+i372.3
+i372.3.1      Refactor EditorModelId as described in the corresponding design 
+              section.
+
+i372.3.1.1    Update any files that referred to EditorModelId.
+
+i372.3.2      Refactor ModelAdapter as described in the corresponding design 
+              section.
+              
+i372.3.3      Create IModelElementEditorInputFactory.java under 
+              com.projtech.bp.ui.text package as described in the design 
+              section.
+              
+i372.3.3.1    Create AbstractModelElementEditorInputFactory.java under 
+              com.projtech.bp.ui.text package as described in the design 
+              section.
+
+i372.3.3.2    Create following files for generation of concrete factory classes
+              as described in design section.
+              - arc/create_editorinput_factories_java.arc
+              - arc/create_description_editorinput_factory_java.inc
+              - arc/create_activity_editorinput_factory_java.inc
+
+              ActivityEditorInputFactory.java needs to be created under
+              com.projtech.bp.ui.text.activity package and
+              DescriptionEditorInputFactory.java needs to be created under
+              com.projtech.bp.ui.text.description package.
+
+i372.3.3.2.1  Modify arc/create_plugin_xml.arc to add extensions for element 
+              factories for both DescriptionEditorInputFactory and 
+              ActivityEditorInputFactory.
+
+i372.3.4
+i372.3.4.1    Create AbstractModelElementEditorInput.java under                 
+              com.projtech.bp.ui.text package as described in the design 
+              section.
+
+i372.3.4.2    Create AbstractModelElementPropertyEditorInput.java under 
+              com.projtech.bp.ui.text package as described in the design 
+              section.
+            
+i372.3.4.3    Update ActivityEditorInput.java and DescriptionEditorInput.java
+              as specified in the design section.
+              
+i372.3.4.3.1  Update any classes from com.projtech.bp.ui.canvas and
+              com.projtech.bp.ui.explorer that are affected from renaming of
+              setInput method.
+
+i372.3.4.3.2  Remove EditorInput.java file and update all the references.
+  
+i372.3.4.4    Create ModelElementPropertyStorage.java as described in the design 
+              section and remove any files that generated EditorStorage.java.
+
+i372.3.4.5    Update ActivityEditor.java and DescriptionEditor.java as specified
+              in the design section.
+
+i372.4        Modify MC-Java/java.arc as specified in the design section.
+
+Unit Test
+---------
+i372.UT.1   Backward button tests
+
+i372.UT.1.1  Navigation Test without Markers in Editors
+  _- Import any model.
+  _- Open description editor for the model element that has description.
+  _- Open activity editor for the model element that has an action.
+  _- Change text of both the editors such that there are no markers in the 
+     editors. 
+  _- Close the editors (in the order of their opening), with changes saved.   
+  _- Press the back button.   
+  _R Description editor opens successfully.
+  _- Press the back button again.   
+  _R Activity editor opens successfully.
+  
+i372.UT.1.2 Navigation Test with Markers in Editors.
+  _- Import any model.
+  _- Open description editor for the model element that has description.
+  _- Open activity editor for the model element that has an action.
+  _- Add Markers in description editor.  
+  _- Close the Description Editor.
+  _- Produce errors (problem markers) in activity editor by changing its text.
+  _- Close the activity editor.
+  _- Press the back button.   
+  _R Description editor opens successfully.
+  _- Press the back button again.   
+  _R Activity editor opens successfully.
+
+i372.UT.2   Forward button tests. 
+
+i372.UT.2.1 Description Editors
+  _- Open description editor for the model element that has description.
+  _- Remove any markers from the focused editor and save the description.
+  _- Open description editor for another model element that has description.
+  _- Remove any markers from the focused editor and save the description.
+  _- Close the editors (in reverse order of their opening).
+  _- Press the back button.
+  _R Second description editor opens.
+  _- Press the forward button.
+  _R First description editor opens.
+  
+i372.UT.2.1 Activity Editors
+  _- Open activity editor for the model element that has action.
+  _- Remove any markers from the focused editor and save the action.
+  _- Open activity editor for another model element that has action.
+  _- Remove any markers from the focused editor and save the action.
+  _- Close the editors (in reverse order of their opening).
+  _- Press the back button.
+  _R Second activity editor opens.
+  _- Press the forward button.
+  _R First activity editor opens.
+  
+
+i372.UT.3   NavigationTest when model element has been deleted. 
+  _- Open description editor for the model element that has description.
+  _- Open activity editor for the model element that has an action.
+  _- Change text of both the editors such that there are no markers in the 
+     editors. 
+  _- Save the text of editors.     
+  _- Delete the model element. 
+  _R There is no navigation entry for opened editors.
+  
+End
+---
+
+$Log: i372.dnt,v $
+Revision 1.1  2009/09/03 18:24:29  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.23  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.22.44.1  2008/12/31 16:10:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.22  2005/03/10 17:29:50  babar
+Job:372
+Added renames of IModelElementEditorInputFactory
+methods
+
+Revision 1.21  2005/03/02 14:39:03  siddique
+Job:372
+Review observations addressed.
+
+Revision 1.20  2005/03/02 13:06:27  babar
+Job:372
+Updated against rvm
+
+Revision 1.19  2005/02/28 13:46:01  babar
+Job:372
+Minor changes (grammer)
+
+Revision 1.18  2005/02/25 21:15:51  babar
+Job:372
+Updated to incorporate post implementation design changes
+
+Revision 1.17  2005/02/22 13:18:53  farrukh
+Job:372
+Corrected typos and grammatical mistakes as specified in i372-021105-01.rvm
+
+Revision 1.16  2005/02/22 06:04:45  farrukh
+Job:372
+Incorporated the forward button action in Unit Test Section.
+
+Revision 1.15  2005/02/11 13:41:16  siddique
+Job:372
+Minor updations.
+
+Revision 1.14  2005/02/11 13:33:27  babar
+Job:372
+Rephrased text to provide more clarity
+
+Revision 1.13  2005/02/11 12:29:02  siddique
+Job:372
+Updated text for equals().
+
+Revision 1.12  2005/02/11 07:52:27  siddique
+Job:372
+Updated to include new design sub secitons. Also addressed greg's
+observations.
+
+Revision 1.11  2005/02/10 13:27:48  siddique
+Job:372
+Minor changes.
+
+Revision 1.10  2005/02/10 11:45:56  babar
+Job:372
+Added support for IMemento and refactoring.
+
+Revision 1.9  2005/02/04 14:28:19  farrukh
+Job:372
+Observations addressed.
+
+Revision 1.8  2005/01/31 13:00:15  babar
+Job:372
+Added section i372.2.2
+
+Revision 1.7  2005/01/31 12:41:16  babar
+Job:372
+Added proposal to rename setInput method to
+createInstance
+
+Revision 1.6  2005/01/31 10:52:01  farrukh
+Job:372
+Changes made to clarify design details.
+
+Revision 1.5  2005/01/28 14:00:19  babar
+Job:372
+cosmetics and minor changes
+
+Revision 1.4  2005/01/28 13:29:02  siddique
+Job:372
+Udpated and reorganized text.
+
+Revision 1.3  2005/01/28 11:42:58  farrukh
+Job:372
+Minor changes to Unit Test and Design Section.
+
+Revision 1.2  2005/01/28 11:33:38  siddique
+Job:372
+Refinements made.
+
+Revision 1.1  2005/01/28 09:29:42  farrukh
+Job:372
+Introduced.

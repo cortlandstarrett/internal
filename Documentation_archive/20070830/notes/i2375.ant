@@ -1,0 +1,299 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Copy and Paste
+
+1. Abstract
+-----------
+This note describes how we will implement copy and paste for the BridgePoint
+product.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2375
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2375
+[2] Bugzilla item 2234
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2234
+
+4. Background
+-------------
+BridgePoint has never had comprehensive copy and paste features. Since BP 6.1,
+BridgePoint has not had copy paste  at all. This note addresses this issue in a
+series of small steps.
+
+5. Analysis
+-----------
+5.1 Requirements
+
+Immediately (for R1.5.0)
+- Provide a means to move Classes and Associations modeled in separate
+  subsystems to their own domains.
+
+Medium term (ideally 1.5.0)
+- Allow any symbols visible on any diagram to be selected and copied to the
+  clipboard.
+- Allow the current contents of the clipboard to be pasted to any diagram that
+  can legally contain the symbols.
+- Ensure during the paste that no duplicate symbols are created.
+- Tie up all references to model elements that exist in both models.
+- Resolve all instance references by id first, then by name if no element with
+  an identical id is found.
+
+5.2 Design choices
+
+Copy/paste can be made generic in the graphics domain, but unfortunately copy
+and paste will have to be done on a case by case basis in the metamodel.
+
+To understand why, think about 2 cases:
+
+1) Paste classes into a subsystem
+2) Paste States into an Instance State Machine
+
+5.2.1 Paste classes into a Subsystem
+------------------------------------
+Assume that we have solved the problem of saving and restoring element data to
+the clipboard.
+
+To paste classes, we would need to call the equivalent of a new 'pasteClass()'
+operation on the containing subsystem, passing the id of the class restored from
+the clipboard. For multiple classes, we call this operation multiple times.
+
+As indicated above, the class's graphic can be restored and introduced
+generically, we would just need to know the identity of the owning diagram, with
+some logic to locate the class in a sensible place in the users diagram (there
+is some state modeling required here too to allow the user to place the pasted
+symbols using a mobile outline like BP 6.1 did).
+
+In the case of pasting a Class the OAL will be:
+
+select any newClass from instances of O_OBJ where
+                                     selected.Obj_ID == param.Obj_ID;
+relate self to newClass across R2;
+
+What is legal on what kind of diagram is already captured in the Model and
+Element specification instances.
+
+We would need to check that duplicate ids are not pasted into the canvas or
+metamodel. If duplicates are found, we either ignore the pasted item, or we make
+a copy. For some symbols (e.g. classes), there is a third alternative. Paste as
+an imported variant. These behaviors may be selectable by a preference.
+
+Pasting an association is a little more complex in that three arguments are
+needed;  one identifier for each of the Association, source and destination
+Classes.
+
+5.2.2 Paste States into an Instance State Machine
+-------------------------------------------------
+It is tempting to hope that the above simple story could be abstracted and
+repeated everywhere. We just capture that Classes are related to Subsystems
+across R2 in build time data, right?
+
+Unfortunately not. When pasting a State into a State Machine Diagram, a lot more
+needs to be done than just get the SM_STATE instance under the SM_SM instance
+across R501; jobs such as creating an SEM Entry for each SM_EVT instance have to
+be done too. I suspect some of the new component diagram elements will also wind
+up being more complex than the simple case.
+
+Pasting a transition is yet more complex. As for Associations, such an operation
+would require three arguments.
+
+So, we're going to need OAL that describes the required behavior for each
+element that can be pasted.
+
+5.2.3 Export/Import substitute
+------------------------------
+For Release 1.5.1, Ericsson have made it clear they do not care whether they
+move their IP using Copy/Paste or some other capability. We should consider
+providing an Export/Import solution and deferring Copy/Paste to a later release.
+
+This note will not discuss this option in much further detail, but will identify
+the common infrastructure components needed to support both Copy/Paste and
+Import/Export.
+
+6. Work Required
+----------------
+
+6.1 Infrastructure common to Copy/Paste and Export/Import
+6.1.1 Insert element data into an instance extent.
+      For Paste, this data comes from the clipboard, for Import, it comes from
+      a file. This needs to be done while keeping the instances in 'quarantine'
+      until the procedures identified below are carried out. Note that for non-
+      leaf elements such as Subsystems, there are also child diagrams that must
+      be instantiated.
+6.1.2 Confirm paste is legal.
+      As mentioned above, we can scan the Model Specification and Element
+      Specification instances to determine this.
+6.1.3 Identify duplicates
+      Duplicate instances can be identified by their having identical UUID
+      values. isEqual() implementations are already provided for this. However,
+      what about cases where model elements bear the same name, but have
+      different ids? Are they to be considered the same or not? This is tied up
+      with the reference resolution rules; i.e. if a name can be used to
+      identify a reference, then it follows that the name is valid for use in
+      identifying duplicates. When an elements is identified as a duplicate, do
+      we not paste it or do we create a copy? A copy is easy enough, we just
+      allocate an new UUID for the element. Of course this applies to the
+      children and graphics of such an element; they would need to be duplicated
+      too. If duplication is allowed, how do we handle graphics which overlay
+      each other? We'll need to nudge these a little.
+6.1.4 Identify the extent of what is to be copied
+      There is already build time data that identifies what is below what in a
+      model element tree. There is also data that identifies where Proxies may
+      exist. This data may well be reusable. It should _not_ be duplicated, but
+      rather decorated with additional data if the starting point information is
+      insufficient. This data is already duplicated as ooaofoaohierarchy in core
+      an UITree in explorer. If this work can harmonize this data and remove a
+      copy then so much the better. There is at least one case where the proxy
+      boundary should be ignored for copying, the case where a copied element
+      has children. In this case, the copy should not contain the proxy but the
+      actual elements where possible. The only case where a child proxy should
+      be in the copy data is when a component resource could not be found. It is
+      expected that the presense of peer proxies in the copy data will be normal
+      and will indicate the boundary of the copied data. It is these peer
+      proxy instances that are used for dangling reference resolution.
+6.1.5 Resolve dangling references
+      We will use proxies to delimit what is at the boundaries of the data set.
+      Proxies will point to a model element with a specific UUID. If a match is
+      found for the UUID, then the reference is changed to point to it, even if
+      the pointed at element has a different name. If the user turns this off,
+      then an element in the target model is sought with the same name as the
+      referenced element. If no compatible element is found, the model element
+      reference is set to some reasonable default or (if no reasonable default
+      exists) is not pasted. An example of a reasonable default is in the case
+      of data type; in this case the reasonable default is integer or void.
+      Other reasonable defaults include 'Not Formalized' for messages etc.
+6.1.6 Insert graphics into the appropriate diagram
+      Graphics shall be contained within the associated element set. We need to
+      develop infrastructure that filters elements into metamodel and graphics.
+      This must be done already in io.mdl. Let's refactor as required to use the
+      same infrastructure. Maybe we should consider paste as a special kind of
+      I/O. The data stream is just coming from somewhere other than a file.
+      
+6.2 Clipboard storage
+6.2.1 Clipboard infrastructure
+      CanvasEditor.handleCopy() already copies data to the clipboard. It uses a
+      com.mentor.nucleus.bp.ui.canvas.CanvasTransfer to get the copy made.
+      CanavsTransfer only copies a bitmap right now, but transfer of other kinds
+      of data are possible by specifying new Type_Id's. We may need to apply to
+      Microsoft for unique Type Id's. This should be investigated.
+      
+6.2.2 Storage format
+      We need to decide whether we want to put SQL elements into the clipboard
+      or whether we just add serialized java instances. The latter approach
+      should work within and between tool sessions on the same machine, but the
+      former approach could be made to work for very general cases, even where
+      the data is pasted as text into an email and sent to another remote user.
+      However, this approach does complicate the I/O design, necessitating
+      dependence on the io.* plugins. If we use serialization, we may need to
+      mark instances as being proxies so that they are recreated as such from
+      the serialized form (at the moment, this is handled in the io.* plugins).
+
+6.3 Paste control OAL
+    When Copy/Paste is complete, each metamodel element that is represented by a
+    Model Specification shall have a paste<ElementSpecName>() operation for each
+    associated Element Specification. paste<ShapeElement>()s shall take one UUID
+    argument and paste<ConnectorElement>()s shall take 3 UUID arguments. This is
+    analogous to the current behavior of the graphics domain, except that the GD
+    only creates new, empty elements. Paste obviously aims to add fully complete
+    elements to the model. The similarities are even more compelling when added
+    to the need to add state model behavior that allows the user to place a
+    group of pasted classes. A final argument is that the clipboard interface is
+    already declared in the canvas plugin. All these observations suggest that
+    paste should be handled in the canvas plugin.
+    
+    When a paste is made, the canvas shall enter a state where the user controls
+    the position of a set of floating symbols as found in the clipboard. If the
+    user presses escape or right clicks, the paste shall be abandoned. If the
+    user left clicks, then the symbols shall be placed on the diagram at the
+    last position specified and the clipboard contents added to the metamodel.
+    The last part can be achieved by making External Entity calls just as
+    happens now in the Canvas tool states 'Creating Element'.
+
+6.4 Import differences
+    Given the arguments set forth in 6.3, where does this leave the Import
+    feature? It might make sense to reuse the paste infrastructure to achieve
+    import and allow the user the same symbol placement control as will be
+    offered during paste. However, import may have some automated uses that
+    would require an alternative, more automated approach. Automatic placement
+    suggests itself here.
+
+6.5 Development stages
+6.5.1 The infrastructure that detects, duplicates and resolves references must
+      be developed first. This job will likely take at least two weeks and can't
+      really be split.
+6.5.2 Copy/Paste shapes working from a subset to supporting every shape. This
+      task can be broken down into (almost) arbitrarily small deliverables,
+      since it is essentially repetitive, with each element of the work more or
+      less self contained. It is difficult to predict how many elements/shapes
+      can be tackled in a two week period, but this can be calibrated once the
+      first couple cycles are complete. Since only classes and associations are
+      actually explicitly listed as required, this issue can meet its deadline
+      using feature throttling.
+6.5.3 Support shapes that represent the tips of data trees (Subsystems, Classes
+      etc.) This is is more of a testing requirement; to check that the generic
+      approach hammered out in 6.5.1 and deployed in 6.5.2 works properly when
+      applied to a metamodel element that is also a PLCM component. As such, it
+      should probably run concurrently with 6.5.2.
+6.5.4 Copy/Paste connectors working from a subset to supporting every connector.
+      This is easily split for the same reasons given in 6.5.2.
+
+7. Acceptance Test
+------------------
+_- Recreate the test suite models by copy and pasting their parts into a new
+   model. Ensure that one of every possible part is copied (as specified in the
+   list of element specification instances).
+_R The resulting mmodels execute in Verifier as before.
+_R The resulting models translate and pass the model compiler tests for both
+   MC3020 and MC2020.
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.5  2007/02/02 18:55:00  campbell
+Job: 2375
+Clarified the development stages.
+
+Revision 1.4  2007/01/31 00:08:30  campbell
+Job:2375
+Add brief discussion of peer proxies.
+
+Revision 1.3  2007/01/31 00:05:00  campbell
+Job:2375
+Add discussion on source of tree information for copy process and added more mention of proxies.
+
+Revision 1.2  2007/01/29 23:40:04  campbell
+Job:2375
+Minor enhancements.
+
+Revision 1.1  2007/01/29 21:59:54  campbell
+Job:2375
+Introduced.
+

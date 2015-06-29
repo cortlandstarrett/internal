@@ -1,0 +1,365 @@
+========================================================================
+
+File:      $RCSfile: dts0100874481.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support other base types for user defined types
+
+1. Abstract
+-----------
+This note describes the changes required to support all data types as base types
+to user defined types.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100874481
+[2] ClearQuest DEI dts0100908600 - Constant Specification dispose does not
+                                   unhook from PE_PE
+[3] ClearQuest DEI dts0100895665 - Support inter-project references in sequence
+                                   diagrams
+                                   
+4. Background
+-------------
+Currently the tool only supports a core data type to be used as the base for a
+user data type.  Customers are requesting the ability to use user data types for
+the base of another user data type.
+
+5. Requirements
+---------------
+5.1 UDTs shall support a base type from any other data type
+
+6. Analysis
+-----------
+6.1 Support other base types
+
+Rather then allow just user data types to be the base for other user data types,
+the tool shall support all types including enumeration data types, structured
+data types and instance reference data types.  To support this R18 shall be
+moved from the Core Data Type class to the Data Type class.
+
+7. Design
+---------
+7.1 Support other base types
+
+R18 shall be deleted and recreated to associate the User Data Type class and the
+Data Type class.  The association shall remain configured in the exact same
+manner.
+
+OAL which traverses R18 shall be adjusted to select the Data Type class rather
+than the Core Data Type class.  The same change shall be made to hand written
+code.  A few locations require the Core Data Type class, like upgrade code.  In
+these cases the tool will have properly associated the User Data Type to the
+Data Type which is the supertype of the Core Data Type.  The extra traversal
+across R17 to the Core Data Type class shall be made.
+
+No migration code is required as the Core Data Type ID comes from the supertype
+Data Type.  The referential attribute is in the same location, therefore the
+batch relate works as expected.
+
+The parser requires locating the base type for user data types.  This was
+previously done by traversing R18 to the Core Data Type then traversing R17 to
+the supertype Data Type.  R18 is now a composite association and a simple
+traversal across the same associations may not always be right.  If the base
+type is another user data type the traversal needs to recursively traverse until
+a Data Type that has a subtype of the following is found:
+
+Core Data Type
+Enumeration Data Type
+Structured Data Type
+Instance Reference Data Type
+
+A new operation is added to the User Data Type class, getCoreType().  This
+operation locates the base type across R18.  If the base type is a User Data
+Type the same operation is called on that base type.  If the base type is any
+other the ID of that type is returned.
+
+The parser is modified to call this new operation and use the returned ID to
+locate the type to use.
+
+The paste infrastructure locates resolution operations by the name of the
+element to resolve.  The operation in the User Data Type class,
+resolveCoreDatatype, must now be named resolveDatatype.
+
+Core data types are not disposable in the tool, therefore the tool never had to
+revert a user data types base type.  Now a user can delete the base type.  This
+requires setting the user data types base type back to the default when its base
+type is disposed.  In Data Type.dispose() OAL is added that tears down R18, then
+locates the integer core type and associates the user data type to it.
+
+The operation Data Type.getCoreDataTypeName assumes a User Data Type class will
+always be associated with a Core Data Type.  It finds the Core Data Type and
+returns the appropriate name for it.  This is modified to call
+getCoreDataTypeName on the base type of user data types.  The OAL that
+previously selected the Core Data Type and returned the name is removed.
+ 
+When resolving the base type for the User Data Type class we must have a proxy
+that gives us detailed information for looking up the base type in the target.
+Currently the tool will not output a proxy for the Data Type if the User Data
+Type class is persisted in the same file.  This prevents proper resolution when
+copying a User Data Type instance that resides in the same file as its base
+type. This problem exists already when copying a User Data Type that is
+persisted in the same file as its core type.  To resolve a new Alternate Export
+Child Link entry is added to stream.pei.sql which always exports a proxy for
+the base type.
+
+7.2 Support RGO resolution across multiple associations to the same element
+
+RGO resolution support is generated for data types.  All associations that
+require resolution support have a method generated that will locate the RGO by
+ID.  With the R18 change there are now two associations that must have
+resolution support for User Data Type instances.  The archetype that generates
+the methods never considered this situation, therefore two identically named
+methods are generated.  To address this the methods are now generated to include
+the association number in the name.
+
+When calling these methods in ModelStreamProcessor we do not know the
+association, we simply know there is a proxy and look for a method by name.  To
+access the association number a new persistence hierarchy utility method is
+added.  This method is generated in io.mdl/arc/create_persistence_meta_data.arc
+and create_external_link_evaluator.arc.  The same pattern used for
+findExternalRGOs is used for this new method.  The method eventually returns a
+Map that contains the external RGOs using the association number as a string for
+the key.  In ModelStreamProcessor the callResolutionOperations() method is
+modified to iterate the key set in the returned Map.  The key is used to
+determine the appropriate method name.
+
+7.3 Unhook from PE_PE in Constant Specification.dispose()
+
+A bug was found, [2], that is addressed with this work.  The Constant
+Specification dispose operation was not unrelating the Constant Specification
+from it's supertype PE_PE.  Additionally the operation was not disposing the
+PE_PE which leaves a corrupted model.  The dispose operation is modified to
+select the supertype PE and if not empty call its dispose operation.
+
+7.4 Support IPR resolution of formal elements for interaction elements
+
+[3] introduces support for formalizing interaction elements against elements in
+other projects.  It did not extend the paste resolution methods to account for
+this change.  The following classes have their resolution methods extended to
+use the collection infrastructure.  This allows locating elements that reside
+outside of the current project.
+
+Class Instance Participant
+Class Participant
+Component Participant
+External Entity Participant
+Package Participant
+
+The Class Instance Participant, Class Participant, and External Entity
+Participant classes use a resolution approach where a match is located by name
+and key letter first, then key letter only and finally name only.  Rather than
+extend the collection infrastructure to support something like this all visible
+elements are located regardless of name/key letter.  The results are then
+iterated and name/key letter matched.
+
+7.5 Support RGO resolution of S_UDT
+
+RGO move support has existed in the tool for some while, however it was only
+added for data types.  Since a UDT previously referred to core types it was
+never supported as you could not move the core types.  Now that a user data
+type's base type is the Data Type class support must be added.
+
+In addition to UDTs support is going to be added at this time for moving
+Components and Interfaces.  This is done now as its within the same area and
+it helps to support Agilent.
+
+To add support for these elements the archetype,
+generate_RGO_resolution_methods.inc, is modified to generate code if the RGO
+class has one of the following key letters:
+
+S_DT, C_I, C_C
+
+The move infrastructure supports valid associations by using two operations in
+each RGO class.  These operations are isReferringToDefault<RGO Class Name> and
+canReferTo<RGO Class Name>.  These operations prevent the move infrastructure
+from overwriting an association that was made after the cut as well as guarantee
+that the association between the RTO and RGO is valid (mostly visibility).
+
+The following operations are added to the RGO classes:
+
+Component Reference.isReferringToDefaultComponent - Returns true if the
+reference is not formal or is formalized to a proxy (unsynchronized)
+
+Component Reference.canReferToComponent - Returns true if the moved component is
+in an accessible location
+
+Interface Reference.isReferringToDefaultInterface - Returns true if the
+reference is not formal or is formalized to a proxy (unsynchronized)
+
+Interface Reference.canReferToInterface - Returns true if the moved interface is
+in an accessible location
+
+Symbolic Constant.isReferringToDefaultDataType - Returns true if the Symbolic
+Constant is referring to the integer type
+
+Symbolic Constant.canReferToDataType - Returns true if the moved data type is in
+an accessible location
+
+User Data Type.isReferringToDefaultDataType - Returns true if the User Data Type
+is referring to the integer type
+
+User Data Type.canReferToDataType - Returns true if the moved data type is in an
+accessible location
+
+Component Participant.isReferringToDefaultComponent - Returns true if the
+participant is informal
+
+Component Participant.canReferToComponent - Always returns true as we do not
+always honor visibility with interaction elements
+
+In io.core/arc/export_functions.inc the code to support generating RGO export
+methods is specialized for data types.  This specialization is extended to
+include interfaces and components.
+
+The current RGO resolution methods do not consider IPRs.  This means that RTO
+move is not supported in IPR cases.  To address this the getGlobal() method is
+used rather than looping the model roots under the current project.  This works
+as the resolution is done by identification key.
+
+7.6 Unformalize component participants when component is disposed
+
+The OAL in Component.dispose() deletes referring component participants
+currently.  This is incorrect behavior.  When deleting the referred to component
+all component participants shall be unformalized only.
+
+7.7 Model compilers
+
+With the R18 association change model compilers and the metamodel schemas will
+have to be updated.  Until the schemas are changed and any UDT has a base type
+set that is not a core type, the existing model compilers will work as is.
+However, considering this was a customer request we need to make the necessary
+model compiler modifications before this is released to the field.
+
+Any customers which have custom model compilers shall be notified of the change.
+
+MC-Java shall also be updated with this work.  The changes are the same as
+described in 7.1 only to the MC-Java archetypes.  Additionally, the schema found
+in MC-Java shall be updated to account for the new R18.
+
+8. Design Comments
+------------------
+
+9. Work Required
+----------------
+See the design section.
+
+10. Unit Test
+------------
+10.1 Test UDT type assignment
+
+_- In a project that contains two User Data Types, one Enumeration Data Type,
+   one Structured Data Type, and one Instance Reference Data Type select one of
+   the UDTs and right click
+_- Choose the Set Type... menu item
+_R All core types and the UDT, EDT, SDT, IRDT are present
+_- Select a core type
+_R The User Data Type has the core type set as the base type
+_- Repeat the procedure for UDT, EDT, SDT and IRDT
+_R Each one is properly used as the base type
+_- Try to assign a UDT to itself
+_R The UDT itself is not present in the chooser dialog
+
+10.2 Dispose
+
+_- Delete a data type that is used as the base type of a UDT
+_R The UDT is reverted to the integer base type
+
+10.3 Parser
+
+_- Create a UDT (udt1) that has an integer as its base type
+_- Create another UDT (udt2) that has the above UDT as its base type
+_- Create class with an operation that takes the udt2 as a parameter
+_- In the operation do that following:
+    x = param.p + 1;
+_R There is no parser exception 
+
+_- In OAL access a member from a SDT through a UDT
+_R No parse error
+_- In OAL access an attribute from a IRDT through a UDT
+_R No parse error
+
+_- In OAL compare two parameters that are UDTs which point at an integer
+_R No parse error
+_- In OAL compare two parameters that are UDTs which point at the same EDT
+_R No parse error
+
+_- Create the following OAL where the parameter is a UDT that has a base type of
+   boolean
+   
+   if(not param.p)
+   end if;
+_R No parse error
+
+10.4 Verifier
+
+_- Create a component containing a package
+_- Create a class in the package adding an attribute
+_- Assign the attribute to a UDT that has an SDT as the base type
+_- For the SDT create a member of type integer
+_- Create a function that creates an instance of the class
+_- Set a breakpoint in the function and Launch Verifier
+_- Execute the function and step so that the class instance is created
+_R In the variable view the member is set to 0
+
+10.5 Interaction element resolution
+
+_- For a Class Instance Participant, Class Participant, External Entity
+   Participant, Package Participant and Component Participant
+   _- Formalize the element to another which is in a different project
+   _- Cut the element
+   _- Paste the element in the same location
+   _R The element is formalized to the same element
+
+10.6 Constant Specification dispose
+
+_- Create a Constant Specification
+_- Delete the Constant Specification
+_R The PE_PE is disposed
+
+10.7 RTO move support
+
+- Currently RTO move testing is covered by a test matrix, this matrix shall be
+  extended to include the new RTOs that are supported
+- The test matrix shall also be extended to include IPR DOFs
+
+10.8 Component dispose
+
+_- Delete a component that is referred to by a component participant
+_R The component participant is not deleted
+_R The component participant is unformalized
+
+End
+---
+
+$Log: dts0100874481.dnt,v $
+Revision 1.4  2012/09/07 15:52:14  tlondon
+Job: dts0100874481
+Address review minutes
+
+Revision 1.3  2012/08/16 18:26:57  tlondon
+Job: dts0100874481
+
+Add model compiler section
+
+Revision 1.2  2012/08/16 17:49:10  tlondon
+Job: dts0100874481
+
+Add section about RTO move changes
+
+Revision 1.1  2012/08/14 16:50:12  tlondon
+Job: dts0100874481
+
+Introduce design note
+

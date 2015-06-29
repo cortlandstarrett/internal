@@ -1,0 +1,160 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Use counting semaphore for disabling change notification
+
+1. Abstract
+-----------
+This note describes the changes required to use a counting semaphore for
+disabling change notification.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2681
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2681
+
+4. Background
+-------------
+[1] was raised to capture a bug where change notification was remaining off.
+[1] describes the situation and how it may occur.
+
+A change was made which allowed the notification to be turned off using a simple
+switch rather than using bit masks.  The reason the simple switch approach
+worked was that the last thing to occur was always the enablement of the change
+notification.  With the bit mask the old value was always set, and with multiple
+threads this old value may not always be on.  This issue was left open to
+capture the work required for changing all places to use the switch instead of
+bit masks.
+
+Due to the fact that multiple threads can flip this switch it was determined
+that one thread may turn it back on while another thread expects it to remain
+off.  The remaining sections of this note will explain the design which will
+resolve this issue.
+
+5. Design
+---------
+5.1 Use a counting semaphore for notification disablement
+
+The boolean switch does not work well with multiple thread access as described
+in the Background.  The better approach is to use a counting semaphore which
+keeps track of the number of threads which expect the notification to be
+disabled.
+
+Only when there are no threads requiring disablement will change notifications
+be sent.
+
+5.2 Change all places to use new disablement approach
+
+All places which reference the method, Enablemodelchangelistenersfor, are
+changed to call the following two methods:
+
+ModelRoot.disableChangeNotification()
+ModelRoot.enableChangeNotification()
+
+6. Implementation Comments
+--------------------------
+The check for disabled change notification was made in a place that would not
+prevent firing of all notifications.  The check is moved to the
+EclipseOoaofooa.callFireMethod method.
+
+7. Unit Test
+------------
+_- Run all existing unit tests
+_R All tests pass
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Structure Member/Structure Member.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Attribute/Attribute.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Model Class/Model Class.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/
+    ResourceUpdaterModelChangeListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    IDConvertor.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    PersistableModelComponent.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    Transaction.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/
+    NewSystemWizard.java
+com.mentor.nucleus.bp.core/src/lib/TIM.java
+
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    MultipleReload.java
+
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/actions/
+    ExecuteAction.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    BPDebugTarget.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    BPStackFrame.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    BPThread.java
+
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/test/
+    VerifierTest.java
+
+com.mentor.nucleus.bp.io.core/src/com/mentor/nucleus/bp/io/core/
+    ImportHelper.java
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/BaseTest.java
+
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    CanvasCopyPasteTests.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    CanvasCutTests.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    Tester.java
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/
+    ActivityEditorInput.java
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/
+    ParseAllActivitiesAction.java
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:01  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.2  2007/07/31 19:17:54  tlondon
+Job: 2681
+
+Add code changes
+
+Revision 1.1  2007/07/30 19:47:09  tlondon
+Job: 2681
+
+Introduce

@@ -1,0 +1,150 @@
+========================================================================
+
+File:      $RCSfile: i1190.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+tarkiln Project Analysis Note
+Guaranteed unique Id's
+
+Abstract
+--------
+This note addresses how we will guarantee that a set of loaded components in a
+project will maintain referential integrity.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 1190
+[2] Bugzilla Issue 1225
+[3] unique_id.ant | dnt | int
+
+Background
+----------
+The work for issue 1225[2,3,4,5] ensured that id's allocated by the tool were
+kept unique within the workspace. However nothing was done by that work to
+ensure that the strategy is robust when working in a team environment. Since the
+design decision was made not to try and co-ordinate id allocation across
+workspaces, it is possible to bring into the project components whose ids
+overlap with those elsewhere. The issue under which this work is done identifies
+only one manifestation of this design weakness.
+
+Analysis
+--------
+With the current implementation, the following scenarion can occur:
+User 1
+   - create project/domain/ss/class A - id =1
+      add attribute A.id id = 1
+                A.x id = 2
+    - commit everything
+
+User 2
+    - bring in project
+    - create class B id = 2
+        attribute B.id id = 3
+
+User 1
+   - add attribute A.y  id = 3
+   - commit changes
+
+User 2
+   - bringin latest of class A
+
+-->  Attributes A.y and B.id have same id value
+
+Adding a component id to each component root class was considered,
+e.g. Model Class.ComponentId, and all id attrs in that component have the
+ComponentId added to, say, the top 32 bits.
+
+Both users start with an empty workspace (id = x.y where x = component id and
+y = instance id)
+
+User 1
+   - create project/domain/ss/class A - id =1.1
+      add attribute A.id id = 1.1
+                A.x id = 1.2
+    - commit everything
+
+User 2
+    - bring in project
+    - create class B id = 2.2
+        attribute B.id id = 2.3
+
+User 1
+   - create class C id = 2.2
+      add attribute C.id = 2.3
+   - commit changes
+
+User 2
+   - bringin latest of project
+
+-->  classes B and C have the same id value
+      attributes C.id and B.id have same id value
+
+So this approach won't work. It also has the drawback of reducing the id address
+space.
+
+The following approach is therefore indicated:
+
+1.  The batch relate process finds instances by id and and connects them
+    together in memory. As applied to intra component references batch relate
+    must operate by only scanning the instance population of the component being
+    loaded. If it scans the whole instance population, then a duplicate id could
+    be located and used inappropriately.
+2.  The create proxy method creates a proxy instance if no existing instance is
+    found in memory or else returns the actual instance if it is loaded. When
+    performing proxy resolution, the id in the proxy must be compared with the
+    id of the instance as originally loaded from file (see 3. below). Since a
+    proxy contains a path reference to the component in which its actual
+    counterpart exists, there can be no ambiguity about finding an instance with
+    a different id.
+3.  When loading and batch relate is complete, the component is checked to see
+    if it contains elements that have a lower value than the project id high
+    water marks (HWM) at the time loading started. If it did, then we perform an
+    id reallocation based on the high water mark work[2]. The original id is
+    cached to support the proxy resolution process described in 2.
+4.  When id re-allocation is done, persist the component so that the model
+    compiler can do its work without id collisions.
+5.  During import, present the user with a dialog that explains why the file is
+    being rewritten even though no changes were made.
+
+I'm still worried about 4. All will work fine, until the tool is shut down and
+restarted. At that point, the renumbered model is reloaded and all trace of the
+original ids is gone. We need to address this. Let's meet one more time.
+
+Work Required
+-------------
+
+Acceptance Test
+---------------
+
+End
+---
+
+$Log: i1190.ant,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.30.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2005/10/14 19:41:14  campbell
+Job: 1190
+Introduced.
+

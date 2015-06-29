@@ -1,0 +1,166 @@
+========================================================================
+
+$HeadURL: http://beta.wv.mentorg.com/tenmile_svn/tenmile/trunk/documentation/process/templates/int_template.int $
+$Revision: 1.1 $
+$Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2008 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Bug Fixes and Beginning Model of Marking
+
+1. Abstract
+-----------
+After the 2.2.2 release, a few bugs were identified.  And a little bit of
+progress toward being model based continued.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest dts0100592377 - Model of Marking and 2.2.2 Fixes
+[2] ClearQuest dts0100595037 - typo with signal parameters (fixed in HEAD)
+[3] ClearQuest dts0100595778 - string artifacts not propagated from action
+                               bodies up through expressions (fixed in HEAD)
+[4] ClearQuest dts0100596290 - Port messages not declared in initiating ports.
+[5] ClearQuest dts0100594036 - AUTOSAR Changes for SeatHeater (merged in branch)
+
+4. Background
+-------------
+4.1  After 2.2.2 bugs were discovered in Japan working with special coloring
+     to integrate BridgePoint generated code with OSEK (Toppers) on the ARM
+     processor.  Also, AUTOSAR changes were introduced to support VSI in the
+     Tick example and the SeatHeater demo.
+4.2  It is time for a model of marking.  Today, marks are additional attributes
+     on the "extended" model compiler -specific classes.  The marking functions
+     supply or change attribute values of these architectural classes.
+     This is a problem for 2 reasons, 1 design reason and 1 practical reason.
+     From a design point of view, it would be nice if marking were
+     modeled, modeled separately and visible.  Thus, a marking model will
+     answer this point.  From a practical standpoint, the current "marking
+     attributes" mean that the model compiler model instances must exist before
+     marking can take place.
+     This causes a sequencing problem.
+     Much of the naming of generated artifacts depend upon marks.  For
+     example, you can set the "registered" name of a domain/component.
+     This allows you to have long and meaningful domain/component names
+     in your model while having shortened, abbreviations in your
+     generated code.
+     However, this means that marking has to occur _after_ the model
+     compiler classes exist, but before full initialization.
+     With a model of marking, I can create instances of marking classes
+     even before the MC model initializes.
+     Then, during MC initialization, I can select from the marks to make
+     name coersions, etc.
+     Initialization will flow more naturally.  Today, it is broken into
+     Pre and Post-marking initialization.  It is messy.
+
+5. Design
+---------
+5.1.  Add association between TE_DOM and TE_CLASS (R2073).  Update schema.
+      Use this shorter traversal opportunistically.
+5.2.  Fix a problem with a long and unnecessary class include query.
+      To speed up builds when building a model compiler
+5.3   Remove unused function that tries to intelligently include
+      only classes that are accessed.  However, it is slow and not needed.
+      Do not generate MDA (derived attribute) bodies when the attribute is
+      not used.
+5.4   The generated *port.c files do not #include the declarations for the
+      messages they invoke from the foreign component.  This results in type
+      mismatches at run-time across the interface.  Add this include so that
+      these foreign messages are accessible.
+5.5   Remove the OAL bodies from the MC-3020 meta-model.  These OAL bodies
+      are from the BP ooaofooa and represent Builder and Verifier functionality
+      that only gets in the way here making translation take a long time.
+5.6   Add template EE into the MC-3020 meta-model for use in the model-based
+      model compiler.
+5.7   Add model of marking with just practical classes to capture marks 
+      before initialization has occurred.  This fragment of a marking model
+      allows marking to occur before initialization of the xtUML metamodel
+      and the MC metamodel.
+5.8   Change marking function to create instances in the marking model rather
+      than change attribute values in the MC metamodel.
+5.9   Change the name of an attribute from TE_STATE.enum to
+      TE_STATE.enumerator, because enum is a reserved word in C.
+5.10  Skip the look-up of attribute comment decorations when
+      running in model-compiler mode.  The model compiler uses a model that
+      is fully identifiered and formalized with referential attributes.  This
+      results in fairly complex queries to build nice comments that tell you
+      which attributes are identifiers and which are refs and multiplicity
+      and such.
+5.11  Skip calling PEI setup when there are no PEIs (I_INS).
+5.12  Merge the Pre and Post marking initialization into a single population
+      query.  Order the query to avoid forward reference to uninitialized
+      artifacts.  This is major shuffling.
+5.13  Deal with '*' in SM_EVT.Drv_Lbl on polymorphic events.  Instead, use
+      the class key letters plus the event number.
+5.14  Tweak our AUTOSAR code.  Conditionally generate the declaration of the
+      dp_signal rather than generating in cases where it may not be used.
+      Select a class that can be used to divine the task number for the
+      component.  Default AUTOSAR enabled to be true.
+
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+7.1.  New test models.
+      For each of the new models, import the model into an xtUML project.
+      Compile the model with MC-3020.  Compile the code with gcc.
+      Run the executable.  Note any failure messages (by searching for
+      "ailure") and/or any segment faults.  I ran gcc under cygwin for
+      convenience.
+7.1.1.  SeatHeater (svn:tenmile Models/Demo/SeatHeater)
+7.1.2.  Tick (svn:tenmile Models/Demo/Tick)
+7.2.  Existing test models.
+7.2.1.  Models from the run_unit_tests_clean script have been run successfully.
+7.3.  Testing difficulty.
+7.3.1.  Testing is hindered due to these changes.  The test models must be
+        updated to include OAL.  xtumlmc_test is not able to automatically
+        compile the generated code any more.
+
+8. Code Changes
+---------------
+8.1  MC-3020 meta-model changes are found in branch MC-3020-HEAD (and are
+     already "promoted" to HEAD).
+8.2  Code changes are found in branch R223CDS592377.
+8.3
+mc3020/arc/m.bridge.arc
+mc3020/arc/m.registry.arc
+mc3020/arc/q.class.arc
+mc3020/arc/q.class.events.arc
+mc3020/arc/q.class.link.arc
+mc3020/arc/q.class.pei.arc
+mc3020/arc/q.class.sem.arc
+mc3020/arc/q.class.where.arc
+mc3020/arc/q.classes.arc
+mc3020/arc/q.component.port.arc
+mc3020/arc/q.component.ports.arc
+mc3020/arc/q.datatype.arc
+mc3020/arc/q.domain.datatypes.arc
+mc3020/arc/q.mc_metamodel.populate.arc
+mc3020/arc/q.smt.generate.arc
+mc3020/arc/sys.arc
+mc3020/arc/t.class.idispatch.c
+mc3020/arc/t.class.op.c
+mc3020/arc/t.class.sm_act.c
+mc3020/arc/t.component.port.autosar.c
+mc3020/arc/t.component.ports.c
+mc3020/arc/t.domain_datatypes.h
+mc3020/arc/t.domain.function.c
+mc3020/arc/t.sys_user_co.h
+mc3020/schema/sql/xtumlmc_schema.sql
+
+
+
+
+End
+---
+
+$Id: dts0100592377.int,v 1.1 2009/09/03 18:21:09 rmulvey Exp $

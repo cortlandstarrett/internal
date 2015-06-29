@@ -1,0 +1,225 @@
+========================================================================
+
+File:      $RCSfile: polymorphic_events-i461.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:25 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Polymorphic Events
+
+Abstract
+--------
+Historically, BridgePoint Builder has supported polymorphic events[1]. This note
+specifies how Tiger will continue to support them.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 461
+[2] OOA96 Report
+[3] Executable UML, Mellor-Balcer
+
+Background
+----------
+The BridgePoint Builder implementation of Polymorphic Events is incompatible
+with core UML in several important ways. For example, in BridgePoint Builder,
+events must be explicitly marked as polymorphic. In UML, since all events are
+assumed to be (potentially) inherited, no special user action is necessary. The
+BridgePoint/Tiger metamodel also differs significantly from the UML metamodel
+in this area.
+
+Analysis
+--------
+Tiger shall present a UML compatible view of event inheritance to the user.
+Tiger must work with the current product line of model compilers, and with
+proprietary cutomer produced model compilers. Tiger shall therefore present a
+Shlaer-Mellor compatible view[2] to the model compilers.
+
+Section 1. below describes the UML view of event inheritance and section 2.
+describes the Shlaer-Mellor view. The final section describes a proposal whereby
+the constraints presented in the paragraph above shall be achieved.
+
+1. The UML View of Event Inheritance.
+
+In UML, the term polymorphic event does not exist.  The term 'event inheritance'
+more closely compares with the Shlaer-Mellor term polymorphic event.  Once an    
+event in UML is declared in an abstract superclass, it can be received by any of
+the subclasses.  The UML term signal is used to denote a message that may carry 
+data used by the actions in a procedure of the recipient's state machine 
+instance.  In the superclass-subclass context, a signal is directed at runtime
+to the appropriate subclass depending on what subclass the superclass is 
+instantiated as.  
+
+Every branch in the superclass's hierarchy should be able to receive the 
+signal.  At run time, it is decided which state machine of which
+subtype (depending on what type the class is instatiated as) in the hierarchy 
+receives the signal.
+
+The sender of the signal does not neccessarily know the exact subclass that the 
+superclass instance is defined as.  The sender simply directs the signal to the 
+superclass and the signal is automatically routed to the correct subtype at
+run time, depending on what the superclass is instantiated as. 
+
+A point to be noted is that every signal in UML is potentially 'polymorphic'--
+i.e. when a class has one or more subclasses, an event is by default inherited 
+by the subclasses.  In fact, the rules for inheritance of signals in UML are 
+not different than those for inheritance of operations.  
+
+When there is a multiple hierarchy, a state machine can be created for the
+superclass and separate state machines can be created for the subclasses.  
+However, it is not required that a state machine should exist for each level
+of the hierarchy.  Only the leaf subclasses need to have a state machine 
+defined, so that they are capable of receiving the signals. 
+
+2. The BridgePoint 6.x View of Event Inheritance.
+
+In BridgePoint 6.x, the meta-model for Subsystem "State Machine" shows that a 
+the State Machine Event class has two subtypes, Polymorphic Event and SEM event.
+SEM events can cause transitions in the State Machine, whereas Polymorphic 
+Events cannot.  SEM Events have two subtypes as well, Local Event and Non-Local
+Event. A Local Event is one that is defined in the state machine and a 
+Non-Local Event is an event that is defined in another state machine.  A 
+Non-Local Event corresponds to a Polymorphic Event defined in a superclass 
+of the state machine.  Thus Polymorphic Events are a definition of an event
+that can cause transitions in subtypes of the class the it is defined in, 
+with the corresponding Non-Local Event instances causing the actual trasitions.
+
+The differences here are that polymorphic events cannot cause transitions,
+and that in order to define a polymorphic event, the user must create an
+instance state machine for the class, even if the class has no interesting
+behavior of its own.
+
+3. Changes to support UML event inheritance.
+
+3.1 Events
+
+Events to an instance are associated with a class, rather than a state machine.
+The distinction of local/polymorphic events is removed.  They are available 
+to the class, and any class derived from that class.   Events to class state 
+machines still belong to (and only to) the class state machine.
+
+3.2 Changes to action language -- Event Generation
+
+An event is generated to an instance. The set of possible events generated
+to an instance include events defined for the class of that instance,
+as well as any events defined in superclasses of the class.  The 
+processing of the event for classes in multiple hierarchies will only
+cause one transition to fire.  The tool will detect cases where there
+is indeterminant behavior due to the same event causing transitions
+in multiple hierarchies or classification levels.  Since it only makes sense
+to generate creation events to leaf class state machines,  creation transitions
+can only be assigned events defined by that state machine.   
+An event can only be assigned to one creation transition in a state machine,
+(although it could be used elsewhere). The syntax and semantics of OAL is 
+unchanged, althought the validation code will change to search for events
+defined in superclasses.
+
+4.  Add backwards compatibility
+
+The BP 6.1 SQL export functionality is changed to export the state machine
+subsystem data in a format that is compatible with the BP 6.1 schema.  Events
+that cause transitions in subclasses are mapped to Polymorphic Events in the
+superclass, and Non-Local Events in the subclass(es).  In cases where the 
+user's model is not compatible (i.e. an event causes a transition in both the
+superclass and subclass), the export will issue a warning, and will remove the
+Local Event transitions from the superclass.
+
+Work Required
+-------------
+
+1.  Change event location in metamodel
+
+The metamodel is changed so that events (and event data signatures) are owned 
+by the Model Class instead of the StateMachine.  The user interface changes so 
+that events are created at the Model Class level.  The assign event to 
+transition code is changed to find the events defined in superclasses.
+
+2. Migration of existing models
+
+The changes in the metamodel will require us to have a way of migrating
+current models to the new schema.
+
+3. Changes to support UML event inheritance.
+
+3.1 Events
+
+The changes are made to the metamodel, and operations the user performs 
+on the metamodel.
+
+3.2 Changes to action language -- Event Generation
+
+The changes are made to the OAL validation code.
+
+4.  Add backwards compatibility
+
+The sql export code is changed to export the Tiger data in a BP 6.1 compatible
+format.
+
+
+End
+---
+
+$Log: polymorphic_events-i461.ant,v $
+Revision 1.1  2009/09/03 18:22:25  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.11  2009/01/01 23:14:03  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.10.34.1  2008/12/31 16:11:18  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.10  2005/05/17 18:01:21  greg
+Job: 461
+Ready for review
+
+Revision 1.9  2005/04/14 23:59:39  greg
+Job: 461
+Fix typos
+
+Revision 1.8  2005/04/13 19:13:47  greg
+Job: 461
+Add backwards compatibility requirements
+
+Revision 1.7  2005/04/06 19:58:14  greg
+Job: 461
+Add analysis and work required
+
+Revision 1.6  2005/03/22 00:01:30  svenkat
+Job: 461
+Modified Analysis sections 1 and 2
+
+Revision 1.5  2005/03/17 23:52:33  svenkat
+Job: 461
+Filled in Analysis sections 1 and 2
+
+Revision 1.4  2005/03/15 17:39:16  campbell
+Job: 461
+Updated to form the specification for research work.
+
+Revision 1.3  2004/12/13 18:08:42  campbell
+Job: 461
+Updated to reflect no change to metamodel.
+
+Revision 1.2  2004/12/07 11:49:51  campbell
+Job: 461
+Added backgound section explaining existing problems.
+Reworked rest of document to describe possible solution.
+
+Revision 1.1  2004/11/29 16:43:35  campbell
+Job: 461
+Introduced.
+

@@ -1,0 +1,447 @@
+========================================================================
+
+File:      $RCSfile: dts0100732441.ant,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Full verifier support for instance reference
+
+1. Abstract
+-----------
+To continue the instance reference support in BridgePoint,this issue 
+addresses  the complete support for " instance reference"  in the verifier.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100732441 - Full verifier support for instance reference
+[2] ClearQuest DEI dts0100703003 - Support intra-component instance reference
+    passing for classes.
+[3] ClearQuest DEI dts0100724622 - Implement single path for assignment
+	statement execution
+[4] ClearQuest DEI dts0100721501 - Assignment to instance reference attribute 
+    does not work
+[5] ClearQuest DEI dts0100685590 - Verifier crash: Can not pass struct typed 
+	value with inst_ref<class> typed struct members
+[6] ClearQuest DEI dts0100700663 - The Variable view does not display any value 
+	for Attribute  of instance reference type 
+[7] ClearQuest DEI dts0100700662 - Expanding structured data type member of 
+	array instance reference type encounters problem.
+[8]  ClearQuest DEI dts0100735476 - Allow instance reference set to be 
+	 expandable in Variable view.
+[9] ClearQuest DEI dts0100732443 - Verifier failed to compare instance 
+	references and instance reference sets correctly
+[10] ClearQuest DEI dts0100732258 - That MC-Java does not translate instance set 
+	equivalence correctly.
+
+4. Background
+-------------
+4.1 This issue is a parent issue for all the "instance reference" and "instance 
+	reference set" verifier issues. These sub issues are [3],[4],[5],[6],[7],[8] 
+	and [9]. Each point in the analysis section associated with the 
+	corresponding design point will address one of these sub issues.
+
+4.2 In any assignment or boolean binary statements, basically it is required
+	to get the RuntimeValue instance for the left and the right operands of
+	the statement. Then copy the right RuntimeValue instance into the left
+	RuntimeValue in assignment statement case, or compare them in the boolean
+	binary statement case.  
+	
+4.3 GetRuntimeValue() operations of modelClasses  Value, AttributeValueReference 
+    and other ones return the unique ID of RuntimeValue instance. This operation
+	should be used whenever the RuntimeValue instance is needed.
+
+5. Analysis
+-----------
+
+5.1 Implement single path for assignment statement execution [3]:
+	The execution of the assignment statement is done by 
+	AssignToMember::Execute()
+	
+	AssignToMember::Execute() v1.8 has two paths, first path for simple values 
+	assignment (such as Integer, Boolean and String), the second path for 
+	instance reference assignment. The simple value assignment uses the 
+	setValue() operations to execute the assignment statement, while the 
+	instance reference assignment uses the RuntimeValue::copyValue() v1.12
+	operation.
+	
+	The path selection is based on the chain value for left hand side of the
+	assignment statement. If the sub-type for the root Value instance that 
+	represents the left value is Instance Reference, then the second path is 
+	selected, otherwise the first path is selected. This caused only the 
+	instance reference for Transient variables to work in verifier, and any 
+	nested member access for Attributes, Parameter or Structured Members 
+	will always take the first path since the sub-type of the root Value for 
+	the left value is not Instance Reference.
+	
+	If we consider to support more chain values to detect instance reference
+	copy that will not help, because the chain value does not always
+	distinguish between the copying instance reference and setting simple value.
+	The next two examples illustrate this point: 
+	 
+	Example 1 : copy instance reference
+	test.classAttr.instRef = obj	// where 'test' and 'obj' are IR Transient, 
+		   						 // 'classAttr' and 'instRef' are IR Attributes 
+	
+	The chain value for right value : V_VAL -> V_IRF 
+	The chain value for left value : V_VAL -> V_AVL -> V_VAL -> V_AVL 
+															-> V_VAL -> V_IRF
+	Example 2 : set simple value, String
+	
+	test.classAttr.word = "Hello";	//where 'test' is Transient IR, 'classAttr' 
+									//is Attribute IR and 'word' is String.
+									
+	The chain value for right value : V_VAL -> V_LST 
+	The chain value for left value : V_VAL -> V_AVL -> V_VAL -> V_AVL 
+															-> V_VAL -> V_IRF
+	
+	We can see that in the two previous examples, the chain values for the 
+	left value are the same although one is for instance reference copy value 
+	and the other is for String set value. 
+	So a unified path for assignment regardless value chain is needed.
+	
+	Regarding the core logic of assignment statement in 4.2, it is only required 
+	to get the RuntimeValue instances for both left and right value, then use 
+	RuntimeValue::copyValue() operation for copying the value. This method is
+	generic to handle all different values of InstanceReference , array value, 
+	simple value, etc.
+	The operation getRuntimeValue() will be used to get the RuntimeValue 
+	instances.
+		
+5.2	Assignment for Attribute of type instance reference [4]:
+	The assignment of instance reference to an Attribute fails, because the 
+	selected path to execute this assignment -in operation 
+	AssignToMember::Execute()- is the path of simple value assignment.
+	
+	This happens because for every Attribute assignment statement, the sub-type
+    of the root Value -representing the left hand side- is 
+    AttributeValueReference while the only supported one is InstanceReference.
+	
+	By implementing the unified approach described in 5.1, only the assigning 
+	of instance reference to a directly accessed attribute will work.
+    Nested attribute assignment will not work e.g."obj.attr1.attr2 = instance" 
+		
+	This limitation occurs because of the fixed value chain supported by  
+	AttributeValueReference::getRuntimeValue() v1.13.
+    This fixed value chain causes the verifier to fail finding the 
+    RuntimeValue instance representing the left hand 
+	side of the assignment statement. 
+	This causes termination for the statement execution.
+	
+	This fixed chain in AttributeValueReference::getRuntimeValue is : 
+	V_AVR -> V_VAL -> V_IRF
+	This chain value is captured in line# 3 : 
+	select one instHandle related by self->V_VAL[R807]->V_IRF[R801]->
+                                                       V_VAR[R808]->V_INT[R814];
+	
+	The previous chain value can execute statement such as : 
+	obj.attr = instance
+	where the chain value for the left value is : V_VAL -> V_AVR -> 
+																V_VAL -> V_IRF
+	
+	but for : 
+	obj.attr1.attr2 = instance;
+	the chain value for left value is : V_VAL -> V_AVR -> V_VAL -> V_AVR -> 
+																V_VAL -> V_IRF
+
+	At the first invocation for the AttributeValueReference::getRuntimeValue(), 
+	the next subType in the value chain will be AttributeValueReference while
+	the code is looking for Instance Reference.
+	
+	To resolve this issue, AttributeValueReference::getRuntimeValue() should 
+	query for all possible Value SubTypes and invoke the corresponding 
+	getRuntimeValue() operation.
+	
+5.3 Verifier crash 
+    "Can not pass struct typed value with inst_ref<class> typed Struct members"
+	[5]:
+
+	
+	The verifier crashes because of accessing an empty instance, this instance 
+	is copied from structured member that is passed as an operation parameter.
+	
+	Investigation showed that the structured member was assigned to an instance 
+	successfully, but while the operation invocation, the operation parameters 
+	setup failed to copy the runtime value successfully and the structured 
+	member became empty inside the operation context. I.e. the bug is localized 
+	at operation parameters setup.
+	
+	Through the value copy process during parameters setup, a RuntimeValue 
+	instance is created for each one of the structured member, and given the 
+	proper subType of Simple Value, Structured Value or Array Value. 
+	In case of Simple Value, the SimpleValue::initialize() operation creates
+	the suitable subType of Instance Reference Value, Simple Core Value 
+	or Component Reference Value, then associate this subType with the 
+	SimpleValue instance.
+	
+	Currently SimpleValue::initialize() v1.8 only supports SimpleCoreValue and 
+	Component Reference Value. If the data type related to super RuntimeValue 
+	instance does not match Component Reference Value, then a SimpleCoreValue 
+	will be created by default, which is our case and the problem begins here.
+	
+	Later on, the SimpleValue::getValue() v1.8 is invoked for the source 
+	structured member , this operation does not support Instance Reference Value 
+	as one of the subtype for SimpleValue.
+	Because of that the operation returns NULL value as a retrieved value. 
+	This value is used after that in SimpleValue::setValue(instance) v1.8 for 
+	the destination SimpleValue - representing the operation parameter - and
+    set that NULL value in the SimpleCoreValue that was created during the 
+    SimpeValue::initialize().
+    
+    Worth mentioning that even SimpleValue::setValue(instance) does not 
+	consider Instance Reference Value as subType of SimpleValue.
+	So the fix needs to be placed in three operations : 
+		- SimpleValue::initialize() : creates Instance Reference Value instead 
+		  of the default SimpleCoreValue in the case of instance reference data 
+		  type.
+
+		- SimpleValue::getValue() : supports Instance reference 
+		  Value, and returns the unique ID of the instance that referenced by it.
+		- SimpleValue::setValue(instance) : supports Instance 
+		  Reference Value, and makes it reference to the Instance that is 
+		  identified by the passed unique ID.
+	 	
+5.4 The Variable view does not display any value for Attribute of instance 
+	reference type [6]:
+	
+	This sub-issue reports that the Attributes of instance reference type have 
+	a blank field in value column in the Variable view and they are not 
+	expandable although they are not empty.
+	
+	For every element in Variable view, it is required to get the element's
+	name, value and its child elements -if exist. These three element's 
+	information is retrieved using BPVariable.getName() v1.5,  
+	BPValue.getValueString() v1.10 and BPValue.getVariables() v1.10 
+	respectively.
+	
+	Regarding retrieving the element value, the main logic is to traverse 
+	through meta model to get the RuntimeValue instance that represents the 
+	element value, and query for all this RuntimeValue instance sub-types and 
+	return the proper string value. This logic is independent of the element 
+	type or its data type.
+	
+	The structure of the BPValue.getValueString() is simple. It consists of 
+	multiple if/else if blocks, each block represents one of the possibilities
+    like AttributeValue , LocalValue, etc. 
+    The code within these blocks queries the RuntimeValue instance 
+    using the block's value reference, then query for this RuntimeValue's 
+    subTypes instance and returns the appropriate value. 
+    
+    e.g. one of the blocks : 
+    if (value instanceof DataItemValue_c) {
+		  DataItemValue_c div = (DataItemValue_c)value;
+          RuntimeValue_c rtVal = RuntimeValue_c.getOneRV_RVLOnR3303(div);
+		  SimpleValue_c sv = SimpleValue_c.getOneRV_SMVOnR3300(rtVal);		< Common part starts here
+          if (sv != null) {
+            return rtVal.Getvalue().toString();
+          }
+          else {
+		    StructuredValue_c strVal = StructuredValue_c.getOneRV_SVLOnR3300(rtVal);
+			ArrayValue_c arrVal = ArrayValue_c.getOneRV_AVLOnR3300(rtVal);
+			if (strVal != null) {
+			  RuntimeValue_c rtv = RuntimeValue_c.getOneRV_RVLOnR3300(strVal);
+			  return rtv.getLabel();
+			}
+			else if (arrVal != null) {
+			  RuntimeValue_c rtv = RuntimeValue_c.getOneRV_RVLOnR3300(arrVal);
+			  return rtv.getLabel();
+			}
+          }
+        }
+        
+    All blocks have common part that begins with RuntimeValue's sub-types query, 
+    this common part is duplicated in each block, and some of the possible sub 
+    types of the RuntimeValue instance are missed in some blocks.
+	In AttributeValue case, the Instance Reference Value sub type is missing 
+	which causes the problem. This causes the instance reference value to be 
+	displayed properly for the most of the variable types such as Parameters 
+	and Transient. It is not displayed properly in Attributes case.
+	
+	BPValue.getVariables() structure looks very similar to 
+	BPValue.getValueString(). It consists of if/else if blocks with same 
+	value reference as BPValue.getValueString(), query to get the RuntimeValue 
+	instance related with it, then query for this RuntimeValue instance 
+	subTypes, but in this case to count the child elements if exist. 
+	Examples of the child elements are :
+	- Array Elements 
+	- Attributes 
+	- Structured Members 
+	
+	The AttributeValue block in BPValue.getVariables() does not query the 
+	Instance Reference Value as a SimpleValue's subtype(which is RuntimeValue's 
+	subtype), and that causes Attributes of instance reference type not to be 
+	expandable.
+
+	The common part described above should be extracted in a method.
+	
+5.5 Expanding structured data type member of array instance reference type 
+	encounters problem [7]:
+	
+	Expanding any Structure Data Type element in the Variable view pops up 
+	"Error Occurred" window with "Null Pointer Exception" error message.
+	The NPE is triggered at BPValue.getValueString() while getting the values 
+	of structured members.
+	
+	Regarding the analysis in 5.4, the structured member value is retrieved
+	using the RuntimeValue if block in the BPValue.getValueString(). This block
+	lacks the supporting Instance Reference Value as a subtype for SimpleValue 
+	which causes the NPE.
+	
+	Will be resolved directlty by the fix in 5.4.
+
+5.6	Allow instance reference set to be expandable in Variable view [8]:
+	
+	The instance reference sets are not expandable currently since the
+	BPValue.getVariables() returns no references for its children.
+	
+	The BPValue.getVariables() needs to be updated to return the correct 
+	children references to make the instance reference set expandable, 
+	BPVariable.getName() to get the instances names, and finally 
+	BPValue.getValueString() to get their values.
+	   
+
+5.7 Verifier failed to compare instance references and instance reference sets 
+	correctly [9]:
+
+5.7.1 Instance reference comparing :
+		BinaryOperation::getBoolean(UUID) v1.12 is the function that is used to 
+		evaluate the binary condition. The instance reference comparison 
+		currently supports the comparison of two Transient instance references.
+		It doesn't evaluate properly if one or both operands are instance 
+		reference of any type other than Transient.
+		
+		- If that operand is the left operand, the boolean condition will always 
+		  evaluated with True.
+		- If it is the right operand,a Null Pointer Exception will be triggered.
+		
+		To fix that, it is required to get the RuntmieValue instances for both 
+		operands regardless of the chain value, then compare their values.
+		This can be achieved using getRuntimeValue() operations.
+				
+5.7.2 Instance Reference Set comparing :
+	  The instance reference sets are considered equal under these terms:
+	  - They both have the same number of the instances.
+	  - The instances order does not matter.
+	  - Each instance in the first set, must exist in the second set with the
+	   same number of occurrence. 
+		
+	  Currently, the comparison for instance reference sets always evaluates 
+	  with False even if the same instance reference set variable is used in
+	  the both sides, i.e.  instRefSet == instRefSet.
+	  
+	  This happens because of the MC-Java translates into Java the OAL code : 
+	  instancesLeft ==  instancesRight literally .
+	  
+	  These instance reference sets are represented in Java as arrays of 
+	  instances. So even if the both arrays are identical in length, order and 
+	  instances, they are still two different Java objects that are not the 
+	  same.
+	  
+	  The MC-Java generation for instance reference set comparison must iterate
+	  on each instance in the two sets and evaluate the comparison with True if
+	  the equivalence terms above are satisfied. 
+	  A separate issue has been raised to resolve this issue[10].
+	  
+	  The comparison algorithm that accomplishes the equivalence terms : 
+	  Note : The MatchedBefore boolean array is used to mark the instance in the 
+	  right Instance Set as "matched before" and support matching the same 
+	  number of occurrences for duplicate instances in both sets
+	  
+	  
+	  							|
+	  							|
+	  						    |
+		+---+---+---+---+---+---V---+---+---+---+---+---+---+
+		|	Get both left and right instance reference sets |
+		+---+---+---+---+---+---v---+---+---+---+---+---+---+
+								|
+	  							|
+					    ?----?--V--?----?    NO	    ?---+---+---+        
+					    ? same length   |----------->   false   |
+						?----?--v--?----?		 	?---+---+---+
+			  					|
+								| YES
+								|
+				+---+---+---+---V---+---+---+---+
+				|    create boolean array       |
+				|  MatchedBefore with length    |
+				|  the instance set length      |
+				+-------+---+---v---+---+---v---+
+			  					|
+								| 
+								|
+				+---+---+---+---V---+---+---+---+
+				|    get i'th instance from     |
+				|       left instance set       |
+				+---Δ---+---+---+---+---+---v---+
+					|						|
+          Yes +-----+						|
+			  |								|
+			  |								|
+		?-----^-----?----?--?       	+---V---+---+---+---+---+---+---+		
+   NO   ? more instances    ?           |    get j'th instance from     |        
+  +-----? in the left set   ?		    |       right instance set      <---+---+---+
+  |		?-----Δ-----?----?--?			+---+---v---+---+---Δ---+---+---+   	    | Yes
+  |			  |									|           |               	    | 
+  |			  |									|           | NO               	    | 
+  |			  |									|           |                 	    |    
+  |           |							?---?---V---?---?---^----?				    |
+  |           | 						? MatchedBefore == false ?				    |                      
+  |           |							?---?---?---?-v-?---?----?				    |
+  |			  |									 	  |                             |
+  |			  |										  |                             |
+  |			  |										  | YES                         |
+  |			  |							  			  |                             |
+  |			  |										  |                             |
+  |	 +---+----^--+---+---+---+		YES     ?----?----V----?-----?    NO      ?---?-^-?----?----?---?
+  |  | MatchedBefore[j]=true <--------------?  Matched instances ?------------>    more instances   ?
+  |	 +---+---+---+---+---+---+              ?----?----?----?-----?            ?  in the right set   ?
+  |		          	          				      					  	      ?----v---?----?---?---?
+  |																				   |
+  |																				NO |
+  |																		    	   |
++-V-+---+    								 					  			   +---V---+		
+| True  | 								      					    	       | False |        
++---+---+ 																	   +---+---+
+
+
+6. Work Required
+----------------
+Implement the proposed fix in each point in the analysis section.
+
+7. Acceptance Test
+------------------
+The tests shall be defined in the design note.
+
+End
+---
+
+$Log: dts0100732441.ant,v $
+Revision 1.4  2010/12/09 19:31:40  nmohamad
+job:dts0100732441
+Remove the un-needed reference to the SMA QA issue and the test matrix after moving the test section to the design note.
+
+Revision 1.3  2010/12/09 19:29:55  nmohamad
+job:dts0100732441
+Move out the test section from analysis note to the design note.
+
+Revision 1.2  2010/12/09 17:35:04  nmohamad
+job:dts0100732441
+Addressing reivew minutes.
+
+Revision 1.1  2010/12/09 17:13:06  nmohamad
+job:dts0100732441
+The extracted Analysis note from the  previous created design note.
+This is the analysis note revision that was meant to be reviewed.
+

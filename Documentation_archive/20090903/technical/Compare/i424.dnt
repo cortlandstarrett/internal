@@ -1,0 +1,199 @@
+========================================================================
+
+File:      $RCSfile: i424.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:09 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Diff tree elements are not sorted properly
+
+Abstract
+--------
+Structured diff viewer uses default tree view sorter that sorts only on the
+basis of name of tree nodes. It is required [3] that alpha sorting should be 
+done after considering specific ordered relationships between metamodel 
+entities.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue # 424.
+[2] Bugzilla Issue # 175.
+[3] bp.core/doc/internal/technical/compare/compare-i175.ant
+[4] bp.core/doc/internal/technical/compare/i424.ant
+
+Background
+----------
+Document references [4], [1], [2] and [3].
+
+Design
+------
+Following classes represent the design for solution 1 described in analysis 
+note [4].
+
+i424.1  package com.projtech.bp.core.inspector
+
+        MetadataTypeSortingManager - This class serves as sorter and 
+              configuration for sorting the model elements under particular 
+              parent. It allows adding different sorters for different types
+              and a default sorter for children that do not have particular
+              sorting criteria. ModelInspector is provided with an instance of
+              this class for configuring and enabling sorting. It has following
+              methods
+            
+        -  void setTypeSorter(Class type, ISorterFactory sorterFactory)
+        -  void setDefaultTypeSorter(ISorterFactory sorterFactory)
+        -  void sort(Object[] elements)
+              This method utilizes type sorter or default sorter depending upon 
+              type of element array passed as argument.
+        
+        MetadataTypeSortingManager.ISorter - This interface defines methods for
+              any sorter that will sort a particular type. It has following 
+              methods.
+            
+		-  boolean canSort(Object[] elements)
+		      Returns whether or not it is free to sort given type element 
+		      array. This method also facilitates sorter factory to reuse an 
+		      existing instance.
+		-  void sort(Object[] elements)
+        
+        MetadataTypeSortingManager.ISorterFactory - This interface serves as 
+              factory for type sorters. Implementors can create a pool of 
+              sorters to allow reuse. It has following methods.
+              
+        -  ISorter createSorter(Object[] elements) throws 
+                                                     SorterFactoryException;
+                                                     
+        MetadataTypeSortingManager.SorterFactoryException - This exception 
+              specializes the exception that a factory can encounter.
+              
+        MetadataTypeSortingManager.DefaultSorterFactory - Default 
+              implementation of ISorterFactory that requires sorters to have 
+              constructor with no argument. It reuses an existing instance of 
+              sorters if any.
+        
+        AlphaSorter - Implementation of ISorter that sorts elements 
+              alphabetically, having get_name or getName methods.
+        
+        BaseTypeSpecificSorter - Base class that any type of type-specific 
+              sorter will derive from.
+        
+        Attribute_cSorter extends BaseTypeSpecificSorter - This class sorts 
+              model elements of type Attribute_c based on precedes/succeeds 
+              relationship.
+              
+        
+i424.2  Package com.projtech.bp.compare.structuremergeviewer
+        Once the functionality of sorting is moved to inspectors, it is 
+        required to ensure that StructuredDiffViewer displays tree elements 
+        accordingly. Since its internal mechanism re-orders the elements, these
+        need to be re-sorted. To allow this, a sorting index is introduced in 
+        DiffNode that is created by StructuredCreator. This sorting index is 
+        set according to the sort order given by Inspectors. Moreover a class 
+        ModelStructureDiffViewer.ModelStructureDiffViewerSorter is introduced
+        that extends ViewerSorter to sort the elements based on sorting index
+        present in diff nodes.
+
+Unit Test
+---------
+_- compare two models having differences in following class elements of any 
+   class having attributes, functions and a instance state chart.
+   . 4 consecutive attributes to ensure attribute order.
+   . 3 functions to ensure alpha sorting.
+   . Instance state chart to ensure type based sorting.
+_- After diff window is shown, expand to the level of class having the 
+   differences in its chilren model elements. 
+_R The children of the classes should be sorted according to following criteria
+   . Type based sorting segmenting attributes followed by functions followed by
+     Instance state chart.
+   . Attributes must be sorted according to user specified ordering.
+   . Functions must be alpha sorted.
+   
+This automated test case searches the SWT control Tree in the control hierarchy
+and iterates its tree items. TreeItem, a SWT control also contains DiffNode as
+data, which is used to get type info. The test case generates a text file and 
+lists all the tree elements along with their types. Each level of tree nodes is 
+indented by a space. This text file is then compared with another text file 
+containing expected test results.
+
+Work Required
+-------------
+i424.1   Create following classes under com.projtech.bp.core.inspector to 
+         provide generic mechanism for sorting to Inspectors.
+        
+         MetadataTypeSortingManager
+         MetadataTypeSortingManager.ISorter
+         MetadataTypeSortingManager.ISorterFactory                                       
+         MetadataTypeSortingManager.SorterFactoryException
+         MetadataTypeSortingManager.DefaultSorterFactory
+         AlphaSorter
+         BaseTypeSpecificSorter
+         Attribute_cSorter
+        
+i424.1.1 Update following files to modify inspectors so that they can make use 
+         of sorting manager to sort the children.
+
+         arc/create_model_inspector.arc
+         arc/create_object_inspector.inc
+
+i424.2   Remove sorting code from 
+                      com.projtech.bp.compare.text.ModelClassTextGenerator.
+
+i424.3   Create ModelStructureDiffViewerSorter as specified in design 
+
+i424.3.1 Modify files in compare package to include sorting index as specified 
+         in design section.
+
+i424.4   Implement automated unit test for test case given under Unit Test 
+         section   
+
+i424.4.1 Create two models under mdl in compare.test
+i424.4.2 Create required differences as specified in Unit Test section
+i424.4.3 Create expected result file under expected_results
+i424.4.4 Create Unit test that compare two model files and compare results as
+         specified in Unit Test section.
+
+End
+---
+
+$Log: i424.dnt,v $
+Revision 1.1  2009/09/03 18:22:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:35  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.86.1  2008/12/31 16:10:48  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/12/09 07:01:52  siddique
+Job:424
+Addressed review observation (left in the previous version).
+
+Revision 1.3  2004/12/09 06:00:09  babar
+Job: 424
+Observations addressed.
+
+Revision 1.2  2004/12/01 15:32:35  babar
+Job: 424
+Updated design adapting new mechanism as specified in ant
+
+Revision 1.1  2004/11/22 17:26:05  babar
+Job: 424
+Introduced
+
+
+

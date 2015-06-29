@@ -1,0 +1,612 @@
+========================================================================
+
+File:      $RCSfile: i1629.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:48 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Breakpoint UI
+
+Abstract
+--------
+This note describes the design of the Breakpoint UI for the Verifier.
+
+History
+-------
+
+Document References
+-------------------
+[1]  Issue 1629
+[2]  \\svr-azt-fil-01\winhome\cmccausl\public\SRS_MV.15.doc
+[3]  Issue 2393 - Parse all deletes non-problem markers
+
+Background
+----------
+The Eclipse Debug model provides a framework for the user interface for 
+creating, modifying and deleting breakpoints.  This note describes the
+work to use that framework to manipulate breakpoints for Verifier.
+
+Analysis
+--------
+The requirements for the breakpoint user interface are described in [2].
+There are seven types of breakpoints:
+
+- Changes to an association (creation, deletion)
+- Changes to an attribute (access, modification, uninitialized access)
+- Changes to a class or instance (creation, deletion)
+- Changes to an event (queued, dequeued, ignored, can't happen)
+- Changes to a state (entry, exit)
+- Execution of an OAL statement
+- Verifier execution engine exceptions(can't happen, read uninitialized data,
+    accessing an empty variable)
+
+All breakpoint types can be enabled/disabled. All the (non-verifier 
+exception) breakpoint types have the following properties:
+
+- Hit count
+- Condition to evaluate before tripping breakpoint
+
+Design
+------
+
+1. Define breakpoints in Debug Model
+
+1.1  Define breakpoint markers
+
+Eclipse implements breakpoints as markers.   The markers are defined in
+the plugin.xml file.  There are two extension points that are extended to 
+define a breakpoint marker: "org.eclipse.debug.core.breakpoints" and
+"org.eclipse.core.resources.markers".  A common breakpoint 
+"com.mentor.nucleus.bp.debug.ui.Breakpoint" is created to define the 
+attributes common to all Verifier breakpoints:
+
+   <attribute name="com.mentor.nucleus.bp.debug.core.location" />
+   String containing location of breakpoint as described in [2]
+   
+   <attribute name="com.mentor.nucleus.bp.debug.core.hitCount" />
+   Integer containing the hit count for the breakpoint
+   
+   <attribute name="com.mentor.nucleus.bp.debug.core.modelRootId" />
+   String containing the model root id where the breakpoint applies
+   
+   <attribute name="com.mentor.nucleus.bp.debug.core.modelElementId" />
+   String containing the model element id of the element the breakpoint
+     applies to
+     
+   <attribute name="com.mentor.nucleus.bp.debug.core.condition" />
+   String containing the expression to check before tripping breakpoint
+   
+   <attribute name="com.mentor.nucleus.bp.debug.core.conditionEnabled" />
+   Boolean for if condition expression needs to be evaluated before tripping
+     breakpoint
+     
+   <attribute name="com.mentor.nucleus.bp.debug.core.flags" />
+   Integer containing a bit field for use by subtypes
+   
+Eclipse defines a special 'line breakpoint' marker that is useful for
+defining source code line breakpoints.  The OAL breakpoint marker is 
+defined as a subtype of this marker.
+
+The verifier exception breakpoint marker is a subtype of the Eclipse 
+breakpoint (i.e., at the same level as the common BP breakpoint).  It has
+an attribute containing the name of the specific Verifier exception that
+this breakpoint applies to.
+
+The remaining breakpoint types are defined as subtypes of the BP common
+breakpoint marker.
+
+The markers for line breakpoints are associated with the resource for 
+the placeholder file of the actiivty where the breakpoint is placed.
+
+The markers for verifier exceptions are associated with the workspace
+resource.
+
+All other markers are associated with the .xtuml file resource.
+
+1.2  Define breakpoint classes
+
+All classes are defined in the com.mentor.nucleus.bp.debug.ui.model
+package.
+
+1.2.1  Common classes
+
+The IBPBreakpoint interface is defined with the following methods:
+
+	public void setLocation(String location) throws CoreException;
+	public String getLocation() throws CoreException;
+
+	public void setHitCount(int hitCount) throws CoreException;
+	public int getHitCount() throws CoreException;
+
+	public void setCondition(String condition) throws CoreException;
+	public String getCondition() throws CoreException;
+
+	public boolean isConditionEnabled() throws CoreException;
+	public void setConditionEnabled(boolean enableCondition) throws CoreException;
+	
+	public IMarker getMarker();
+	public void setEnabled(boolean enabled) throws CoreException;
+	public String getTypeName() throws CoreException;
+	
+	public boolean supportsInstanceFilters();
+	public ModelClass_c[] getAllClasses();
+	public Instance_c[] getInstanceFilters();
+	public void clearInstanceFilters();
+	public void addInstanceFilter(Instance_c instance_c);
+	
+	public void createTargetBreakpoint();
+	public void modifyTargetBreakpoint(IMarkerDelta delta);
+	public void deleteTargetBreakpoint();
+
+The interface also defines all string constants used for the marker id's.
+
+The BPBreakpoint class extends org.eclipse.debug.core.model.Breakpoint, and
+implements the IBPBreakpoint and IWorkbenchAdapter interfaces.  It implements
+all methods defined in the IBPBreakpoint interface (except the 
+*TargetBreakpoint methods).  The IWorkbenchAdapter interface is implemented
+to provide the getLabel() method to the debug framework.  The class also
+provide common code for creating the breakpoint marker, and manipulating
+the flags attribute.
+
+1.2.2  Subtypes of common classes
+
+The following classes (extending BPBreakpoint) are created:
+
+BPAssocCreateDeleteBreakpoint.java
+  - uses flags for creation, deletion 
+BPAttributeBreakpoint.java
+  - uses flags for creation, deletion 
+BPClassCreateDeleteBreakpoint.java
+  - uses flags for access, modification, uninitialized access
+BPEventBreakpoint.java
+  - uses flags for queued, dequeued, can't happen, event ignored
+BPStateBreakpoint.java
+  - uses flags for transition into and out of
+
+Each subtype implements the following:
+
+- accessor methods for the individual flags
+- override getTypeName() with the correct result for this subtype
+- override getLabel() with the correct result for this subtype
+- implement the *TargetBreakpoint() methods
+
+Note that the Breakpoints subsystem only currently defines breakpoints for
+OAL lines and events.  The *TargetBreakpoint() methods for all other
+breakpoint types will just log an error stating that they aren't implemented
+yet.
+
+1.2.3  OAL Line Breakpoints
+
+The class BPLineBreakpoint extends BPBreakpoint and implements 
+org.eclipse.debug.core.model.ILineBreakpoint.  The class implements the
+methods for ILineBreakpoint, as well as overriding the methods that other
+subtypes of BPBreakpoint override.  The flags attribute stores the type
+of activity this breakpoint is for.
+
+1.2.4  Verifier Exception breakpoints
+
+The VerifierExceptionBreakpoint class extends 
+org.eclipse.debug.core.model.Breakpoint, and implements the IWorkbenchAdapter 
+interface.  It implements the getLabel() method for the debug framework.
+The properties page for enabling these breakpoints needs a list of the 
+breakpoints not currently enabled, which is supplied by getAvailableTypes().
+The properties page also needs a dummy instance of VerifierExceptionBreakpoint,
+since the page is creating instances of this breakpoint. This is also 
+provided by this class.
+
+2. Add breakpoint contributions and actions
+
+2.1  Set Breakpoint menu items
+
+A 'Set Breakpoint' popup menu item contribution is created (in plugin.xml)
+for the following target classes:
+
+Association_c
+Attribute_c
+ModelClass_c
+StateMachineEvent_c
+StateMachineState_c
+Instance_c
+
+All contributions invoke the CreateBPBreakpointAction class (in
+com.mentor.nucleus.bp.debug.ui.actions).  This class implements the 
+IObjectActionDelegate interface.  The run() method determines the type
+of the selection, then creates the appropriate breakpoint, setting any
+flags as defined by [2].  For example, if an Instance_c is selected, the
+created breakpoint is only enabled for deletions, and only for that instance.
+The class also disables the 'Set Breakpoint' menu item if the breakpoint
+already exists.
+
+2.2  OAL Editor ruler actions
+
+2.2.1  Ruler menu item
+
+The Eclipse debug model ui framework implements the functionality for 
+for toggling a breakpoint in the popup menu fot the ruler in an activity
+editor.  We will have to create the actions to enable/disable the breakpoint
+and to show the breakpoint properties from this menu.  The following 
+contribution is added to plugin.xml:
+
+   <extension
+         point="org.eclipse.ui.popupMenus">
+      <viewerContribution
+            targetID="#TextRulerContext"
+            id="com.mentor.nucleus.bp.ui.text.activity.ActivityEditor.RulerPopupActions">
+         <action
+               label="Breakpoint Properties..."
+               class="com.mentor.nucleus.bp.debug.ui.actions.OALBreakpointPropertiesRulerActionDelegate"
+               menubarPath="debug"
+               id="com.mentor.nucleus.bp.debug.ui.actions.OALBreakpointPropertiesRulerActionDelegate">
+         </action>
+         <action
+               label="Enable Breakpoint"
+               class="com.mentor.nucleus.bp.debug.ui.actions.EnableDisableBreakpointRulerActionDelegate"
+               menubarPath="debug"
+               id="com.mentor.nucleus.bp.debug.ui.actions.EnableDisableBreakpointRulerActionDelegate">
+         </action>
+         <action
+               label="Toggle &amp;Breakpoint"
+               class="org.eclipse.debug.ui.actions.RulerToggleBreakpointActionDelegate"
+               menubarPath="debug"
+               id="com.mentor.nucleus.bp.debug.ui.actions.BreakpointRulerActionDelegate">
+         </action>
+      </viewerContribution>
+   </extension>
+
+The classes EnableDisableBreakpointRulerActionDelegate and 
+OALBreakpointPropertiesRulerActionDelegate mearly create instances of
+EnableDisableBreakpointRulerAction and OALBreakpointPropertiesRulerAction
+respectively.  Each of the action classes sets their enablement depending
+on the current selection in the update() method.  The run() method performs
+the correct operation on the currently selected line and breakpoint.  If 
+there is not a statement on the selected line, then a breakpoint is created
+on the first line following with a statement.  If there is not a line with
+a statement following, no breakpoint is created.
+
+The class AbstractBreakpointRulerAction is created as a base class for the
+two action classes, and contains common processing for the two subtypes.
+
+2.2.2  Ruler double click
+
+We will use the Eclipse debug framework code for creating/deleting a
+breakpoint.  We only need to add the functionality to the activity editor 
+by adding the following to plugin.xml:
+
+   <extension
+         point="org.eclipse.ui.editorActions">
+      <editorContribution
+            targetID="com.mentor.nucleus.bp.ui.text.activity.ActivityEditor"
+            id="com.mentor.nucleus.bp.ui.text.activity.ActivityEditor.BreakpointRulerActions">
+         <action
+               label="Toggle &amp;Breakpoint"
+               class="org.eclipse.debug.ui.actions.RulerToggleBreakpointActionDelegate"
+               actionID="RulerDoubleClick"
+               id="com.mentor.nucleus.bp.debug.ui.actions.ManageBreakpointRulerAction">
+         </action>
+      </editorContribution>
+   </extension>
+  	
+2.3  Verifier Exception menu item
+
+[2] states the 'Add Verifier Exception Breakpoint...' menu item is added
+to the 'Run' menu.  This is accomplished with the following entries in
+plugin.xml
+
+<extension point="org.eclipse.ui.actionSets">
+	<actionSet label="BridgePoint Debug" visible="true" 
+	     id="com.mentor.nucleus.bp.debug.ui.BPDebugActionSet">
+		<menu label="&amp;Run" path="additions" id="org.eclipse.ui.run">
+	       <separator name="bpGroup">
+	       </separator>
+	    </menu>
+	    <action definitionId="com.mentor.nucleus.bp.debug.ui.commands.AddExceptionBreakpoint" 
+	       label="Add &amp;Verifier Exception Breakpoint..." 
+	       class="com.mentor.nucleus.bp.debug.ui.actions.AddVerifierExceptionAction" 
+	       menubarPath="org.eclipse.ui.run/breakpointGroup" 
+	       enablesFor="*"
+	       id="com.mentor.nucleus.bp.debug.ui.actions.AddExceptionBreakpoint">
+	    </action>  	
+    </actionSet>
+</extension>
+<extension point="org.eclipse.ui.commands">
+      <command
+            name="Add Verifier Exception Breakpoint"
+            description="Create a Verifier Exception Breakpoint"
+            categoryId="org.eclipse.debug.ui.category.run"
+            id="com.mentor.nucleus.bp.debug.ui.commands.AddExceptionBreakpoint">
+      </command>
+</extension>
+
+The AddVerifierExceptionAction class implements IWorkbenchWindowActionDelegate
+interface.  The run() method gets the dummy VerifierExceptionBreakpoint
+instance, and opens the property page for that instance.
+
+2.4  Breakpoint Properties
+
+The contribution for the Breakpoint Properties menu item looks like:
+
+      <objectContribution
+            adaptable="false"
+            id="com.mentor.nucleus.bp.debug.ui.properties"
+            objectClass="com.mentor.nucleus.bp.debug.ui.model.BPBreakpoint">
+         <action
+               label="Breakpoint Properties..."
+               class="com.mentor.nucleus.bp.debug.ui.actions.BPBreakpointPropertiesAction"
+               menubarPath="additions"
+               enablesFor="1"
+               id="com.mentor.nucleus.bp.debug.ui.actions.BPBreakpointPropertiesAction">
+         </action>
+      </objectContribution>
+
+The AddVerifierExceptionAction class implements IObjectActionDelegate
+interface.  The selectionChanged() remembers the breakpoint currently 
+selected.  The run() method opens the property page for the currently 
+selected breakpoint instance.
+
+3. Create property pages
+
+All propery pages are created in the backage
+com.mentor.nucleus.bp.debug.ui.propertypages.
+
+3.1 Common property pages
+
+3.1.1 The class BPBreakpointPage is a property page that contains all data that
+is common to all breakpoints.  Subtypes of this class implement the 
+createTypeSpecificEditors() method to add widgets specific to the subtype.
+Subtypes also implement the doStore() method to store data specific to that
+subtype.
+
+This page contains:
+
+ - breakpoint location
+ - enabled/disabled
+ - hit count
+ - condition enabled
+ - condition editor
+ 
+3.1.2  The class BreakpointFiltersPage is a property page for selecting
+instances that a breakpoint applies to.  The InstanceFilterEditor
+class is a helper for this page.
+
+3.1.3  The BreakpointConditionEditor class supplies the widgets to edit
+the condition enabled and condition expression editor.
+
+3.2  Specific property pages
+
+3.2.1 There is a property page created for each of the subtypes of BPBreakpoint.
+Each page contains widgets for the changing of data specific to that breakpoint.
+The class names for these pages are:
+  AssocCreateDeleteBreakpointPage
+  AttributeBreakpointPage
+  ClassCreateDeleteBreakpointPage
+  EventBreakpointPage
+  OALLineBreakpointPage
+  StateBreakpointPage
+
+3.2.2 The VerifierExceptionBreakpointPage shows a list of Verifier exception 
+breakpoints that are currently not enabled.  There is a check box next to
+each breakpoint.  The user selects the breakpoints to enable by checking
+the box, and clicking OK.
+
+3.3  Property page extensions
+
+In plugin.xml, we add extensions for each of the property pages.  For 
+example, here are the entries for the line breakpoint pages:
+
+<extension point="org.eclipse.ui.propertyPages">
+   <page
+      class="com.mentor.nucleus.bp.debug.ui.propertypages.OALLineBreakpointPage"
+      id="com.mentor.nucleus.bp.debug.ui.propertypages.OALLineBreakpointPropertiesPage"
+      name="Common"
+      nameFilter="*"
+      objectClass="com.mentor.nucleus.bp.debug.ui.model.BPLineBreakpoint"/>
+   <page
+      class="com.mentor.nucleus.bp.debug.ui.propertypages.BreakpointFiltersPage"
+      id="com.mentor.nucleus.bp.debug.ui.propertypages.OALLineBreakpointFiltersPage"
+      name="Filtering"
+      nameFilter="*"
+      objectClass="com.mentor.nucleus.bp.debug.ui.model.BPLineBreakpoint"/>
+</extension>
+  
+4. Implement communication with debug target
+
+4.1 The following changes are made to the BPDebugTargets class:
+
+- The init() method is changed to add a call to 
+getBreakpointManager().addBreakpointListener(this).
+
+- The terminate() method is changed to add a call to 
+getBreakpointManager().removeBreakpointListener(this).
+
+- The supportsBreakpoint() method is changed to return true if the breakpoint
+passed in is a BP breakpoint, and the breakpoint belongs to the project
+associated with the launch.
+
+- The breakpointAdded() method is changed to call the 
+createTargetBreakpoint() method.
+
+- The breakpointRemoved() method is changed to call the 
+deleteTargetBreakpoint() method.
+
+- The breakpointChanged() method is changed to call the 
+modifyTargetBreakpoint() method.
+
+4.2 In BPProcess.startEngine() the method installDeferredBreakpoints()
+is invoked just before the verifier thread is created. This new method
+gets all the BP breakpoints from the Breakpoint Manager, and calls
+addBreakpoint() on the target to have them created in the target.
+
+5.  Miscellanous
+
+5.1  Update Debug Model Presentation
+
+The method BPDebugModelPresentation.getText() is changed to return the
+results of the getText() method for BPBreakpoints and 
+VerifierExceptionBreakpoints.
+
+The method BPDebugModelPresentation.getEditorId() is changed to return the
+ActivityEditorInput.EDITOR_ID when passed in a line breakpoint.  This
+implements the Open with functionality for breakpoints.
+
+5.2  Add get_ooa_id where needed
+
+In order to save the model element id attribute, the following classes have
+the get_ooa_id() operation added:  Attribute, State Machine Event, Instance.
+
+5.3  Update Breakpoint subsystem in ooaofooa
+
+The following changes are made to be consistent with the UI: 
+
+- The attribute Breakpoint.condition_enabled (boolean) is added.
+
+- The attribute Condition.Expression (string) is added.
+
+- The following attributes (all boolean) are added to Event Breakpoint:
+   onEnqueue, onDequeue, onCantHappen, onEventIgnored
+
+- An association from Event Breakpoint to State Machine Event is added,
+1 - 0..1, formalized in Event Breakpoint.  The Event Breakpoint and
+State Machine Event dispose() operations are updated to tear down this 
+association.
+
+- The Breakpoint.createBreakpoint() operation is updated to add a case for
+creating an Event Breakpoint.  The condition_enabled attribute is initialized
+to false.
+
+5.4 Resource change listeners shouldn't parse all
+
+When a breakpoint marker is created/deleted/modified this causes a change
+to the resource.  The resource change listeners for the .xtuml files will
+do a parse all when the resource changes. To prevent this, we change the
+listeners to ignore resource changes that only involve markers.  The files
+changed are bp.core/ResourceChangeListener.java and bp.core/EclipseOoaofooa.java
+
+5.5. ui.text project changes
+
+5.5.1  The AllActivityModifier.clearActionPlaceholder() method is changed
+to only delete problem markers.
+
+5.5.2  In order to determine the placeholder file resource, the inner 
+class PlaceHolderEntry.PlaceHolderFileProxy is changed to public. The 
+accessor getModelElement() is added to PlaceHolderFileProxy.
+
+5.5.3  The workaround for issue 2393 [3] is made to ActivityEditor.java
+
+5.6  Utility class to generate location
+
+A location is defined by [2] as a string that unambigously identifies a
+model element where the breakpoint is located.  The class ModelElementLocation
+is created with one method:
+
+static public String getModelElementLocation(NonRootModelElement nrme)
+
+This method returns the location string for the passed in NonRootModelElement
+as defined by [2].
+
+Design Comments
+---------------
+The following requirements were not implemented:
+
+SRS-72P-28   - No advanced breakpoint menu item
+SRS-72P-102  - No advanced breakpoint menu item
+SRS-72P-118  - Separate breakpoint properties for subtypes
+SRS-72P-120  - Break on read of uninitialized value.
+SRS-72P-120a - Break on empty instance access.
+SRS-72P-120b - Empty Attribute
+SRS-72P-144  - No advanced breakpoint menu item
+
+Since we're using the Eclipse Breakpoint View, if the JDT plugins are 
+installed, the J! button will appear in the cool bar for the Breakpoint
+View.  Re-implementing our own Breakpoint View will take several weeks,
+so this situation is ignored for now.
+
+Work Required
+-------------
+All work is described in the design section.
+
+Unit Test
+---------
+- Manual tests
+
+- Verify menu items
+   _- Create a breakpoint for each subtype of BPBreakpoint
+   _- Try to create another breakpoint for the same instance
+   _R Set breakpoint menu item is disabled
+   
+- Verify property page appearance
+   _- Open the properties for each breakpoint
+   _R Properties page appearance matches that specified in [2]
+   
+- Automatic tests
+
+  For each type of breakpoint
+   _- Create instance of breakpoint
+   _R Breakpoint instance exists with correct data
+   _- Modify property of breakpoint
+   _R Property changes in the UI
+   _- Delete breakpoint
+   _R Breakpoint deleted in the UI
+  End for
+
+   _- Create all breakpoints again
+   
+   _- Start verifier execution
+   _R All breakpoints are created in the target (or log error created)
+   _- Create an event breakpoint
+   _R Breakpoint created in the UI
+   _R Breakpoint created in the target (or log error created)
+   _- Modify property of breakpoint
+   _R Property changes in the UI
+   _R Property changes in the target (or log error created)
+   _- Delete breakpoint
+   _R Breakpoint deleted in the UI
+   _R Breakpoint deleted in the target (or log error created)
+  
+_- Create a line breakpoint on a line with multiple statements.
+R- The created breakpoint in the target is associated with the first
+    statement on the line.
+
+_- Create a line breakpoint on an empty line with a statement on the 
+     following line
+R- The created breakpoint in the target is associated with the first
+    statement on the line following the empty line.
+
+_- Create a line breakpoint on an empty line at the end of an activity
+R- No breakpoint is created
+
+End
+---
+
+$Log: i1629.dnt,v $
+Revision 1.1  2009/09/03 18:20:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:22  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/08/02 21:24:26  greg
+Job: 1629
+Fix one typo
+
+Revision 1.2  2006/08/02 14:49:46  greg
+Job: 1629
+Add section 5.6
+
+Revision 1.1  2006/08/01 21:49:03  greg
+Job: 1629
+Introduce
+

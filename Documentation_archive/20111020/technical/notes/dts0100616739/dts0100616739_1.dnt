@@ -1,0 +1,199 @@
+========================================================================
+
+File:      $RCSfile: dts0100616739.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+MC-SystemC
+
+
+1. Abstract
+-----------
+Model compilers emit text.  Most often the text has been software.  However,
+this need not be the case.  Hardware-oriented text can also be emitted.  This
+note describes requirements and design for a model compiler variant that will
+emit SystemC that can be simulated on industry standard SystemC simulation
+platforms.
+
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100616739 MC-SystemC
+[2] <cvs>Documentation/internal/technical/notes/dts0100616739/minimum_requirements_e_r1.pdf
+    UML to SystemC Utility Development, Hiroyuki Yagi, Sony
+[3] <cvs>Documentation/internal/technical/notes/dts0100616739/Sony_BP_demo_summary_r1.pdf
+    UML to SystemC Utility Development, Hiroyuki Yagi, Sony
+[4] ClearQuest DEI dts0100643334 Message Direction (Un)Confusion
+
+4. Background
+-------------
+A model compiler for SystemC must be strongly influenced by the distinctives
+of xtUML and BridgePoint.  The SystemC model compiler must allow for the
+behavior modeled in xtUML to be mapped into SystemC constructs that preserve
+the syntax and semantics of Executable UML.  In other words, all of the
+artifacts from xtUML must map in some way into (executable) SystemC.
+
+In contrast, a tool that leverages only the graphics of UML for entering
+SystemC model will lack the power and distinctives of xtUML.  Such a tool
+is simply a "UML Schematic Entry" tool.  xtUML can go far beyond.
+
+
+5. Analysis
+-----------
+5.1  Classes
+     xtUML components are mapped into SystemC modules (the systemC flavor of
+     classes). xtUML classes can then be mapped into internal structures inside
+     each SystemC modules.
+
+5.1.1    "Create Instance" Statement
+         MC3202 maps "create instance" statement into a call to functions iniside
+         "sys_factor.c". "sys_factor.c" can access all classes inside all
+         domains using domain number.
+         In SystemC, 
+         1) we do not have domains.
+         2) Each component is a seperate module (class), which hides its variables.
+
+         We can not rely on a "centralized" instance factory. This will affect
+         the generation "create instance" statement.
+
+
+5.2  Event Dispatching
+       SystemC use a different methodology than current mc3020 event dispatching
+       mechanisim. We do not have an option to define our own events types.
+       All events should be of "sc_event type.
+       All information encapsulated inside the event like (reference to the class
+       instance, event number) is no longer exist.
+
+       Main element for SystemC behavior is process. Three types of processes exist
+       SC_METHOD, SC_THREAD and SC_CTHREAD. For each process one should do the following
+           1- Declare the process
+           2- Assign a list of signals and events to "sensitivity lsit". If the
+              value a signal is changed or an events "notify" function is called;
+              the process will be fired.
+           3- Assign a function to the process. This function will be called when the process is fired
+              (value one of the signal associated to the sensitivity list is changed)
+
+       example:
+
+       SC_METHOD(function_name);
+           sensitive << signal_name_1;
+           sensitive << signal_name_2;
+           sensitive << signal_name_3;
+
+5.2.1    Events
+         SystemC fires a process when a "notify" function is called for an associated
+         event or when signal value is changed. Thus xtUML events can be mapped
+         into objects of type sc_event (not synthizable) or to signals sc_sginal (synthizable).
+         This requires to change the generation of the statement "generate event".
+
+5.2.2    Dispatcher
+         Current mc3020 dispatcher gets the information about the "instance" from
+         the event instance. This information is no longer exist. For SystemC, we
+         need to register a process which is sensitive to changes in "state"
+         variables, signals coming from ports and internal events. The problem
+         arises when we have more than one instance from the class. The assignment
+         to the sensitivty list is doen statically at coding time. A prior knolwedge
+         of number of instances is needed to generate as many dispatchers as the
+         number of instances and assign the right events to each dispatcher.
+         
+         SystemC has two styles of state machines
+         1) Define two processes. The first one is sensitive to state machine events
+            and signals. Its responibility is to check the current state and execute
+            the right action and then compute next state. The other process is
+            sensitive to "clock" and "reset" signals and is responsible for assigning
+            the computed new state into the state variable.
+            This is the common style derived from elder hardware description languages
+
+         2) Uses only one SC_CTHREAD process. This process should have the following
+            structure.
+
+               // Simple SC_CTHREAD structure for synthesis
+               void process() {
+                    // reset
+                    reset_behavior(); // must be executable in a single cycle
+                    wait(); // first wait implies end of reset
+                    // infinite loop
+                    while (true) {
+                          rest_of_behavior(); // must contain 1 wait per control path
+                    }
+               }
+               
+            This style is prefered by "SystemC Synthesis 3.1" document.
+
+5.2.3    Timer Events
+         A notification of an event can be deffered in time. Thus a timer event
+         can be mapped into a deffered event notification. This will affect
+         the mapping of the "timer" related statements. However, this statement
+         is not adequate for synthesis.
+
+
+6. Design
+---------
+6.1   Classes:
+      Instantioan of classes can be done dynmically. However since event dispatching
+      needs a prior information of number of instances, no meaning for exerting
+      such effort.
+
+      Class definition will be mapped into a defintion of a structure. Class
+      instances will be mapped into structure instances. Structure definitions
+      will contain the declaration of class events as well.
+
+6.2   State Machines:
+      OAL code inside states and on transitions will be mapped into functions inside
+      the defined classes.
+
+      Using SystemC style of defining state machines, two (or one) other functions will
+      be genrated. However the dispatching processes must be generated within
+      the module scope not the structure (class) scope.
+
+6.2.1    Event Dispatching
+         Each one of the SystemC styles can be used.
+
+
+
+7. Design Comments
+------------------
+
+
+
+
+8. Work Required
+----------------
+
+
+
+9. Unit Test
+------------
+
+End
+---
+
+$Log: dts0100616739.dnt,v $
+Revision 1.5  2009/12/23 23:05:10  cstarret
+job:dts0100616739
+more updates on interface types and message direction
+
+Revision 1.4  2009/12/23 17:31:29  cstarret
+job:dts0100616739
+minor updates as we begin addressing issues
+
+Revision 1.3  2009/12/21 03:55:58  cstarret
+job:dts0100616739
+updated background with xtUML distinctives
+
+Revision 1.2  2009/12/16 16:36:59  yshoukry
+job:dts0100616739
+Initial design note
+

@@ -1,0 +1,151 @@
+========================================================================
+
+File:      $RCSfile: i395.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:18 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Complete Referential to Base Attribute Migration
+
+Abstract
+--------
+
+This note describes the change needed to leave the model in a good consistent
+state when migrating a referential attribute to a base attribute.
+
+History
+-------
+final - i395-100604-01.rvm
+
+Document References
+-------------------
+Bugzilla Issue 395
+
+Background
+----------
+When deleting a supertype or the supertype association (or any other case where
+an identifying attribute is removed and a referential attribute is not deleted
+as a result of the change), the referential attributes are left as data type
+'same_as<Base_Attribute>'. This is not a tidy state of affairs, these attributes
+should be left with the same data type as the original referred to base
+attribute.
+
+Design
+------
+In the ooa of ooa, the operation 'Referential Attribute.migrateToBase' is
+modified to add the following OAL:
+
+select one battr related by self->O_BATTR[R113];
+if (not_empty battr)
+  unrelate self from battr across R113;
+  select one battrType related by battr->O_ATTR[R106]->S_DT[R114];
+  select one attrType related by attr->S_DT[R114];
+  unrelate attr from attrType across R114;
+  relate attr to battrType across R114;
+end if;
+
+This action language finds the type of the base attribute referenced by the
+referential attribute and caches it as battrType. It then unrelates itself
+from its current data type (invariably this the type 'same_as<Base_Attribute>').
+Finally it relates the existing attribute to the original battrType, before
+going on to migrate its type to New Base Attribute.
+
+The existing migrateToBase is also defective in that it fails to update
+referentials that refer to the referential being migrated. All referentials
+point to a base attribute across R113. The referential being migrated is
+performing the migration because the original base attribute is going away.
+The following OAL changes all referring referentials to point to the current new
+base attribute:
+
+select many rtoRefs related by attr->O_OIDA[R105]->
+                                     O_RTIDA[R110]->O_REF[R111]->O_RATTR[R108];
+for each ref in rtoRefs
+  select one oldBattr related by ref->O_BATTR[R113];
+  unrelate ref from oldBattr across R113;
+  relate ref to battr across R113;
+end for;
+
+Where battr is the instance handle of the Base Attribute we are migrating to.
+This change is made at the end of same operation,
+Referential Attribute.migrateToBase.
+
+Implementation Comments
+-----------------------
+A version of this document was checked in under i428 in error.
+
+Unit Test
+---------
+
+_- Open ODMS
+_- Delete the Disk class
+_R The Offline and Online Disk classes have identifiers
+   with the correct type, integer.
+
+_- Export the ODMS model
+_- Re-import the ODMS model
+_- Display the ODMS subsystem
+_R The Drive - Disk Assignment Associative shows the Disk Id
+_R The error log shows no Null Pointer Exceptions
+
+_- Run Core test suite.
+_- Run Canvas test suite.
+_R All tests pass
+
+Code Changes
+------------
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial Version: 1.62     Final Version: 1.63
+
+End
+---
+
+$Log: i395.int,v $
+Revision 1.1  2009/09/03 18:21:18  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.152.1  2008/12/31 16:10:18  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2004/10/09 02:08:27  greg
+Job: 395
+Minor clarification
+
+Revision 1.6  2004/10/08 20:20:03  campbell
+Job: 395
+Corrected final revision numbers.
+
+Revision 1.5  2004/10/08 20:02:51  campbell
+Job: 395
+Ready for final review.
+
+Revision 1.4  2004/10/08 20:01:26  campbell
+Job: 428
+Ready for final review.
+
+Revision 1.3  2004/10/06 23:52:55  campbell
+Job: 395
+Address review meeting minutes.
+Added section for updating base attribute references.
+Extended Unit Test section.
+
+Revision 1.2  2004/10/05 23:39:48  campbell
+Job: 395
+Clarified background.
+
+Revision 1.1  2004/10/05 23:37:57  campbell
+Job: 395
+Introduced.

@@ -1,0 +1,194 @@
+========================================================================
+
+File:      $RCSfile: i965.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Improve Canvas Element rendering
+
+Abstract
+--------
+This note describes the design for improving the way that canvas draws itself.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 965
+[2] Test Track issue 30
+
+Background
+----------
+Currently, graphic elements are rendered in the order they were added to the
+diagram. While this works, it shows some unexpected behavior. For example, a
+selected item can be dragged 'behind' another element and can thus temporarily
+disappear. This behavior is disconcerting for the user.
+
+Analysis
+--------
+As mentioned above, graphic elements are rendered by selecting the set of
+instances to render across R1. We need a different association whose order
+represents the order in which the elements are to be rendered. By doing this,
+the element order can be recomputed whenever necessary.
+
+The order for rendering shall be computed according to the following rule,
+specified in descending z-order:
+
+- Any Connector being drawn
+- All selected shapes
+- All selected connectors
+- All connectors directly attached to a selected element
+- All elements indirectly connected to a selected element
+- All remaining elements.
+
+Those elements that meet a rule higher in the list shall appear to the user to
+be above an element that meets a rule lower in the list. No element shall
+appear in the list more than once.
+
+The display order must be recomputed whenever:
+
+- The selection changes
+- When a diagram is first opened
+- When a connector is drawn
+
+Design
+------
+1.  Add Display order association
+    A new association, R18 is created between 'Model' (GD_MD) and
+    'Graphical Element' (GD_GE). To avoid unwanted new attributes being
+    persisted, a new link class, 'Element In Display' (GD_EID) is added and
+    marked as non persistent.
+
+2.  Add a new operation to compute the display order
+    A new operation, 'computeDisplayOrder' is added to the Model class. It
+    implements the rules specified above. The order is first computed and then
+    cached in reverse, since the last elements drawn are the ones which appear
+    on top. Another new operation 'isIndirectlySelected' is added to the
+    'Graphical Element' class to support the fifth rule above.
+    
+
+3.  Call the new operation from all places where the display order must change.
+    The following places correspond to events that require the display order to
+    be computed:
+   
+3.1 When the selection changes
+    Since the selection changed event is not currently propagated to the modeled
+    canvas behavior, the call is placed in the CanavsEditor selection changed
+    handler.
+3.2 When the diagram is first opened
+    The operation is called from the operation 'initializeTools'. This operation
+    is renamed to 'gotFocus' to reflect its expanded responsibility. This
+    operation is already called at the appropriate time from 'setActiveEditor'
+    in the 'CanvasEditorActionContributor' class.
+3.3 When a connector is drawn
+    A call to the 'computeDisplayOrder()' operation is made in the state
+    'Creating Fist Segment'.
+
+4.  Modify Model.draw operation
+    This operation is modified to select the elements to draw across R18 instead
+    of R1 as before.
+
+5.  Change selection policy
+    The policy for selecting graphic elements is also modifed at this time to
+    accomodate the proposed changes above. The 'Selection Tool' state action,
+    'Selecting Symbol' is modified to traverse the display order to find a
+    selected element. By performing selection on the last element found to pass
+    the 'isOver' rule, the topmost element will always be selected. Previously,
+    when clicking on a stack of elements, the first item found was selected
+    (i.e. oldest and lowest in the display order).
+
+Design Comments
+---------------
+Altough not part of the original issue, the design for connector move is
+modified to eliminate a rounding error noticed during testing of the proposed
+solution. The middle text block of a connector is currently moved by half the
+delta for each end of the connector. This allows the center block to roughly
+track changes made to the position of one end of the other. Unfortunately, when
+moving both ends, the integer division by 2 means that the text block does not
+move as expected when moving both ends of the line. To resolve this:
+
+- A boolean argument to disable text block moving by the owning segment is added
+  to the 'Line Segment.move', 'Line Segment.moveStart' and
+  'Line Segment.moveEnd' operations.
+- All existing client calls to these operations are changed to pass true in this
+  argument, except 'Connector.moveStart' and 'Connector.moveEnd', which now
+  first test to see whether both ends of the connector are selected. If so, then
+  false is passed.
+- The whole of the text block move is handled in 'Connector.moveEnd' when both
+  ends are selected.
+
+Work Required
+-------------
+1.  Add Display order association
+    The changes prescribed in the design section are applied to the
+    ooaofgraphics model.
+
+2.  Add a new operation to compute the display order
+    The changes prescribed in the design section are applied to the
+    ooaofgraphics model.
+
+3.  Call the new operation from all places where the display order must change.
+   
+3.1 When the selection changes
+    Since the selection changed event is not currently propagated to the modeled
+    canvas behavior, the call is placed in the CanavsEditor selection changed
+    handler.
+3.2 When the diagram is first opened
+    The operation is called from the operation 'initializeTools'. This operation
+    is renamed to 'gotFocus' to reflect its expanded responsibility. This
+    operation is already called at the appropriate time from 'setActiveEditor'
+    in the 'CanvasEditorActionContributor' class.
+3.3 When a connector is drawn
+    A call to the 'computeDisplayOrder()' operation is made in the state
+    'Creating Fist Segment'.
+
+4.  Modify Model.draw() 
+    The changes prescribed in the design section are applied to the
+    ooaofgraphics model.
+
+5.  Change selection policy
+    The changes prescribed in the design section are applied to the
+    ooaofgraphics model.
+
+6.  Change the center text block move policy
+    The changes prescribed in the design comments section are applied to the
+    ooaofgraphics model.
+    
+Unit Test
+---------
+Since no new functionality is proposed, it is only required that existing unit
+tests must pass. However, Canvas unit tests are sensitive to the order of
+drawing commands. Hence all canvas test results asociated with any selection
+behavior must be recreated and the resulting images examined for visual
+equivalence.
+
+End
+---
+
+$Log: i965.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.32.1  2008/12/31 16:10:07  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2005/05/23 03:25:15  campbell
+Job: 965
+Introduced.
+

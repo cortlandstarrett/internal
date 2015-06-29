@@ -1,0 +1,149 @@
+========================================================================
+
+File:      $RCSfile: dts0100646195.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Array attribute problem in Session Explorer.
+Constants return wrong values
+
+
+1. Abstract
+-----------
+While executing a model, when user selects an array attribute in the Session 
+Explorer or Spotlight views, a "Simple access attempted on a compound value" 
+error is triggered.  Also, 'Constant' data types do not return their values 
+correctly.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100646195 - Array attribute problem in Session Explorer.
+[2] ClearQuest DEI dts0100681174 - DataTypes : Constants return wrong values.
+[3] Design note dts0100646195.dnt
+[4] ClearQuest DEI dts0100685215 - Run full UI.Canvas CCP tests
+
+4. Background
+-------------
+See [3].
+
+5. Design
+---------
+5.1 AttributeValue.getValue() operation
+
+Before:
+rtVal_ID = self.getRuntimeValue();
+select any value from instances of RV_RVL where
+                                           selected.RuntimeValue_ID == rtVal_ID;
+if not_empty value
+  return value.getValue();
+else
+  // Attribute is a referential but doesn't fomalize any association
+  return GD::string_to_instance(value: "not participating");  
+end if;
+
+
+After:
+rtVal_ID = self.getRuntimeValue();
+select any value from instances of RV_RVL where
+                                           selected.RuntimeValue_ID == rtVal_ID;
+if not_empty value
+  select one rtVal related by self->RV_RVL[R3304];
+  select one arrayVal related by rtVal->RV_AVL[R3300];
+  
+  if (not_empty arrayVal)
+	return GD::NULL_INSTANCE();
+  else
+	return value.getValue();
+  end if;
+else
+  // Attribute is a referential but doesn't formalize any association
+  return GD::string_to_instance(value: "not participating");  
+end if;
+
+Queries and if-else condition statement are added to check if the selected 
+attribute -in the Session Explorer or Spotlight views- has ArrayValue instance
+associated with it. I.e. the selected attribute is an array 
+
+
+5.2  Value.computeValue() operation 
+
+Before:
+<snipped code>
+select one instRef related by self->V_IRF[R801];
+select one instSetRef related by self->V_ISR[R801];
+select one messageValue related by self->V_MSV[R801];
+<snipped code>
+ elif (not_empty lreal)
+    rucRtVal.setValue(value:GD::real_to_instance(value:lreal.getReal()));
+  elif (not_empty transientValueReference)
+<snipped code>
+
+
+After:
+<snipped code>
+select one instRef related by self->V_IRF[R801];
+select one instSetRef related by self->V_ISR[R801];
+select one symbolicConstVal related by self->V_SCV[R801];
+select one messageValue related by self->V_MSV[R801];
+<snipped code>
+elif (not_empty lreal)
+   rucRtVal.setValue(value:GD::real_to_instance(value:lreal.getReal()));
+elif (not_empty symbolicConstVal)
+ select one symbolicConst related by symbolicConstVal->CNST_SYC[R850];
+ select one leafSymbolicConst related by symbolicConst->CNST_LFSC[R1502];
+ select one literalSymbolicConst related by leafSymbolicConst->CNST_LSC[R1503];
+ rucRtVal.setValue(value:GD::string_to_instance(value:literalSymbolicConst.Value));
+ 
+elif (not_empty transientValueReference)
+<snipped code>
+
+
+6. Implementation Comments
+--------------------------
+6.1 During the promotion of this issue, we took the opportunity to address some
+    very long running tests in the Canvas CCP JUnit tests.  ModelRecreationTests
+    class is updated to contain a list of skipped models.  When we want to run
+    the more extensive testing, a developer can simply change the commenting to
+    use the empty array of tests to skip, thereby running all of the tests. This
+    is tied to [4].
+
+7. Unit Test
+------------
+See [3].
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100681174-646195
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Attribute Value/Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+
+com.mentor.nucleus.bp.ui.canvas.test/src/ModelRecreationTestSuite.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+  ModelRecreationTests.java
+
+End
+---
+
+$Log: dts0100646195.int,v $
+Revision 1.2  2010/04/23 14:44:50  kbrown
+job:dts0100646195
+Updated for some additional implementation comments about a canvas test change done along with this issue.
+
+Revision 1.1  2010/04/18 15:49:18  nmohamad
+job:dts0100646195
+Creating..

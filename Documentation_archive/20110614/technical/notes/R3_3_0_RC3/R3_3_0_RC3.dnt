@@ -1,0 +1,194 @@
+========================================================================
+
+File:      $RCSfile: R3_3_0_RC3.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Address release issues for RC3
+
+1. Abstract
+-----------
+This note describes the design to address multiple stop-ship bugs that were
+found during testing of the R3.3.0 release.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100775846
+    Unable to satisfy interface references in component diagram
+[2] ClearQuest DEI dts0100775847
+    Published references under GPs are not available for use in type chooser
+    dialog
+[3] ClearQuest DEI dts0100776036
+    GP packaged launch configurations not correctly persisted
+[4] ClearQuest DEI dts0100776035
+    Component references not showing in session explorer
+[5] ClearQuest DEI dts0100776048
+    Port OAL not possible on nested interface references
+
+4. Background
+-------------
+After the first release candidate multiple issues have been found.  We have are
+currently on RC3 for resolution of the latest issues.
+
+5. Analysis
+-----------
+5.3 Load and save component reference launch configuration data
+Two debug.ui methods in VerifiableElementComposite were not updated for
+component references in generic packages. These are updateEntries() and
+getEnabledElementsFromEntries().
+
+5.4 Component references not showing in session explorer
+Issue [4] happens because Package.isExecutingOrIsChildExecuting() fails to
+consider the possibility that a package may contain only executing component
+references. Thus if a launch is created that has this configuration, no packages
+pass the test for being shown at the root of the session explorer tree and it
+remains empty. 
+
+6. Design
+---------
+6.1 Allow satisfactions to be made in a component diagram
+
+The following operations were recently changed to account for different nesting
+paths under components when generic.  They incorrectly were changed to find the
+drawn to provision or requirement using the drawn from component, which will
+not own the drawn to element.  Considering that the provisions and requirements
+are guaranteed to be under the same model root each selection is changed to
+use a select any with the given id.
+
+It was additionally noticed that cropping was wrong for provisions and
+requirements drawn within the component container symbol.  This was caused by
+new code that re-crops the connections to account for some small differences
+during drawing and actual creation of the connector.  The code needs to re-crop
+after we adjust the request to account for being over the container symbol.
+
+6.2 All published references to be considered in collectVisibleElementsForName
+
+The operation Model Class.newInstanceReferenceDataType() was not creating PE_PE
+instances for the new data types when under a GP.  It is modified to do so and
+associate with the class' parent package.
+
+Additionally, visibility consideration for S_IRDT instances needs to be done
+against the Model Class not the DT itself.  To do this a new operation is added
+to Packageable Element, getVisibilityValue().  This operation will return the
+value of Packageable Element.Visibility unless the PE's subtype is an S_IRDT.  
+In this case the Model Class associated is found and it's PE Visibility value is
+returned.  The new operation is called in
+Package.collectVisibleElementsForName() and in
+Component.collectVisibleElementsForName().
+
+6.3 Update VerifiableElementComposite to support Component References
+The methods, updateEntries() and getEnabledElementsFromEntries() are extended to
+descend through R8000 and R8001 (from the package) and R8003 and R8001 (from the
+component) to find the child component reference instances.
+
+6.4 Package.isExecutingOrIsChildExecuting()
+The following OAL is added at the end of this operation just before the false
+return statement:
+
+select many compRefs related by self->PE_PE[R8000]->CL_IC[R8001];
+for each compRef in compRefs
+  if compRef.isExecuting()
+    return true;
+  end if; 
+end for;
+
+6.5 Assure interface operations and signals available under nested component
+
+Interface operations and signals were not showing in model explorer under a
+component that was nested in the GP context.  This was due to the fact that the
+OAL for locating the interface in createOperationsAndSignals() did not consider
+a component as parent.  The selection logic is changed to get the PE_PE by id,
+which will use the getGlobal() hashmap lookup.
+
+The wizard code cannot handle multiple traversals for populating the wizard
+selection page, therefore the current provision and requirement formalize
+wizards will not support interfaces defined directly under a component.  To
+avoid this we will modify the wizard definitions in context_menu.pei.sql to use
+the new chooser dialog which supports all interfaces through the visibility
+visitor.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design section.
+
+9. Unit Test
+------------
+9.1 Test satisfactions in component diagram
+
+_- Create a component in a GP context
+_- Open the diagram
+_- Create two inner components
+_- Draw a provision from one component
+_R The provision is drawn and cropped correctly
+_- Draw a requirement from the other component to the
+   provision
+_R The requirement is satisfied with the provision
+_R There is only one floating text
+_- Delete the provision on requirement
+_- Draw a requirement from one component
+_R The requirement is drawn and cropped correctly
+_- Draw a provision from the other component to the requirement
+_R The provision is satisfied with the requirement
+_R There is only one floating text
+
+9.2 Test published references in chooser dialog
+
+_- Create two packages
+_- Create a class under one package
+_- Create a class with an operation under the other package
+_- Publish the first class
+_- Select the operation and execute CME Set Return Type...
+_R The IRDT and IRDT set is visible in the chooser dialog
+_- Close the dialog
+_- Mark the first class as private
+_- Select the operation and execute CME Set Return Type...
+_R The IRDT and IRDT set are not visible in the dialog
+
+9.3 Test interface reference formalization
+
+_- Create a component under GP context
+_- Create a component inside the component
+_- Create an interface inside the component
+_- Create an interface reference on the nested component
+_- Right click on the interface reference
+_R The Formalize... menu item is available
+_- Execute the menu item
+_R The chooser dialog is shown and contains the created interface
+_R The Path column includes the path to the interface
+
+End
+---
+
+$Log: R3_3_0_RC3.dnt,v $
+Revision 1.4  2011/06/06 20:30:36  tlondon
+Job: dts0100776048
+
+Add documentation about interface references changes
+
+Revision 1.3  2011/06/06 18:37:36  campbell
+Job: dts0100776035
+Add details for component references in launcher fix.
+
+Revision 1.2  2011/06/06 18:02:42  campbell
+Job: dts0100776035
+Add details for component references in session explorer fix.
+
+Revision 1.1  2011/06/06 16:52:20  tlondon
+Job: dts0100775847 dts0100775846
+
+Add design note
+

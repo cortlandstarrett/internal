@@ -1,0 +1,229 @@
+========================================================================
+
+File:      $RCSfile: dts0100677178.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Uniqueness of attribute names not checked
+
+
+1. Abstract
+-----------
+The uniqueness of attribute names is not checked at entry time, neither by the 
+parser on "Parse All" nor by Verifier. After investigation, this defect is also 
+applicable on all BP elements that are non root elements.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100677178 - Uniqueness of attribute names not checked
+[2] Manual Test DEI dts0100697477  - Class Attribute/Operation names uniqueness 
+
+4. Background
+-------------
+4.1 Upon creating specific non root element components in BP (e.g. class 
+attributes, class operations, etc), a unique name is not assigned to the created 
+element. This leads to redundant attribute names that are neither checked by the 
+parser nor the verifier.
+
+5. Analysis
+-----------
+5.1 The initialize functions of such non root element components were inspected 
+to validate that the needed domain functions required to achieve instance name
+creation uniqueness was correctly called. A faulty path was identified 
+in the code and details of this path is explained in the design section below.
+
+5.2 The rename process also does not check for the name uniqueness for non root
+ components. This allows the user to set a name for attribute - as example for 
+ non root component element - which is already given to another attribute.
+
+
+6. Design
+---------
+
+6.1 Upon creation of any element in BP, the initialize function of that element 
+gets called. Part of the initialize code is the creation of that element instance 
+name. The domain function "getUniqueInitialName" should be used to verify such 
+functionality. The current faulty code path pseudo code is as follows [Attribute 
+creation will be used as an example for illustration below]:
+
+_- User creates a class attribute
+_- Class 'attribute' initialize function gets called
+_- The initialize function calls 'Ooaofooa.Getuniqueinitialname()' in order to 
+      retrieve a unique attribute instance name
+_- 'Ooaofooa.Getuniqueinitialname()' gets mapped into 'PersistenceManager.get-
+      UniqueNameForComponent()' call.
+_- 'PersistenceManager.getUniqueNameForComponent()' is implemented in a way to 
+	  guarantee name uniqueness only for root elements (e.g. components, 
+	  subsystem, packages, Interfaces, ...)
+_- If the element being added is not a root element as implemented in the 
+    function, a fixed redundant name is assigned to this instance. Please 
+    observe code below:
+
+
+Before : 
+   public String getUniqueNameForComponent(NonRootModelElement element,
+            String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            NonRootModelElement parent_me = hmd
+                    .getParentComponentRootModelElement(element);
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+            return candidateName;
+        }
+    }
+    
+    public String getUniqueNameForComponent(NonRootModelElement element, 
+            NonRootModelElement parent_me, String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+            return candidateName;
+        }
+    }
+
+6.2 The two getUniqueNameForComponent functions should be updated to ensure 
+ instance name uniqueness for non root elements. The else statements in the 
+ above two functions should be updated to query the element root, traverse all 
+ existing children of same element type and assign an instance name-number 
+ accordingly.
+
+In order to ensure uniqueness on creation, the PersistenceManager.java has to be 
+changed as follows
+
+ (Please observe the else statement implementation in comparison to the original 
+implementation illustrated in section 6.1):
+
+
+After:
+    public String getUniqueNameForComponent(NonRootModelElement element, 
+            String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            NonRootModelElement parent_me = hmd
+                    .getParentComponentRootModelElement(element);
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+  
+         	 
+        	NonRootModelElement parent_me = hmd.getComponentRootModelElement(element);
+        	
+        	String uniqueName = candidateName;
+        	int postfix = 0;
+  
+        	List children = getHierarchyMetaData().getChildren(parent_me, false);
+  
+            Iterator iterator = children.iterator();
+            while(iterator.hasNext()) {
+            	NonRootModelElement candidate = (NonRootModelElement) iterator.next();            	
+            	if(candidate.getName().equals(uniqueName)) {
+            		if (candidate.getClass() == element.getClass())
+            		{
+            		    postfix += 1;   
+                        uniqueName = candidateName + "-" + postfix; //$NON-NLS-1$
+                        iterator = children.iterator();
+            		}
+            	}
+            }            
+        	return uniqueName;
+        }
+    }
+    
+    public String getUniqueNameForComponent(NonRootModelElement element, 
+            NonRootModelElement parent_me, String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+        	 
+        	parent_me = hmd.getComponentRootModelElement(element);
+        	
+        	String uniqueName = candidateName;
+        	int postfix = 0;
+  
+        	List children = getHierarchyMetaData().getChildren(parent_me, false);
+  
+            Iterator iterator = children.iterator();
+            while(iterator.hasNext()) {
+          	NonRootModelElement candidate = (NonRootModelElement) iterator.next();            	
+          	if(candidate.getName().equals(uniqueName)) {
+          		if (candidate.getClass() == element.getClass())
+          		{
+          	          postfix += 1;   
+                      uniqueName = candidateName + "-" + postfix; //$NON-NLS-1$
+                      iterator = children.iterator();
+          		}
+          	}
+          }          
+      	return uniqueName;
+        }
+    }
+
+
+6.3 Rename functionality
+Using Properties and Model Explorer Views : in 
+\com.mentor.nucleus.bp.core\arc\create_rename_action.inc 
+apply additional code in 'isNameValid' to verify the name is not a duplicate 
+and extend the errors to cover such a use-case. The code should be added before 
+the end of the function "return null;" statement inside the "isNameValid function.
+
+
+		final ModelRoot modelRoot = ((NonRootModelElement) element).getModelRoot(); 
+		
+		if (Ooaofooa.Getuniqueinitialname(modelRoot, name, element) != name) {
+			return "Name already exists.";
+		}
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+8.1 Fully covered in the Design section above.
+
+9. Unit Test
+------------
+
+9.1 Perform manual test [2].
+9.2 All JUnit tests must pass.
+
+
+End
+---
+
+$Log: dts0100677178.dnt,v $
+Revision 1.3  2010/06/21 11:23:43  gbahig
+job:dts0100677178
+Updating the dnt with the review minutes.
+
+Revision 1.3  2010/06/15 15:41:21  nmohamad
+job:dts0100677178
+comments
+
+Revision 1.2  2010/06/15 13:07:53  gbahig
+job:dts0100677178
+This is an amended  design note for issue dts0100677178
+
+
+

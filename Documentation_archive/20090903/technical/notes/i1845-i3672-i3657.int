@@ -1,0 +1,320 @@
+========================================================================
+
+File:      $RCSfile: i1845-i3672-i3657.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+- ClassLoader modifications needed for Eclipse 3.3
+- Integrate BP with EDGE 2.0.0
+
+1. Abstract
+-----------
+This note describes the implementation taken to modify the BridgePoint class
+loader (BPClassLoader.java) to work with Eclispe 3.3.  This note also describes
+the work required to integrate BP with EDGE 2.0.0.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3657 - ClassLoader modifications needed for Eclipse 3.3
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3657
+[2] i3657.dnt
+[3] Bugzilla item 3672 - Integrate BP with EDGE 2.0.0
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3672
+[4] Bugzilla item 3634 - Installer updates to support BP on Eclipse 3.3
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3634
+[5] Bugzilla item 1845 - Support Eclipse 3.3
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1845
+[6] i1845.int
+    This implementation note contains implemenation details for
+    issue i1845.  This was ready for promotion when we determined
+    its promotion should be blocked by [1] and [2].  We created
+    a branch with all the chnges to facilite the work of [1] and
+    [2].  That is why i1845 has a seperate implementation note.
+[7] Bugzilla item 3693 
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3693
+    In Eclipse 3.3 a selected tree item is lost when a new perspective is opened
+    
+4. Background
+-------------
+The work for these two issues is part of a superbranch containing multiple
+bugs.  See [2] for a background information for the classloader.
+
+Early testing found that EDGE 1.3.2 is not compatible with Eclipse 3.3.  The
+EDGE Build Console view gives a "height" error when the view is opened.  We
+determined that we must move to EDGE 2.0.0 which is compatible with Eclipse 3.3.
+
+5. Design
+---------
+See [2] for the design of the classloader fixes.
+
+6. Implementation Comments
+--------------------------
+6.1 EDGE 2.0 Integration [3]
+  6.1.1 EDGE 2.0 uses a new file in the installation to indicate to EDGE what
+        toolsets are part of the installation.  This file is located at
+        <BP Install dir>/install/edge.config. The contents of the are in [4].
+
+  6.1.2 EDGE 2.0 was modified to not expose the extension points used by BP
+        for integration in the New Project Wizard.  Thankfully, re-enabling \
+        these extension points is all that is required.  The backend
+        implementation code was left in place when the extension points were
+        commented out.
+    6.1.2.1 In the final EDGE extension we install, we have to modify
+            ./com.mentor.nucleus_2.0.0.200806240859/plugin.xml.  Add back in the
+            commented out extension points
+
+<!-- Inter-Product Extension Declarations -->
+<!-- Obsolete
+        <extension-point id="model-compilers" name="Nucleus Product"
+schema="schema/model-compilers.exsd"/>
+        <extension-point id="code-builders" name="Nucleus Product"
+schema="schema/code-builders.exsd"/>
+-->
+
+    6.1.2.2 In the final EDGE extension we install, we have to modify
+            ./com.mentor.nucleus.ts.ui_2.0.0.200806240859/plugin.xml.  Add back
+            in the commented out extension point.
+
+<!-- Nucleus Bridgepoint wizard extension -->
+<!-- Bridgepoint no longer supported...
+        <extension point="com.mentor.nucleus.code-builders">
+                <code-builder name="%CodeBuilder.name"
+class="com.mentor.nucleus.ts.internal.ui.wizards.project.NewBasicProjectWizard">
+                </code-builder>
+        </extension>
+  -->
+
+6.2 ClassLoader modifications needed for Eclipse 3.3 [1]
+6.2.1 The Eclipse refactoring discussed in the design note [2] was the cause
+ of this problem.  The fix ended-up being even easier then what was 
+ layed out inthe design note.  BPClassLoader was refactored. However, 
+ it no longer has to override any methods (it simply provides a constructor).  
+ We could remove it altogether, but leaving it allows us to easily extend the 
+ default class path/loader behavior in the future should the need arise.
+ 
+ Note that the Eclipse refactoring was actually implemented in Eclipse 3.2.
+ The Elcipse bugzilla item is i114968.
+ (EclipseClassLoader - https://bugs.eclipse.org/bugs/show_bug.cgi?id=114968).  
+
+ As part of this refactoring a ClassPathManager was introduced into Eclipse and 
+ the  Eclipse DefaultClassLoader was modified to contain this 
+ ClassPathManager as a member.  With this Eclipse refactoring we are able to 
+ simply use the DefaultClassLoader. It gives us access to the underlying 
+ ClassPathManager if needed (which we do not currently).  
+
+6.2.2 Several debug.ui.test unit tests were failing because of a behavior 
+ difference between Eclipse 3.1 and Eclipse 3.3.  Many of these unit tests
+ followed a pattern where an item in the ME tree would be selected and then
+ debug perspective would be launched.  In the prior version (EClipse 3.1) the
+ system selection was maintained after this launch.  In Eclipse 3.3 when the 
+ ME view inside the new debug persptive is activated, it clears the system 
+ selection which caused many failures because a tree item that we counted on
+ being selected was not selected.  To fix this, we introduced a function, 
+ openPerspectiveAndView(string,string), to find the specified new perspective, 
+ active it, and open the specified view within that perspective.   
+
+ We modifed the failing tests to use openPerspectiveAndView() to activate the 
+ MD perspective before selecting a tree element in the ME view.  This allows us 
+ to select the tree element(s) we are interested from inside the debug 
+ perspective instead of in the modeling perspective.  
+ 
+ An issue was raised to document this problem in case it exists in other 
+ places in the tool outside of unit testing [7].
+
+
+ 
+7. Unit Test
+------------
+See [2].
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.als/generate.xml
+
+com.mentor.nucleus.bp.als.oal.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.compare/src/com/mentor/nucleus/bp/compare/
+    structuremergeviewer/ModelCompareStructureCreator.java
+com.mentor.nucleus.bp.compare/generate.xml
+
+com.mentor.nucleus.bp.compare.test/src/CompareTestSuite.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/BaseCompareTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/CompareTestResultCreator.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/I424SortingTest.java
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/
+    cases/I558DiffNextButtonTest.java
+com.mentor.nucleus.bp.compare.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/Vm_c.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/
+    NewSystemWizard.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/
+    BPClassLoader.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/UIUtil.java
+com.mentor.nucleus.bp.core/generate.xml
+
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureExistingProjectsTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureWorkspaceSetupTest.java
+com.mentor.nucleus.bp.core.test/generate.xml
+com.mentor.nucleus.bp.core.test/plugin.xml
+com.mentor.nucleus.bp.core.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/launch/
+    LaunchVerifierAction.java
+com.mentor.nucleus.bp.debug.ui/generate.xml
+com.mentor.nucleus.bp.debug.ui/plugin.xml
+
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/engine/
+    VerifierTransitionActionTests.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/test/
+    BPTestLaunchConfiguration.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/test/
+    BPTestLaunchConfigurationType.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/launch/
+    VerifierLaunchActionTests.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/launch/
+    VerifierLaunchConfigurationTests.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/session/
+    tree/VerifierSessionExplorerTests.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/test/
+    DebugUITestUtilities.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/test/
+    execute/VerifierExecuteActionTests.java
+com.mentor.nucleus.bp.debug.ui.test/src/com/mentor/nucleus/bp/debug/ui/test/
+    execute/VerifierInterfaceExecutionTests.java
+
+com.mentor.nucleus.bp.io.core/generate.xml
+
+com.mentor.nucleus.bp.io.ecore/generate.xml
+
+com.mentor.nucleus.bp.io.mdl/generate.xml
+
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/
+    FileVsFolder_i1608Test.java
+com.mentor.nucleus.bp.io.mdl.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.io.sql/generate.xml
+
+com.mentor.nucleus.bp.io.sql.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.mc.mc2020/build.properties
+com.mentor.nucleus.bp.mc.mc2020/generate.xml
+
+com.mentor.nucleus.bp.mc.mc2020.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.mc.mc3020/build.properties
+com.mentor.nucleus.bp.mc.mc3020/generate.xml
+
+com.mentor.nucleus.bp.mc.mc3020.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.mc.xmiexport/generate.xml
+
+com.mentor.nucleus.bp.pkg/plugin.xml
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/BaseTest.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/CVSUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    TestingUtilities.java
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasDummyIFile.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasEditorActionContributor.java
+com.mentor.nucleus.bp.ui.canvas/generate.xml
+com.mentor.nucleus.bp.ui.canvas/plugin.xml
+
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    CanvasTestUtilities.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    I835OpenDiagramEditorWithSearchView.java
+com.mentor.nucleus.bp.ui.canvas.test/generate.xml
+com.mentor.nucleus.bp.ui.canvas.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.ui.explorer/generate.xml
+
+com.mentor.nucleus.bp.ui.explorer.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.ui.properties/generate.xml
+
+com.mentor.nucleus.bp.ui.properties.test/generate.xml
+com.mentor.nucleus.bp.ui.properties.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.ui.session/generate.xml
+
+com.mentor.nucleus.bp.ui.text/arc/create_plugin_xml.arc
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    AbstractModelElementPropertyEditorInput.java
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/placeholder/
+    PlaceHolderEntry.java
+com.mentor.nucleus.bp.ui.text/generate.xml
+
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    activity/I643OALKeywordsHighlightingTest.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+    i372Tests/NavigationTest.java
+com.mentor.nucleus.bp.ui.text.test/test_setup.txt
+
+com.mentor.nucleus.bp.ui.tree/templates/generate.xml
+
+com.mentor.nucleus.bp.welcome/src/com/mentor/nucleus/bp/welcome/gettingstarted/
+    GettingStartedAction.java
+com.mentor.nucleus.bp.welcome/src/com/mentor/nucleus/bp/welcome/gettingstarted/
+    GPSGettingStartedAction.java
+com.mentor.nucleus.bp.welcome/generate.xml
+
+com.mentor.nucleus.bp.welcome.test/Test_Readme.txt
+
+MC-Java.test/.classpath
+
+
+
+End
+---
+
+$Log: i1845-i3672-i3657.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.2.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2008/09/05 14:01:55  rmulvey
+Job:1845 3672 3657
+Updated the unit test section to reflect that tests are now passing.
+
+Revision 1.1  2008/09/04 20:15:47  rmulvey
+Job:1845 3672 3657
+Updated note based on the final work done against this "super branch".
+
+Revision 1.1  2008/08/30 00:47:26  kbrown
+Job:3672
+Renamed INT and added info for 3672.
+
+Revision 1.1  2008/08/25 20:45:55  rmulvey
+Job:1845
+Introduced

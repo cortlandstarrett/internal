@@ -1,0 +1,130 @@
+========================================================================
+
+File:      $RCSfile: dts0100810624.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Top level package visibility
+
+1. Abstract
+-----------
+Several problems have been observed in reagard to package visibility at the
+system level.  With the introduction of Inter-project reference support, the
+the severity of these problems increase.  This issue was raised to address
+these problems.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100810624
+[2] ClearQuest DEI dts0100654681
+    Inter-project component references
+
+4. Background
+-------------
+none
+
+5. Analysis
+-----------
+With inter-project references enabled [2], package visibility becomes 
+significant at the system level where before it was not.
+
+There are currently three defects associated with this:
+
+5.1 A newly drawn package shows all three visibility context menu entries, 
+    whereas it should only ever show 2.
+5.2 Top level package symbols do not show their current visibility status.
+5.3 Making a top package private does not prevent it being seen and descended 
+    from other projects like it should.
+
+6. Design
+---------
+6.1 Initialize the Packagable Element when it is created inside the System 
+    Model. The following change is made:
+
+	In System Model.newPackage() add a call to pe.initialize();
+	
+6.2 Include system-level Packageable Element instances in the OAL  used to 
+    get visibility adornments.  The following change is made:
+    
+	In PackageableElement.getVisibilityAdornment() add:
+	select one sys related by self->EP_PKG[R8001]->S_SYS[R1401];
+	after the 2nd line. and add:
+	or (not_empty sys and sys.useGlobals == true) to the outer if test
+
+6.3 Enforce private visibility for system-level packages.  The following 
+    change is made:
+    
+	In SystemModel.collectVisibleElementsForName() inside the first 
+	"for each pkg in pkgs" loop add:
+	select one pe related by pkg->PE_PE[R8001];
+	if pe.Visibility == Visibility::Public or
+	     param.descending == false and pe.Visibility == Visibility::Protected
+	.... <existing body of for loop>
+	end if;
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+Specified in the design section.
+
+9. Unit Test
+------------
+9.1 Verify that new packages drawn at the system level contain the public
+    visibility decoration and no other visibility decoration.
+_- Create a new xtUML model (foo)
+_- Open ME
+_- Right click the new model, foo, and select 
+   "Upgrade to use global model elements..."
+_- Open the System Model Package Diagram
+_- Create a new Package
+_R On the Canvas there is a "+" in front of the package name.
+_R There are no other decorators except "+" in fornt of the package name   
+
+9.2 Verify that private visibility is enforced.
+_- Create a new xtUML model (foo)
+_- Open ME
+_- Right click the new model, foo, and select 
+   "Upgrade to use global model elements..."
+_- Open the System Model Package Diagram
+_- Create a new Package named "Public"
+_- Create a new Package named "Protected"
+_- Create a new Package named "Private"
+_- Right click "Protected" and select "Make Protected"
+_R On the canvas Protected is prefixed with "#"
+_- Right click "Private" and select "Make Private"
+_R On the canvas Private is prefixed with "-"
+_- Create a new User DataType in Protected and name it "ProtectedDT"
+_- Create a new User DataType in Private and name it "PrivateDT"
+_- Create a new class in "Public" and name it "Class1"
+_- Create a new operation in Class1 named op1
+_- Right-click op1 in ME and select "Set Return Type"
+_R "ProtectedDT" IS an available option
+_R "PrivateDT" IS NOT an available option
+
+
+
+End
+---
+
+$Log: dts0100810624.dnt,v $
+Revision 1.2  2011/11/07 18:20:26  rmulvey
+job:dts0100810624
+Added unit tests
+
+Revision 1.1  2011/11/07 15:01:55  rmulvey
+job:dts0100810624
+Introduced
+

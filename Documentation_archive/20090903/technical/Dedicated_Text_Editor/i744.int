@@ -1,0 +1,244 @@
+========================================================================
+
+File:      $RCSfile: i744.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Handle placeholder file deletion during domain.dispose()
+
+Abstract
+--------
+This note describes changes to allow placeholder files to be deleted when
+a domain is being deleted.
+
+History
+-------
+
+final i744-030905-01.rvm
+
+Document References
+-------------------
+Issue 744
+
+Background
+----------
+If an activity or description editor is open (and hence a placeholder file
+exists) when a domain is deleted from the Model Explorer, there are errors
+generated, and the placeholder file isn't deleted.  The error is:
+
+!ENTRY Text Plug-in 4 4 Mar 08, 2005 09:53:01.347
+!MESSAGE dispose marker error
+!STACK 1
+org.eclipse.core.internal.resources.ResourceException: The resource tree is 
+locked for modifications.
+
+
+Design
+------
+
+The deletion of the domain file has the resource tree locked, so we have to
+wait for the completion of the deletion and notifications before we can close
+the editor and delete the placeholder file.
+
+1.  Delay editor interactions
+
+The modelChanged() method in EditorListener.java is changed so that all
+work is done by using the UIJob class.  This defers any resource change 
+operations until after the current model change message has been processed.  
+Using Workspace.run() was attempted, but did not work; there were still Resource
+Exceptions.
+
+Implementation Comments
+-----------------------
+
+- The method Ooaofooa.clearDatabase() shouldn't clear the m_root pointer.
+That way the model root still knows which project it belongs to.
+java.arc is changed to remove that line of code.
+
+- The method Ooaofooa.performDeletionProtocol() was changed to remove
+the domain.dispose() invocation.  The clearDatabase() call does everything
+we need.
+
+- Added a null check in focusGained() for both ActivityEditor and 
+DescriptionEditor classes.
+
+Unit Test
+---------
+
+- The ui.text.test unit test had the following changes:
+
+	- The ElementDeleteTest was changed to use the domain delete action rather
+	than directly calling dispose on the domain instance.  This caused all the
+	resources to be deleted in the same way as they would when invoked by
+	a user.
+	
+	- As a result of the above change, the ui.text.test was changed to use
+	the normal operation model root, rather than the default test model root.
+	This means all places where the modelRoot data member was initialized by
+	calling BaseTest.getDefaultTestInstance() are changed to set the modelRoot
+	data member in the setUp() member function, as follows:
+	
+	  modelRoot = Ooaofooa.getInstance("test/testDescrip1.mdl", false); 
+	
+	The model loading code in OpenDescriptionEditor() is changed to load the
+	file in the project model root rather than the default test root.
+	
+	- In order for the Domain.Name attribute and the test model file name to
+	match, the Domain.Name attribute is changed to 'testDescrip1' in 
+	testDescrip1.mdl and testDescrip1.sql.  All tests that reference the Domain
+	Description editor are changed to use the new domain name as the editor title.
+	
+	- The order that multiple markers are shown in the pop-up box changed.
+	The tests DescriptionEditorInteraction and ActivityEditorInteraction were
+	updated with this change.
+	
+	- The method TestingUtilities.importFile() is changed to copy the file (e.g.,
+	testDescrip1.mdl) to the mdl directory.  The method is also renamed to
+	importModelFile in this class and the BaseTest class.  The unused methods
+	BaseTest.importFolder(), BaseTest.importFile(File), and TestingUtilities.
+	importFolder() are deleted.
+	
+	- The method OpenDescriptionEditor.createProject() is moved to the UITextTest
+	class.  The method UITextTest.assureModelRootNotNull() is created.  The method
+	returns the modelRoot instance for the test.
+	
+	- The PlaceholderFileDeletionFromNavigatorTest test creates instances of the
+	OpenDescriptionEditor and OpenActivityEditor classes.  These classes have
+	a constructor added that takes a modelRoot instance.
+	
+- The ParseAllInDomain test was updated to have the same display update 
+code (readAndDispatch) as was added to the AllActivityModifier class.
+
+- All unit tests executed
+R All unit tests pass
+
+- Start Tiger
+- Create the com.projtech.bp.ui.text.test project
+- Open the testDescrip1 domain
+- Open the subsystem description editor
+- Change the description
+- Save the changes
+R Domain is marked as changed
+- Select domain in Model Explorer
+- Select Replace With > Latest from HEAD
+- Answer yes to over write changes dialog
+R Domain is reloaded, editor is closed
+R There are no errors in the error log
+
+ - Create a new project
+ - Create a new domain using testDescrip1 as the import model
+ R Model appears in new domain
+- Open the subsystem description editor
+- In the resource view, delete the testDescrip1.mdl file 
+R The editor closes, the domain is not in explorer tree.
+R There are no errors in the error log
+
+- Create a new domain using ex1 as the import model
+R Model appears in new domain
+- Select Parse All Activities
+R All activities parse without error
+
+Code Changes
+------------
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/ParseAllInDomain.java
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/I424SortingTest.java
+
+com.projtech.bp.test/src/com/projtech/bp/test/common/BaseTest.java
+com.projtech.bp.test/src/com/projtech/bp/test/common/TestingUtilities.java
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/I634OutlineViewEmptySelectionTest.java
+com.projtech.bp.ui.canvas.test/arc/gen_testClearDatabaseClass.arc
+
+com.projtech.bp.ui.explorer.test/src/com/projtech/bp/ui/explorer/test/I634ExplorerEmptySelectionTest.java
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorListener.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityEditor.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/AllActivityModifier.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/DescriptionEditor.java
+
+com.projtech.bp.ui.text.test/mdl/testDescrip1.mdl
+com.projtech.bp.ui.text.test/mdl/testDescrip1.sql
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/UITextTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	activity/ActivityEditorInteraction.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	activity/I697OpenActivityEditorFromMarker.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	activity/OpenActivityEditor.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	activity/ParseActivity.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	activity/ProcessAllActivitiesTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	description/CloseDescriptionEditor.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	description/DescriptionEditorInteraction.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	description/OpenDescriptionEditor.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	i372Tests/NavigationTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	i589Test/ElementDeleteTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+	i589Test/PlaceholderFileDeletionFromNavigatorTest.java
+
+MC-Java/java.arc
+
+End
+---
+
+$Log: i744.int,v $
+Revision 1.1  2009/09/03 18:24:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.44.1  2008/12/31 16:10:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2005/03/14 22:25:43  greg
+Job: 744
+Add another unit test
+
+Revision 1.7  2005/03/14 22:15:44  greg
+Job: 744
+Added changes for parse all test
+
+Revision 1.6  2005/03/11 19:41:51  greg
+Job: 744
+Ready for final review
+
+Revision 1.5  2005/03/10 21:16:18  greg
+Job: 744
+Minor test update
+
+Revision 1.4  2005/03/10 01:44:41  greg
+Job: 744
+Ready for final review
+
+Revision 1.3  2005/03/09 22:57:38  greg
+Job: 744
+Ready for review
+
+Revision 1.2  2005/03/09 22:46:14  greg
+Job: 744
+Ready for review
+
+Revision 1.1  2005/03/08 21:55:47  greg
+Job: 744
+Initial introduction

@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Arrays
+
+1. Abstract
+-----------
+This note covers the design required for support of Arrays
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 477
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=477
+[2] <CVS>/Documentation/internal/technical/notes/i477.ant
+[3] Bugzilla item 2881
+	http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2881
+[4] arrays test matrix
+    <CVS>/Documenation/internal/test_results/R1_5_0/...
+    /i477/i477_usage_test_matrix.xls
+[5] Bugzilla item 2883
+	http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2883
+[6] <CVS>/Documentation/internal/technical/notes/i478.ant
+
+4. Background
+-------------
+See analysis[2].
+
+5. Analysis
+-----------
+See analysis[2].
+
+6. Design
+---------
+The design paradigm for array support builds on that introduced for Structured
+Data Types[6,7.2]. To support arrays, we introduce new grammar and two new
+value subtypes, 'Array Element Reference' and 'Array Length Value'.
+
+6.1 OAL changes
+Since any place in a chain of member references may potentially bear array
+elements, a new rule, 'instance_access_segment' is introduced. This defines
+both the reference to the segment member name and, optionally, a set
+of array element references defined in another new rule 'array_refs'. The
+'array_refs' rule is simply the left and right square bracket tokens surrounding
+one or more expressions (the existing rule 'expr').
+
+6.2 New Value Subtypes
+The new subtypes, 'Array Element Reference' and 'Array Length Value' are added
+across R801 to the Value subsystem. 'Array Element Reference' becomes a new
+possible member of a value chain [6,7.2]. It can appear anywhere in the chain,
+so it can support such unlikely expressions as:
+
+foo.bar[x].zar.b[2];
+
+This will instantiate as (in the same style as the diagrams presented
+in [6,7.2]):
+
+                   V_AER- R839 - V_VAL - R801 - V_LIN("2")
+                     |
+                   R838
+                     |
+                   V_VAL
+                     |
+                   R801
+                     |
+                   V_MVL - R836 - S_MBR("b")
+                     |
+                   R837
+                     |
+                   V_VAL
+                     |
+                   R801
+                     |
+                   V_MVL - R836 - S_MBR("zar")
+                     |
+                   R837
+                     |
+                   V_VAL
+                     |
+                   R801
+                     |
+                   V_AER- R839 - V_VAL - R801 - V_TVL("x")
+                     |
+                   R838
+                     |
+                   V_VAL
+                     |
+                   R801
+                     |
+                   V_AVL - R806 - O_ATTR("bar")
+                     |
+                   R807
+                     |
+                   V_VAL - R801 - V_IRF - R808 - V_VAR("foo")
+
+Similarly, 'Array Length Value' can appear in a value chain, but because of its
+semantics, it can only ever appear at the end of a chain.
+
+7. Design Comments
+------------------
+Some semantic predicates were added to remove indeterminate reports from the
+parser generator.
+
+One significant source of indeterminism was the 'local_variable' rule. It was
+determined that the reason this rule was causing indetermism was because it was
+redundant. The rule was removed, and responsibility for instantiating the local
+variable OAL populations was moved to the 'member_access' rule (in fact, little
+extra OAL was required).
+
+An unexpected extra complication was found when it was realized that activities
+returning void should not be allowed to have array dimensions specified. To
+resolve this problem, some new infrastructure is added to the Properties editor.
+This new infrastructure is instantiated by adding a new keyword,
+'dynamicReadOnly'. Adding this keyword to the description of an attribute,
+results in the attribute being set to readonly if the operation specified in the
+markup returns true.
+
+In the case of Arrays, this infrastructure is used as follows; The attribute
+'Return Dimensions' added as specified in the analysis note[2] to Function,
+Bridge and Operation is marked 'dynamicReadOnly:isVoid'. A boolean operation
+'isVoid' is added to each of the three metamodel elements specified in the
+previous sentence. They all have similar bodies (here is the one for Bridge):
+
+  select one dt related by self->S_DT[R25];
+  return dt.Name == "void";
+
+This has the effect that the generated 'isVoid' operation renders the
+'Return Dimensions' attribute readonly when the owning operation has a void
+return type.
+
+In addition, the existing functions 'isAllowedReturnType' on each of the same
+three metamodel elements are modified to disallow the 'void' return type if the
+'Return Dimensions' are not 'None'. This effectively makes a void return type
+and array dimensions mutually exclusive.
+
+The model import infrastructure is updated to support importing old and new
+models and work correctly if they have array information in the model or not.
+
+As part of the effort to get the OAL JUnit tests working, it was decided that
+we would take the time to move the test models to the common area in the
+Models project and convert them to multi-file format.  This is a baby step
+toward moving all models to the common area (as captured in bug 2462).  After
+the models were moved, the JUnit tests were updated to work with the new
+instance population semantics of the array-supporting grammar.
+
+The analysis note [2] specified that a new for-loop construct would be created
+that provided special ability to iterate over arrays.  This feature is not
+part of the design yet.  The feature is captured as an outstanding issue [3].
+
+8. Work Required
+----------------
+This is fully described in the design section.
+
+9. Unit Test
+------------
+9.1  A new model "array_test" is created in the Models project.  This model
+     captures all of the ways arrays can be validly used in OAL. A test matrix
+     [4], has been created to capture what is and isn't tested in the model.
+
+9.2  There still needs to be some JUnit tests created that test invalid
+	 array syntax OAL.  This issue is captured in [5].
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.3  2007/05/07 18:50:12  kbrown
+Job:477
+Updated design note to fix issues found during review.
+
+Revision 1.2  2007/05/02 02:34:11  kbrown
+Job:477
+Updated design note.
+
+Revision 1.1  2007/04/09 23:27:45  campbell
+Job: 1052
+Introduced.
+

@@ -1,0 +1,745 @@
+========================================================================
+
+File:      $RCSfile: dts0100732441.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Full verifier support for instance reference
+
+1. Abstract
+-----------
+To continue the instance reference support in BridgePoint,this issue 
+addresses  the complete support for " instance reference"  in the verifier.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100732441 - Full verifier support for instance reference
+[2]  Analysis note dts0100732441.ant 
+[3]  ClearQuest DEI dts0100724622 - Implement single path for assignment
+	 statement execution
+[4]  ClearQuest DEI dts0100721501 - Assignment to instance reference attribute 
+     does not work
+[5]  ClearQuest DEI dts0100685590 - Verifier crash: Can not pass struct typed 
+	 value with inst_ref<class> typed struct members
+[6]  ClearQuest DEI dts0100700663 - The Variable view does not display any value 
+	 for Attribute  of instance reference type 
+[7]  ClearQuest DEI dts0100700662 - Expanding structured data type member of 
+	 array instance reference type encounters problem.
+[8]  ClearQuest DEI dts0100735476 - Allow instance reference set to be 
+	 expandable in Variable view.
+[9]  ClearQuest DEI dts0100732443 - Verifier failed to compare instance 
+	 references and instance reference sets correctly
+[10] ClearQuest DEI dts0100720592 - Instance Reference verifier test	
+[11] Instance Reference Test Matrix  
+	 InstanceReferenceTestMatrix.txt v1.14
+	 <cvs>Documentation\internal\technical\notes\dts0100703003\
+[12] The test model implementing the previous test matrix cells
+	 FullVerifierInstanceTest.xtuml
+	 <cvs>Documentation\internal\technical\notes\dts0100703003\	 
+[13] ClearQuest DEI dts0100703003 - Support intra-component instance reference
+    passing for classes.
+
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].	
+	
+6. Design
+---------
+6.1 The design of the proposed fix for [3]:
+	AssignToMember.Execute() v1.8:  Remove the following lines 
+	23-75 and line 87.
+	
+	The code left is the Copy Value path which relys on getting the 
+	RuntimeValue for the left and the right values, then invoke the 
+	RuntimeValue::copyValue(UUID) v1.12.
+	
+
+...	
+if (empty rtVal)
+  // result requires computation. Return and let the new stack frame execute
+  return;      
+else
+-  if (lvalue.DT_ID != GD::NULL_UNIQUE_ID())
+-    select one sdt related by lvalue->S_DT[R820]->S_SDT[R17];
+-    select one instRef related by lvalue->V_IRF[R801];
+-    select one instSetRef related by lvalue->V_ISR[R801];
+-    select one paramValue related by lvalue->V_PVL[R801];
+-    if  not empty paramValue
+-      select one operationParam related by paramValue->O_TPARM[R833];
+-      select one functionParam related by paramValue->S_SPARM[R832];
+-      select one bridgeParam related by paramValue->S_BPARM[R831];
+-     select one propertyParam related by paramValue->C_PP[R843];
+-     
+-     /* 
+-     In the following  'select any local'  statements, it is acceptable to select an arbitrary 
+-      Local instance here because the local is only used below to determine what kind of copy 
+-      strategy is to be followed for the value. For more details check dts0100717929.dnt
+-      */
+-      if not_empty operationParam
+-       select any local related by operationParam->L_LCL[R3008];
+-       if not_empty local
+-         select one instRef related by local->L_LVL[R3001]->V_VAL[R3010]->V_IRF[R801];
+-       end if;
+-     elif not_empty functionParam
+-       select any local related by functionParam->L_LCL[R3007];
+-       if not_empty local
+-         select one instRef related by local->L_LVL[R3001]->V_VAL[R3010]->V_IRF[R801];
+-      end if;
+-    elif not_empty bridgeParam
+-      select any local related by bridgeParam->L_LCL[R3009];
+-     if not_empty local
+-       select one instRef related by local->L_LVL[R3001]->V_VAL[R3010]->V_IRF[R801];
+-     end if;
+-   elif not_empty propertyParam
+-       select any instRef related by propertyParam->L_LVL[R3017]->V_VAL[R3010]->V_IRF[R801];
+-     end if; 
+-   end if;    // This l-value already has a type, coerce the r-value to it if necessary.
+-    if empty sdt and empty instRef and empty instSetRef and
+-                                                     rvalue.getDimensions() == 0
+-      // Simple type, use setValue
+-      lvalue.setValue(stack_frame_id:param.stack_frame_id,
+-                              value:result.coerceTo(data_type_id:lvalue.DT_ID),
+-                                                member_id:GD::NULL_UNIQUE_ID());
+-      stack_frame.popValue(value_id:rvalue.Value_ID);
+-    else
+-      // SDT or array, use copyValue
+-      lVal_ID = lvalue.getRuntimeValue(stack_frame_id:param.stack_frame_id);
+-      if lVal_ID != GD::NULL_UNIQUE_ID()
+-        select any lRtVal from instances of RV_RVL where
+-                                            selected.RuntimeValue_ID == lVal_ID;
+-        lRtVal.copyValue(from:rtVal.RuntimeValue_ID);
+-        stack_frame.popValue(value_id:rvalue.Value_ID);
+-      end if;
+-    end if;
+-  else
+    lVal_ID = lvalue.getRuntimeValue(stack_frame_id:param.stack_frame_id);
+    if lVal_ID != GD::NULL_UNIQUE_ID()
+      select any lRtVal from instances of RV_RVL where
+                                            selected.RuntimeValue_ID == lVal_ID;
+      // This l-value has never been written before, assign it
+      // the data type of the r-value being assigned to it.
+      select one dt related by rvalue->S_DT[R820];
+      relate lRtVal to dt across R3307;
+      lRtVal.copyValue(from:rtVal.RuntimeValue_ID);
+      stack_frame.popValue(value_id:rvalue.Value_ID);
+    end if;
+- end if;	
+end if
+....
+
+6.2 The design of the proposed fix for [4]:
+	Attribute of instance reference type  assignment :
+	AttributeValueReference::getRuntimeValue() v1.13: Support all the possible 
+	Value's subType model classes for the next value in the chain, and remove 
+	the fix existed chain.
+
+Before:
+// Attribute Value Reference.getRuntimeValue()	
+- rootInst_ID = GD::NULL_UNIQUE_ID();
+- select one instHandle related by self->V_VAL[R807]->V_IRF[R801]->			
+                                                      V_VAR[R808]->V_INT[R814];  
+- if (not_empty instHandle)
+-   rootInst_ID = instHandle.Var_ID;
+- end if;
+ // Grab the stack frame
+ select any stack_frame from instances of I_STF where
+                             (selected.Stack_Frame_ID == param.stack_frame_id);
+ if (empty stack_frame)
+...
+...
+ else
+-   select any instRef related by block_in_stack_frames->L_LCL[R3000]->
+-                            L_LCR[R3001] where selected.Var_ID == rootInst_ID;
+-   select any inst related by instRef->
+-                L_LCL[R3001]->RV_RVL[R3306]->RV_SMV[R3300]->
+-                                    RV_IRV[R3308]->L_IIR[R3311]->I_INS[R3013];
+   if (empty inst)
+...
+...   
+	
+	
+	
+After:
+// Attribute Value Reference.getRuntimeValue()
++  select one rootVal related by self->V_VAL[R807];
+                             
++     select one attrVal related by rootVal->V_AVL[R801];
++     select one tranVal related by rootVal->V_TVL[R801];
++     select one membVal related by rootVal->V_MVL[R801];
++     select one parmVal related by rootVal->V_PVL[R801];
++     select one evtVal related by rootVal->V_EDV[R801];
++     select one arrVal related by rootVal->V_AER[R801];
++     select one instRef related by rootVal->V_IRF[R801];
++     select one instSetRef related by rootVal->V_ISR[R801];
++     rtVal_ID = GD::NULL_UNIQUE_ID();
++     if (not_empty attrVal)
++       rtVal_ID = attrVal.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     elif not_empty tranVal
++       rtVal_ID = tranVal.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     elif not_empty membVal
++       rtVal_ID = membVal.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     elif not_empty parmVal
++       rtVal_ID = parmVal.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     elif not_empty evtVal
++       rtVal_ID = evtVal.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     elif not_empty arrVal
++       rtVal_ID = arrVal.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     elif not_empty instRef
++       rtVal_ID = instRef.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     elif not_empty instSetRef
++       rtVal_ID = instSetRef.getRuntimeValue(stack_frame_id:param.stack_frame_id);
++     end if;
++     select any runtimeValue from instances of RV_RVL where
++           							   selected.RuntimeValue_ID == rtVal_ID;
+                             
+     // Grab the stack frame							  
+     select any stack_frame from instances of I_STF where
+     						 (selected.Stack_Frame_ID == param.stack_frame_id);
+     if (empty stack_frame)
+...
+...
+ else
++   select any inst related by runtimeValue->
++ 			   RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311]->I_INS[R3013];
+   if (empty inst) 
+...
+
+
+6.3 The design of the proposed fix for [5]:
+	Support the Instance Reference Value subType in SimpleValue : 
+6.3.1 SimpleValue::initialize() v1.8  : 
+
+Before : 
+	// Simple Value.initialize()
+	select one dt related by self->RV_RVL[R3300]->S_DT[R3307];
+	if not_empty dt and dt.Name == "component_ref"
+	  create object instance crv of RV_CRV;
+	  relate crv to self across R3308;
+	else
+	  create object instance scv of RV_SCV;
+	  relate scv to self across R3308;
+	end if;
+
+After :
+	// Simple Value.initialize()
+	select one dt related by self->RV_RVL[R3300]->S_DT[R3307];
++	select one irdt related by dt->S_IRDT[R17];
+	if not_empty dt and dt.Name == "component_ref"
+	  create object instance crv of RV_CRV;
+	  relate crv to self across R3308;
++	elif not_empty irdt
++		create object instance irv of RV_IRV;
++		relate irv to self across R3308;	
+	else
+	  create object instance scv of RV_SCV;
+	  relate scv to self across R3308;
+	end if;  
+ 
+6.3.2 SimpleValue::getValue()  v1.8 
+Before :
+ 
+  select one scv related by self->RV_SCV[R3308];
+  select one crv related by self->RV_CRV[R3308];
+  value = GD::NULL_INSTANCE();
+  if (not_empty scv) 
+  	value = scv.Value;
+  elif (not_empty crv)
+    select one exeEngine related by self->RV_CRV[R3308]->I_EXE[R3309];  
+    if (not_empty exeEngine) 
+      // the engine is the instance we are looking for
+      value = exeEngine.convertToInstance();
+    end if;
+  end if;
+  return value;
+  
+After :
+  select one scv related by self->RV_SCV[R3308];
+  select one crv related by self->RV_CRV[R3308];
++ select one irv related by self->RV_IRV[R3308];
+  value = GD::NULL_INSTANCE();
+  if (not_empty scv) 
+  	value = scv.Value;
+  elif (not_empty crv)
+    select one exeEngine related by self->RV_CRV[R3308]->I_EXE[R3309];  
+    if (not_empty exeEngine) 
+      // the engine is the instance we are looking for
+      value = exeEngine.convertToInstance();
++   else
++     USER::logError(msg:"The Component Reference Value instance does not have " + 
++    										"an associated Component Instance");  
+    end if;
++ elif (not_empty irv)  
++   select any iir related by irv->L_IIR[R3311];
++   if ( not_empty iir)
++     select one ins related by iir->I_INS[R3013];
++     value = GD::unique_id_to_instance(value:ins.Inst_ID);
++   end if;
++ else
++   USER::logError(msg:"The Simple Value instance does not have an associated subtype");
+  end if;
+  return value;
+   
+6.3.3 SimpleValue::setValue(instance)  v1.8 
+Before :
+// Simple Value.setValue()
+	select one dt related by self->RV_RVL[R3300]->S_DT[R3307];
+	if not_empty dt and dt.Name == "component_ref"
+	  select one crv related by self->RV_CRV[R3308];
+	  if empty crv
+	    create object instance crv of RV_CRV;
+	    relate crv to self across R3308;
+	  end if;
+	  crv.setValue(value:param.value);
+	else
+	  select one scv related by self->RV_SCV[R3308];
+	  if empty scv
+	    create object instance scv of RV_SCV;
+	    relate scv to self across R3308;
+	  end if;
+	  scv.Value = param.value;
+	end if;
+
+After :
+// Simple Value.setValue()
+	select one dt related by self->RV_RVL[R3300]->S_DT[R3307];
++	select one irdt related by dt->S_IRDT[R17];
+	if not_empty dt and dt.Name == "component_ref"
+	  select one crv related by self->RV_CRV[R3308];
+	  if empty crv
+	    create object instance crv of RV_CRV;
+	    relate crv to self across R3308;
+	  end if;
+	  crv.setValue(value:param.value);
++	elif not_empty irdt
++	  select one irv related by self->RV_IRV[R3308];
++  	  if empty irv
++  	    create object instance irv of RV_IRV;
++  	    relate irv to self across R3308;
++  	  end if;
++  	  select any iir related by irv->L_IIR[R3311];
++ 	  if ( empty iir )
++  		create object instance iir of L_IIR;
++  		relate iir to irv across R3311;
++  	  end if;
++  	  instID = GD::instance_to_unique_id(value:param.value);
++  	  select any ins from instances of I_INS where (selected.Inst_ID == instID);
++  	  if ( not_empty ins )
++  	    relate ins to iir across R3013;
++  	   end if;
+	else
+	  select one scv related by self->RV_SCV[R3308];
+	  if empty scv
+	    create object instance scv of RV_SCV;
+	    relate scv to self across R3308;
+	  end if;
+	  scv.Value = param.value;
+	end if;
+
+
+6.4	The design of the proposed fix for [6]:
+6.4.1 Display Attribute of instance reference type correctly :
+	The BPValue.getVariables() v1.10 need to be cleaned up by creating a new 
+	method called BPValue.getValueString(RuntimeValue_c rv) that will hold the 
+	common part of the if/else if blocks. The original BPValue.getValueString() 
+	invokes the BPValue.getValueString(RuntimeValue_c rv) passing the queried
+	RuntimeValue instance.
+	
+	E.g one of if/elseif blocks before and after removing the common part in 
+	BPValue.getValueString()  
+
+Before:
+  if (value instanceof DataItemValue_c) {
+		  DataItemValue_c div = (DataItemValue_c)value;
+          RuntimeValue_c rtVal = RuntimeValue_c.getOneRV_RVLOnR3303(div);
+		  SimpleValue_c sv = SimpleValue_c.getOneRV_SMVOnR3300(rtVal);		< Common part starts here
+          if (sv != null) {
+            return rtVal.Getvalue().toString();
+          }
+          else {
+		    StructuredValue_c strVal = StructuredValue_c.getOneRV_SVLOnR3300(rtVal);
+			ArrayValue_c arrVal = ArrayValue_c.getOneRV_AVLOnR3300(rtVal);
+			if (strVal != null) {
+			  RuntimeValue_c rtv = RuntimeValue_c.getOneRV_RVLOnR3300(strVal);
+			  return rtv.getLabel();
+			}
+			else if (arrVal != null) {
+			  RuntimeValue_c rtv = RuntimeValue_c.getOneRV_RVLOnR3300(arrVal);
+			  return rtv.getLabel();
+			}
+          }
+        }
+After:
+		else if (value instanceof DataItemValue_c) {
+		  DataItemValue_c div = (DataItemValue_c)value;
+          RuntimeValue_c rtVal = RuntimeValue_c.getOneRV_RVLOnR3303(div);
+          return getValueString(rtVal);
+        }
+        
+    The new BPValue.getValueString(RuntimeValue_c rv) :
+    
+    public String getValueString(RuntimeValue_c p_rv) throws DebugException {
+		String result = "";
+		SimpleValue_c simVal = SimpleValue_c.getOneRV_SMVOnR3300(p_rv);
+		StructuredValue_c strVal = StructuredValue_c.getOneRV_SVLOnR3300(p_rv);
+		ArrayValue_c arrVal = ArrayValue_c.getOneRV_AVLOnR3300(p_rv);
+		DataType_c dt = DataType_c.getOneS_DTOnR3307(p_rv);
+		InstanceReferenceDataType_c irdt = InstanceReferenceDataType_c.getOneS_IRDTOnR17(dt);
+		
+		
+		if ( simVal != null){
+			SimpleCoreValue_c scv = SimpleCoreValue_c.getOneRV_SCVOnR3308(simVal);
+			ComponentReferenceValue_c crv = ComponentReferenceValue_c.getOneRV_CRVOnR3308(simVal);
+			InstanceReferenceValue_c irv = InstanceReferenceValue_c.getOneRV_IRVOnR3308(simVal);
+			if ( scv != null){
+				if ( irdt != null )
+				{
+					return "empty";
+				}
+				result = scv.getValue().toString();
+				if (dt != null && dt.getName().equals("string")) {
+					  result = "\"" + result + "\"";
+				   }
+				return result;
+			}
+			else if  ( crv != null){
+				 result = "Component not found";
+				  ComponentInstance_c exe = ComponentInstance_c.getOneI_EXEOnR3309(crv);
+				  Component_c comp = Component_c.getOneC_COnR2955(exe);
+				  if (exe != null && comp != null) {
+				    result = comp.getName()+ "[" + exe.Getenginenumber() + "]";
+				  }
+			}
+			else if ( irv != null){
+				Instance_c [] insts = Instance_c.getManyI_INSsOnR3013(
+						InstanceInReference_c.getManyL_IIRsOnR3311(irv));
+				String sep = "";
+				if (insts.length == 0)
+					return "empty";
+				else {
+				  for (int i=0; i<insts.length;i++) {
+					result = result + sep + insts[i].getLabel();
+					sep = ", ";
+				  }
+			    }
+				return result;
+			}
+			else {
+				Throwable t = new Throwable();
+				t.fillInStackTrace();
+				CorePlugin
+						.logError(
+								"No subtype found for simple value.",
+								t);
+				return "Unknown simple runtime value";
+			}
+			
+		}
+		else if ( strVal != null){
+			return p_rv.getLabel();
+		}
+		else if (arrVal !=null ){
+			return p_rv.getLabel();
+		}
+		else {
+			Throwable t = new Throwable();
+			t.fillInStackTrace();
+			CorePlugin
+					.logError(
+							"No subtype found for runtime value.",
+							t);
+			return "Unknown Runtime Value";
+		}
+		
+		return "";
+	}    
+        
+        
+6.4.2 Allow Attributes of instance reference type to be expandable 
+	(if not empty) The BPValue.getVariables() need to be cleaned up by creating 
+	a new method called BPValue.getVariables(RuntimeValue_c rv) that will hold 
+	the common part of the if/else if blocks. The original BPValue.getVariables() 
+	invokes the BPValue.getVariables(RuntimeValue_c rv) passing the queried 
+	RuntimeValue instance.
+	A new method "getVariables(RuntimeValue_c rv)" is introduced and it has a 
+	structure analogous to getValueString(RuntimeValue_c rv).
+	
+	e.g for one of if/elseif blocks after removing the common part in 
+	BPValue.getVariables()
+	
+	else if (value instanceof AttributeValue_c) {
+			AttributeValue_c av = (AttributeValue_c)value;
+			RuntimeValue_c rootRv = RuntimeValue_c.getOneRV_RVLOnR3304(av);
+			return getVariables(rootRv);
+		}
+	
+6.5 The design of the proposed fix for [7]:
+	The design in 6.4 will fix it indirectly.
+
+6.6 The design of the proposed fix for [8]:
+6.6.1 Enable instance reference set expaning 
+	This "else if" block will be added to the outermost if statement in 
+	BPValue.getVariables() v1.10
+	
+		else if (value instanceof Instance_c){
+			AttributeValue_c[] vals = AttributeValue_c
+			.getManyI_AVLsOnR2909((Instance_c)value);
+			return getChildern(vals);
+		}
+		
+6.6.2 Get the name for each instance in the set : 
+	This "else if" block will be added to the outermost if statement in 
+	BPVariable.getName() v1.5. The instance reference name will be unique 
+	"instance" for now until the there is a need to distinguish them :
+	
+	   else if (value instanceof Instance_c){
+    	  return "instance";
+      }	
+6.6.3 Get the value for each instance in the set :
+	
+	This "else if" block will be added to the most outer if statement in 
+	getValueString()
+	 
+	else if (value instanceof Instance_c){
+			Instance_c inst = (Instance_c)value;
+			return inst.getLabel();
+		}
+6.7 The design of the proposed fix for [9]:
+	The Algorithm described in §[2, 5.7] works also for the instance reference 
+	comparison, if we consider the instance reference as a instance reference 
+	set with single element.
+	
+6.7.1 Support generic chain value :
+	  - Delete the old implementation for the Instance Reference and Instance
+	    Reference Set comparison :
+	    Delete lines 147-280 in BinaryOperation::getBoolean() v1.12.
+	  
+	  - Replace the old implemenation with the following Generic value chain 
+	    implementation :
+	    
+  elif not_empty irdtLeft 
+
+	// The operands are either Instance Reference or Instance Reference Set
+	// The RuntimeValue instance will be queried for both Left and Right 
+	// value and compare them using compareInstRefSets()
+
+    // Instance Reference and Instance Reference Set are handled in the same way
+    lVal_ID = leftOperand.getRuntimeValue(stack_frame_id:param.stack_frame_id);
+    if lVal_ID != GD::NULL_UNIQUE_ID()
+      select any lRtVal from instances of RV_RVL where
+                                           selected.RuntimeValue_ID == lVal_ID;
+                               
+	  rVal_ID = rightOperand.getRuntimeValue(stack_frame_id:param.stack_frame_id);
+	  if rVal_ID != GD::NULL_UNIQUE_ID()
+        select any rRtVal from instances of RV_RVL where
+                                          selected.RuntimeValue_ID == rVal_ID;
+                                            
+	    if ( not_empty rRtVal and not_empty lRtVal)
+          result = self.compareInstRefSets(rRtVal:rVal_ID,lRtVal: lVal_ID);
+          if (self.Operator == "==")
+            return result;
+          else
+            return not result;
+          end if;
+        end if;                                            
+      end if;                                            
+                                            
+  else
+
+
+6.7.2 Comparison Algorithm implementation :	
+	Currently this comparison algorithm can not be implemented in OAL since
+	the MC-Java does not support Arrays in code generation.
+	As a workaround, the comparison algorithm will be implemented in Java by 
+	adding a new operation compareInstRefSets(UUID,UUID) to Binary Operation,
+	with "Translate:native" description to prevent the OAL parsing and MC-Java
+	code generation for it. This operation will return bolean value represent 
+	the binary condition evaluation. The UUID arguments represent the ID of 
+	RuntimeValue instances for left and right operands of the binary condition.
+	
+		
+	compareInstRefSets(UUID,UUID) body is : 
+	
+	Ooaofooa.log.println(ILogger.OPERATION, "Binary Operation",
+		" Operation entered: BinaryOperation::compareInstRefSets");
+	final ModelRoot modelRoot = getModelRoot();
+	RuntimeValue_c v_lRtVal = (RuntimeValue_c) modelRoot.getInstanceList(
+			RuntimeValue_c.class).getGlobal(p_Lrtval);
+	Instance_c[] v_instancesLeft = Instance_c
+			.getManyI_INSsOnR3013(InstanceInReference_c
+					.getManyL_IIRsOnR3311(InstanceReferenceValue_c
+							.getManyRV_IRVsOnR3308(SimpleValue_c
+									.getManyRV_SMVsOnR3300(v_lRtVal))));
+	
+	RuntimeValue_c v_rRtVal = (RuntimeValue_c) modelRoot.getInstanceList(
+			RuntimeValue_c.class).getGlobal(p_Rrtval);
+	
+	Instance_c[] v_instancesRight = Instance_c
+			.getManyI_INSsOnR3013(InstanceInReference_c
+					.getManyL_IIRsOnR3311(InstanceReferenceValue_c
+							.getManyRV_IRVsOnR3308(SimpleValue_c
+									.getManyRV_SMVsOnR3300(v_rRtVal))));
+									
+	if (v_instancesLeft.length != v_instancesRight.length) {
+		return false;
+	}
+	int rightIndex;
+	int leftIndex;
+	// find a match for each instance in the right set with another one in the left set.
+	boolean[] matched = new boolean[v_instancesLeft.length];
+	for (rightIndex = 0; rightIndex < v_instancesRight.length; rightIndex++) {
+		for (leftIndex = 0; leftIndex < v_instancesLeft.length; leftIndex++) {
+			if (matched[leftIndex] == false) {
+				if (v_instancesLeft[leftIndex] == v_instancesRight[rightIndex]) {
+					// mark the left instance as matched so it is not used in matching again.
+					matched[leftIndex] = true;
+					break;
+				}
+			}
+		}
+	
+		if (leftIndex == v_instancesLeft.length) {
+			// failed to find matched instance in left set for selected instance from right set
+			return false;
+		}
+	}
+	return true;
+	
+7. Design Comments
+------------------
+None
+
+8. Work Required
+----------------
+Fully outlined in the design section.
+
+9. Unit Test
+------------
+9.1 This issues tests [10] are heavily dependant on the test matrix [11].
+	We must review this test matrix as part of this design note review. 
+9.1.1 The test is based on following criteria   : 
+	  - This test tests the Instance Reference in Verifier  only.
+      - The Transient Instance Refernce is the only instance reference type
+	    that works in all statement. The Transient variable is tested in all 
+	    contexts and statements.
+	    - The following statements are the only statements that do not have 
+	      parser error for the rest of the instance reference types :
+	      a - Assigmenet statement ( Read/Write) 
+	      b - Binary boolean condition statement ( Left/Right operands)
+	      c - Where clause statement ( Left/Right operands)
+	      d - parameter passing in invocation statement.
+	    These statements are the only ones tested for these types.
+	  
+	  - All of the parser bugs for all Instance Reference types other than 
+	    Transient have a workaround relying on copying instance reference into 
+	    Transient variable, then use that Transient variable in the desired 
+	    statement. Since Transiet is tested to work in every statements, and 
+	    all non Transient instance reference assigments are tested. Therefore 
+	    every instance reference has a workaround for any parser bug.
+	  - Since it is hard to test all possible mixed instance references, the
+	    following cases are the ones considered :
+	    Parameter -> Attribute -> Strut. Member -> Array Element -> Attribute
+	    Transient -> Sruct. Member -> Attribute -> Array Element
+	    Transient -> Attribute -> Array Element -> Struct. Member
+           		
+9.2 bug reproducing steps in the issues [4],[5] and [9] are covered by the test 
+	matrix as following:
+	Note : [A2,V1..V4,I3] means 'A2' and 'I3' with all 'V' entries.
+	Note : [A14,V1..V4,I1..I10] means 'A14' with all combination of 'V' and 'I'.
+9.2.1 For [4], Cells are : [A2,V1..V4,I3]  and [A19,V1..V4,I3].    
+9.2.2 For [5], Cells are : [A36,V1..V4,I10]. 
+9.2.3 For [9], Cells are : [A14,V1..V4,I1..I10] ,[A15,V1..V4,I1..I10], 
+	  [A30,V1..V4,I1..I10] and [A31,V1..V4,I1..I10].
+
+
+End
+---
+
+$Log: dts0100732441.dnt,v $
+Revision 1.16  2010/12/19 20:08:03  nmohamad
+job:dts0100732441
+Addressing review minutes
+
+Revision 1.15  2010/12/09 21:47:13  nmohamad
+job:dts0100732441
+Add note about Matrix cell representation.
+
+Revision 1.14  2010/12/09 21:21:54  nmohamad
+job:dts0100732441
+Fix the Matrix cell representation.
+
+Revision 1.13  2010/12/09 21:15:48  nmohamad
+job:dts0100732441
+Multiple typos fixing
+
+Revision 1.12  2010/12/09 21:05:50  nmohamad
+job:dts0100732441
+Unit Test section major changes
+- Model/Matrix relation
+- Model structure description
+- bug reproducing steps and the corresponding matrix cells
+
+Revision 1.11  2010/12/09 18:34:09  nmohamad
+job:dts0100732441
+Add all files/operations  revision numbers
+
+Revision 1.10  2010/12/09 17:55:14  nmohamad
+job:dts0100732441
+Remove the analysis section and refer to the analysis note wherever it is needed.
+
+Revision 1.9  2010/12/09 12:12:08  nmohamad
+job:dts0100732441
+Fix the text matrix revision number in the Document Reference.
+
+Revision 1.8  2010/12/09 12:10:30  nmohamad
+job:dts0100732441
+Update section 6.7 with the changes done in the BinaryOperation::getBoolean() operation.
+
+Revision 1.7  2010/12/08 17:52:59  nmohamad
+job:dts0100732441
+- Add all missing referenced file revision number
+- Add test limitation
+- Minor refinement
+- Fixing some column 80
+The note is ready for review
+
+Revision 1.6  2010/12/08 15:05:33  nmohamad
+job:dts0100732441
+Wide improvement in Analysis section
+
+Revision 1.5  2010/12/07 19:22:14  nmohamad
+job:dts0100732441
+Design note reviewing and fixing all column 80.
+
+Revision 1.4  2010/12/06 22:26:54  nmohamad
+job:dts0100732441
+Complete the design note.  The note still need to remove some of the duplicated sections, add revision number for the referenced classes and , add details about the
+instance reference test limitation and more description for the test matrix
+
+Revision 1.3  2010/12/05 22:05:12  nmohamad
+job:dts0100732441
+Check in the recent changes in the design note.
+
+Revision 1.2  2010/12/02 21:26:48  nmohamad
+job:dts0100732441
+Check in the recent changes in the design note ( update 5.4,5.5 and 6.4).
+
+Revision 1.1  2010/12/01 23:09:03  nmohamad
+job:dts0100732441
+Check in the current draft version of the design note.
+§§§§§

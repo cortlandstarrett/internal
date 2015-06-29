@@ -1,0 +1,196 @@
+========================================================================
+
+File:      $RCSfile: i102.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:46 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Assignment to attributes
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+assignment to attributes.
+
+History
+-------
+
+final i102-012204-01.rvm
+
+Document References
+-------------------
+Issue 102
+action_semantics.ant
+action_semantics.dnt
+i95.dnt
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so that attribute writes are validated properly.
+
+The Tiger reduced parser (oal.bnf) has the following rule
+regarding attribute writes:
+
+assignment_expr
+  :
+  (
+    (  local_variable[true] TOK_EQUAL )=>
+    local_variable[true]
+    TOK_EQUAL!
+    expr
+  |
+    (  attribute_access[true] TOK_EQUAL )=>
+    attribute_access[true]
+    TOK_EQUAL!
+    expr
+  )
+  ;
+
+The first alternative has already been implemented. 
+Attribute reads were implemented as part of the expression
+work (i95.int).
+
+Design
+------
+
+i102.1  Add attribute write validation
+
+The attribute read work left placeholders for the attribute 
+write processing.  We now go back and fill in those placeholders.
+
+i102.1.1  attribute_access_end()
+
+This validation function is changed so that if the attribute access
+is for an l-value, then the function creates an instance of Assign to Attribute
+(ACT_AI), and relates the instance to the associated Attribute,
+Variable and Statement instances.   If there is an error, in the
+case of an l-value, the associated Statement instance is deleted.
+
+i102.1.2  assignment_expr_end()
+
+For the case of an attribute write, the validation function is
+changed so that we check for any errors, and if there are none,
+then we relate the ACT_AI instance to the Value (V_VAL) instance,
+and return the ACT_AI.Statement_ID.  The possible errors that
+can occur for attribute writes are:
+
+- Data type mismatch
+- Assignment to identifying attribute of type unique_id
+- Assignment to a referential attribute
+- Assignment to the current_state attribute
+- Assignment to a derived attribute
+
+The datatype check allows integers to be assigned to attributes
+of type real.  The transient variable assignment is changed to
+allow this as well.
+
+Work Required
+-------------
+
+i102.1  Add attribute write validation
+
+i102.1.1  attribute_access_end()
+
+The validation function is modified as described in the design.
+
+i102.1.2  assignment_expr_end()
+
+The validation function is modified as described in the design.
+
+
+Implementation Comments
+-----------------------
+
+- The clear() operation for the ACT_AI class was already defined,
+so there were no changes needed to the ooaofooa model.
+
+- The timeout for the build.xml step for executing validate_gen.arc
+was changed from 60 to 90 secs.  It timed out on me with the 60
+second value.
+
+Unit Test
+---------
+
+The following tests are added to OalParserTest:
+
+- Attribute write access
+create object instance d1 of D_D; d1.Disk_ID = 1;
+
+- Assignment promoting integer to real
+    (add attribute real_attr(real) to D_D for test)
+x = 5.13; y = 99; x = y;   (this test previously failed)
+create object instance d1 of D_D; d1.real_attr = 1;
+
+- Invalid operations
+    (attributes mda(string) and id2(unique_id, *2) added to D_D for test)
+ 
+create object instance d1 of D_D; d1.Bad_Attribute = 1;
+create object instance d1 of D_D; d1.Disk_ID = 1.1;
+create object instance d1 of D_D; d1.Disk_ID = "x";
+create object instance d1 of D_D; d1.current_state = Idle;
+create object instance d1 of D_D; d1.Row_Number = 2;
+create object instance d1 of D_D; d1.mda = "bad";
+create object instance d1 of D_D; create object instance d2 of D_D; d1.id2 = d2.id2;
+
+
+R All tests pass
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/build.xml
+Initial version:  1.4  Final version: 1.5
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version:  1.13  Final version: 1.14
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.5   Final version: 1.6
+
+End
+---
+
+$Log: i102.int,v $
+Revision 1.1  2009/09/03 18:18:46  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/01/23 00:56:58  greg
+Job: 102
+Add build.xml version number changes
+
+Revision 1.4  2004/01/22 21:24:00  greg
+Job: 102
+Update after review
+
+Revision 1.3  2004/01/21 23:28:18  greg
+Job: 102
+Add comments to unit test
+
+Revision 1.2  2004/01/21 23:18:39  greg
+Job: 102
+Add timeout change to build.xml
+
+Revision 1.1  2004/01/21 23:16:51  greg
+Job: 102
+Initial introduction
+

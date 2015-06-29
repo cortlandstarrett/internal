@@ -1,0 +1,227 @@
+========================================================================
+
+File:      $RCSfile: canvas-i100.2.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Canvas Functionality
+
+Abstract
+--------
+Eclipse based BridgePoint needs a canvas on which to show diagrams. This
+note defines the design chosen to allow the user to modify the canvas.
+
+History
+-------
+final - canvas-i100.2-042004-01.rvm
+
+Document References
+-------------------
+[1] core/doc/internal/technical/Canvas/canvas.ant
+[2] canvas/mdl/ooaofgraphics.bak
+[3] core/doc/internal/technical/Canvas/canvas-i100.1.dnt
+[4] i146 Graphics Domain EE GR should be externally implemented
+[5] i190 Outline not shown with Class State Model
+
+Design
+------
+The new functionality introduced by this work is achieved almost entirely
+in action language added to the Canvas model[2]. Consequently, this design
+note falls into two sections. The first short section discusses the
+changes made to the hand written classes to support the interactive canvas
+requirements. The second section directs the reader to the more extensive
+changes made to the graphics domain model.
+
+i100.2.1   Interfacing the Canvas to Eclipse SWT classes.
+i100.2.1.1 Cache current SWT canvas and Model_c instances
+This is done each time a paint event is received from Eclipse. Cacheing
+the model instance ensures that events are always applied to the correct
+set of Graphics Domain instances. Cacheing the SWT canvas instance
+ensures that graphics plots are always done to the correct window. The
+cached instances are stored in the Gr_c class (see 2.1.6 below).
+
+i100.2.1.2 Display selection rectangle
+The new state model controlled functionality is required to show a
+selection rectangle. When the state model detects the event sequence
+associated with this requirement, it sets the values in the Model class
+attributes 'SelRectX', 'SelRectY', 'SelRectW' and 'SelRectH'. The
+paintControl method introduced by the work for i100.1[3] is extended to
+draw the selection rectangle directly to the graphics context as the last
+plot it does after drawing the rest of the diagram as before. This
+ensures that the rectangle is always on top. When the selection process
+is completed by the user, the state model zeroes the height and width of
+the selection rectangle. A zero height and width rectangle is never
+shown.
+
+i100.2.1.3 Add Mouse and Keyboard Listeners
+The following mouse and keyboard listeners are added. These construct
+and generate an event (shown indented below) into the State Model for
+the Model class defined as part of the work described below (i100.2.2):
+
+      mouseDoubleClick
+        - MouseReleased (after calling CorePlugin.handleOpen)
+      mouseClick
+        - MousePressed or ShiftMousePressed
+        - MouseReleased
+      mouseDown
+        - MousePressed or ShiftMousePressed or MouseContextPress
+      mouseUp
+        - MouseReleased
+      mouseMove
+        - MouseMoved
+      keyPressed
+        - SpacePressed
+      keyReleased
+        - SpaceReleased
+
+The specified events specified above completely control the users
+experience with the model canvas editor.
+
+i100.2.1.4 Remove redundant dual axis scroll support
+The method CanvasEditor.Scroll is now redundant and is removed.
+
+i100.2.1.5 Extend getContentOutline to handle class State Charts
+This addresses an issue raised on M1[5]. If the selection is a
+State Model, an additional check is added to see if the selected model
+instance represents an instance or a class state chart. The
+appropriate Adapter class instance is returned (the class state chart
+adapter is already generated for this purpose, no additional work is
+required).
+
+i100.2.1.6 Introduce Gr_c as a realized External Entity
+This addresses an issue raised on M1[4]. With this work, the Gr_c class
+is now considered to be realized. Accordingly, the Gr_c class is
+introduced to CVS for hand maintenance.
+
+This work introduces a significant set of new utility methods to Gr_c.
+Note that the differences in naming convention below reflect differences
+in usage of these methods; those with Java convention spelling are
+private to Gr_c, while those with uppercase first characters are written
+to bind with the interface generated for the GR external entitiy in the
+graphics domain model.
+
+- getClosedHand
+- getOpenHand
+- getPencil
+- getNesw
+- getNwse
+- getWaypoint
+- Setmousecursor
+
+This first group supports dynamic setting of the mouse based on what the
+user is pointing at. If new cursor modes are needed, additional methods
+and declarations will be needed similar to the ones found here.
+
+- Getabsolutexposition
+- Getabsoluteyposition
+- Getgradient
+- Getinterpolatedx
+- Getinterpolatedy
+- getDirectionVector
+- getDirectionVectorRatio
+- getDistance
+- getDistanceRatio
+- Getxintersect
+- Getyintersect
+- intersect
+
+This group of additions captures additional geometry utilities needed to
+manage diagram element movement.
+
+- Isover
+- isWithinHotspot
+- Redraw
+- Getcontext
+
+This final group allows general interaction with the underlying graphics
+system. For example, the first two utility methods assist in determining
+whether a given mouse position is selecting an item, the third forces the
+canvas to redraw when something has changed, and the last allows access
+to a graphics context so that text block sizes may be ascertained
+dynamically.
+
+i100.2.2   Addition of State Model and Operations to the Graphics Domain
+See the associated Graphics Domain model[6].
+
+Design Notes
+------------
+The grid snap behavior(see analysis[1]) was implemented by rounding the
+values of x, y, w and h (for shapes) and x, y, x1, y1 (for line segments) to
+the nearest multiple of 12 (chosen to match the nominal unscaled font size).
+
+Unfortunately, the grid snaps for connectors and shapes occur at
+different times leading to occasional ugly disconnects between graphic
+elements. Grid snap functionality is therefore deferred and an issue is
+raised to propagate movements from shapes to connectors only when a grid
+snap in the shape occurs. This should solve the problem.
+
+Work Required
+-------------
+i100.2.1   Interfacing the Canvas to Eclipse SWT classes.
+i100.2.1.1 Cache current SWT canvas and Model_c instances
+           In CanvasEditor.paintControl perform the cache operation as
+           described in the design.
+i100.2.1.2 Display selection rectangle
+           In CanvasEditor.paintControl, show the selection rectangle as
+           described in the design.
+           Modify the build data in file_io.pei.sql to reflect the new
+           attribute names.
+i100.2.1.3 Add Mouse and Keyboard Listeners
+           In CanvasEditor.hookListeners, add the listeners specified in
+           the design.
+           Add the method handleOpen to CorePlugin so that the editor
+           registry is read to open a model element.
+i100.2.1.4 Remove redundant dual axis scroll support
+           In CanvasEditor, remove the specified method.
+i100.2.1.5 Extend getContentOutline to handle class State Charts
+           Extend CanvasEditor.getContentOutline, as specified in the
+           design.
+i100.2.1.6 Introduce Gr_c as a realized External Entity
+           Extend Gr_c with the specified methods and introduce to CVS.
+           Color the external Entity GR as realized and modify MC-Java
+           to produce appropriate code in response to this markup.
+i100.2.2   Addition of State Model and Operations to the Graphics Domain
+           Extend the Graphics Domain model with a state model to control
+           user diagram interaction and add the additional operations to
+           support its operation.
+
+End
+---
+
+$Log: canvas-i100.2.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.164.1  2008/12/31 16:10:07  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/04/20 23:30:56  campbell
+Job: 191
+Resolve review observations.
+
+Revision 1.3  2004/04/19 23:52:56  campbell
+Job: 191
+Adjusted layout.
+
+Revision 1.2  2004/04/19 23:52:27  campbell
+Job: 191
+Adjusted layout.
+
+Revision 1.1  2004/04/19 23:45:20  campbell
+Job: 191
+Introduced.

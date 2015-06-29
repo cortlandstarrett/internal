@@ -1,0 +1,474 @@
+========================================================================
+
+File:      $RCSfile: i673.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+
+Implementation Comments
+-----------------------
+
+- This issue re-implements the changes introduced by 768, as PlaceHolderManager
+  was already listening to similar model changes. PlaceHolderManager listens 
+  to SystemModel_c and Domain_c changes to recreate place holders. Following are
+  details of changes in this regard
+  
+  com.projtech.bp.core.util.PlaceHolderUtil is modified to add method that 
+  dynamically initializes the PlaceHolderManager. Any methods that referenced to
+  removed files IPlaceHolder or PlaceHolder are removed.
+  
+  In order to enable PlaceHolderManager to keep place holder files in sync, it
+  is initialized as soon as first instance of the class Ooaofooa is 
+  instantiated, so that it does not miss any model change event.
+
+  This has caused als.oal.test and internal.io.sql.test to fail.
+  
+  als.oal.test failed because PlaceHolderManager referred to Eclipse's 
+  Workspace, therefore als.oal.test's tests are converted to Eclipse JUnit.
+  
+  internal.io.sql.test failed because PlaceHolderManager invokes Get_name 
+  operations in order to filter out events for updating place holder files. 
+  Therefore following test result files are regenerated.
+
+  com.projtech.bp.internal.io.sql.test/expected_results/cme1.imp
+  com.projtech.bp.internal.io.sql.test/expected_results/ee_empty.imp
+  com.projtech.bp.internal.io.sql.test/expected_results/err_ee2.imp
+  com.projtech.bp.internal.io.sql.test/expected_results/func_empty.imp
+  com.projtech.bp.internal.io.sql.test/expected_results/func_exp.exp
+  com.projtech.bp.internal.io.sql.test/expected_results/oal_function1.exp
+  com.projtech.bp.internal.io.sql.test/expected_results/oal1.imp
+  com.projtech.bp.internal.io.sql.test/expected_results/oal3.imp
+  com.projtech.bp.internal.io.sql.test/expected_results/onef.imp
+
+- This issue also solve problems stated in comment # 1, Issue 744. When domain
+  is deleted, open editors close without any problem and no place holder files
+  are left behind. Please note that Issue 744, includes some other changes that
+  are not relevant to problem document comment # 1, Issue 744.
+  
+  Instead of merging unit test code from 744, this issue introduces a separate 
+  unit test DomainDeleteTestI744 to test graceful deletion of related place 
+  holders and closing of related editors. Please see unit test section of this 
+  implementation note.  
+
+- Since import did not dispatched any ModelDelta.NEW events, a new type of 
+  ModelDelta is defined, ModelDelta.MODEL_LOADED. This event is dispatched by
+  Import classes at the end of import.
+  
+  Explorer view started to show empty node on receiving this event, therefore 
+  create_explorer_view.inc is modified to ignore this event.
+  
+- ModelElementID is changed to include latest good known name of model element,
+  it represented. This is used to reserve a place holder file for a model 
+  element that is temporarily un-available, like when project is closed. 
+  EditorInput that is once restored by navigational history cannot be changed,
+  therefore place holder file name is reserved.
+  
+- Since place holder files are created only when markers are present. Any code
+  that was coupled with the existence of file during the life cycle is removed.
+  
+  FileDocumentProvider.FileSynchronizer has been over-rided to install model 
+  change listener and delegate changes to new inner class ModelSynchronizer. Any 
+  file changes are now ignored.
+  
+  Since DocumentProvider.ModelSynchronizer and 
+  PlaceHolderManager.PlaceHolderStateSynchronizer respond to common 
+  model changes, an AbstractModelElementListener is defined to contain the 
+  common code.
+    
+  FileDocumentProvider.refreshFile(IFile, IProgressMonitor) has been over-rided 
+  to do nothing as we do not need to refresh place holder files.
+  
+  FileDocumentProvider.isDeleted(element) is over-rided to check existence of 
+  model element rather than file.
+  
+  FileDocumentProvider.getSaveRule() has been modified to combine creation and 
+  marker rules as they may take place al-together.
+  
+  EditorListener is now removed as synchronization of place holders is done by
+  PlaceHolderManager and synchronization of opened editors with the model is 
+  done by DocumentProvider.
+
+- Updating of editor titles was previously done by firing elementChanged event.
+  A number of consecutive change events resulted in elementChange event, which
+  updated editor's title by resetting editor input. But this caused parser to be
+  invoked resulting in prolonged "Table Synchronization" thread. Therefore new
+  interface IElementRenameListener is defined. 
+  
+  AbstractModelElementTextEditor is defined to implement this interface and 
+  update the titles alone. 
+
+  DocumentProvider is modified to add/remove IElementRenameListener and fire
+  elementRenamed rather then elementChanged.
+  
+  OALEditor and DescriptionEditor are modified to derive from 
+  AbstractModelElementTextEditor
+  
+- Since id of model root can be changed. ModelElementID.hashCode() is modified
+  to use System.identityHashCode() for model root in its computation in order 
+  to avoid rehashing any map that used instance of ModelElementID as a key 
+  object.
+  
+  ModelElementID obtains reference of model root on its instantiation. Ooaofooa
+  is modified so that subsequent calls to getInstance methods with same id and 
+  different reload parameters (false followed by true) does not gets ignored.
+
+- Since instances of PlaceHolderFileProxy such as .dsc and .oal for same model
+  element share some common information. PlaceHolderEntry is introduced to hold
+  this common information. PlaceHolderFileProxy is moved into
+  PlaceHolderEntry.java as its inner class so that it can access the shared
+  info.
+  
+- The test PlaceholderFileDeletionFromNavigatorTest is now removed, as it no
+  more valid. If the place holder file is deleted, the editor is not closed as
+  it is not dependent on physical existence of place holder file. However the
+  only consequence of doing so, results in removal of markers.
+  
+- Models/mdl/placeholder.mdl is checked into repository, which is produced to 
+  identify any problems. Issue 774 has been raised to track change that will 
+  modify this model and generate place holder life cycle code from this model.
+
+- UITextTest is modified to extend BaseTest to use its facilities. All files 
+  which were previously extending UITextTest are modified to add required
+  constructors.
+
+- A check for DomainProxy instances was added to the domain rename sibling name 
+  check in create_rename_action.inc
+  
+
+Unit Test
+---------
+See design note. 
+
+Following Unit Test is added:
+_- Load Tiger
+_- Create a New xtUML Project and add a Domain
+_- Add a new Subsystem
+_- Add a new Class
+_- Add a new Operation
+_- Open Description Editors for Subsystem, Class
+_- Open Activity Editor for Operation
+_- Add Bookmarks in all the opened editors
+_R Placeholder files for the opened editors are created
+_- Close Tiger (without closing editor)
+
+_- Re-Load the same instance of Tiger
+_R All (previously) opened editors are still open
+_R The PlaceHolderMap has instances of the created PlaceHolder files
+_R The PlaceHolder files exist
+_R Valid Markers exists
+
+This steps of this test are added into 
+bp.core.test/TigerNatureWorkspaceSetupTest.java and 
+bp.core.test/TigerNatureExistingProjectsTest.java to avoid duplication of code.
+
+Following unit test has been added to test the resolution of issue 744.
+
+_- Load Tige and import model ui.text.test/mdl/testDescrip1.mdl
+_- Open Activity Editor for any Operation
+_- Add a problem marker
+_R Underlying placeholder file is created
+_- Open Description Editor for the same Operation
+_- Add a bookmakr 
+_R Underlying placeholder file is created
+_- Delete the Domain
+_R All Opened editors close
+_R Underlying files are delted as well
+
+**Note** While running Unit tests for ui.text the focus should be left/set on 
+the running test workbench instance of eclipse to avoid any race conditions.
+
+Code Changes
+------------
+
+com.projtech.bp.als.oal.test/src/OALTestSuite.java
+- Introduced
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/OalParserTest.java
+- Changed to work under a plugin junit
+
+com.projtech.bp.als.oal.test/Test_Readme.txt
+- Updated for all in one test suite
+
+com.projtech.bp.core/arc/create_rename_action.inc
+- Add check for DomainProxy to sibling name conflict test
+
+com.projtech.bp.core/src/com/projtech/bp/core/util/PlaceHolderUtil.java
+- Removed updateModelRootIdOfAllPlaceholders and added method 
+  to initialize PlaceHolderManager dynamically
+
+com.projtech.bp.core.test/src/com/projtech/bp/core/test/
+    CombineSplitReferentialsTest.java
+- Moved setLoadPathForTests prior to import
+
+com.projtech.bp.core.test/src/com/projtech/bp/core/test/
+    TigerNatureExistingProjectsTest.java
+- Added place holder unit tests
+
+com.projtech.bp.core.test/src/com/projtech/bp/core/test/
+    TigerNatureWorkspaceSetupTest.java
+- Added place holder unit tests    
+- Added Code to dynamically invoke PlaceHolder functions
+
+com.projtech.bp.internal.io.sql.test/expected_results/cme1.imp
+com.projtech.bp.internal.io.sql.test/expected_results/ee_empty.imp
+com.projtech.bp.internal.io.sql.test/expected_results/err_ee2.imp
+com.projtech.bp.internal.io.sql.test/expected_results/func_empty.imp
+com.projtech.bp.internal.io.sql.test/expected_results/func_exp.exp
+com.projtech.bp.internal.io.sql.test/expected_results/oal_function1.exp
+com.projtech.bp.internal.io.sql.test/expected_results/oal1.imp
+com.projtech.bp.internal.io.sql.test/expected_results/oal3.imp
+com.projtech.bp.internal.io.sql.test/expected_results/onef.imp
+- Regenerated as internal.io.sql.test failed because PlaceHolderManager invokes 
+  Get_name operations while listening to model changes in order to keep place
+  holder database in sync.
+
+com.projtech.bp.io.core/arc/gen_import_java.inc
+- Modified to dispatch ModelDelta.MODEL_LOADED at the end of finishLoad method.
+
+com.projtech.bp.test/src/com/projtech/bp/test/TestUtil.java
+- Replaced hard code workspace path to use WORKSPACE_PATH
+
+com.projtech.bp.test/src/com/projtech/bp/test/common/TestingUtilities.java
+- Changed to include mdl folder for importing file
+
+com.projtech.bp.ui.explorer/arc/create_explorer_view.inc
+- Changed to ignore ModelDelta.MODEL_LOADED, which caused explorer to
+  show empty node on model loads.
+  
+com.projtech.bp.ui.text/arc/create_activity_editorinput_factory_java.inc
+- Changed getType to return extension rather then int, which can be 
+  used to obtain place holder.
+
+com.projtech.bp.ui.text/arc/create_description_editorinput_factory_java.inc
+- Changed getType to return extension rather then int, which can used
+  to obtain place holder.
+
+com.projtech.bp.ui.text/arc/create_modeladapter_java.arc
+- Updated to set model root and initialize latest model element name, when
+  ModelElementID is created from live model element.
+
+com.projtech.bp.ui.text/arc/create_plugin_xml.arc
+- Removed reference to EditorListener
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    AbstractModelElementEditorInputFactory.java
+- Changed getType to return extension rather then int, which can be used
+  to obtain place holder.
+- Removed reference to PlaceHolder or IPlaceHolder and used 
+  PlaceHolderManager api.
+      
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    AbstractModelElementListener.java
+- Introduced
+    
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    AbstractModelElementPropertyEditorInput.java
+- Removed reference to PlaceHolder or IPlaceHolder and used 
+  PlaceHolderManager api.
+- Over-rided hashCode to differentiate ActivityEditorInput and
+  DescriptionEditorInput.
+- Removed getFile() method as it no longer requires special 
+  handling.
+    
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    AbstractModelElementTextEditor.java
+- Introduced
+    
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/DocumentProvider.java
+- DocumentProvider is updated to listen to model changes and update/close
+  editors
+- Added methods to register/unregister listeners for listener Model element 
+  renames
+- Over-rided isDeleted method to check deletion of model element rather 
+  then file
+- getSaveRule() is modified to handle cases where place holder file is 
+  created on adding markers.
+- Refresh file is updated to do nothing as it is no more required.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorListener.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorListenerData.java
+- Removed as DocumentProvider is now handling updating of editors as per
+  guideline provided by Eclipse API.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/IElementRenameListener.java
+- Introduced.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/IPlaceHolder.java
+- Removed after introduction of PlaceHolderManager api.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/ModelElementID.java
+- Changed to save last good known name of model element, so that place
+  holder can be requested even if model element does not exists.
+- hashCode is modified, not to use model root id which can get changed, instead 
+  it uses system identity code in its computation.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/PlaceHolder.java
+- Removed after introduction of PlaceHolderManager api.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    ActivityAnnotationModel.java
+- Removed file exists test as PlaceHolderManager.PlaceHolderFileProxy handles 
+  this check.
+    
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityEditor.java
+- Removed any code that directly manipulated place holder file.
+- Added null check where model element of editor input may be un-resolvable.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    AllActivityModifier.java
+- Removed any code that directly manipulated place holder file.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/annotation/
+    ActivityProblem.java
+- Used MarkerUtilities rather then manually setting properties
+- Method signature is changed to return void as it was never used.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+    DescriptionEditor.java
+- Changed to derive from AbstractModelElementTextEditor
+- Removed any code that directly manipulated place holder file.
+- Added null check where model element of editor input may be un-resolvable.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/OALEditor.java
+- Changed to derive from AbstractModelElementTextEditor
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/placeholder/
+    PlaceHolderEntry.java
+- Introduced
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/placeholder/
+    PlaceHolderManager.java
+- Introduced
+
+com.projtech.bp.ui.text.test/src/UITextSuite.java
+- Added place holder lifecycle tests, model element rename tests and
+  domain delete test (from i744).
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/editor/oal/test/
+    OALKeywordRuleTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+    PlaceHolderUpdateTest.java
+- Added constructors as UITextTest extends BaseTest.
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/
+    DomainDeleteTestI744.java
+- Introduced
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/UITextTest.java
+- Extends BaseTest now.
+- Updated createMarker to add a marker in WorkspaceRunnable.
+- Added following Methods used by i673 Tests:
+  - getExistingPlaceHolderFromManager(...)
+  - getName(Object)
+  - removeLog()
+  - renameObject()
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/activity/
+    ActivityEditorInteraction.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/activity/
+    CloseActivityEditor.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/activity/
+    I697OpenActivityEditorFromMarker.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/activity/
+    OpenActivityEditor.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/activity/
+    ParseActivity.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/description/
+    CloseDescriptionEditor.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/description/
+    DescriptionEditorInteraction.java
+- Added constructors as its super class UITextTest now extends BaseTest.
+    
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/description/
+    OpenDescriptionEditor.java
+- Added constructors as its super class UITextTest now extends BaseTest.
+- Used common test api to simplify code where possible
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i589Test/
+    ElementDeleteTest.java
+- Modified to send readAndDispatch after dispose so that model change events 
+  are delivered.
+- Simplified code where possible.
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i589Test/
+    I589TestSuite.java
+- Removed PlaceholderFileDeletionFromNavigatorTest from the suite.    
+    
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i589Test/
+    PlaceholderFileDeletionFromNavigatorTest.java
+- Removed as this test is no more valid. If place holder file is deleted 
+  manually from explorer, only marker information is lost but editor is not 
+  closed any more.
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i673Tests/
+    placeholder/MarkerBasedPlaceholderLifecyleTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i673Tests/
+    placeholder/PlaceholderLifecycleForProjectTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i673Tests/
+    placeholder/PlaceHolderLifecycleTestSuite.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i673Tests/
+    placeholder/PlaceholderLifecyleForDeleteModelElementTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i673Tests/rename/
+    I673RenameObjectsAndTestActivityEditors.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i673Tests/rename/
+    I673RenameObjectsAndTestDescriptionEditors.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i673Tests/rename/
+    RenameEditorsTestSuite.java
+- Introduced.
+
+MC-Java/java.arc
+- Added ModelDelta.MODEL_LOADED event
+- Changed getInstance methods so that it can load model into existing empty
+  instance of model root.
+- Added isLoaded() method which determines if model is already loaded or not
+- Added isFileBasedID(String) to determine if any model root id is file based
+- Added getResourcePathFromModelRootId(String) that determines resource path
+  for model element that is currently not available.
+- Instantiated PlaceHolderManager on instantiation of Ooaofooa.
+- Removed code that called PlaceHolderUtil to dynamically refer removed file
+  PlaceHolder
+
+Models/mdl/placeholder.mdl (already present on HEAD)
+- Introduced.
+
+End
+---
+
+$Log: i673.int,v $
+Revision 1.1  2009/09/03 18:24:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:41  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.40.1  2008/12/31 16:10:55  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/03/29 23:30:48  greg
+Job: 673
+Minor updates
+
+Revision 1.3  2005/03/29 14:44:36  babar
+Job:673
+Completed.
+
+Revision 1.2  2005/03/29 12:41:44  babar
+Job:673
+minor additions
+
+Revision 1.1  2005/03/29 12:11:45  babar
+Job:673
+Introduced.

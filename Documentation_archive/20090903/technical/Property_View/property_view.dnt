@@ -1,0 +1,675 @@
+========================================================================
+
+File:      $RCSfile: property_view.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:25:48 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Properties View
+
+Abstract
+--------
+This document identifies the infrastructure needed to get Eclipse to
+show client model instance values in its Properties View.
+
+History
+-------
+
+final property_view-090904-01.rvm
+
+Document References
+-------------------
+[1] com.projtech.bp.core/doc/internal/technical/Property_View/property_view.ant
+[2] com.projtech.bp.core/doc/internal/technical/Compare/compare-i175.ant
+
+Background
+----------
+The Eclipse Properties View shows information about a selected item.
+The information shown depends on the selected instance. The requirements
+for Tiger client model instances is defined in the property view
+analysis[1].
+
+Design
+------
+The solution adopted for the prototype was deficient in that the
+generated code for the core client model directly implemented
+IPropertySource. This was undesirable for the following reasons:
+
+  - It coupled the architecture to Eclipse
+  - It coupled the core plugin to any plugins that must be coupled
+    to the properties view for whatever reason. One example was where
+    an action language editor was invoked from the properties entry
+    for an Action Semantics attribute. This caused core to be dependent
+    on the action semantics editor, which causes a dependency loop.
+
+The property data source classes are therefore deployed in the plugin 
+com.projtech.bp.ui.properties, which is dependent on core. 
+
+i31.1 Implement hand-written classes for property information
+
+The PropertyDescriptor class is a class provided by Eclipse.  The class 
+provides the textual description of the displayed value, as well as the 
+editor used for changing the value, and access routines to read/write the 
+value from/to the underlying property.  Eclipse provides several predefined
+subtypes of PropertyDescriptor (Text, ComboBox, etc.).
+
+We need to create additional subtypes of the PropertyDescriptor class to 
+handle the special cases for Tiger.  Note that since the metatmodel has no
+attributes of type real or current_state, there is no specialized descriptor 
+created for them.
+
+i31.1.1  ActivityPropertyDescriptor
+
+This property descriptor is used for attributes with the name 
+'Action_Semantics'.  The descriptor's cell editor ActivityCellEditor is derived 
+from DialogCellEditor.  This places a button containing "..." in the right hand
+end of the cell when the attribute is selected.  When the user presses the
+button, the ActivityCellEditor.openDialogBox function is called, which opens 
+the activity editor for the attribute.
+
+i31.1.2  DescriptionPropertyDescriptor
+
+This property descriptor is used for attributes with the name 
+'Descrip'.  The descriptor's cell editor DescriptionCellEditor is derived 
+from DialogCellEditor.  This places a button containing "..." in the right hand
+end of the cell when the attribute is selected.  When the user presses the
+button, the DescriptionCellEditor.openDialogBox function is called, which opens 
+the description editor for the attribute.
+
+i31.1.3  BooleanPropertyDescriptor
+
+This property descriptor is used for attributes of type BOOLEAN.  The
+descriptor operates on instances of Boolean, rather than the base class 
+default of String instances.  The descriptor's cell editor is derived from
+ComboBoxCellEditor, so that the user is presented with a drop down combobox
+containing the values "true" and "false".
+
+i31.1.4  IntegerPropertyDescriptor
+
+This property descriptor is used for attributes of type INTEGER.  The
+descriptor operates on instances of Integer, rather than the base class 
+default of String instances. The descriptor constructor (in addition to the 
+usual parameters) has the additional parameters min_value and max_value, which 
+specify the valid range of values for the attribute.  The following validation 
+messages can occur:
+
+- Value is not a number (non-integer string)
+- Value must be >= <min_value>  (integer less than min_value)
+- Value must be <= <max_value>  (integer greater than max_value)
+- Value between <min_value> and <max_value> required (empty property cell)
+
+The minumum and maximum values for the attribute are specified as the parse
+keywords min_value and max_value.
+
+i31.1.5  EnumPropertyDescriptor
+
+This property descriptor is used for attributes of type INTEGER that
+have specific values (for example the Suc_Pars attribute).  The
+descriptor operates on instances of Integer, rather than the base class 
+default of String instances. The descriptor constructor (in addition to the 
+usual parameters) has the additional parameters enum_list (String []), which 
+specifies the possible values for the attribute, and readonly (boolean) which
+specifies that the attribute is readonly.  The enum descriptor is special
+with respect to the readonly status so that the property is displayed as
+the descriptive string rather than the integer value. The descriptor's cell 
+editor is derived from ComboBoxCellEditor, so that the user is presented 
+with a drop down combobox containing the values from enum_list.
+
+The enumeration values for the attribute are specified as the parse
+keywords enum0, enum1, enum2, etc.  For example, the Suc_Pars attribute
+would contain:
+
+enum0: Do not Parse
+enum1: Parse successful
+enum2: Parse unsuccessful
+enum3: Parse on apply set but never been parsed
+
+The following special cases are generated for the readonly parameter:
+
+Attribute: The datatype of referential attributes is readonly
+UserDataType: The related core data type for predefined user data types 
+(timestamp, date, inst_ref<Timer>) is readonly.
+
+i31.2 Implement generation of classes to provide property information
+
+i31.2.1  Generate property source classes
+
+The IPropertySource interface is implemented by classes generated
+for each client model entity. These classes are only generated for those 
+client objects that have user interface implementations. These are 
+determined from the classes defined for the compare tree[2].  Aside from the
+boilerplate code generated for each class, the following functions are
+generated:
+
+	public IPropertyDescriptor[] getPropertyDescriptors()
+	public Object getPropertyValue(Object id)
+	public void setPropertyValue(Object id, Object value)
+
+i31.2.1.1 getPropertyDescriptors
+
+This function returns a data structure that defines the content of the
+property view page.  For each class we create an array of PropertyDescriptor
+instances using the following rules:
+
+- Descriptive attributes (non-referential, non-unique id) - A descriptor
+is created corresponding to the type of the attribute:
+
+boolean - BooleanPropertyDescriptor
+integer - IntegerPropertyDescriptor or EnumPropertyDescriptor
+string  - TextPropertyDescriptor
+
+Attributes that are read-only use the PropertyDescriptor class (except for
+EnumPropertyDescriptor which has the reaonly parameter to the constructor). 
+All derived attributes are read-only.   The following attributes are 
+implementation details, and are not shown to the user (unless the advanced 
+properties button is selected):
+
+O_ID.Oid_ID
+SM_SM.Config_ID
+O_IOBJ.Modl_Typ
+S_BRG.Brg_Typ
+S_CDT.Core_Typ
+S_UDT.Gen_Type
+
+Readonly attributes have the parse keyword readonly: true present.  The only 
+attributes currently colored as readonly are the implementation detail 
+attributes. Implementation detail attributes have the parse keyword 
+impl_detail: true present.
+
+i31.2.1.1.1  Activities for the derived attributes in the ooaofooa model
+are currently implemented:
+
+O_IOBJ.Obj_Name
+O_IOBJ.Obj_KL
+
+The activities for the following MDA's are implemented:
+
+O_ATTR.Name
+S_EEEVT.Drv_Lbl
+SM_EVT.Drv_Lbl
+SM_SUPDT.Non_Local
+
+The following attributes are changed to be non-derived:
+
+R_CONE.Mult
+R_CONE.Cond
+R_COTH.Mult
+R_COTH.Cond
+
+The idea was that these attribute values could be determined by parsing
+the R_COMP.Rel_Chn attribute.  While that may be possible, implementing these
+attributes as MDA's at this time is too much work.
+
+- Referential attributes
+
+There are two cases for referential attributes, relationships where the 
+user is allowed to change the instances related by the relationship and
+relationships where they aren't.  The descriptor created for each of these
+cases is:
+
+Modifiable - ComboBoxPropertyDescriptor 
+Non-modifiable - PropertyDescriptor (readonly)
+
+The combo box in the modifiable contains a list of the instances that 
+are allowed to formalize the relationship.  The one and only case where a 
+referential is user modifiable is relationships to the DataType (S_DT) class. 
+All other cases involve multiple classes and associations that are best
+handled by other UI input methods (menu item, dialog, or wizard).
+
+i31.2.1.1.2 The class Tree_Parenthood_Specification (T_TPS) in 
+ooaofooa_hierarchy.bak is modified to add the attribute UserModifiable 
+(boolean).  The value of this attribute is used to determine which descriptor 
+to create.
+
+i31.2.1.1.3 In order to prune the list of possible instances, each possible
+value is only added to the combo box list if it is acceptable to the property.
+For example, the Attribute class is related to the DataType class via R114.
+The operation Attribute.isAllowedType(typeName: string): boolean is defined
+so that only valid types will return true from this operation.
+
+The following operations are added for datatype checking. The operation name 
+is generated from 'isAllowed${T_TPS.NameOnly}'. The return value sets are 
+taken from BridgePoint source code.
+
+Attribute.isAllowedType()
+  udt | edt |  cdt in ( boolean, integer, real, string, unique_id, 
+                            inst<Event>, state<State_Model> )
+
+If the attribute instance is a referential attribute, then the only datatype
+allowed is same_as<Base_Attribute>.
+
+Bridge.isAllowedReturnType()
+Function.isAllowedReturnType()
+Operation.isAllowedReturnType()
+  udt | edt |  cdt in ( void, boolean, integer, real, string, unique_id, 
+                            inst<Event> )
+
+BridgeParameter.isAllowedType()
+FunctionParameter.isAllowedType()
+OperationParameter.isAllowedType()
+ExternalEntityDataItem.isAllowedType()
+ExternalEntityEventDataItem.isAllowedType()
+StateMachineEventDataItem.isAllowedType()
+  udt | edt |  cdt in ( boolean, integer, real, string, unique_id, 
+                            inst<Event> )
+
+UserDataType.isAllowedCoreType()
+  cdt in ( boolean, integer, real, string, unique_id, 
+              inst<Mapping>, inst_ref<Mapping> )
+
+i31.2.1.2 getPropertyValue
+
+This function returns the value of a property (i.e., the value from the model)
+to the property view.  The parameter is a string that identifies the property;
+it is the value passed as the first parameter to the descriptor constructor.
+
+Descriptive attributes return the value of the attribute.  Attributes that
+have an ActivityPropertyDescriptor or a DescriptionPropertyDescriptor return 
+the value of the attribute with all '\n' characters converted to '\'.
+Referential attributes return either a property source instance for the 
+referred class for non-modifiable cases, and the appropriate combobox value 
+for modifiable cases.  There is a special case for the DatatypePackage class, 
+in that core and pre-defined user data types are shown as non-modifiable, but 
+user defined udt's and enum data types are shown as modifiable.
+
+i31.2.1.3 setPropertyValue
+
+This function updates the value of the property in the model.  The parameters
+are the property identifier, and the new value.
+
+Descriptive attributes set the value of the attribute.  Modifiable referential 
+attributes use the combobox value to get the new instance to relate to.  It
+then unrelates the old instance, and relates the new instance.
+
+i31.2.2 The class 'ModelPropertySourceProvider' is generated. This uses 
+the 'instanceof' idiom to return an instance of the generated property source
+class (i31.2.1) for the passed in object. If object is an instance of
+IPropertySource then the object is returned. If the object is an instance
+of a model class with a property source, then an instance of the corresponding
+property source class is created and returned. Otherwise, null is returned.
+
+i31.3 Add property source provider to editors
+
+All Tiger editors currently return an instance of PropertySheetPage
+when asked to do so by a getAdapter method call. The property sheet page
+created for this request is changed to have the property source provider 
+set to an instance of 'ModelPropertySourceProvider' by calling
+setPropertySourceProvider() before returning the property sheet page instance.
+
+The following classes are changed:
+
+com.projtech.bp.ui.canvas.CanvasEditor (hand-written)
+com.projtech.bp.ui.explorer.ExplorerView (generated)
+
+i31.4 Notify property view when model changes occur
+
+The property view needs to be notified when a model change occurs.
+Code is added to the fireModelChange() function to find the property view,
+and if it exists, invoke the refresh() function on it.  The refresh invocation
+is done asynchronously, so that we don't get an infinite loop.
+The infinite loop is caused during refresh when the property view changes 
+a value because the refresh routine detects that the property value has changed
+(the update hasn't finished at this point), so it writes the value to the
+model, causing another fireModelChange() invocation.
+
+i31.5  Update packaging for new plugin.
+
+The com.projtech.bp.ui.properties plugin is added to feature.xml
+The com.projtech.bp.ui.properties.test project is added to the test modules 
+list in core/tools/create_release_functions.sh.
+The com.projtech.bp.ui.properties is added to the PLUGIN_MODULES variable
+in core/tools/pt_ant/set_exec_call_timeouts.sh
+
+i31.6  Add get_name operations
+
+The following classes in ooaofooa.bak have a get_name() operation added to 
+them, with action language to implement the name lookup:
+
+Action 
+  - return ->SM_AH[R514]->SM_MOAH[R513]->SM_STATE[R511].Name
+  
+ClassAsAssociatedOneSide 
+ClassAsAssociatedOtherSide
+ClassAsSimpleParticipant
+ClassAsSupertype
+  - return ->R_RTO[R204]->R_OIR[R203]->O_OBJ[R201].Name
+  
+ClassAsDerivedOneSide
+ClassAsDerivedOtherSide
+  - return ->R_OIR[R203]->O_OBJ[R201].Name
+  
+ClassAsLink
+ClassAsSimpleFormalizer
+ClassAsSubtype
+  - return ->R_RGO[R205]->R_OIR[R203]->O_OBJ[R201].Name
+  
+ClassIdentifier
+  - return "*" + INTEGER_TO_STRING(Oid_ID+1)
+  
+CoreDataType
+  - return ->S_DT[R17].Name
+  
+DerivedAssociation
+  - return ->R_REL[R206].get_name()
+  
+EventSupplementalData
+  - return ->SM_EVTDI[R522].Name list separated by commas
+  
+ImportedClass
+  - return ->O_OBJ[R101].Name
+  
+NoEventTransition
+  - return ->SM_STATE[R508].Name + "/" + ->SM_TXN[R507]->SM_STATE[R506].Name
+  
+NonLocalEvent
+  - return ->SM_SEVT[R526]->SM_EVT[R525].get_name()
+  
+ReferentialAttribute
+  - return ->O_ATTR[R106].Name
+  
+SupplementalDataItems
+  - return ->SM_EVTDI[R522].Name
+  
+i31.7 Add MC-Java support for derived attributes
+
+The value for derived attributes in the model must be computed from the
+dependent attributes.  The changes are as follows.
+
+i31.7.1 Change ooa_oal_pop.arc to find all O_DBATTR's in domain and parse them.
+
+i31.7.2 Change fragment.inc to parse derived attributes
+
+i31.7.3 Change java.arc to not generate a set attribute operation 
+for derived attributes.
+
+i31.7.4 The following changes are needed as a result of the above changes:
+
+- Change cme_functions.sql to not write to O_ATTR.Name
+- Change ooaofooa.bak:O_OBJ.create_sm to not write to O_ATTR.Name
+- Change ooaofooa.bak:O_ATTR.initialize to not write to O_ATTR.Name
+- Change ooaofooa.bak:SM_EVT.get_event_text to use the Drv_Lbl attribute
+- Change core.test/arc/create_action_test.arc to use O_ATTR.Root_Nam
+- Change gen_import_java.arc to not fixup Non_Local attribute, since the
+derived attribute value is now calculated.
+
+i31.8  Extend allowed classes for text editors
+
+The description and activity editors have coloring information to generate
+navigation from a selected item in the Model Explorer tree to the actual
+instance that contains the description or activity.  For example, from the
+S_UDT instance to the S_DT instance.  The property view doesn't need this
+extra navigation, so the description and activity editors are changed so that
+selecting either model element (i.e., either S_UDT or S_DT) will open the 
+correct editor.
+
+i31.8.1  Extend editor input selector
+
+The EditorInput class creates the adaptor instance needed to adapt the 
+metamodel instance to the text editor.  The archetype is changed to
+generate code to create an adapter for the child class (e.g., S_UDT) when 
+a parent class is specified (e.g., S_DT).  The archetype must take into account
+that a parent class can have multiple children.
+
+i31.8.2  Extend editor storage get/put operations
+
+The EditorStorage class provides the methods to move data between the
+editor and the instances where the data is stored.  The archetype is changed
+to generate code to access the parent of the navigation (where the description
+or action semantics are stored) specified in the coloring, as well as the 
+current code that navigates from the child to the parent to get the text.
+
+i31.9  Change UITree to list SM_EVT instances
+
+The UITree.pei.sql file specifies SM_LEVT instances as being in the state
+chart tree, but ooaofooa_hierarchy specifies SM_EVT instances.   The 
+UITree.pei.sql is changed to list SM_EVT instances.  This has the effect of
+showing polymorphic and non-local events in the Model Explorer tree.  This
+is desired behavior (see Bugzilla issue 250).  This change has the following
+fallout:
+
+- The NAV_OBJ instance for SM_LEVT is removed from ui.text/sql/clr_pei.sql
+- The ui.text tests that referenced SM_LEVT instances are changed to reference
+   the SM_EVT instance instead
+- The event description editor title is changed from 'Local Event' to 
+   'State Machine Event'
+  
+<TODO: i250 dup>
+
+Work Required
+-------------
+
+i31.1 Implement hand-written classes for property information
+
+i31.1.1  ActivityPropertyDescriptor
+
+The class is implemented as described in the design.
+
+i31.1.2  DescriptionPropertyDescriptor
+
+The class is implemented as described in the design.
+
+i31.1.3  BooleanPropertyDescriptor
+
+The class is implemented as described in the design.
+
+i31.1.4  IntegerPropertyDescriptor
+
+The class is implemented as described in the design.  The parse keywords
+for min and max value are added to the following attribute descriptions:
+
+O_OBJ.Numb  0 .. 9999
+R_REL.Numb  0 .. 9999
+S_EEEVT.Numb 0 .. 9999
+S_SS.Num_Rng 0 .. 9999
+SM_EVT.Numb 0 .. 9999
+SM_SM.Config_ID 0 .. 510 (implementation detail)
+SM_STATE.Numb 0 .. 9999
+
+i31.1.5  EnumPropertyDescriptor
+
+The class is implemented as described in the design.  The parse keywords
+for enum values are added to the following attribute descriptions:
+
+O_ATTR.Pfx_Mode
+O_DBATTR.Suc_Pars
+O_ID.Oid_ID (implementation detail)
+O_IOBJ.Modl_Typ (implementation detail)
+O_TPARM.By_Ref
+O_TFR.Instance_Based
+O_TFR.Suc_Pars
+O_RATTR.Ref_Mode
+R_AONE.Mult
+R_AONE.Cond
+R_AOTH.Mult
+R_AOTH.Cond
+R_CONE.Mult
+R_CONE.Cond
+R_COTH.Mult
+R_COTH.Cond
+R_ASSR.Mult
+R_PART.Cond
+R_PART.Mult
+R_FORM.Cond
+R_FORM.Mult
+S_BPARM.By_Ref
+S_BRG.Brg_Typ (implementation detail)
+S_BRG.Suc_Pars
+S_CDT.Core_Typ (implementation detail)
+S_EEEVT.Is_Lbl_U
+S_SPARM.By_Ref
+S_SYNC.Suc_Pars
+S_UDT.Gen_Type (implementation detail)
+SM_ACT.Suc_Pars
+SM_EVT.Is_Lbl_U
+SM_STATE.Final
+
+i31.2 Implement generation of classes to provide property information
+
+i31.2.1  Generate property source classes
+
+The files are generated by the archetype BuildPropertySource.arc.
+
+i31.2.1.1 getPropertyDescriptors
+
+The archetype generates the getPropertyDescriptors method as described in 
+the design.
+
+i31.2.1.1.1  The changes to the derived attributes in the ooaofooa model
+are implemented as described in the design.
+
+i31.2.1.1.2 The class Tree_Parenthood_Specification (T_TPS) in 
+ooaofooa_hierarchy.bak is modified as described in the design.
+The ooaofooa_hierarchy.pei.sql file is modified to add the new values.
+
+i31.2.1.1.3 The isAllowed* functions are added to ooaofooa.bak as
+described in the design.
+
+i31.2.1.2 getPropertyValue
+
+The archetype generates the getPropertyValue method as described in the design.
+
+i31.2.1.3 setPropertyValue
+
+The archetype generates the setPropertyValue method as described in the design.
+
+i31.2.2 The class 'ModelPropertySourceProvider' is generated as described in
+the design.
+
+i31.3 Add property source provider to editors
+
+The file com.projtech.bp.ui.canvas.CanvasEditor is modified as described
+in the design.
+
+The file create_explorer_view.inc is modified as described in the design.
+
+i31.4 Notify property view when model changes occur
+
+The file java.arc is modified as described in the design.
+
+i31.5  Update packaging for new plugin.
+
+The com.projtech.bp.ui.properties plugin is added to feature.xml
+The com.projtech.bp.ui.properties.test project is added to the test modules 
+list in core/tools/create_release_functions.sh.
+The com.projtech.bp.ui.properties is added to the PLUGIN_MODULES variable
+in core/tools/pt_ant/set_exec_call_timeouts.sh
+
+i31.6  Add get_name operations
+
+The get_name operations are added to ooaofooa.bak as described in the design.
+  
+i31.7 Add MC-Java support for derived attributes
+
+i31.7.1 Change ooa_oal_pop.arc to find all O_DBATTR's in the domain and 
+parse them.
+
+i31.7.2 Change fragment.inc to parse derived attributes
+
+i31.7.3 Change java.arc to not generate a set attribute operation 
+for derived attributes.
+
+i31.7.4 The changes are made as described in the design.
+
+i31.8  Extend allowed classes for text editors
+
+i31.8.1  Extend editor input selector
+
+The changes are made to create_editorinput_java.arc
+Code for finding the navigation parents is added to the utility function 
+get_editor_obj_set in create_util.inc. <TODO timing script>
+
+i31.8.2  Extend editor storage get/put operations
+
+The changes are made to create_editorstorage_java.arc
+
+i31.9  Change UITree to list SM_EVT instances
+
+The changes are made to UITree.pei.sql as described in the design.
+
+The fallout changes are made as described in the design.
+
+Test Scenarios
+--------------
+
+- Rebuild all and run all existing automated tests
+- Create automated tests for all isAllowed*Type() operations (i31.2.1.1.3)
+- Create automated tests for all new get_name() operations (i31.6)
+- Create automated tests for derived attribute get() operations (i31.2.1.1.1)
+- Create automated tests for integer attributes with a range (i31.1.4)
+- Create automated tests for enumerated attribute values (i31.1.5)
+- Create automated/manual tests for property view functionality
+
+End
+---
+$Log: property_view.dnt,v $
+Revision 1.1  2009/09/03 18:25:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.14  2009/01/01 23:13:45  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.13.152.1  2008/12/31 16:10:59  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.13  2004/09/17 21:20:50  greg
+Job: 31
+Add history entry
+
+Revision 1.12  2004/09/10 16:04:41  greg
+Job: 31
+Made review changes
+
+Revision 1.11  2004/09/08 16:54:40  greg
+Job: 31
+Minor changes
+
+Revision 1.10  2004/09/08 00:27:03  greg
+Job: 31
+Ready for review
+
+Revision 1.9  2004/08/31 22:48:37  greg
+Job: 31
+Almost done
+
+Revision 1.8  2004/08/31 16:41:01  greg
+Job: 31
+Add readonly attributes
+
+Revision 1.7  2004/08/31 12:05:48  greg
+Job: 31
+Typos
+
+Revision 1.6  2004/08/31 11:35:39  greg
+Job: 31
+Continue adding details
+
+Revision 1.5  2004/08/30 18:35:13  greg
+Job: 31
+Minor stuff
+
+Revision 1.4  2004/08/27 21:38:05  greg
+Job: 31
+Minor edits
+
+Revision 1.3  2004/08/27 17:35:17  greg
+Job: 31
+Design section mostly done
+
+Revision 1.2  2004/08/24 22:23:01  greg
+Job: 31
+Initial high-level design
+
+Revision 1.1  2003/06/12 16:13:25  campbell
+Job: 31
+First Introduction

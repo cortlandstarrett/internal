@@ -1,0 +1,110 @@
+========================================================================
+
+File:      $RCSfile: i506.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:09 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+
+Abstract
+--------
+Issue # 506 records a problem in which consecutive model diff operations result
+in Out of memory error. 
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 506.
+[2] com.projtech.bp.compare/src/
+[3] class com.projtech.bp.compare.ModelCacheManager
+[4] class 
+        com.projtech.bp.compare.ModelCacheManager.ModelStructuredTextGenerator
+
+Analysis
+--------
+1 - Resolution for this issue is provided by identifying different possible 
+areas in the code that might be responsible for not freeing objects that are no 
+longer needed. These areas are
+
+1.1 ModelStructuredTextGenerator[4] creates text for a model and holds the text
+  in Document object. It is possible that this document object is not being 
+  freed.
+
+1.2 ModelStructuredTextGenerator[4] also creates a tree of nodes that point to 
+  a range with in text document representing the model. It is required to 
+  ensure that this tree of nodes is freed.
+
+1.3 ModelCacheManager[3] loads the model and calls Ooaofooa.clearDatabase() to 
+  free it soon after text and nodes are generated. It is possible that model
+  elements are not properly freed.
+  
+1.4 Import process refers to graphics. It requires inquiry if graphics are not 
+  created for models without graphics data 
+  
+1.5 If Import process loads graphics then it should free graphics as a result 
+  of clearDatabase.
+  
+1.6 Eclipse 2 seem to have memory leak in TextMergeViewer when big text files 
+  are compared. We need to ensure that if it is not eclipse memory leak that is 
+  causing our compare to result in the memory error.
+  
+During the research we found that finalize() method cannot be relied upon for 
+determining if the object is freed. Moreover this will require insertion of 
+debug code in every candidate class. So we need a profiler with following 
+features
+
+- Provides us list of classes that are currently loaded and their instance 
+  count.
+- Provides filtering above list at the level of profiler agent.
+- Allows us to run garbage collector on demand.
+
+There are number of open source/free profilers that could be used. But none of 
+usable profilers provided above features, especially filtering at agent level.
+Instead we found that JVMPI, profiler interface can be used to write a small
+profiler which provides us exactly what we need.
+
+Introduction of this profiler can be done under this issue or separate issue 
+can be raised for it.
+
+Work Required
+-------------
+i175.1  Validate 1.1 from analysis section
+i175.2  Validate 1.2 from analysis section
+i175.3  Validate 1.3 from analysis section
+i175.4  Validate 1.4 from analysis section
+i175.5  Validate 1.5 from analysis section
+i175.6  Validate 1.6 from analysis section
+i175.7  Implement profiler under this issue or raise separate issue for that.
+i175.8  Fix all code fragments that are identified by above.
+
+End
+---
+
+$Log: i506.ant,v $
+Revision 1.1  2009/09/03 18:22:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:35  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.140.1  2008/12/31 16:10:48  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2004/10/29 11:49:49  babar
+Job: 506
+Introduced.
+
+

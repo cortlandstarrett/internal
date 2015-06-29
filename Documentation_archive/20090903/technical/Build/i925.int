@@ -1,0 +1,147 @@
+========================================================================
+
+File:      $RCSfile: i925.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:23 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Change Model Debugger to only use one processor
+
+Abstract
+--------
+Model Debugger is changed to only use one processor in multiprocessor systems
+
+History
+-------
+
+final i925-051305-01.rvm
+
+Document References
+-------------------
+[1] Issue 925
+[2] Issue 859
+
+Background
+----------
+Issue 859 [2] attempted to remove all hangs from Model Debugger when running
+on multi-processor systems (whether real or virtual (i.e. Hyper Thread)).  
+It apparently failed, because MD hung during testing before release.
+
+Design
+------
+
+1. Disable multiple processors
+
+Model Debugger is changed to only use one processor in multiprocessor systems.
+This is accomplished by using the Win32 system call SetProcessAffinityMask():
+
+	HANDLE MD_hdl;
+	unsigned long processAffinityMask;
+	unsigned long systemAffinityMask;
+
+	MD_hdl = GetCurrentProcess();
+
+	if(GetProcessAffinityMask(MD_hdl,&processAffinityMask,
+		&systemAffinityMask) != 0)
+	{
+		// set this process to only use one processor
+		//  i.e., disable HyperThreading
+		processAffinityMask = (processAffinityMask & 1);
+		SetProcessAffinityMask(MD_hdl,processAffinityMask);
+	}
+
+To ensure no deadlocks are possible, the above code will be inserted into the
+main function before execution of anything else.
+
+2. Back out changes from previous work
+
+It was noticed while testing the above change that the changes made for 
+issue 859 output error messages stating that mutexes are being released by
+the wrong thread, or being locked twice.  Rather than try to chase down these
+problems, the changes for issue 859 are removed, since they are no longer 
+needed.
+
+Implementation Comments
+-----------------------
+
+- There was still a null-pointer error occurring that had to do with the
+splash screen.  The ptc_Application_c class event listener was removed, as well
+as the code that added and removed it.  The splash screen display time was 
+reduced from 4 to 2 seconds.
+
+- The SCCS keywords in the header in main.cpp are not being updated.
+
+Unit Test
+---------
+
+The tests are performed on a system with a HyperThread CPU and one without.
+
+- Start Model Debugger 
+R Model Debugger starts
+- Load the bu2 target
+R Target loads without error
+- Move execution slider to the right
+- Press the Start button
+R The target begins executing
+R Test completes without error
+R Target shuts down
+
+Code Changes
+------------
+akula:/source/umld/front_end/include/ptc_app.h
+Initial version: 1.4    Final version: 1.5
+
+akula:/source/umld/front_end/source/main.cpp
+Initial version: 1.17   Final version: 1.19
+
+akula:/source/umld/front_end/source/ptc_app.cpp
+Initial version: 1.7    Final version: 1.9
+
+akula:/source/umld/front_end/source/blue_window.cpp
+Initial version: 1.95   Final version: 1.96 (reverted to 1.92)
+
+akula:/source/umld/front_end/source/ptc_worker.cpp
+Initial version: 1.33   Final version: 1.34 (reverted to 1.30)
+
+akula:/tools/product/protocol/protocol_umld_handler.arc
+Initial version: 1.58   Final version: 1.59 (reverted to 1.55)
+
+akula:/tools/product/uitree/dom_gen_gen.arc
+Initial version: 1.48   Final version: 1.49 (reverted to 1.46)
+
+
+End
+---
+
+$Log: i925.int,v $
+Revision 1.1  2009/09/03 18:22:23  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:12:59  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.34.1  2008/12/31 16:10:02  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/05/13 19:23:49  greg
+Job: 925
+Address observations
+
+Revision 1.2  2005/05/13 16:43:31  campbell
+Job: 925
+Clarify where the new code will be added.
+
+Revision 1.1  2005/05/13 16:36:37  greg
+Job: 925
+Introduce

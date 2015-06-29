@@ -1,0 +1,284 @@
+========================================================================
+
+File:      $RCSfile: dts0100761575.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+- Document generation fails
+
+
+1. Abstract
+-----------
+Fix crashes in document generation.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100761575
+   Document generation fails
+[2] Documentation_archive/20100712/technical/notes/dts0100531817.dnt 
+   Possibility to generate documentation
+[3] ClearQuest DEI dts0100632984
+   Update MCs to work with proposed meta-model change (including generic package
+   support)
+[4] ClearQuest DEI dts0100833823
+   Multiple interface satisfaction generates R2801 multiplicity error from Model
+   Compiler
+[5] ClearQuest DEI dts0100838291
+   Error in generated code for subtype set selection using select many
+      
+4. Background
+-------------
+The original docgen work is captured in [2].  The document generator has been 
+reported to have problems at various stages and generally not function in a 
+robust manner. 
+
+5. Analysis
+-----------
+5.1  Intro
+5.1.1  Medtronic has reported crashes when running document generation on their
+       Integration model.
+5.1.2  docgen.exe is compiled from code generated against a specific branch of 
+       com.mentor.nucleus.bp.core.  
+5.1.2.1  This issue will require work against 2 branches of bp.core.  Docgen.exe 
+         changes are made against the "MC-A" branch of bp.core.  Mainline plugin
+         changes will be promoted to the HEAD branch.
+
+5.2  Metamodel issue
+5.2.1  The docgen.exe that is shipped with BridgePoint is very old (from 
+       12/2009). It is incapable of handling some newer elements in the xtUML 
+       metamodel. Specifically, the Integration model uses the MSG_SIG element 
+       to capture signals on Sequence Diagrams.  The schema built into 
+       docgen.exe does not know about this element and the application crashes 
+       when MSG_SIG is encountered.
+
+5.3  Image creation issue
+5.3.1  The debugging process identified two images in the Integration model that
+       cause the image generation process to crash every time.  This manifested
+       as a "SWTError: No more handles" in the error log.  It was noticed that
+       the images in question both had huge canvases.  There were some model 
+       elements in the very upper left corner as well as other elements "far 
+       away" on the canvas.
+
+5.4  Subtype traversal problem
+5.4.1  The data output by docgen.exe (the doc.xml file) had problems that caused
+       the XSLT processor to crash.  A few elements had control-J characters
+       embedded within them.  Also, the interface message lists were repeating 
+       operations and signals, with one set having the first 4 bytes of the 
+       names chopped off.
+
+5.5  Ongoing work
+5.5.1  This issue just resolves the known crashes with "Create documentation".
+       There are more enhancements to do.  Issue [3] remains open.
+       
+6. Design
+---------
+6.1  Error handling is enhanced in the document generation task 
+     bp.docgen.generator.Generator.  This will provide additional failure infor-
+     mation in some cases when the task fails.
+     
+6.2  SWT leaks
+6.2.1  Eliminate graphics handle leaks in 
+       bp.ui.graphics.print.PrintDiagramOperation.  This operation is used 
+       during the image creation process for document generation.  The existing 
+       code leaks SWTGraphics and GC instances because it does not dispose them 
+       when processing is complete.
+6.2.2  Eliminate graphics handle leaks in bp.io.image.generator.Generator. There
+       are cases where FigureCanvas and Shells are not cleaned up.
+   
+6.3  In bp.io.image.Generator, when the createImage() operation fails the
+     exception is handled as an InvocationTargetException higher up the call 
+     chain.  At the point the error is caught, there is little useful
+     information that can be passed to the user.  As noted in 5.3.1, exceptions
+     here were found to happen because of huge canvases.  Add error handling 
+     code inside the image generator task that catches the problem and pops a 
+     warning to the user:
+     
+         Failed to create image for:
+         
+            <canvas name>
+            <canvas name2>
+            <etc...>
+         
+         Please reduce the size of these canvases by grouping the elements on 
+         each canvas closer together.
+     
+     Once the user acknowledges the warning, the image generation task continues
+     on rather than throwing the exception out causing the entire document 
+     generation process to fail.
+     
+6.4  Add a utility function to display a warning popup on the UI thread in
+     bp.core.util.UIUtil.
+     
+6.5  Update the bp.core MC-A branch for docgen.exe
+6.5.1  The MC-A branch of bp.core is up to date with the latest metamodel on
+       bp.core (HEAD).  Using this branch will resolve the problem with unknown
+       metamodel elements called out in 5.2.1.
+       
+6.5.2  Converted bp.core (MC-A) to a C project using the CDT tool.
+6.5.2.1  Update the bp.core/gen/README.txt with instructions for using CDT to 
+         build docgen.exe
+
+6.5.3  Another issue was found in the doc.xml output generated by docgen.exe.
+       In tables that contained messages belonging to interfaces, the signals
+       and operations were being repeated, but the repeated versions were miss-
+       ing the first 4 bytes of string data on the message name.  There was also
+       control characters being output in the description field for some 
+       messages.  The issue was traced back to places where a set of subtypes is
+       gathered through a relationship chain.  Here is the original code:
+       
+           select many c_ass related by c_i->C_EP[R4003]->C_AS[R4004];
+           for each c_as in c_ass
+             ...
+           end for;
+           
+       The set of c_ass contained both C_AS and C_IO (the other subtype of C_EP)
+       elements.  Obviously, this is wrong as the set should only contain C_AS
+       elements.
+       
+       This selection is broken into two as such:
+       
+           select many c_eps related by c_i->C_EP[R4003];
+           for each c_ep in c_eps
+             select one c_as related by c_ep->C_AS[R4004];
+             if (not_empty c_as)
+               ...
+             end if;
+           end for;
+           
+       Using the second selection, the iteration only operated on the C_AS 
+       elements as desired.
+       
+       The DocGen function package function docgen_interface_packages is mod-
+       ified to use the second selection method to get C_ASs and C_IOs.
+         
+       This fixed the duplicate and bad data showing up in the table of 
+       interface messages.
+       
+       An issue [5] is raised to fix the model compiler.
+       
+6.5.4  A similar problem showed up in the port tables.  All interfaces attached
+       to ports were listed as provisions.  Even when they really are 
+       requirements.  The problem was traced again to a selection of a subtype
+       through a long relationship chain.  The change in 
+       docgen_component_packages is:
+       
+           for each c_po in c_pos
+             ...
+             select any c_p related by c_po->C_IR[R4016]->C_P[R4009];
+             if ( not_empty c_p )
+               ...
+             else
+               ...
+             end if;
+           end for;
+                 
+       to:         
+               
+           for each c_po in c_pos
+             ...
+             select any c_ir related by c_po->C_IR[R4016];
+             select one c_p related by c_ir->C_P[R4009];
+             if ( not_empty c_p )
+               ...
+             else
+               ...
+             end if;
+           end for;
+       
+6.5.5  A recent bug report [4] identified an issue in the model compiler schema 
+       of R2081 in the Translation Extensions subsystem.  The multiplicity on 
+       the requires side of the TE_IIR relationship to self was listed as 1C and
+       it needs to be MC.                
+
+6.6  Add a check at the beginning of the docgen process.  See if the system
+     model being processed contains any generic packages.  If it does, pop a 
+     error dialog and exit document generation.
+     
+7. Design Comments
+------------------
+Once this task is complete, we will need to update the docgen.exe on the build
+server in c:/BridgePoint_e3.5/BridgePointDeliverables/tools/docgen/ where it is
+picked up as part of the installation base data.
+
+8. Work Required
+----------------
+See section 6.
+
+9. Unit Test
+------------
+9.1  Setting up for testing:
+     Compile a release build of the bp.core MC-A branch.  Put the resulting 
+     docgen.exe into the VSx_Dev installation.  Run the following tests using 
+     the "BP Application" launch config.
+    
+9.2  Test against HighVoltageOutput model attached to [1]
+  _- Create an xtUML Project
+  _- Import the single file model
+  _- Run "Create documentation"
+  _R A warning dialog is raised indicating large canvases that failed image gen
+  _- Acknowledge the warning dialog
+  _R HTML doc is created and displayed  
+
+9.3  Test against Integration model attached to [1]
+  _- Import the existing project from zip file
+  _- Run "Create documentation"
+  _R A warning dialog is raised indicating large canvases that failed image gen
+  _- Acknowledge the warning dialog
+  _R HTML doc is created and displayed  
+
+9.4  Test against MicrowaveOven model
+  _- Create the project from the Welcome
+  _- Run "Create documentation"
+  _R HTML doc is created and displayed  
+
+9.5  Test against GPS Watch model
+  _- Create the project from the Welcome
+  _- Run "Create documentation"
+  _R A warning is displayed that document gen won't work since the model 
+       contains generic packages
+  _- Acknowledge the warning
+  _- Open the GPS Watch model
+  _- Delete the generic package "Analysis"
+  _- Run "Create documentation"
+  _R HTML doc is created and displayed  
+  _R The interface message lists contain the correct messages.  Component ports
+     list the correct interface type (requirement or provision).
+
+
+
+
+End
+---
+
+$Log: dts0100761575.dnt,v $
+Revision 1.5  2011/12/07 15:32:24  kbrown
+job:dts0100761575
+More dnt updates from testing.
+
+Revision 1.4  2011/12/07 14:59:03  kbrown
+job:dts0100761575
+More updates.
+
+Revision 1.3  2011/12/07 14:22:02  kbrown
+job:dts0100761575
+Address review mins.
+
+Revision 1.2  2011/12/06 04:48:21  kbrown
+job:dts0100761575
+Completed DNT.
+
+Revision 1.1  2011/12/05 19:30:13  kbrown
+job:dts0100761575
+DNT work in progress.
+

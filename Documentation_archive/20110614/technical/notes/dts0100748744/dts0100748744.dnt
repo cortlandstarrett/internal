@@ -1,0 +1,177 @@
+========================================================================
+
+File:      $RCSfile: dts0100748744.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Dispose timers properly
+
+1. Abstract
+-----------
+This note describes the changes required to perform correct timer disposal.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100748744 - Sim Time timer dispose issues
+[2] ClearQuest DEI dts0100750433 - Need a warning when a timer handle is
+    disposed or replaced.
+
+4. Background
+-------------
+A customer reported that timers would stop running when using Verifier with
+simulated time.
+
+5. Analysis
+-----------
+5.1 Diagnosis
+Timer operation was found to be disrupted because a timer was left in the TIM
+timer list when its event had been fired. When timers fire, they are removed
+from the TIM timer list before being disposed. If the timer is a recurring
+timer, the timer is re-inserted into the list and is not disposed. Disposal
+itself does not, therefore remove the timer from the TIM list. This is an
+obvious risk factor for the observed symptoms.
+
+Further, empirical observations were made running a customer model on an
+experimental version of Verifier. This Verifier version included the manual
+addition of a call to removeTimer() inside Timer.dispose(). The observations
+showed that this change removes the stalled timers problem.
+
+An analysis of references to the Timer_c.Dispose() method shows the following
+calls from OAL:
+
+ - Component Instance.reset() *
+ - Pending Event.dispose() *
+ - Timer.fire()
+
+and from java:
+
+ - BPDebugTarget.removeTimersTraces() *
+ - TIM.timer_cancel()
+
+The references marked * do _not_ make a call to remove the timer from the TIM
+running list and therefore are at risk for leaving a stale timer in place. There
+are therefore two scenarios that would result in the reported symptoms:
+
+ - Terminating and restarting could lead to stalled timers because execution of
+   these actions involve calls to Component Instance.reset() and
+   BPDebugTarget.removeTimersTraces().
+
+ - In the case of Pending Event.dispose(), invocation of Timer.dispose() is made
+   only if the timer is non-recurring. Pending Event.dispose() has 29
+   references:
+  
+   - Block.exitAsynchronousActivity() [1]
+   - Class In Engine_c.dispose()      [1]
+   - Class In Engine.takeEvent()      [1]
+   - Component Instance.dispose()     [2]
+   - Component Instance.reset()       [2]
+   - Component Instance.stop()        [2]
+   - Instance.dispose()               [3]
+   - Instance.takeEvent()             [1]
+   - State Machine Event.dispose()    [4]
+   - Timer.dispose()                  [1,5]
+  
+   [1] In normal operation, the timer would no longer be associated with the
+       event, so this is not a likely site of a failure scenario.
+   [2] These get called during terminate or terminate and restart. These could
+       leave stale timers in the list.
+   [3] An instance being disposed with a recurring delayed event pending could
+       leave a stale timer in the list. In this case, the timer is not disposed
+       at all.
+   [4] This can happen if a modeled event is deleted while Verifier is running.
+       It could leave stale timers in the list, but there is no report that this
+       happened in the failure case reported.
+   [5] The timer is disposed if it is non recurring and the associated event
+       expires, that comes under [1]. It is not currently disposed if the owning
+       instance is disposed, this scenario is discussed separately below[5.2]
+  
+So there exist a number of scenarios that could have led to the observed
+symptoms. The case described in note [3] is probably the most likely case that
+caused the reported problem.
+ 
+5.2 Possible timer reference disposal failure mode
+During investigation of possible failure modes, an additional possible failure
+was noted. Attribute Value.dispose() does not currently make any attempt to
+dispose a timer that is referred to from an inst_ref<Timer> attribute.
+Similarly, assigning a new timer reference over an old one does nothing in this
+regard either.
+
+It is arguable that this is not an error, since there is no requirement to hold
+such a reference in the first place. This reference is only needed if control
+over the timer is needed. Of course, any chance to control the timer is lost
+when the instance owning the attribute is disposed or when a new timer reference
+is assigned. The user should be given an optional warning when these scenarios
+occur. Since there was no requirement to hold a timer reference in the first
+place, the timer should not be disposed. A separate issue is raised to track
+this requirement[2].
+
+6. Design
+---------
+6.1 Add remove_timer() call to Timer.dispose()
+To ensure a timer is removed from the active timers list when it is disposed, we
+could add the remove_timer() call in all the places identified above[5.1].
+
+However, this leaves the door open to new defects in the future if new
+reasons to dispose timers are identified. Instead, the call to remove_timer()
+should be added to the Timer.dispose() operation. This ensures that a timer
+being disposed is always removed from the active timers list. The call to
+removeTimer() in lib.Tim.timer_cancel() is made redundant and can be removed as
+part of this change.
+
+There is one place (Timer.fire()) where the timer is already removed from the
+list when it is disposed. Since an attempt to remove the timer a second time has
+no effect, this is safe to allow.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully covered in the design section.
+
+9. Unit Test
+------------
+9.1 This change affects only Verifier code, so only existing Verifier JUnit
+tests need to be run.
+
+9.2 Create tests for the scenarios identified in 5.1
+
+- Terminate and separately restart
+- Terminate and restart
+- Dispose an instance with a recurring delayed event pending
+- While Verifier is running, delete a class from the model being run
+
+Each of the above tests needs to be run with simulated time enabled and
+disabled, with single and multi threaded Verifier (if promoted and available).
+
+In each case, the test should examine the TIM.timersList and confirm that the
+correct number of timer instances is present.
+
+End
+---
+
+$Log: dts0100748744.dnt,v $
+Revision 1.3  2011/02/17 11:12:27  campbell
+Job: dts0100748744
+Address review observations.
+
+Revision 1.2  2011/02/15 13:20:30  campbell
+Job: dts0100748744
+Add additional failure case.
+
+Revision 1.1  2011/02/10 11:11:05  campbell
+Job: dts0100748744
+Introduced.
+

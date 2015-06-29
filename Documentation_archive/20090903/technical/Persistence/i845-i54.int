@@ -1,0 +1,176 @@
+========================================================================
+
+File:      $RCSfile: i845-i54.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Handle model reload in canvas for all cases properly
+
+Abstract
+--------
+This note describes changes to handle model reloads for state machine
+canvases.
+
+History
+-------
+
+final i845-i54-120605-01.rvm
+
+Document References
+-------------------
+MFP issue 54
+
+Background
+----------
+The issue describes the following scenario:
+
+- Open ISM diagram for any ModelClass
+- Modify contents (Move shapes)
+- Replace from Local History
+R_ Canvas Editor is closed
+
+When the component data is reloaded, each canvas editor responds to 
+the modelElementReloaded() event by changing the input for the 
+diagram editor to the new model element (created as part of the reload
+process) from the old model element.  The data for the ModelChangedEvent
+contains a reference to the new model element.  The code that does the
+editor input update (EditorUtil.pointEditorToReloadedContent) attempts
+to locate an instance of the model element with an id that matches the
+(old) element that the canvas editor is using as input.  In the case
+of an Instance (or Class) State Machine, the identifying attribute (SM_ID)
+is referential, and the old element (an SM_ISM or SM_ASM instance) has 
+been deleted, and hence unrelated, from the SM_SM instance, and hence 
+doesn't match the id of the newly created instance.   If the 
+pointEditorToReloadedContent fails to find a new instance that matches 
+the old instance id, the editor is closed.
+
+Design
+------
+
+1. Change ComponentResourceListener to report both elements
+
+The ComponentResourceListener.handleComponentReplaced() method is changed
+to send the old and new element references in the ModelChangeEvent passed
+to the fireModelElementReloaded() function.
+
+2. Add reference to new element to ModelChangedEvent.
+
+The ModelChangedEvent is changed to add a second data member, 
+newModelElement, that contains the new model element for the case of a 
+model element reload. A constructor and accessor are added to initialize 
+and access the new data member.
+
+3.  Update fireModelElementReloaded parameter list
+
+The method ModelRoot.fireModelElementReloaded() is changed to take two 
+parameters, the old and new model element.  The parameters are passed to 
+the ModelChangedEvent constructor.  
+
+4.  Change CanvasEditorListener to use both model elements
+
+The method CanvasEditorListener.modelElementReloaded() is changed to invoke 
+EditorUtil.pointEditorToReloadedContent() with the old and new model 
+elements.
+
+5.  Change EditorUtil.pointEditorToReloadedContent to take two arguments
+
+The method EditorUtil.pointEditorToReloadedContent is changed to take
+the old and new model element parameters.  If the passed in new element
+value is not null, it is used to update the editor input. If the new 
+element passed in is null, the code searchs for a newElement that matches
+the old element id.  This duplicates the original functionality when the 
+new model element passed in is null.
+
+6.  Reconciliation of other code
+
+6.1  The invocation of fireModelElementReloaded() in 
+PersistableModelComponent.setRootModelElement() is changed to pass a 
+null for the second argument.
+
+6.2  The invocation of pointEditorToReloadedContent in
+AbstractModelElementTextEditor.handleElementContentReplaced() is changed
+to pass a null for the second model element parameter.
+
+Implementation Comments
+-----------------------
+
+- The methods CanvasEditorListener. modelElementAboutToBeReloaded(),
+modelElementReloaded(), and modelElementUnloaded() didn't check that the
+editor was displaying data for the model element that changed.  This
+made sense when all model elements were stored in one file, since the
+change of one model element changed them all.  In the case of multiple
+files, only the editors for model elements that are changed need to 
+have their inputs updated with the new model element data. Checks
+were added so that the editor only responded to events for the model
+element the editor has loaded.
+
+- The unused method PersistenceManager.refreshModel() is deleted.
+
+- The core test took almost 9 hours to complete.  The 
+ComponentResourceListener was changed to be more selective when refreshing
+Model Explorer due to a resource change.  The method 
+UIUtil.refreshModelExplorer was changed to add a parameter of the
+NonRootModelElement that changed.
+ 
+Unit Test
+---------
+
+- The test CanvasEditorReloadContentsTest.testISMEditorStaysOpenOnReload
+is created which duplicates the scenario listed in the background, and
+validates that the ISM canvas editor remains open.
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelChangedEvent.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/PersistableModelComponent.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/PersistenceManager.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/EditorUtil.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/UIUtil.java
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/CanvasEditorListener.java
+
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/CanvasEditorReloadContentsTest.java
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/AbstractModelElementTextEditor.java
+
+End
+---
+
+$Log: i845-i54.int,v $
+Revision 1.1  2009/09/03 18:22:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.28.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/12/08 22:51:46  greg
+Job: 845
+MFP 54
+Addressed observations
+
+Revision 1.2  2005/12/08 01:24:41  greg
+Job: 845
+MFP 54
+Address pre-review comments
+
+Revision 1.1  2005/12/08 00:59:12  greg
+Job: 845
+Introduce

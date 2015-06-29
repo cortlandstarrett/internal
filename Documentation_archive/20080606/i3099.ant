@@ -1,0 +1,336 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Support Inter-component verification
+
+1. Abstract
+-----------
+This note analyses the requirements to support inter-component verification.
+ 
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3099
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3099
+[2] CVS:/Documentation/internal/technical/archive/20070830/notes/i2924.ant
+    The referenced analysis note specified the requirements for the OAL syntax
+    for components.
+[3] Bugzilla item 3261
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3261
+[4] Bugzilla item 2924
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2924
+    
+4. Background
+-------------
+Currently we support verification on domains and formal components, we do not
+support verification of component communications.
+
+5. Analysis
+-----------
+5.1 Inter-component verification launching
+
+To support full component verification we must allow the user to choose any
+component or imported component in the launch configuration.  We also must allow
+the user to specify the number of component instances that will be started for
+verification.  Given this requirement the current checked tree viewer shall be
+replaced by a table tree viewer, where one column is the tree and the other is a
+text field allowing entry of any integer value as input.  An additional column
+shall be added which will indicate an initializer message.  An initializer
+message when specified shall be used to initiate component communication.  This
+message shall be chosen against a list of existing interface operations or
+signals.  This message shall be executed for each instance that is to be
+verified.
+
+Initializer messages are executed in the same order that the components are
+listed in the tree.  Which is also the same order in which the execution engines
+are setup.
+
+The order in which components are executed shall be indeterminant.
+
+The tool shall provide support for halting execution on entry of a component
+signal or operation specified as an initializer message.  This shall be
+supported through a check box indicating that when checked execution will be
+halted on entry.
+
+A value greater than zero indicates that a component is chosen for launch.
+Those components with a multiplicity of one are only allowed an
+integer value of 0 or 1.  These elements include standalone domains and
+components which have their multiplicity set to one. A zero value shall be
+displayed in the tree as 'Disabled' to provide a cue to the user as to the
+purpose of the field.
+
+When a component is selected for launch and more than one instance is specified,
+a separate debug thread will be started for each component instance up to number
+indicated in the multiplicity column.
+
+All components that participate in a wiring set must be instantiated to fully
+verify the modeled communications.  If a user specifies instantiation of a
+single component without instantiating the components that it is wired with,
+Verifier will behave as if the interfaces to the uninstantiated components were
+unwired (see below).
+
+A user may specify multiple wirings (configurations) of the same components.
+This can be achieved through imported components.  In this case each wiring will
+be executed through the imported component's thread.  On this thread only
+imported interfaces may be communicated across.
+
+When a component with internal structure is selected for launch, all nested
+components shall be selected as well.  The nested children shall all default to
+an integer value of 1 for multiplicity.
+
+When Launch Verifier is selected on a component in the tree, a default of one
+instance will be launched.
+
+When a component package is selected for launch in the Model Explorer tree, all
+child element shall be launched.
+
+Investigation shows that there is no support to provide a nested hierarchy of
+threads in the Debug view.  The eclipse roadmap and bug database were searched
+to see if such support would exist in the near future.  Nothing of value was
+found.  Given that information we shall show a thread for all component's that
+are selected for verification, including those nested under a component that was
+selected for verification.  With this approach the debug view will quickly
+become cluttered, unfortunately there is nothing we can do at this point.
+
+5.2 Allow execution of interface messages
+
+In order to verify component communications we must support verification of
+interface messages.
+
+We shall allow the 'Execute' menu item when an interface signal or operation is
+selected in a tree (for the initial release the trees where interface signals
+and operations are shown are Model Explorer, Outline, and Session Explorer).
+Given that a component may have multiple instances, support for choosing the
+desired target shall be provided.  The dialog for choosing the instance for
+execution shall be a simple list of component instances with the following
+label:
+
+<Component Name> - <Component Instance Number>
+
+The dialog shall be bypassed when the selected component is a singleton
+instance.
+
+All OAL will execute as it does today with the addition of interface operation
+and signal invocations.  In the case of an interface operation, execution shall
+proceed in the receiving component's thread of control, the sender's thread of
+control shall halt until the receiver's thread has processed all of the
+activity.  In the case of interface signals which are assigned to a transition,
+an event shall be added to the execution engine's event pool.  This event will
+get processed in the same manner that all other state machine events get
+processed.  In the case of an interface signal that is not assigned to a
+transition the same behavior as specified for interface operations shall exist,
+with the exception that the sender's thread of control is not halted.
+
+When an interface message with parameters is selected for execution default
+values shall be used.
+
+Stub OAL specified for a given message will be executed in the following cases:
+
+- A component is not wired across a given interface.
+- Where the component owning the invoked operation or signal is not being
+  verified.
+  
+In the cases above, if no OAL is present, nothing shall be done (in the case of
+an operation a default value shall be returned if necessary).
+
+For each thread of control, Verifier shall keep the Component Instance Number of
+the component which sent the unsolicited event message.  This number shall be
+used whenever the 'sender' keyword is used in any OAL, this allows verifier to
+send responses to the original component which started the communication.  For
+clarification of explicit component addressing see [4].
+
+5.3 Session explorer tree
+
+Session explorer shall be modified to allow any component being executed to be
+listed in its tree.  A separate entry shall exist for each instance of a single
+component that is started.  The tree shall have the following layout:
+
+System
+  Component Package
+    Component
+      Nested Component
+        Port
+          Interface Operation
+            param
+          Interface Signal
+            param
+      Port
+        Interface Operation
+          param
+        Interface Signal
+          param
+    Component - Instance Number
+      Nested Component - Instance Number
+        Port
+          Interface Operation
+            param
+          Interface Signal
+            param
+      Port
+        Interface Operation
+          param
+        Interface Signal
+          param
+    Component
+      Subsystem
+      Function Package
+      ...
+      Port
+        Interface Operation
+          param
+        Interface Signal
+          param
+
+For this work the delete and rename menu entries shall be removed from session
+explorer.  This prevents deleting metamodel elements from an instance view.  At
+the time that we support deletion of instances in verifier we will need to
+enable the Delete menu item.  At which point we will need to find a way to
+disable Delete on any metamodel element found in Session Explorer.
+
+6. Work Required
+----------------
+6.1 Inter-component verification launching
+	6.1.1 Add new columns to launch wizard
+	  6.1.1.1 Add new multiplicity column (integer field)
+	    6.1.1.1.1 Add support to prevent specifying a value greater than one when
+	              metamodel element indicates 1 as multiplicity
+	    6.1.1.1.2 Add support to show Disabled in place of zero multiplicity
+	  6.1.1.2 Add new initializer column (button to launch selection wizard)
+	  6.1.1.3 Remove check box
+	6.1.2 Add to the tree all flavors of a component
+	6.1.3 Add support to select (set multiplicity to 1) for all nested components
+	      when a parent is selected for verification
+	      
+6.2 Allow execution of interface messages
+  6.2.1 Add support for Execute when selecting an interface operation or signal
+        that is on a component being verified
+  6.2.2 Create wizard to choose an instance for interface operation or signal
+        execution, bypassed if only one instance exists
+  6.2.3 Add support for blocking when executing an interface operation
+  6.2.4 Add support for adding a signal event to the event queue when calling a
+        signal that is assigned to a transition
+  6.2.5 Add support for executing a signal on the destination component's thread
+  6.2.6 Add support for executing "stub" OAL if present and unwired
+  6.2.7 Add support for returning a default value when unwired and no "stub" OAL
+  6.2.8 Add index support for callee to allow responses to unsolicited event
+        messages
+        
+6.3 Session explorer tree
+  6.3.1 Add required PEI data to show new Session Explorer elements
+  6.3.2 Remove Delete and Rename menu entries in Session Explorer\
+  
+7. Acceptance Test
+------------------
+7.1  All flavors of a component can be selected for launch
+7.2  Multiplicity of a selected component can be set (if multiplicty is greater
+     then one)
+7.3  An existing operation or signal can be set in the initializer field for a
+     component
+7.4  Selecting a component with nested components causes the nested components
+     to get select as well with a multiplicity value of 1
+7.5  Launching starts a thread for each component selected
+7.6  Launching starts a thread for each instance of a component specified in the
+     multiplicity field
+7.7  Execute is available when selecting an interface operation or signal in
+     Model Explorer, Session Explorer, and Outline
+7.8  When selecting Execute in Model Explorer or Outline and the component being
+     verified has multiple instances a wizard is displayed allowing the user to
+     select the instance to invoke the signal or operation on
+7.9  The following behavior occurs when a component is unwired:
+      - If oal is present in the operation or signal it is executed
+      - If oal is not present nothing is done (in the case of an operation a
+        default value will be used)
+7.10 When one side of a wiring is selected for verification the component is
+     treated as unwired, sharing the behavior tested in 7.9
+7.11 If both sides of a wiring are selected for verification the "stub" OAL in
+     the component owning the OAL that is calling on the other component is
+     ignored if present and the OAL on the called component interface is
+     executed
+7.12 When a signal is sent to a component which has the signal event assigned to
+     a transition the OAL in the destination state is executed (in the same
+     manner that events are executed today)
+7.13 When implicit component addressing is used, sender is correctly handled by
+     verifier.  Meaning that the correct component is responded to.
+7.14 Delete and rename are not available in Session Explorer
+7.15 Session explorer's tree resembles the format specified in 5.3
+7.16 Assure that existing domain verification behavior remains the same
+7.17 Assure that existing formal component (single) verification behavior
+     remains the same
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:03  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:20  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.9  2008/02/26 16:17:25  tlondon
+Job: 3099
+
+Addressed review minutes.
+
+Revision 1.8  2008/01/07 21:20:27  tlondon
+Job: 3099
+
+Add some additional testing requirements.
+Correct indentation for session explorer tree.
+
+Revision 1.7  2008/01/07 20:00:53  tlondon
+Job: 3099
+
+Minor section formatting.
+
+Revision 1.6  2008/01/07 19:41:49  tlondon
+Job: 3099
+
+Add WR and Acceptance Test sections.
+
+Revision 1.5  2008/01/07 18:53:47  tlondon
+Job: 3099
+
+Update session explorer documentation.
+Update thread nesting section.
+
+Revision 1.4  2008/01/05 00:14:53  campbell
+Job: 3099
+Did some clarification.
+
+Revision 1.3  2008/01/04 19:39:37  tlondon
+Job: 3099
+
+Add session explorer section.
+Minor modifications.
+Add note about initializer messages.
+
+Revision 1.2  2008/01/04 18:54:38  campbell
+Job: 3099
+Small edits and comments added.
+
+Revision 1.1  2008/01/04 18:11:09  tlondon
+Job: 3099
+
+Introduce intial revision
+

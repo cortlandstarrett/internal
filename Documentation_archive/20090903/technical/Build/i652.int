@@ -1,0 +1,131 @@
+========================================================================
+
+File:      $RCSfile: i652.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:23 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Prevention of unneeded cme rebuilds after clean
+
+Abstract
+--------
+This note describes the changes necessary for preventing unwanted cme rebuilds.
+
+History
+-------
+
+final i652-010705-01.rvm
+
+Document References
+-------------------
+Issue 652
+
+Background
+----------
+The cme_menus target is being called everytime the cme_actions target is called.
+This is because the cme_actions target touches its output file at the end of
+execution.  This behavior prevents using dependencies correctly because the
+cme_actions output will always have a modified timestamp, causing the cme_menus
+target to run.  
+
+Design
+------
+i652.1 Remove touch call on cme_actions output
+
+The touch task is removed from the cme_actions target to prevent timestamp
+changes when the actual data did not change.
+
+Implementation Comments
+-----------------------
+
+During the unit test for this issue a dependency problem for cme_actions was
+found.  The cme_actions target is dependent on ooaofooa.sql's timestamp.  If
+the ooaofooa.mdl file never changes, but the ooaofooa.sql is removed, the newly
+generated ooaofooa.sql will have a newer timestamp then the output of
+cme_actions.  This causes a cme_actions rebuild when one should only be
+triggered if the data actual changed in ooaofooa.sql.  The dependency is
+therefore placed on the ooaofooa.mdl model so that a cme_actions rebuild will
+only occur if the model data actually changed.
+
+The unit test fails because if ran in order, the cme_actions target will always
+run.  This is due to the fact that its dependency is found by comparing
+timestamps of its output, cme_actions.sql, and its input, ooaofooa.mdl.  The 
+first unit test directs the reviewer to make a change to ooaofooa.mdl without
+changing the data, this causes cme_actions.sql to never change.  Therefore, the
+timestamp of cme_actions.sql is always going to be earlier than ooaofooa.mdl.
+This is addressed by touching a build file, .cme_actions_last_build, at the end
+of the cme_actions target.  This touched file is what is used in place of
+cme_actions.sql for finding its dependencies.  Now if ooaofooa.mdl is modified
+but the cme_actions output didn't change, the last run is still captured in
+the touched file. The touch file is to be ignored by CVS.
+
+Work Required
+-------------
+i652.1 Remove touch call on cme_actions output
+
+The changes are made to generate.xml according to the design.
+
+Unit Test
+---------
+_- Modify ooaofooa.mdl without actually changing the data
+_- Run the all target
+_R The cme_menus target is not run
+
+Unit test for implementation comment:
+
+_- Delete ooaofooa.sql and rebuild
+_R The cme_actions target is not run
+
+Code Changes
+------------
+com.projtech.bp.core/generate.xml
+com.projtech.bp.core/sql/.cvsignore
+
+End
+---
+
+$Log: i652.int,v $
+Revision 1.1  2009/09/03 18:22:23  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:12:59  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.54.1  2008/12/31 16:10:02  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/01/19 00:26:01  campbell
+Job: 652
+Change touch file name to make it specific.
+Add the file to CVS ignore.
+
+Revision 1.4  2005/01/18 23:14:08  tlondon
+Job: 652
+
+Updated impl comments to add new touched build file
+
+Revision 1.3  2005/01/07 18:11:54  tlondon
+Job: 652
+
+Add impl comment for ooaofooa.sql cme_actions dependency
+
+Revision 1.2  2005/01/07 17:14:52  tlondon
+Job: 652
+
+Fixed according to review minutes
+
+Revision 1.1  2005/01/06 22:34:04  tlondon
+Job: 652
+
+Initial introduction

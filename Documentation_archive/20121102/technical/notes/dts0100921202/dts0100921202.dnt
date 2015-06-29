@@ -1,0 +1,134 @@
+========================================================================
+
+File:      $RCSfile: dts0100921202.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Satisfactions lost after paste into package
+
+1. Abstract
+-----------
+This note describes the changes required to properly maintain satisfactions
+after pasting, whether directly on a diagram or by selecting the destination.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100921202
+
+4. Background
+-------------
+Testing found an issue where selecting the destination package in a diagram
+caused satisfactions to be lost on paste.
+
+5. Requirements
+---------------
+5.1 Satisfactions shall not be lost no matter how they are pasted.
+
+6. Analysis
+-----------
+There are two issues occurring in HEAD currently.  One is related to the [1] in
+which case the graphical connection between a provision and requirement (or the
+imported variants) is lost when not pasting directly on to the destination
+diagram.  The other issue is that pasted satisfactions are not being hooked up
+with the destination.
+
+The first issue is occurring due to the fact that we are not processing the
+graphical data unless pasting directly to a diagram.  This causes all existing
+graphical data to get thrown out which in turn lets the reconciler recreate the
+graphics.  The reconciler however does not support creating a connection between
+two connector elements.
+
+The second issue is occurring as satisfactions are special in that they are not
+user visible (according to the tool) and are not selectable.  The paste
+infrastructure does not know that a satisfaction needs to get hooked up with
+the destination parent.
+
+7. Design
+---------
+7.1 Copy graphics no matter the destination
+
+A new method is added to CanvasPasteAction,
+handleNonDiagramElementAsDestination.  This method moves the pasted graphical
+elements to the new model root as well as hooks them up with the destination's
+related Model instance.  If a destination does not have a Model instance the
+graphics are not processed.  After hooking the elements up the method will place
+them at a location on the diagram that is the next available space to the east.
+This prevents any overlap on paste.
+
+This new method is called in CanvasPasteAction when a diagram is not the
+selected destination.  It is also called by the ExplorerPasteAction so that
+graphics are processed when pasting in Model Explorer.
+
+7.2 Add special case for satisfactions 
+
+Unfortunately there was no common approach determined.  Its the way
+satisfactions exist.  They are also the only elements with the special situation
+stated in section 6.  To address this ModelStreamProcessor class is modified to
+have a special case for satisfactions.  The special case processes all
+satisfactions that were imported from the stream.  For each of them that do not
+have parents it hooks them up with the destination.  This will be either a
+package or component.
+
+8. Design Comments
+------------------
+
+9. Work Required
+----------------
+See design section.
+
+10. Unit Test
+------------
+10.1 Satisfaction pasting
+_- Create GPS Watch
+_- Open the System package
+_- Create two new packages in the System package
+_- On the System diagram copy all the component references and all the provisions
+   and requirements
+_- Select the new packages and do RC > Paste
+_- Open the new packages
+_R All Component references and the connections are pasted
+_- Move one of the component references
+_R The connectors remain connected
+_- Close the project and then open it
+_R The new packages still have satisfied provisions and requirements
+_- Copy the contents of one of the new packages
+_- Create a new component in the System package
+_- Right click on the component in Model Explorer and choose Paste
+_- Open the component diagram
+_R All Component references and the connections are pasted
+_- Move one of the component references
+_R The connectors remain connected
+_- Close the project and then open it
+_R The new packages still have satisfied provisions and requirements
+
+The following existing suites need to be run
+
+- All IO MDL suites
+- CanvasCCP
+
+
+End
+---
+
+$Log: dts0100921202.dnt,v $
+Revision 1.2  2012/10/15 18:37:50  tlondon
+Job: dts0100921202
+
+Address review minutes
+
+Revision 1.1  2012/10/15 18:15:39  tlondon
+Job: dts0100921202
+
+Add design note
+

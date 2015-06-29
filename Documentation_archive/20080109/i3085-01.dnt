@@ -1,0 +1,514 @@
+========================================================================
+
+File:      $RCSfile: i3085-01.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Fixed Length Arrays
+
+1. Abstract
+-----------
+This note describes how fixed-length arrays will be supported in BridgePoint.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3085
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3085
+[2] <cvs>/Documentation/internal/tecnical/notes/i3085-01.ant
+[3] <cvs>/Documentation/internal/technical/notes/i3085-02.ant
+[4] Bugzilla item 3276 (Allocate fixed-length data items in advance)
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3276
+[5] Bugzilla item 2745 (Support arrays in MC-3020)
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2745
+[6] BridgePoint Software Requirements Specification for this issue:
+    <cvs>://Documentation/external/requirements/FLA.SRS.txt
+[7] Documentation/internal/technical/notes/i3085-TestMatrix-01.txt
+[8] Documentation/internal/technical/archive/20070830/notes/
+                                                      i478-TestMatrix-01.txt
+
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+5.1 See [2].
+5.2 As part of this implementation, the limit of 8 array dimensions shall be 
+    lifted.  There will no longer be any limit to the number of dimensions 
+    allowed.
+
+6. Design
+---------
+6.1 Metamodel changes
+6.1.1 A new metamodel class, Dimension (S_DIM) shall be created. The following 
+      metamodel elements will have an association with this new class:
+      - Attribute
+      - Bridge (return value)
+      - Bridge Parameter
+      - Function (return value)
+      - Function Parameter
+      - Operation (return value)
+      - Operation Parameter
+      - Structure Member
+      - Interface Operation (return value)
+      - Property Parameter
+      - State Machine Event Data Item
+      - Transient Var
+
+6.1.1.1  The cardinality of this relationship shall represent the number of 
+         dimensions that each of these classes has.
+         
+6.1.1.2 The "Dimensions" or "Return Dimensions" of these class shall be modified
+        to be a string value instead of the current value of Dimensions_Type.
+        This string shall hold the string-representation of the dimensions for 
+        each class.  
+        
+6.1.1.3 Each of these classes shall have an operation, getDimensionsCnt() or
+        getReturnDimensionsCnt() that returns the number of dimensions.
+
+		Example:
+		        
+        select many dims related by self->S_DIM[R51];
+		dimensions = cardinality dims;
+		return dimensions;
+        
+6.1.1.4 Each of these classes shall have an operation, resizeDimensions() or
+        resizeReturn_Dimensions().  These operations have the following 
+        parameters:
+        integer dimension;     The 0-based value of the dimension being sized.
+        integer elementCount;  The number of elements in this dimension.  Note
+                               that the value of 0 indicates the array is 
+                               dynamically sized.
+        integer numDimensions; The total number of dimensions this model element
+                               has.
+
+        This operation is used to create/destroy instances of the Dimension  
+        class and setup/teardown the relationship with the Dimension class.
+        
+        Here is an example:
+        
+		// If the number of dimensions has increased then add dimensions
+		while (param.numDimensions > self.getReturnDimensionsCnt())
+		  create object instance dim of S_DIM;
+		  dim.index = self.getReturnDimensionsCnt();
+		  relate dim to self across R51;
+		end while;
+		
+		// If the number of dimensions has decreased then remove dimensions
+		while (param.numDimensions < self.getReturnDimensionsCnt())
+		  select any dim related by self->S_DIM[R51] where 
+		                 (selected.index == (self.getReturnDimensionsCnt()-1));
+		  unrelate dim from self across R51;
+		  delete object instance dim;
+		end while;
+		
+		// Update the specific dimension that was passed-in if its elementCount  
+		// has changed.
+		if (param.numDimensions > 0) 
+		  select any dim related by self->S_DIM[R51] where 
+		                                    (selected.index == param.dimension);
+		  if (dim.elementCount != param.elementCount)
+		    dim.elementCount = param.elementCount;
+		  end if;
+		end if;
+		
+6.1.1.5 The 'Dimensions' class shall carry an integer attribute; 'elementCount'. 
+        A value of 0 indicates that the array is dynamically sized.  Numeric 
+        values of 1 or more indicate that it is a fixed-size array. Each 
+        dimension of the array is limited to a different specified number of 
+        elements.  
+
+6.1.1.6 The 'Dimensions' class shall carry an integer attribute; 
+        'dimensionCount'.  This value indicates the position of this dimension 
+        in a multi-dimensional array.  It is a 0-based value.
+
+6.1.1.7 The Dimensions_Type enumeration shall be removed.
+      When this enumeration is removed, several helper-functions will no longer
+      be needed and shall be removed.  They are:
+      - ::dimensionToInt()
+      - ::getArrayDecorations()
+      - OAL Validation Functions::int_to_dim
+      
+6.1.1.8 The Dimensions instances shall be persisted through each of the 
+      relationships which the classes specified in 6.1.1.
+      
+6.1.2 Display array adornments
+      Array adornments previously used the description text of the 
+      Dimensions_Type enumerator.  This adornment is now the value of the
+      Dimensions or Return_Dimensions attribute.  Therefore the adornment is
+      always seen exactly as it is entered by the user.
+
+6.2 User Interface Changes
+    The classes that previously contained a Dimensions or Return Dimensions
+    property shall still contain this property, and the properties shall 
+    continue to display it as "Array Dimensions".  However, as specified above,
+    this property shall now be a string instead of an enumeration.  The user
+    shall enter the dimension in the following format: "[x][y][][z]" as 
+    specified in the SRS [6].  
+    Only positive numeric values shall be allowed as array dimensions (no 
+    constants or expressions).  Empty square brackets indicate a dynamically-
+    sized dimension.  Spaces are allowed between dimensions and inside 
+    dimensions (they are ignored).  
+
+6.2.1 A property descriptor and property validation routine is introduced to 
+      assure only valid syntax is entered.  In this initial version of FLAs, 
+      only numeric values will be allowed.  
+      
+      Note that in a future version, when constants/expressions are introduced, 
+      the property validation routine will be updated to use a generated parser 
+      that can properly validate the data.  Model compilers will not ever parse 
+      this data.  In the initial version, model compilers will use the 
+      association with Dimensions, and the Dimensions.elementCount attribute to 
+      determine the number of array dimensions (it is the cardinality of the 
+      relationship with Dimensions) and each dimension's size (it is 
+      Dimension.elementCount where 0 means dynamic-sizing). In future versions, 
+      when constants and expression are allowed, the value will come from an 
+      instance in a Value tree instantiated by the parser.
+      
+6.2.1.1 The dimensions property descriptor, 
+        bp/ui/properties/DimensionsPropertyDescriptor.java, is used for every 
+        attribute in the model named Dimensions or Return_Dimensions.  This 
+        descriptor shall use the DimensionsValidator.
+        
+6.2.1.1.1 Introduce a class core/util/DimensionUtil.java with a static method, 
+		getDimensionsData(String dimString), that takes a string which 
+		represents dimensions and returns a vector with the dimensions from that 
+		string.  The vector returned from this utility may be used to iterate 
+		over the dimension data and update the model accordingly through calls 
+		to <model element>.resizeDimensions().
+
+6.2.1.1.2 ui/properties/arc/BuildPropertiesSource.arc shall be modified to use 
+      the DimensionsPropertyDescriptor on Dimensions and Return_Dimensions
+      attributes.
+      
+6.2.1.1.3 ui/properties/arc/BuildPropertiesSource.arc shall be modified so that
+      when Dimensions/Return_Dimensions properties are modified, the class
+      instance is updated via the <class instance>.resizeDimensions() operation.
+
+6.2.1.2 The dimensions validator is responsible for assuring the user enters
+      the array syntax correctly.  This validator is a very simple java class
+      because it utilizes a regular expression to validate the array syntax 
+      entered.  There are several regular expressions defined, and the one used 
+      is dependant on the BridgePoint preferences specified for arrays.
+      
+6.2.1.3 Help text shall be displayed for this property to show the user how to 
+        enter the data.  This help-text shall change depending on the 
+        BridgePoint array preferences selected.  Here are the help text strings:
+      "Dimensions must be entered as follows: [x][y][][z]..."
+      "Dimensions must be entered as follows: [x][y][z]..."
+      "Dimensions must be entered as follows: [][][]..."
+      "Arrays are disabled."
+        
+6.2.1.3.1 When the user is entering incorrect text, the help-text shall change 
+        color and the following shall be pre-pended to the help text:
+        "Warning: The format is not correct.  "
+                
+6.3 BridgePoint Array preferences
+6.3.1 Add "Enable Fixed-Length Arrays" and  "Enable Dynamically-Sized Arrays" 
+      preferences to the BridgePoint Preferences page 
+      (BridgePointPreferences.java) as checkbox widgets.  They default to 
+      being enabled (checked).
+      
+6.3.2 New string fields, 'enableFLAs' and 'enableDSAs' are added to the java 
+	  class, BridgePointPreferencesModel. 
+	  
+6.3.3 The 'synchronizeTo' and 'deepClone' operations in  
+      BridgePointPreferencesModel are modified to include 'enableFLAs' and 
+	  'enableDSAs'.
+	  
+6.3.4 BridgePointPreferencesStore.java is modified to add new property names
+	  for the new attributes.  The new properties were added in the 'saveModel' 
+	  and 'loadModel' methods. 
+	  
+6.3.5 Modify the DimensionValidator to check the Array preferences and validate
+      the array syntax based on the options selected.
+      
+6.4 Parser Changes      
+6.4.1 Array element access
+      Existing array element access syntax shall continue to be used:
+      
+      <array handle>[<integer expression 1>][<integer expression 2>]
+
+      The number of repetitions of the '[<integer expression 1>]' syntax shall 
+      continue to be validated by the parser against the number of dimensions
+      specified in the Model element just as it is today.  However, this value
+      shall now come from an operation, getDimensionCnt() that exists for each
+      meta-model class that may have dimensions (as specified in 6.1.1).
+      
+      For fixed-length arrays, the element offset '[<integer expression 2>]'
+      syntax shall be validated by the parser against the 
+      'Dimensions.elementCount' attribute for the corresponding dimension.
+
+6.4.2 Locate the places in the OAL validation routines where additional code
+      must be added to check array validation bounds.  This was done by 
+      changing the name of the V_VAL.getDimensionsCnt() operation to 
+      V_VAL.getDimensions().  This can be done for this operation because V_VAL 
+      does not contain a Dimensions attribute, it is responsible for navigating 
+      the value-chain to get the data.  After renaming, a parse-all points to 
+      all the places this call is used, and it is these places that needed 
+      attention.  They are:
+	    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+	        Assignment_expr_end()
+	        Message_invocation_end()
+	        Member_access_loop11_end()
+	        Return_statement_end()
+	    Instance Access/Assign to Member/Assign to Member.xtuml
+	        execute()
+	    Value/Array Element Reference/Array Element Reference.xtuml
+	        getRuntimeValue()
+	    Value/Binary Operation/Binary Operation.xtuml
+	        getBoolean()
+	    Value/Value/Value.xtuml
+	        computeValue()
+	        getDimensions()
+	        
+6.4.2.1 Of the places identified, Assignment_expr_end(), and 
+        Return_statement_end() needed to be modified.  The other places were not 
+        calling V_VAL.getDimensions() to validate the number of dimensions, 
+        therefore we did not need to validate the array length at these places.
+        
+6.4.3 It was observed that tests for incompatible array depth were not being
+      made for parameters.  The following places shall be modified as needed to 
+      assure that incompatible array depth and AOOB situations are caught by the 
+      parser for parameter values.
+		OAL Validation Utility Functions
+		    is_valid_sm_event_data
+		    is_valid_ee_event_data - No modification is made here because these
+		                             elements are deprecated.  We can not create
+		                             or refer to them. They simply still happen
+		                             to exist in the meta model.
+		
+		OAL Validation Functions
+		    Bridge_invocation_end
+		    Function_invocation_end
+		    Transform_invocation_end
+		    Message_invocation_end
+		    
+6.4.4 The parser shall only report AOOB conditions for literal integers.  Future
+      versions shall be enhanced to handle constants and perhaps 
+      expressions [3].
+6.4.4.1 The parser treats negative integers as expressions.  Therefore, 
+        negative values will not be checked by the parser in this version.  For 
+        example: foo[-100] will not be reported as an error by the parser.
+        
+		    
+6.5 Verifier Changes
+6.5.1 Array Size
+      When iterating over a fixed-length array, Verifier shall log an error and 
+      halt execution if an attempt is made to read past the end of the array 
+      (6.4 prevents this for literals only).
+      
+6.5.1.1  Value::Array Element Reference.getRuntimeValue() shall be modified to 
+         validate the array length.
+      
+6.5.1.1.1 The following code shall be used to check for AOOB conditions:
+      select one smpleIndexVal related by indexRtVal->RV_SMV[R3300];
+      index = GD::instance_to_int(value:smpleIndexVal.Value);
+      fixedSize = rootVal.getArrayLength(dimension:rootVal.getDimensions() - 1);
+      if ( (index < 0)  or  (fixedSize != -1 and fixedSize <= index) )
+        // array is not auto-sizing and index is beyond the end of the array
+        select any stack_frame from instances of I_STF where
+                              (selected.Stack_Frame_ID == param.stack_frame_id);
+        if (empty stack_frame)
+          //Invalid stack frame ID!
+          USER::logError(msg:"Invalid stack frame. Suspending.");
+          select any stack from instances of I_STACK;
+          stack.runState = RunStateType::Suspended;
+          select one stack_frame related by stack->I_STF[R2929];
+        end if;
+        select one stack related by stack_frame->I_STACK[R2943];
+        USER::logError(msg:"Array index out of bounds. Suspending");
+        stack.runState = RunStateType::Suspended;
+      end if;
+6.5.1.1.2 When verifier encounters an array size that is less then 0 it shall
+          be treated as an AOOB condition.
+
+6.6 Model Compilers
+	The model compilers do not yet support arrays.  Adding array support to the 
+	model compilers will be handled in another issue [5].
+
+6.7 Model Import
+	Prior version models that have a Dimensions attribute that has a value 
+	greater then zero must be modified.  These attributes are now strings that
+	hold the string representation of the dimensions.  We now have a 
+	relationship with a new class, S_DIM, where the cardinality of the 
+	relationship represents the number of dimensions.  In the previous models
+	with Dimensions, arrays are all dynamically-sized.  Therefore the conversion
+	will set the S_DIM.elementCount to 0 for each dimensions (this indicates 
+	dynamic sizing).  
+	
+6.7.1 A method, void migrateDSAtoFSA(NonRootModelElement obj), shall be 
+      introduced in io/core/ImportHelper.java.  This method will determine if
+      the given NonRootModelElement is one of the types that has a Dimensions/
+      Return_Dimensions attribute (these are specified in 6.1.1).  If it is,
+      it will call that instances resizeDimensions() operation to setup each of 
+      the dimensions.
+      
+6.7.2 Modify io.core/arc/import_functions.inc 
+6.7.2.1 The genCreateMethods() function shall be modified to generate update
+      code for the classes with Dimensions attributes that may need to be 
+      updgraded (these are specified in 6.1.1).      
+      
+6.7.2.1.1 This update code will convert the old integer value to a string of the 
+      form "[][][]" where each dimension shall have one "[]" in the string.
+      
+6.7.2.1.2 Code shall be generted which will call the 
+      ImportHelper.upgradeDSAs() function for instances that need to be 
+      updated.
+
+7. Design Comments
+------------------
+7.1 Gradients are not always disabled by default, this shall be fixed.
+    Set the default for the BridgePointPreferencesStore.DISABLE_GRADIENTS 
+    property to true so gradients will always be disabled by default, even 
+    when starting-up for the first time.  The reason this is required is that 
+    the call to IPreferenceStore.getBoolean(DISABLE_GRADIENTS) will sometimes 
+    encounter the situation where the requested property does not yet exist 
+    in the preference store.  When this happens this call returns false (which 
+    is the default for the DISABLE_GRADIENTS property).  To fix this we change 
+    this property's default using 
+    IPreferenceStore.setDefault(DISABLE_GRADIENTS, true) before the call to 
+    getBoolean().
+
+8. Work Required
+----------------
+All work is outlined in the design section.
+
+9. Unit Test
+------------
+9.1 All existing unit tests pass.  This of course includes the existing 
+    tests introduced when dynamically-sized arrays were introduced.
+9.2 A test matrix shall be created and the unit-tests generation tool will be
+    utilized to generate tests from the matrix [7].  The matrix created
+    when sdts were introduced into BridgePoint shall be used as the starting-
+    point for this matrix [8].
+9.3 Array out-of-bounds errors should be displayed by the parser when the follow
+    are out-of-bounds:
+    _- lvalues 
+    _- rvalues
+    _- return values
+    _- event data items
+    _- parameters
+9.3.1 The out-of-bounds test should test single and multi-dimensional arrays.
+    Only numeric literals shall be validated in OAL.
+
+9.4 Verifier tests
+_- Test that an attempt to index beyond the end of an array is flagged by
+   Verifier as specified in the following situations:
+_- A constant is used in the array boundary.
+_- An arithmetic expression is used in the array boundary. (ex foo[x+20])
+
+9.5 Check that the preference settings are enforced by the tool as specified.
+-- Test default settings
+_- Launch the tool in a fresh workspace
+_- Open Window->Preferences->BridgePoint
+_R "Enable Fixed-Length Arrays" is checked
+_R "Enable Dynamically-Sized Arrays" is checked
+
+-- Test FLAs enabled, DSAs enabled
+_R When defining array attributes the FLA syntax is allowed
+_R When defining array attributes the DSA syntax is allowed
+_R The properties help text indicates that both DSAs and FLAs are allowed.
+
+-- Test FLAs enabled, DSAs disabled
+_R When defining array attributes the FLA syntax is allowed
+_R When defining array attributes the DSA syntax is not allowed
+_R The properties help text indicates that only FLAs are allowed.
+
+-- Test FLAs disabled, DSAs enabled
+_R When defining array attributes the DSA syntax is allowed
+_R When defining array attributes the FLA syntax is not allowed
+_R The properties help text indicates that only DSAs are allowed.
+
+-- Test FLAs disabled, DSAs disabled
+_R Array attributes are not allowed to be entered.
+_R The properties help text indicates that arrays are disabled.
+
+End
+---
+
+$Log: i3085-01.dnt,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.13  2007/12/11 22:12:22  rmulvey
+Job:3085
+Addressed the last review observation by adding a note to explain that the parser treats negative values as expressions, and the paser only checks for AOOB in literal integers in this version.  Therefore, the parser will not report something like foo[-999] as an error.  However, the verfier will catch this at runtime and handle it as an AOOB.
+
+Revision 1.12  2007/12/11 16:14:00  rmulvey
+Job:3085
+In 6.1.1 note that Transient Var also has an association with S_DIM.
+
+Revision 1.11  2007/12/06 19:30:43  rmulvey
+Job:3085
+Addressed review minutes
+
+Revision 1.10  2007/11/28 16:03:40  rmulvey
+Job:3085
+Updated to account for moving the haltExecution functionality.
+
+Revision 1.9  2007/11/27 22:35:17  rmulvey
+Job:3085
+Updated to account for final model import changes.
+
+Revision 1.8  2007/11/26 22:41:47  rmulvey
+Job:3085
+Updated to account for verifer-related change (6.5).
+
+Revision 1.7  2007/11/26 20:36:06  rmulvey
+Job:3085
+Clarified the item that describes validating parameters for array depth and AOOB (6.4.3).
+
+Revision 1.6  2007/11/26 20:19:23  rmulvey
+Job:3085
+Nore that is_valid_ee_event_data() does not need to be modified, it is deprecated.
+
+Revision 1.5  2007/11/26 20:12:50  rmulvey
+Job:3085
+Nore that is_valid_ee_event_data() does not need to be modified, it is deprecated.
+
+Revision 1.4  2007/11/26 15:54:53  rmulvey
+Job:3085
+Updated to point to the test matrix.
+
+Revision 1.3  2007/11/26 15:40:06  rmulvey
+Job:3085
+A few minor changes after proof reading.
+
+Revision 1.2  2007/11/22 00:47:02  rmulvey
+Job:3085
+Updated note
+
+Revision 1.1  2007/10/04 21:37:29  campbell
+Job: 3085
+Renamed from i3085.dnt to reflect dual step specification.
+
+Revision 1.2  2007/10/04 21:30:37  campbell
+Job:3085
+Updated for compatibility with latest BridgePoint array behavior.
+.
+
+Revision 1.1  2007/09/04 20:14:18  cstarret
+job:3085
+Introduced design note.  Made minor mods to the analysis note.

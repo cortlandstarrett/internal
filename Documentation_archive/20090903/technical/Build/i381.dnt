@@ -1,0 +1,212 @@
+========================================================================
+
+File:      $RCSfile: i381.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:23 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Build timeout problems
+
+Abstract
+--------
+
+This note describes the creation of a system for determining the correct timeout
+value for all of the exec calls in every tiger ant build script.
+
+History
+-------
+
+Document References
+-------------------
+
+Issue 381
+
+Background
+----------
+
+The nightly builds continue to fail due to timeouts that are being hit during
+the exec calls from the ant build scripts.
+
+Design
+------
+
+i381.1 Modify standalone ant package to time exec calls
+
+The ant package used during the nightly builds, to run the tiger build scripts,
+is modified to output the time it takes to run the exec ant task. 
+
+i381.2 Modify ant command to use lib_pt
+
+The original lib directory from the ant package is copied to lib_pt.  The
+ant.jar library, which contains the modified ExecTask class, is placed in this
+directory.  The ant command, bin/ant,  is copied to bin/ant_pt.  The ANT_LIB
+variable in ant_pt is modified to point to the lib_pt directory.
+
+i381.3 Create a script for getting and setting new timeout values
+
+A new script, set_exec_call_timeouts.sh, is created which checks out all the
+modules involved with the nightly builds.  It then builds each module using the
+modified ant package from i381.1.  The script takes the values created from the
+modified ant package and sets them in their corresponding ant build scripts.  It
+then commits any changes to the cvs server.  A comment is given to the cvs
+server to describe the changes made to the build scripts.  The comment is
+"Job: $JOB_NUM\n\n$0: Setting exec timeout values for $module.", where JOB_NUM
+is the job id passed to the script, 0 is equal to the running scripts name, and
+module is the module that the changes are being commited to. 
+
+i381.4 Run script with job id
+
+The script shall be run with its only argument as a valid job number in
+bugzilla.  This argument is stored in the JOB_NUM variable.  If the JOB_NUM
+variable is set the script automatically commits any changes to the cvs server.
+   
+Work Required
+-------------
+
+i381.1 Modify standalone ant package to time exec calls
+
+The ExecTask class is modified to have the runExecute method store the current
+time in milliseconds in the time variable of type long.  The runExecute method
+then stores the current time, after running the actual command, in the timeAfter
+variable of type long.  The time variable's value is then subtracted from the
+timeAfter variable's value.  The result is stored in the executeTime variable of
+type long.  30000 milliseconds are added to the value of the executeTime
+variable creating slack in case the run time varies.  The result of the addition
+is stored in the timeToSet variable of type long.  The value of the timeToSet
+variable is converted to a string and written to a file named
+"project"_exec_times.txt, where project is the project from which the exec call
+originated.  The output file is created in the project's root directory.
+
+The modified package is zipped in a file named apache-ant-1.6.1-pt.zip.  The
+created zip file is copied to the cvs server and stored under
+/software/software_archive/Eclipse/Ant.
+
+i381.2 Modify ant command to use lib_pt
+
+The changes are made to the ant package as described in the design.
+
+i381.3 Create a script for getting and setting timeout values
+
+The script creates a new temporary workspace under the directory from which the
+script was called.  The directory is named tmp_wksp.
+
+The script checks out all the modules listed in the ALL_MODULES variable.  The
+ALL_MODULES variable contains the PLUGIN_MODULES, REQUIRED_MODULES, and the
+ANTLR_TOOL variables. The PLUGIN_MODULES variable contains all of the modules
+which have build scripts, excluding MC-Java.  The REQUIRED_MODULES variable
+contains the com.projtech.bp.als.oal, MC-Java, and pt_antlr.
+
+The script creates a backup of all the original build scripts then uses sed to
+set the exec timeout values in the scripts. All of the timeouts are set to
+300000 milliseconds before building so that the build will not fail while timing
+the exec calls.
+
+Each project from the PLUGIN_MODULES variable is built using the modified
+package from i381.1.  The output of each build is written to a log file named,
+${module}_build_log.txt, where ${module} contains the module name being built.
+This file is then checked for the string "BUILD SUCCESSFUL".  If that string
+does not exist the build failed and the script exits with an error.
+
+If the build was successful a file is created, ${module}_exec_lines.txt, which
+contains a list of the line numbers for which the timeout values are located in
+the build scripts.
+
+The script checks that the number of timeout lines is equal to the number of
+lines to be modified.  If it is not the script exits with an error.
+
+The script sets the timeout values equal to the times recorded by the ExecTask
+class from i381.1 in the generate.xml scripts.
+
+Each time a project's build script calls an ant target, which contains an exec
+call from the model compiler, a list of timeout values is generated in the
+project's directory.  The script searches for all of the files containing MC-Java
+exec times and compares the values.  The script takes the highest value and sets
+all of the MC-Java timeout values accordingly.
+
+If the JOB_NUM variable is set the script runs diff on the original build script
+and the modified build script.  If there are changes the script commits the
+changes to the cvs server using the JOB_NUM value as the job id.
+
+i381.4 Run script with job id
+
+The script is run as described in the design.
+
+Unit Test
+---------
+
+Log in to the build machine (whimbrel) using user: build.
+
+- Open a cygwin shell
+- Run the script with no arguments
+R No errors are reported
+R All build.xml and generate.xml have the values from "project"_exec_times.txt
+  set as their timeout values
+- Remove the tmp_wksp directory
+  
+Change CVSROOT to equal
+:ext:${USER-build}@phoenix:/arch1/sun/u/tlondon/work/repository
+- Run the script passing 16 as an argument
+R No errors are reported
+R All build.xml and generate.xml have the values from "project"_exec_times.txt
+R HEAD contains the modified ant build scripts 
+
+
+End
+---
+
+$Log: i381.dnt,v $
+Revision 1.1  2009/09/03 18:22:23  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:00  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.152.1  2008/12/31 16:10:03  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2004/08/31 16:35:37  tlondon
+Job: 16
+
+Removing test string from job 381
+
+Revision 1.6  2004/08/31 04:40:54  build
+Job: 381
+
+Testing cvs error.
+
+Revision 1.5  2004/08/30 22:41:31  tlondon
+Job: 381
+
+Fixed according to the review minutes.
+
+Revision 1.4  2004/08/30 20:28:23  tlondon
+Job: 381
+
+Added section 381.4, to commit changes to the generate.xmls
+
+Revision 1.3  2004/08/30 20:24:45  tlondon
+Job: 381
+
+Added generate.xml code changes.
+
+Revision 1.2  2004/08/30 18:29:36  tlondon
+Job: 381
+
+Updated code changes for Readme.txt
+
+Revision 1.1  2004/08/30 17:01:23  tlondon
+Job: 381
+
+Introducing design note.
+

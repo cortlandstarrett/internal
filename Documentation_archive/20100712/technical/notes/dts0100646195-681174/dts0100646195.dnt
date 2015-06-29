@@ -1,0 +1,144 @@
+========================================================================
+
+File:      $RCSfile: dts0100646195.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Array attribute problem in Session Explorer.
+Constants return wrong values
+
+1. Abstract
+-----------
+While executing a model, when user selects an array attribute in the Session 
+Explorer or Spotlight views, a "Simple access attempted on a compound value" 
+error is triggered.  Also, 'Constant' data types do not return their values 
+correctly.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100646195 - Array attribute problem in Session Explorer.
+[2] ClearQuest DEI dts0100681174 - DataTypes : Constants return wrong values.
+[3] Design note dts0100530239.dnt - Constants  Phase 1
+[4] Manual Test dts0100683387 - testing Constant data and Array Attribute in SE 
+							& Spotlight views
+
+4. Background
+-------------
+4.1 RuntimeValue subsystem shows that the RuntimeValue model class is super
+ class for three model classes: StructuredValue, SimpleValue and ArrayValue. 
+ For any RuntimeValue instance, it must be related with one of its 
+ subclasses.  
+
+4.2 The Constant's design note [3 §6.3.1 ]states that  :  
+    Value.computeValue() - Update to support constant data in V_SCV instances. 
+    Changes should be localized to the area where the existing literal constant 
+    types are handled.
+
+
+5. Analysis
+-----------
+5.1 The RuntimeValue.getValue() operation only returns the value of SimpleValue 
+ instance related with RuntimeValue instance. In case SimpleValue instance 
+ does not exist, this operation will raise "Simple access attempted on 
+ a compound value" error.  
+
+5.2 For any type of array, its RuntimeValue instance has ArrayValue instances 
+as subclasses. Each instance of ArrayValue represents one of the array element.
+
+5.3 When user selects an array attribute from the Session Explorer or Spotlight 
+views during model execution, the RuntimeValue.getValue() operation is invoked 
+with the RuntimeVlaue instance associated with the array attribute instance. 
+Since this RuntimeValue instance has only ArrayValue as a subclass, the "Simple 
+access attempted on a compound value" error will be triggered.
+
+5.4 The AttributeValue.getValue() operation that invokes the 
+RuntimeValue.getValue() operation with the attribute RuntimeValue instance needs 
+to first check if selected attribute is an array or not.
+
+5.5 The Value.computeValue() operation does not check if the Value instance has 
+a subclass SymbolicConstantValue instance. The implementation for Constant
+Phase 1 has missed to update Value.computeVlaue() i.e. it did not support 
+constant data in the verifier.
+
+
+6. Design
+---------
+6.1 An if-else condition statement needs to be added to the
+AttributeValue.getValue() operation. If the Selected attribute RuntimeValue 
+instance has an ArrayValue as a subclass then it should return an empty string, 
+otherwise it should invoke the RuntimeValue.getValue() operation. This fix works 
+for both views -Session Explorer and Spotlight- since they use the same code.
+
+6.2 A query shall be added to Value.computeValue() operation to select 
+the SymbolicConstantValue instance related with the Value instance. If query 
+result is not null, then the computeValue() operation should handle the constant 
+data. Changes should be localized to the area where the existing literal data 
+such as Literal Integer and Literal String are handled. 
+The value that should be passed in the RuntimeValue.setValue() operation stands 
+in LiteralSymbolicConstant.'Value'.
+This LiteralSymbolicConstant instance can be obtained through the traversal 
+SymbolicConstantValue V_SCV-> SymbolicConstant  CNST_SYC-> 
+ 			  LeafSymbolicConstant CNST_LFSC-> LiteralSymbolicConstant CNST_LSC
+
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is outlined in section 6.
+
+9. Unit Test
+------------
+9.1 Run all JUnit tests, verify they pass.
+
+9.2 _- Reproduce the problems as steps in [1] and [2].  
+    _R The problem described does NOT occur.
+
+9.3 Perform the manual test [4].
+
+End
+---
+
+$Log: dts0100646195.dnt,v $
+Revision 1.7  2010/04/19 14:39:57  nmohamad
+job:dts0100646195
+Addressing review minutes..
+
+Revision 1.6  2010/04/19 12:32:39  nmohamad
+job:dts0100639559
+Add more details for  6.2.
+
+Revision 1.5  2010/04/18 15:52:43  nmohamad
+job:dts0100646195
+Refining..
+
+Revision 1.4  2010/04/18 12:16:16  nmohamad
+job:dts0100646195
+add more details for design section..
+
+Revision 1.3  2010/04/15 15:05:21  rmulvey
+job:dts0100646195
+Corrected grammar during a pre-review.
+
+Revision 1.2  2010/04/15 14:49:30  nmohamad
+job:dts0100646195
+Grammer and vocabulary checking..
+
+Revision 1.1  2010/04/15 14:44:56  nmohamad
+job:dts0100646195
+Creating..
+

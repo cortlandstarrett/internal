@@ -1,0 +1,121 @@
+========================================================================
+
+File:      $RCSfile: dts0100749832.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Turn off the consistency checker for R8001 subtypes
+
+1. Abstract
+-----------
+This issue is raised to turn off consistency-checker generated code for R8001
+subtypes.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100749832
+[2] ClearQuest DEI dts0100631941
+    Migrate away from specialized packages 
+[3] ClearQuest DEI dts0100749939
+    Enable consistency checking on R8001 subtypes
+    
+4. Background
+-------------
+With the introduction of meta-model support for Generic Package functionality
+[2], all model elements that were previously persisted under a 
+specialized package may now be persisted under a PE_PE.  The relationship that 
+represents this new persistence path is R8001.  R8001 is a supertype/subtype 
+relationship where PE_PE is the supertype and the subtype may be any model 
+element that was persisted in a specialized package prior to implementation of 
+[2].  During the implementation and deployment of the [2] the tool allowed 
+users to continue to create and use specialized packages.  When users
+take advantage of this, the consistency checker currently writes an error to 
+the error log every time any model element is created under a specialized 
+package. 
+
+The reason for this is that any time a model element that is a subtype of R8001
+is created our consistency checker code believes there should be a supertype
+associated with the element on R8001.  In our implementation, there is not a 
+PE_PE supertype instance on R8001 when one of these MEs is created in a 
+specialized package, and there should not be, because PE_PE does not make sense
+for specialized packages.
+
+This issue is raised to modify the consistency checker code generation to 
+remove the check for subtypes of R8001 and thus prevent the error log messages.  
+Here is an example of what one of the error messages being removed looks like:
+Consistency: Object: <model element created is here>: Association: 8001: 
+Cardinality of a supertype is not equal to 1. Actual Value: 0
+
+Once models have been migrated to generic packages we can once again enable 
+this consistency check.   A separate issue is raised for this [3], and an 
+association between this new issue and [2] is defined in the issue tracking 
+system so that when GP functionality is fully deployed we can enable this 
+consistency check again.  
+
+5. Design
+---------
+5.1 Modify the consistency code generation in 
+    MC-Java/model_consistency.inc by adding a special-case for the 
+    R8001 supertype "Packageable Element".  This special-case shall prevent 
+    the consistency-checking code from being generated for each of the subtypes
+    and shall instead generate the following comment to the generated java file:
+    //    Note: The consistency test for this supertype has been removed 
+    //          until generic package _migration_ is complete.
+
+
+6. Implementation Comments
+--------------------------
+None
+
+7. Unit Test
+------------
+The following are manual tests.  No additional tests shall be run for this 
+issue.
+
+7.1 Verify that no messages are written to the error log when 
+    elements are created under specialized packages.
+_- Create the Microwave Oven model
+_- Create a Component Package
+_- Create a Component
+_R NOthing is written to the error log
+
+7.2. Verify that all cases were handled
+_- Perform a clean build of bp.core
+_- Search under the com.mentor.nucleus.bp.core/src folder for
+   all *.java files that contain the following text:
+   // The supertype class is: Packageable Element
+_R For each result found, the lines immediately following the text found look 
+   like this:   
+	//    Note: The consistency test for this supertype has been removed 
+	//          until generic package _migration_ is complete.
+
+   
+
+8. Code Changes
+---------------
+Branch name: R3_1_5-RWM-dts0100749832
+MC-Java/model_consistency.inc [change]
+
+
+End
+---
+
+$Log: dts0100749832.int,v $
+Revision 1.2  2011/02/08 21:53:37  rmulvey
+job:dts0100749832
+Updated based on review observations.
+
+Revision 1.1  2011/02/08 19:20:25  rmulvey
+job:dts0100749832
+Introduced the implementation note.

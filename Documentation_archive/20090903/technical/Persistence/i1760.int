@@ -1,0 +1,307 @@
+========================================================================
+
+File:      $RCSfile: i1760.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Gracefully handle dangling references in PLCM
+
+Abstract
+--------
+With the ability to spread models across multiple files it is possible for parts
+of the model to be deleted causing dangling references.  This note explains how 
+the tool was modified to watch for possible dangling references and handle them
+when encountered.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 1760 
+[2] Bugzilla issue 1845
+    The issue that requires PLCM to be created.
+[3] <CVS>/internal/technical/Persistence/i845-PLCM_1_0.ant
+    The analysis note that drives this issue.
+[4] <cvs>Documentation/internal/technical/internal/Persistence/i1760.dnt
+[5] http://esdwiki.alm.mentorg.com/bin/view/Main/VerifySelects
+    This is a Wiki article that describes how to use verify_selects.
+
+Background
+----------
+See the Background section in [4].
+
+Design
+------
+1. The following procedure was used to identify the places where NPEs may be 
+   encountered.
+1.1 Run the verify_selects tool [5] against the PLCM_1_0 branch and capture the
+    reports created that call-out unsafe instance accesses.  
+1.2 Locate all the places in ooaofooa where PLCM file boundaries may be crossed.
+1.2.1 Modify MC-Java/arch_utils.inc::isCrossComponentAssociation to print 
+      information about the cross-component associations encountered.  
+1.2.1.1 Following are the identifed boundary locations.  This report was 
+        produced by a perl script (findComponentBoundaries.pl) which was 
+        uploaded to this bugilla issue [1].
+R_REL Source O_OBJ                        Target O_OBJ
+518   Instance State Machine              Model Class
+403   State Machine                       EE to SM Comm Path
+406   State Machine                       SM to SM Comm Path
+407   State Machine                       SM to SM Comm Path
+410   State Machine                       SM to EE Comm Path
+416   State Machine                       Access Path
+519   Class State Machine                 Model Class
+2     Model Class                         Subsystem
+201   Model Class                         Class In Association
+417   Model Class                         SM to OBJ Access Path
+518   Model Class                         Instance State Machine
+519   Model Class                         Class State Machine
+101   Model Class                         Imported Class
+101   Imported Class                      Model Class
+110   Referred To Identifier Attribute    Class Identifier Attribute
+111   Referred To Identifier Attribute    Attribute Reference in Class
+118   Operation Parameter                 Data Type
+110   Class Identifier Attribute          Referred To Identifier Attribute
+114   Attribute                           Data Type
+419   Attribute                           SM to OBJ Attribute Access
+116   Operation                           Data Type
+109   Class Identifier                    Referred To Class in Assoc
+111   Attribute Reference in Class        Referred To Identifier Attribute
+111   Attribute Reference in Class        Referring Class In Assoc
+
+1.2.2 Based on experience of the team and examination of the model locate other
+      places in the ooaofooa where file boundaries may be crossed that are not
+      captured in the report produced from 1.2.1 and note them here.
+1.2.2.1 Following are the identifed boundary locations:
+R_REL Source O_OBJ                        Target O_OBJ
+18    Core Data Type                      User Data Type
+1     Subsystem                           Domain
+20    Bridge                              Data Type
+22    Bridge Parameter                    Data Type
+25    Function                            Data Type
+26    Function Parameter                  Data Type
+524   State Machine Event Data Item       Data Type
+16    External Entity Event Data Item     Data Type
+
+1.3 For each of the places identifed in 1.2 modify the ooaof ooa and make the
+    relationship conditional
+1.4 Re-run the verify_selects tool [5].
+1.5 Diff the verify_selects results captured in 1.4 from those captured in 1.2.
+    Record the new items produced from the second run of verify_selects.
+1.6 For each of the items identified in 1.5 modify the action language to fix the
+    potential problem.
+1.6.1 Re-reun verify_selects and assure all identifed potential NPEs are now 
+      accounted for.
+2. TODO: Introduce core-code to handle dangling references
+3. TODO: Introduce markers
+4. TODO: Modify ME
+5. TODO: Introduce decorator
+6. TODO: Modify Canvas
+
+
+Implementation Comments
+-----------------------
+Unit Tests
+1. There are some expected results files those didn't reflect the dangling 
+   references, these files needs to be regenerated when the main issue will be
+   completed.
+2. checkDanglingReferenceDecoratorExist method needs to be updated when the main 
+   issue will be completed.	   
+
+Unit Test
+---------
+Sequence of Tests.
+
+_- Check out TestModel Project from test repository (first time only)
+_- Delete the require Component
+_R All the proxy references will be updated.
+_- Replace the component who have the proxy of deleted component.
+_R Dangling Reference/s appears.
+_- Replace the parent hierarchy of deleted component.
+_R Dangling Reference/s gone.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.als.oal.test/src/com/mentor/nucleus/bp/als/oal/test/OalParserTest.java
+com.mentor.nucleus.bp.als.oal.test/src/com/mentor/nucleus/bp/als/oal/test/ParseAllInDomain.java
+
+com.mentor.nucleus.bp.compare/src/com/mentor/nucleus/bp/compare/ComparePlugin.java
+com.mentor.nucleus.bp.compare/src/com/mentor/nucleus/bp/compare/ModelCacheManager.java
+
+com.mentor.nucleus.bp.compare.test/src/com/mentor/nucleus/bp/compare/test/cases/ModelInspectorTest.java
+
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/icons/error_co.gif
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/OoaofooaBase.java
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/common/ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/common/ModelRoot.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/common/NonRootModelElement.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/common/PersistableModelComponent.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/common/PersistenceManager.java
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/ui/Selection.java
+
+src/com/mentor/nucleus/bp/core/ui/marker/CreateMarkerEvent.java
+src/com/mentor/nucleus/bp/core/ui/marker/DelayedMarkerJob.java
+src/com/mentor/nucleus/bp/core/ui/marker/MarkerEvent.java
+src/com/mentor/nucleus/bp/core/ui/marker/ProblemModelChangeListener.java
+src/com/mentor/nucleus/bp/core/ui/marker/ProxyCreatedEvent.java
+src/com/mentor/nucleus/bp/core/ui/marker/ProxyResolvedEvent.java
+src/com/mentor/nucleus/bp/core/ui/marker/RelationshipChangeEvent.java
+src/com/mentor/nucleus/bp/core/ui/marker/RemoveAllEvent.java
+src/com/mentor/nucleus/bp/core/ui/marker/RemoveMarkerEvent.java
+src/com/mentor/nucleus/bp/core/ui/marker/UmlProblem.java
+
+src/com/mentor/nucleus/bp/core/util/CoreUtil.java
+src/com/mentor/nucleus/bp/core/util/OoaofooaUtil.java
+src/com/mentor/nucleus/bp/core/util/UIUtil.java
+
+com.mentor.nucleus.bp.core/generate.xml
+
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/AssignClassTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/AssignRemoveEvents.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/AttributeMenuItemTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/CanRenameCanDeleteTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/CantHappenEvtIgnoreEvtTests.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/CombineSplitReferentialsTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/ConsistencyTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/DerivedAttributeTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/GetNameTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/ModelTransactionTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/MultipleReload.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/NumberingTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/SubtypeSupertypeFormalizeTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/TigerNatureTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/TigerNatureWorkspaceSetupTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/TwoModelsSelectionTest.java
+
+com.mentor.nucleus.bp.internal.io.sql/src/com/mentor/nucleus/bp/internal/io/sql/ExportEESql.java
+com.mentor.nucleus.bp.internal.io.sql/src/com/mentor/nucleus/bp/internal/io/sql/ExportFunctionSql.java
+com.mentor.nucleus.bp.internal.io.sql/src/com/mentor/nucleus/bp/internal/io/sql/ImportDataTypeHandlerBase.java
+com.mentor.nucleus.bp.internal.io.sql/src/com/mentor/nucleus/bp/internal/io/sql/ImportEESql.java
+com.mentor.nucleus.bp.internal.io.sql/src/com/mentor/nucleus/bp/internal/io/sql/ImportFunctionSql.java
+
+com.mentor.nucleus.bp.io.core/arc/gen_export_java.inc
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+
+src/com/mentor/nucleus/bp/io/core/ImportHelper.java
+
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/MultiFileModelTest.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/ProxyTests.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/UniqueDomainIdsTest.java
+
+src/com/mentor/nucleus/bp/io/mdl/test/dangle/DanglingReferenceTest.java
+src/com/mentor/nucleus/bp/io/mdl/test/dangle/DRBaseTest.java
+
+src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/CreateTest.java
+src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/EditorTestUtilities.java
+src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/PkgCMBaseTest.java
+src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/PkgCMModifyContentsTest.java
+src/com/mentor/nucleus/bp/io/mdl/test/pkgcm/PkgCMRenameTest.java
+
+com.mentor.nucleus.bp.io.sql/src/com/mentor/nucleus/bp/io/sql/ImportBPSqlHelper.java
+
+com.mentor.nucleus.bp.io.sql.test/src/IOTest.java
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/CanvasEditorUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/CanvasTestUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/CVSUtils.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/ExplorerUtil.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/GenericEditorUtil.java
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/CanvasEditor.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/CanvasEditorInput.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/CanvasEditorListener.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/CanvasPlugin.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/Gr_c.java
+
+src/com/mentor/nucleus/bp/ui/canvas/util/ConnectorUtil.java
+
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/CanvasCreationTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/CanvasEditorInteraction.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/CanvasEditorReloadContentsTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/CanvasTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/ConnectorTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/GridSnapTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/MultipleSupertypeTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/OpenCanvasEditor.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/ScrollToolSCTest.java
+
+com.mentor.nucleus.bp.ui.explorer/arc/create_explorer_view.inc
+com.mentor.nucleus.bp.ui.explorer/src/com/mentor/nucleus/bp/ui/explorer/decorators/DanglingReferenceDecorator.java
+com.mentor.nucleus.bp.ui.explorer/generate.xml
+com.mentor.nucleus.bp.ui.explorer/plugin.xml
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/AllActivityModifier.java
+
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/description/CloseDescriptionEditor.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/description/OpenDescriptionEditor.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/i673Tests/rename/I673RenameObjectsAndTestDescriptionEditors.java
+
+MC-Java/java.arc
+MC-Java/referred_to.inc
+MC-Java/referring.inc
+
+End
+---
+
+$Log: i1760.int,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.9.16.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.9  2006/07/11 01:41:00  rmulvey
+Job:1760
+Updated the list of files under code changes to include everything that has been modified.
+
+Revision 1.8  2006/06/29 15:14:49  rmulvey
+Job:1760
+Added archetypes with potential cross-component boundary conditions.
+
+Revision 1.7  2006/06/28 16:14:50  rmulvey
+Job:1760
+Changed the search criteria used to find potential cross-component boundaries in "*.java" code.  I undid the prior change and reran the script.  The script was modified and "On" was added before each relationship reference.  See comment 64 for more information.  There are now 316 places marked in 41 files.  I updated i1760.int with these file names.
+
+Revision 1.6  2006/06/26 21:00:32  rmulvey
+Job:1760
+Listed the names of the 222 files modified by the script referenced in comment 63 and comment 64.
+
+Revision 1.5  2006/06/02 15:55:17  satta
+job:1760
+implementation comments added.
+
+Revision 1.4  2006/06/02 10:13:09  satta
+job:1760
+test sequence added.
+
+Revision 1.3  2006/05/24 01:45:48  rmulvey
+Job:1760
+Greg pointed out some more boundaries.  I updated the note accordingly.
+
+Revision 1.2  2006/05/18 17:49:12  rmulvey
+Job:1760
+Identifed cross-component boundary locations.  All known locations are now specified in this document.
+
+Revision 1.1  2006/05/17 17:10:02  rmulvey
+Job:1760
+Introduced

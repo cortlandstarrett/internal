@@ -1,0 +1,310 @@
+========================================================================
+
+File:      $RCSfile: i420.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:57 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Replacing Model and OOA Type literals with an Enumeration
+
+Abstract
+--------
+This note describes the design for removing model and ooa type literals
+from the Canvas model and from the canvas plugin code.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 420
+[2] bp.ui.canvas/mdl/ooaofgraphics.bak
+[3] bp.core/doc/internal/technical/Canvas/i420.ant
+[4] bp.core/doc/internal/test_results/i420/RegexOutput.txt
+
+Background
+----------
+Currently there are literal values spread thoughout the OAL and used in  
+ui.canvas/plugin.xml. The enumerator values for Model_Type are in the
+defaultFor.modelType attribute. The enumerator values for OOA_Type are in the
+symbol.elemType attribute.  Note that the current values of these constants are
+also documented in the attribute descriptions for Model Specification.Model_Type
+and Element Specification.OOA_Type in the ooa of graphics[2].
+
+Design
+------
+i420.0 	  Define Enumerations
+
+Added Enumeration Data Type (EDT) "ModelType" and "OOAType" to ooaofgraphics. 
+Changed the Model Specification.Model_Type type to ModelType.  It was defined as 
+an integer.  Changed the Element Specification.OOA_Type type to OOAType.  It was 
+defined as an integer.
+
+i420.1    Modify MC-Java
+
+enums.inc deals with the code that defines the enumerations.  Previously, the 
+values assigned to the enumerations were incremented by one each time for each 
+enumerator, and hence would not reflect the actual values defined in the 
+enumerations OOAType and ModelType.  It has been changed so that the correct 
+value is obtained from the model and assigned to each enumerator.
+
+i420.1.1  Scan Enumerator.Descrip for the selected keyword and use that value to
+          initialize the constant.
+          
+For each enumerator, the keyword "Value:" is parsed, converted to an integer and 
+assigned to the enumerator.  The logic for this can be found under the for 
+statement, ".for each enum in enum_set" in enums.inc.
+
+i420.1.2  Report duplicate values in the same enumeration as an error.
+
+This work is deferred.  An issue is opened to complete this work.
+
+i420.1.3  Report non numeric values as an error.
+
+After doing a STRING_TO_INTEGER, if the result is 0, the value of the enumerator 
+is checked. If the value of the enumerator is not the string "0", then the 
+result is reported as non-numeric.
+
+i420.1.4  If any enumerator of a given enumeration does not have a colored
+          value, then it will be given the previously specified value
+          incremented by one (or one if it is the first enumerator and no
+          previous value exists).
+          
+The enum is initialized to 0, and updated each time a valid colored value 
+exists.  If for a given enumerator, a colored value does not exist, the enum is 
+incremented by 1 and assigned to that enumerator.
+          
+          
+i420.2    Modify CanvasPlugin.java
+          Change this file so that when it reads the string from each
+          defaultFor.modelType and symbol.elemType attributes, it uses the Java
+          reflection interface to obtain the correct value and load it into the
+          appropriate pre-existing instance of Model Specification.Model_type
+          and ElementSpecification.ooa_type respectively. For example, an xml
+          element containing the attribute:
+          
+          modelType="com.projtech.bp.ui.canvas.ModelType.m_ClassDiagram"
+          
+          would resolve to the value of the public final int, 'm_ClassDiagram'
+          declaration generated for the Model Type enumeration. The value of
+          this (5) would be loaded into the Model_type member of the appropriate
+          element specification pre-existing instance created at plugin startup.
+          
+After reading the string from each defaultFor.modelType and symbol.elemType 
+attribute, the string is split into two parts: the first part contains the whole 
+string minus the word following the last "." (which is the name of the 
+enumeration class), and the second part contains the last word (which is the 
+name of the enumerator).  Using reflection classes (the first part is passed in 
+as the class name, and the second part is passed in as the field name) the value 
+of each enumerator is obtained.
+
+Canvas Plug-in.xml was also modified so that the literal values for the 
+defaultFor.modelType and symbol.elemType are replaced by the correct path to the 
+enumerators.
+
+i420.3	  Modify ooaofgraphics.bak, generated and manually written code to 
+replace literals with enumerations.
+		  
+All occurences of literal values in the model and in hand-written code are 
+replaced by the correct enumerators.  A regex tool was built to find all the 
+occurrences.  See Appendix A for the output. The same regex tool was also used to 
+locate generated files where literal values needed to be replaced by the 
+enumerators.  Once the files were located, the corresponding archetype file was 
+edited, so that generated files produced the enumerators instead of the literal 
+values.
+
+
+Work Required
+-------------
+i420.0	  Define Enumerations
+
+The changes are made to ooaofgraphics model.
+
+i420.1    Modify MC-Java
+
+The change is made to MC-Java/enums.inc
+
+i420.1.1  Scan Enumerator.Descrip for the selected keyword and use that value to
+          initialize the constant.
+          
+The change is made to MC-Java/enums.inc
+
+i420.1.2  Report duplicate values in the same enumeration as an error.
+
+The issue for the work is created.
+
+i420.1.3  Report non numeric values as an error.
+
+The change is made to MC-Java/enums.inc
+
+i420.1.4  If any enumerator of a given enumeration does not have a colored
+          value, then it will be given the previously specified value
+          incremented by one (or one if it is the first enumerator and no
+          previous value exists).
+          
+The change is made to MC-Java/enums.inc      
+
+i420.2    Modify CanvasPlugin.java
+  		  Use the reflection interface to load the correct enumeration values.
+          
+The change is made to ui.canvas/CanvasPlugin.java and ui.canvas/plugin.xml
+
+i420.3	  Modify ooaofgraphics.bak, generated and manually written code to 
+		  replace literals with enumerations.
+		  
+Changes are made to: 
+1. [model] ooaofgraphics.bak 
+2. [archetype files] MC-Java (/referring.inc), io.core/arc/gen_export_java.inc,
+io.core/arc/gen_import_java.inc 
+3. [hand-written code] ui.canvas/C1_c.java, internal.io.sql/ExportEESql.java, 
+internal.io.sql/ImportEESql.java, internal.io.sql/ImportFunctionSql.java
+
+Other Issues
+------------
+The following enumerator values for OOAType are undocumented: 1, 40, and -1.  
+These values represent respectively: Domain, StateMachine, and 
+OOA_UNITIALIZED_ENUM.
+
+There is an instance of an OOAType literal in the bp.core 
+package: bp.core.Association_c. This is being generated from the action language 
+in the ooaofooa model.  The enumerations OOAType and ModelType are not currently 
+defined in the ooaofooa model.  Hence, this literal could not be replaced by an 
+enumerator. An issue is raised to fix this problem.
+
+Unit Tests
+----------------
+_- MC-Java must still declare an unmarked enumeration correctly and must not
+   report any errors for this case.
+   
+Use ooaofgraphics model which has no coloring markups defined for any of the 
+enumerators.  After building the projects, check those enumerators in both 
+Modeltype_c.java and Ooatype_c.java, and verify that the enumerators
+are defined with incremented values starting from 1.
+
+_R No errors reported.
+   
+_- MC-Java must declare a marked enumeration using the values specified in the
+   coloring markup (an unmarked incremented duplicate must be detected too).
+  
+Use ooaofgraphics model which has properly marked enumretaions with distinct 
+values in the coloring mark up.  Build all projects, and see
+Modeltype_c.java and Ooatype_c.java to verify if the declarations are correct.
+
+_R Marked enumerations declared accurately. 
+
+_- MC-Java must report non-numeric values as a build time error.
+
+Use ooaofgraphics model, which has a non-numeric value specified in the coloring
+markup of one or more enumerators.  Build the projects to verify that an 
+error is reported.
+
+_R Non-numeric values are reported as a build time error: 
+"Hello" was assigned to the OOAType enumerator Association.
+[exec] ../MC-Java/enums.inc: 47:  ERROR:  Expected integer value 
+in parameter 'string'.
+[exec] ../MC-Java/enums.inc: 53:  INFO:  ERROR: Enumerator Value is non-numeric
+
+_- MC-Java must provide incremented values for non-colored enumerators.
+
+Use ooaofgraphics model, which has one or more enumerators with no coloring 
+markup.  After building the projects, check those enumerators either in 
+Modeltype_c.java or Ooatype_c.java, and verify that those enumerators
+are declared with the incremented values.
+
+_R Incremented values provided for non-colored enumerators:
+No coloring markup was given for the OOAType enumerator AssociativeLink. It has
+been assigned an incremented value of 30.
+  public final static int AccessPath = 29;
+  public final static int AssociativeLink = 30;
+
+_- CanvasPlugin must obtain and set the correct values from the string
+   definition in the plugin.xml.
+   
+Define an inner class with a query in a method called 'evaluate' that contains a
+test to verify the instance passed.  Once the instance has been located, perform
+an assertNotNull test and then a series of assertEquals tests for each of the 
+instances. Example: assertEquals (5, es.getOoa_type());
+
+_R CanvasPlugin obtains and sets the correct values.
+
+_- CanvasPlugin must report a startup error for strings that do not match with a
+   generated enumerator value.
+   
+Introduce an error in plugin.xml by assigning an unmatched string to 
+one of the defaultFor.modelType and symbol.elemType attributes.  Rebuild the 
+Canvas project and Run the Canvas run-time test.  Verify that a start-up error
+is reported.
+
+_R Startup error reported for unmatched strings:
+java.lang.NoSuchFieldException: Association2
+	at java.lang.Class.getField0(Class.java:1735)
+	at java.lang.Class.getField(Class.java:900)
+	
+java.lang.NoSuchFieldException: DomainPackageDiagram2
+	at java.lang.Class.getField0(Class.java:1735)
+	at java.lang.Class.getField(Class.java:900)
+	
+Appendix A
+------------
+The regex tool:
+
+First, TextPad (which has regex capability) was used to list all the points 
+where an integer exists for each project.  The output of this was fed as input 
+to the regex tool that was created.  The regex tool parses this file and outputs 
+all the lines where an integer is preceded by either a "=", "==" ",", or "(" 
+(Ignoring whitespaces).  The output (after making the changes) for each folder 
+is given in RegexOutput.txt [4].  No instances of a ModelType or OOAType literal 
+can be found.
+
+End
+---
+
+$Log: i420.dnt,v $
+Revision 1.1  2009/09/03 18:18:57  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.12  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.11.72.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.11  2004/12/14 21:40:18  svenkat
+Job: 420
+Updated after review
+
+Revision 1.10  2004/11/17 19:46:29  svenkat
+Job: 420
+Added extra note to "Other Issues" section
+
+Revision 1.9  2004/11/17 18:48:44  svenkat
+Job: 420
+Reformatted Appendix section to minimize text overflowing out of the margins
+
+Revision 1.8  2004/11/17 18:36:26  svenkat
+Job: 420
+Changed margin of document to 80 characters (except for appendix)
+
+Revision 1.7  2004/11/10 20:44:17  svenkat
+Job: 420
+Updated Design note after all tests passed
+
+Revision 1.6  2004/10/20 18:13:04  svenkat
+job: 420
+As my wording in the original design document was ambiguous, there was some confusion. It has been clarified now.
+
+Revision 1.5  2004/10/20 18:01:56  campbell
+Job: 420
+Clarify enumerators feedback.
+

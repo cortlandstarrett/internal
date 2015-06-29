@@ -1,0 +1,192 @@
+========================================================================
+
+File:      $RCSfile: dts0100804169-02-TIM.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Modularize TIM
+Finish Modularizing Components
+Support EEs Not Local to Components
+
+1. Abstract
+-----------
+Previous work on this issue provided the lion's share of modularization by
+packaging xtUML mechanics (lists, queues, events, etc.) into inherited
+services.  Timer services were not included.  Additional improvements in the
+modularization of components is possible.
+This note documents these modularization efforts.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest dts0100804169 - Update model compilers for compatibility with
+                               interproject references and global data types
+
+4. Background
+-------------
+The System-C model compiler generates code targeted for use in Vista.  It is
+a requirement that components from BridgePoint are "modular".  This means that
+components generate System-C modules that can be compiled and placed into
+"part libraries" in Vista.  Integration of these modules can occur in Vista
+using the schematic Model Builder.  This is in addition to the integration
+that can occur in BP (in a component reference diagram).
+
+5. Requirements
+---------------
+5.1  Minimize global C functions.
+5.2  Minimize global C variables.
+5.3  Make inherited services compiled object independent of local component
+     constants.
+5.4  Support EEs in packages outside of components.
+5.5  Provide/enforce localized accessed to EEs packaged inside of components.
+5.6  Provided time (TIM) services independently inside each component.
+5.7  Package generated C/SystemC files for ease of use/integration.
+
+6. Work Required
+----------------
+
+6.1  Minimizing Global C Functions
+All of the sys_sets, sys_events and now TIM functions are class member
+function and are no longer global.  The inherited functions compile into
+a single file (sys_xtuml) and will be identical from module to module.
+sys_user_co now defaults to turning all callouts "off" in the .h file
+(by defining the macros to be empty).
+
+6.2  Minimizing Global C Variables
+For System-C, we make run_flag a member of sys_events.  This means that 
+only the local component will stop when ARCH::shutdown (control stop)
+is invoked.
+
+6.3  Inherited Services
+We now recognize that System-C provides its own cooperative multi-tasking.
+So, for SystemC code generation, we leave the te_thread.enabled to be false.
+This simplifies the code and avoids generating threading/mutexing code.
+The thread.flavor remains "SystemC".
+Without the requirement for explicit threading,
+te_instance.get_thread_assignment is no longer needed and thus removed.
+There is now no need to call/initialize anything from sc_main to the
+generated modules.  The module constructors will perform all allocation
+and initialization.  This includes allocation/initialization of xtUML
+services (sys_sets, sys_factory, sys_events) and timer services (TIM).
+A module truly can stand alone.
+
+6.4  EEs
+The generated code for EEs inside components is changed to prepend
+the name of the component to the key letters of the EE for the class
+or C namespacing of the bridges.  The generated code for EEs defined
+outside of any component does not have this additional namespacing.
+
+The analysis of usage of EEs is made more accurate by marking EEs as
+Included only when OAL is detected that invokes them (bridge statements
+or bridge values).
+
+TE_EE gets new attributes Name, Key_Lett and Descrip.  The first and last
+are for documentation output, but Key_Lett is needed, because it now differs
+from the generated/registered name.  Key_Lett is used to recognize special,
+prepackaged EEs like NVS, PERSIST, ARCH and TIM.
+
+Support for OAL in bridges was added to the System-C MC.
+
+6.6  TIM
+In SystemC code generation, TIM is "modularized" inside of its parent
+module (component).
+  - TIM is a class that becomes a member of a module.
+  - The parent module defines the member.
+  - The parent module defines an sc_timer_event member.
+  - The parent module defines a "spin" function that calls TIM_tick and
+    is sensitive to sc_timer_event.
+  - In its constructor the parent module allocates an instance of TIM and
+    passes in size information.
+  - The TIM constructor takes an integer number of timers for the component
+    and uses this to allocate its timer instances.
+  - The parent module invokes TIM::init from its constructor.
+
+6.7  Packaging
+The main (sc_main) for SystemC is now generated into a file all by itself.
+Many users will supply their own sc_main.  So, this makes it easier to 
+leave out the default generated sc_main.  xtuml_pre_init, xtuml_post_init
+and xtuml_cleanup are no longer needed and thus pulled out.
+sys_sets, sys_factory and sys_events are all generated into a pair of
+files named sys_xtuml.h and sys_xtuml.c(pp).  This is more compact and
+consistent with the inherited services strategy.
+
+7. Implementation Comments
+--------------------------
+7.1  The changes to EE generation will break the GPS Watch project
+     as delivered in our Sample Projects.
+
+8. Unit Test
+------------
+8.1  Run the following models in both C and SystemC mode.
+8.1.1  GPS Watch
+8.1.2  MicrowaveOven
+8.1.3  calculator
+8.1.4  polycalc
+8.1.5  assoc_unformal
+8.1.6  Activity
+8.1.7  testing
+8.1.8  CoulombCounter
+
+9. Code Changes
+---------------
+Branch name: c804169-TIM, sysc804169-TIM, xtumlmc_schema.sql:HEAD
+
+mc/arc/m.system.arc
+mc/arc/q.class.arc
+mc/arc/q.domain.analyze.arc
+mc/arc/q.domain.bridge.arc
+mc/arc/q.domain.bridges.arc
+mc/arc/q.domain.classes.arc
+mc/arc/q.mc_metamodel.populate.arc
+mc/arc/q.oal.analyze.arc
+mc/arc/q.smt.generate.arc
+mc/arc/q.val.translate.arc
+mc/arc/sys_util.arc
+mc/arc/t.domain_init.dci.h
+mc/arc/t.domain_init.factories.c
+mc/arc/t.ee.brg.c
+mc/arc/t.ee.c
+mc/arc/t.ee.h
+mc/arc/t.sys_events.c
+mc/arc/t.sys_events.h
+mc/arc/t.sys_factory.c
+mc/arc/t.sys_sets.c
+mc/arc/t.sys_thread.h
+mc/arc/t.sys_user_co.c
+mc/arc/t.sys_user_co.h
+mc/arc/specialized/q.component.arc
+mc/arc/specialized/q.components.arc
+mc/arc/specialized/q.mc3020.arc
+mc/arc/specialized/sys.arc
+mc/arc/specialized/t.component.module.h
+mc/arc/specialized/t.domain_init.c
+mc/arc/specialized/t.sys_factory.h
+mc/arc/specialized/t.sys_sets.h
+mc/arc/specialized/t.sys_tim.c
+mc/arc/specialized/t.sys_tim.h
+mc/arc/specialized/t.sys_types.h
+mc/arc/specialized/t.sys_main.c
+mc/arc/specialized/t.sysc_main.c
+
+End
+---
+
+$Log: dts0100804169-02-TIM.int,v $
+Revision 1.2  2012/06/06 19:04:03  cstarret
+job:dts0100804169
+implementation note
+
+Revision 1.1  2012/05/25 21:08:16  cstarret
+job:dts0100804169
+first draft of implementation note, still testing
+

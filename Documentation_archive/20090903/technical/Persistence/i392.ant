@@ -1,0 +1,263 @@
+========================================================================
+
+File:      $RCSfile: i392.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Model Persistence
+
+Abstract
+--------
+The models created by the user must persist on disk between runs of the tool.
+This analysis note specifies how this will be achieved.
+
+History
+-------
+
+Document References
+-------------------
+[1] bp.core/doc/technical/persistence.ant
+[2] bp.core/doc/technical/configuration_management.ant
+[3] bp.core/doc/technical/eclipse_team_interface.dnt
+[4] The Java Developers Guide to Eclipse, Shavor et al., Addison-Wesley
+                                                       2003, ISBN 0-321-15964-0
+
+Analysis
+--------
+The persistence reference above[1] is provided for context and historical
+purposes only. The work described in that document investigated the continued
+use of an object oriented persistence mechanism. This approach has at this time
+been dropped in favor of a simpler, explicit save file based mechanism. This
+fits much better with the goals of the configuration management requirements.
+
+The high level requirements for the persistence mechanism are as follows:
+
+- Allow models to be split up into a predefined number of controlled items.
+  These controlled items shall be generally analogous to the controlled items 
+  supported by BridgePoint Builder:
+    
+    - Domain
+    - Subsystem
+    - State Model
+    
+  However, since this list might be revised before or after first release; the
+  solution must allow the controlled items to be specified in terms of build
+  time data. Very probable additions to the set above are:
+    
+    - System
+    - Function Package
+    - Data Type Package
+    - External Entity Package
+
+- Resource Structure for a BridgePoint Project
+  A BridgePoint project shall be represented as a folder in the system. There 
+  shall be a folder within each project named 'mdl'. Within in this folder
+  all the files for the configured items of the Model are contained. Initially
+  the folder will contain files (with extension .mdl) for each domain in the 
+  system. The user can then select any configurable item and add it to version 
+  control. This should in turn create a file by the name of that controlled 
+  item. These names shall be kept synchronized at all times; if the user 
+  modifies the domain name in the Model Explorer, then the corresponding file 
+  must be renamed and when the file resource is detected as being renamed the 
+  internal name must be updated.
+  The hierarchy of 'mdl' is created on runtime based on the following rule:
+  If a controlled item does not have any child which can be configured, then 
+  it is represented as a .mdl file in its parent folder. 
+  
+  An example for that is:
+  + MyProject
+    + mdl
+      MyProject.mdl 		// represents System file
+      + MyDomainTwo
+        MyDomainTwo.mdl
+      + MyDomainOne
+        MyDomainOne.mdl          // represents the Controlled domain file
+        + MySubsystemOne		
+          MySubsystemTwo.mdl	
+          MyClassStateChartOne.mdl
+        + MySubsystemTwo
+          MySubsystemTwo.mdl
+  
+  The reason behind having this nested hierarchy is to maintain the reference 
+  of the parent item. Also having a flat structure (i.e. all controlled items 
+  in the mdl directory) may cause ambiguities in the case where two different 
+  classes across two domains have the same name.
+    
+- Manage BridgePoint project
+  A New Project wizard entry will be added for BridgePoint project. A user can
+  create a Blank project or can select an already created project to import the 
+  its contents. Option to import an SQL file should also be available. A 
+  BridgePoint project should also have BridgePoint nature by default.
+  
+  - Creating a Blank Project
+    User selects File > New > Project. Selects the BridgePoint > BridgePoint 
+    Project from the 'New Project' dialog and presses 'Next' button. The user 
+    gives the name of the System Model, and selects the path for the source 
+    files. The project is created with empty Resource when the user presses the 
+    'Finish' button.
+  
+  - Creating a Project with Contents
+    User selects File > New > Project. Selects the BridgePoint > BridgePoint 
+    Project from the 'New Project' dialog and presses 'Next' button. The user 
+    gives the name of the System Model, and selects the path for the source 
+    files. The user selects the check box stating 'Load contents from...' and 
+    selects the source project path using the file browser. A new project is 
+    created at the specified location with the contents of the selected source 
+    project.
+  
+  - Creating a Project from a SQL file 
+    User selects File > New > Project. Selects the BridgePoint > BridgePoint 
+    Project from the 'New Project' dialog and presses 'Next' button. The user 
+    gives the name of the System Model, and selects the path for the source 
+    files. The user selects the check box stating 'Import SQL from...' and 
+    selects the SQL file using the file browser. A new project is created and 
+    the contents of the SQL file are imported into the project.
+   
+  - Open / Close BridgePoint project
+    Closing a BridgePoint project should close all opened diagrams and views 
+    associate with the project and show a closed project icon in the Model 
+    Explorer view. 
+    Opening a closed project will expand the Model Explorer tree.
+  
+  - Create a New Domain
+    Create an empty domain file using the New Domain Wizard.
+  
+  - Add BridgePoint Nature (Create a System)
+    Prompt the user to select the project to use. Add the BridgePoint Nature to
+    the project.
+    
+  - Remove BridgePoint Nature (Delete a System)
+    Remove the BridgePoint Nature from the selected project.
+      
+- Define mdl File format
+  Each controlled item is stored in mdl file. The contents of the mdl should 
+  consider:
+  1) The hierarchy of controlled item
+  2) Any Cross reference project
+  3) The contents of controlled item. 
+  
+  It is recommended to use the Java Serialization API for this purpose. This 
+  would increase the performance of loading a model incredibly.
+  
+  - Graphics and Model Data
+    Graphics and model data are to be managed in physically separate files. 
+    Every .mdl file should associated with a graphics file which can also
+    independently be version controlled.     
+
+- Adding Team support in the Model Explorer
+  The model explorer now should show the CVS decorations and as well the team 
+  context menu entries. The Team entries should only be displayed or enabled 
+  when the context menu is displayed from a controlled (or controllable) 
+  element. 
+
+- Adding Compare for mdl Files
+  The BridgePoint Compare Plugin should also be updated to support the compare
+  between two/three mdl file.
+
+- Multi-Project Support in Model Explorer
+  Model Explore should be updated to be able to display more than one 
+  BridgePoint projects at the same point.
+
+- Add support for inter-project references
+  Allow inter-project references so that domains may be reused by reference. 
+  This requires that both the project are loaded into the workspace and the 
+  referenced controlled item is loaded into the memory with all the required 
+  contextual data. 
+  
+  - Caching the Referenced Item
+    Both inter-project and inter-controlled item references shall cache all 
+    attributes of the entit(y/ies) being referenced, so that the BridgePoint 
+    Builder use of 'Orphaned' is obsoleted. Instead, cached element references 
+    shall support the operation, 'referenceSatisfied(): boolean'. If this 
+    operation returns false, the user interface shall show an error icon in all
+    places where broken references exist.
+    This would require updation to the com.projtech.bp.ui.canvas and 
+    com.projtech.bp.ui.explorer plugins.
+
+  - Importing Controlled Item
+    Prompt the user to select the controlled item to use, verify that it is
+    legal in the current context and provide an appropriate error if not. Allow
+    the user to select whether the item is to be copied or referenced.
+    
+
+  
+
+Work Required
+-------------
+i392.1 - Add support for controlled items
+
+i392.2 - Create and Manage BridgePoint Projects
+
+i392.3 - Save a Model in mdl Format
+
+i392.4 - Add Team & Compare Support in the Model Explorer
+         Update com.projtech.bp.ui.explorer to support decorations and context
+         menu entries. 
+
+i392.5 - Add support to compare .mdl files in the com.projtech.bp.compare 
+         plugin. 
+         
+i392.5 - Add support for inter-project references. 
+         Update com.projtech.bp.ui.explorer and com.projtech.bp.ui.canvas to 
+         provide the required support.
+              
+i392.6 - Model explorer should be update to support loading of multiple 
+         System Models (i.e. Projects) at the same time
+         
+i392.7 - Provide facility to import a .mdl File or add it as a project 
+         reference.
+
+
+Unit Tests
+----------
+The unit tests for this work shall be run on both the CVS and Clearcase 
+repositories.
+
+End
+---
+
+$Log: i392.ant,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.152.1  2008/12/31 16:10:13  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/09/15 11:40:20  siddique
+Job:392
+Updated the file structure and section about controlled items after internal
+review.
+
+Revision 1.4  2004/09/13 12:15:32  siddique
+Job:392
+Partitioned the task into smaller doable parts and updated accordingly. 
+First draft for internal review
+
+Revision 1.3  2004/09/08 14:19:10  campbell
+Job: 392
+Added work required statement.
+
+Revision 1.2  2004/09/07 21:41:06  campbell
+Job: 392
+Removed unnecessary mid level design constraints.
+
+Revision 1.1  2004/09/07 21:39:46  campbell
+Job: 392
+Introduced.
+
+

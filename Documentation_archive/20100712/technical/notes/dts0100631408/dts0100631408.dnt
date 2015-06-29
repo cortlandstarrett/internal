@@ -1,0 +1,195 @@
+========================================================================
+
+File:      $RCSfile: dts0100631408.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support Package namespaces.
+
+1. Abstract
+-----------
+This note describes the design for supporting package level namespaces.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100631408 - Support Package namespacing
+[2] Documentation/internal/technical/dts0100631408/dts0100631408.ant
+[3] ClearQuest DEI dts0100672662 - Provide default visibility preference values
+    for Packageable Elements.
+[4] ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+[5] svn://phoenix.azt.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+                                                      Models/Test/Namespace Test
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Visibility rules
+6.1.1 Packages
+Two new operations both called collectElementsForName() are added to the
+Package, Component and Packageable Element classes. These operations recursively
+call each other to first descend and then ascend the package hierarchy looking
+for elements with the specified name and type. If no name is supplied all
+elements that meet the visibility criteria [2,5.1] are included in the result.
+The result for packages is found by traversing a new association, R8002 from the
+package on which the recursive call tree was entered. This many to many
+association is managed by a simple new link class, Element Visibility (PE_VIS).
+
+6.1.2 Components
+A similar strategy is followed for Components, except that consideration of
+elements descending the containment hierarchy can be disabled. This is because
+Components are completely encapsulated. No elements declared inside a component
+are visible outside it, even if such elements are marked as public. For
+Components, the set of visible elements are found after return from the
+collectVisibleElementsForName() call are found using a similar traversal to the
+one described in 6.1.1. This time, the traversal is across R8004, and the many
+to many link is managed in this case by Component Element Visibility (EP_CVS).
+
+6.1.3 Parser support
+Passing a name to collectElementsForName() is designed for use by the parser
+when looking for elements referenced by name in OAL, class key letter and
+function names are examples. An additional argument to the operation, findFirst,
+instructs the algorithm to stop after the first element with the given name. If
+multiple elements with the same name are encountered in the same name space,
+the operation will collect all of them, allowing the parser to report the
+problem.
+
+6.1.4 UI support
+Calling collectElementsForName() without passing a name is used where a list is
+required for presentation to the user. Examples of this type of usage are the
+Set Type wizard dialogs and the Properties type selection drop down lists. The
+user preference called for in [2, 5.2] shall not be implemented for the first
+release. An issue is raised[3] to track addition of this feature at a later
+date.
+
+6.2 Integration with Set Type dialogs
+The archetype in bp.core/arcs/Function_body.inc is modified to check for
+containment by a generic package. If one is found, the collectElementsForName()
+operation is launched on the package, otherwise the normal pre-generic package
+policy is followed to find and offer data types to choose. This archetype is
+responsible for generating the launch actions for all the Set Type ... wizard
+variants.
+
+6.3 Integration with Properties
+The archetype BuildPropertySource.arc is extended to obtain its data types using
+collectElementsByName if the element being shown in the properties lies under a
+generic package.
+
+7. Design Comments
+------------------
+7.1 Data Upgrade
+In order to support collecting legacy system level data types across R8002,
+instances of the classes specified in [2,5.1] must be upgraded to add a super-
+type Packageable Element instance. This is done by adding upgrade* methods in
+io.core.ImportHelper. Each upgrade method creates an instance of Packageable
+Element by calling its full constructor, passing Visibility::Visible and
+the subtype id. By doing this, the original element's UUID is left unchanged.
+These Packageable Element instances are not persisted, nor do they need to be.
+
+7.2 Persistence Infrastructure
+Showing the Set Type dialog on an element in a generic package exposed a fault
+in the persistence infrastructure present since Packageable Element was
+introduced. All subtypes of Packageable Element were no longer being handled in
+the IDConverterUtil.getId method. This was because the generation rules for this
+method excluded identifiers which were also referentials. The infrastructure was
+modified to leverage the Optional mark placed on R8001. If this mark is present,
+the getId support and other instance map support is generated as before.
+
+8. Work Required
+----------------
+8.1 Visibility rules
+The required operations are added to Package, Component and Packageable Element
+as described in the design.
+
+8.2 Parser support
+This is provided as specified in the design, but changes to make actual usage of
+the infrastructure are deferred to take place as part of the work for [4]. This
+is because the parser needs to be changed for that work in any case and so can
+realize usage of that infrastructure at the same time.
+
+8.3 Integration with Properties
+Again this is deferred to be done as part of the work for [4], since changes
+need to be made here for that job in any case.
+
+9. Unit Test
+------------
+9.1 Test Matrix
+                      Owning Container of referred to Element is
+Referred to \           public                         private
+Element is   \     Owned Element is               Owned Element is
+              \ public         private         public          private
+  Above in    |    V              V              V                V
+  same Pkg    |
+              |
+  Below in    |    V              V              V                I
+  Pkg         |
+              |
+  Below in    |   N/A(1)         N/A(1)          I                I
+  Component   |
+              |
+  Peer        |    V              V              V                V
+              |
+              |
+  Above in    |    V              V              V                I
+ sibling Pkg  |
+              |
+  Above in    |   N/A(1)         N/A(1)          I                I
+ sibling Cmp  |
+              |
+  Above in    |   N/A(1)         N/A(1)          I                I
+  same Comp   |
+              |
+   System     |    V              V             N/A(2)           N/A(2)
+   Level      |
+
+Legend: V = Visible, I = Invisible
+
+(1) Everything inside a component is invisible.
+(2) System level packages are specialized and cannot be marked private.
+
+Note that the rules are the same for all elements, regardless of subtype. So
+this test matrix could be repeated for each of the types specified in [2, 5.1].
+Since the code path is identical for all elements, only data types are selected
+for the test.
+
+A model, 'Namespace Test' is constructed and checked in[5]. The model contains
+all of the test cases above. The test shall be performed from three reference
+points within the model, one inside a Package, one in a Component and one inside
+a Component nested within another.
+
+For test automation, it shall therefore only be necessary to check the list of
+types found across the associations R8002 and R8004 for a Package and a
+Component respectively.
+
+End
+---
+
+$Log: dts0100631408.dnt,v $
+Revision 1.3  2010/03/04 16:56:41  campbell
+Job: dts0100631408
+Added details of test model.
+
+Revision 1.2  2010/03/03 15:55:38  campbell
+Job: dts0100631941
+Generalized table header.
+
+Revision 1.1  2010/03/02 20:58:08  campbell
+Job: dts0100631408
+Minor modifications to ant. dnt introduced.
+

@@ -1,0 +1,109 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Too many insert statements are being stripped from models.
+
+1. Abstract
+-----------
+During a BridgePoint build the single-file ooaofooa.sql created using the
+xtumlmc_cleanse_for_BridgePoint routine is missing some required insert
+statements.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2831
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2831
+
+4. Background
+-------------
+A change was recently made to allow BridgePoint builds to work directly
+from the multi-file models, and to strip OAL data from the models. The
+routine introduced to perform this task is xtumlmc_cleanse_for_BridgePoint in
+xtumlmc_build.  A bug in the regular expression used to skip past the inserts
+being stripped is causing too many inserts to be stripped.  
+
+5. Design
+---------
+5.1 Examine the regular expression, determine the problem, and correct it.
+
+6. Implementation Comments
+--------------------------
+6.1 The regular expression used to skip past the insert statements when 
+stripping PEI data was the problem.  It was using the same expression that is 
+used to strip proxies.  This is not correct.  The proxy case is different 
+because every proxy has a filename at the end of the insert and we take 
+advantage of this to find the end of those insert statement.  Most insert 
+statements do not have file names at the end, and too many inserts were 
+being stripped while looking for a file-name at the end of an insert. The new 
+code follows.  The modified line is marked with "**".
+
+  MCJAVAOUTER: while ( <$I> ) {
+    if ( /^INSERT INTO / ) {
+      # If this element is one of the excluded, exclude it.
+      foreach $subsystem_prefix (@_) {
+        if ( /^INSERT INTO $subsystem_prefix/ ) {
+**        while ( <$I> ) { if ( /.+\);\s*/ ) { next MCJAVAOUTER; } }
+        }
+      }
+      print $O "$_";
+      next MCJAVAOUTER;
+    } else {
+      # Just a normal line, send it on through.
+      print $O "$_";
+    }
+
+6.2 There is a regular expression in xtumlmc_cleanse_model the does essentially 
+same thing.  It was modifed to match the expression in 6.1.
+
+7. Unit Test
+------------
+_- Modify  State Machine.xtuml in ooaofooa (to force OAL persistence) and then 
+rebuild with the new xtumlmc_build.
+_R Build succeeds
+
+8. Code Changes
+---------------
+model_compilers/mccommon/bin/xtumlmc_build
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.3  2007/03/28 02:08:07  rmulvey
+Job:2831
+Corrected a cut/paste error in the regular expression in 6.1.
+
+Revision 1.2  2007/03/27 20:44:38  kbrown
+Job:2831
+Performed read-through review of implementation note.  Fixed typos.
+
+Revision 1.1  2007/03/27 19:38:48  rmulvey
+Job:2831
+Introduced

@@ -1,0 +1,152 @@
+========================================================================
+
+File:      $RCSfile: i3366.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Model import broken for newly exported model
+
+1. Abstract
+-----------
+Model import is failing in R1.5.3. 
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3366
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3366
+[2] Bugzilla item 3342 (Export/Import breaks with Parse on Import.)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3342
+
+4. Background
+-------------
+This problem is caused by a sleep loop that was added just before we released
+R1.5.3.  It was added for bug 3342 [2].  
+
+The problem is in .../io/mdl/wizards/ModelImportWizard.java:ImportStreamStatus.
+In the run() function the call to readAndDispatch() is throwing an exception 
+because is does this check:
+if (thread != Thread.currentThread ()) error (SWT.ERROR_THREAD_INVALID_ACCESS);
+
+The error happens because readAndDispatch must be run from the display thread,
+and ImportStreamStatus:run() is not running in the display thread.
+
+5. Design
+---------
+5.1 The initial thought was to simply make readAndDispatch() run in the 
+    display thread as follows:
+    // Sleep until all framework events are processed . . .
+    PlatformUI.getWorkbench().getDisplay().syncExec(
+    new Runnable() {
+	    public void run() {
+            while(PlatformUI.getWorkbench().getDisplay().
+                        readAndDispatch()) {
+                try {
+                    Thread.sleep(100);
+                }
+                    catch (InterruptedException ie) {
+                        // Can't happen
+                    }
+                }	    		   
+            }
+        });
+
+    Unfortunately this did not work.  This fixed the exception raised by this 
+    issue, but when retesting i3342 [2] we found that the above loop spun
+    infinitely.  The reason readAndDispatch() hangs when run inside an 
+    asyncExec() on the Display thread is that one of the things 
+    readAndDispatch() does is "checks if any inter-thread messages (created 
+    by syncExec() or asyncExec()) are waiting to be processed and if so handles 
+    them".  I believe that when we try to put the readAndDispatch() in the 
+    display thread by putting it inside a syncExec() it loops forever because 
+    it is trying to process messages from syncExec() but because 
+    readAndDispatch is inside an syncExec() it can never complete.
+    
+    This approach was not taken.
+    
+5.2 Considered reworking the TransactionManger to no longer require that the
+    parse-all in ModelImportWizard.java::ImportStreamStatus be run in the 
+    display thread.  Tests revealed that this did not fix issue 3342 [2].
+
+    This approach was not taken.
+
+5.3 Considered starting the ImportWizardDialog thread in the display thread.  
+     This approach was not taken.
+
+5.4 Discovered a piece of code in 
+    org.eclipse.jface.operation.ModelContext.class::run() that looked like this:
+    // Make sure that all events in the asynchronous event queue
+    // are dispatched.
+    display.syncExec(new Runnable() {
+        public void run() {
+            // do nothing
+        }
+    });
+
+   The problematic loop in ModelImportWizard.java:ImportStreamStatus was 
+   replaced with this and it fixed the problem. 
+   This is the approach that was taken.
+
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+7.1 Verify that i3366 is fixed.
+_- Start BP on clean workspace
+_- Create project d
+_- File>Import>BP Model, import Models_SF/dogs.xtuml
+_- Note that domain marking files dogs_*.mark are created in the gen folder
+_- Right-click "d", export the project to d.xtuml
+_- Create new project e
+_- File>Import>BP Model, import d.xtuml
+_R The domain marking files dogs_*.mark are created in the gen folder
+_R No errors are reported in the error log
+_R The imported model contains no errors
+
+7.1 Verify that i3342 is fixed.
+_- Repeat the steps in 7.1 but when importing the model select the option to
+   "Parse model on import"
+
+7.3 Verify that the com.mentor.nucleus.bp.io.mdl.test unit tests pass.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.io.mdl/src/com/mentor/nucleus/bp/io/mdl/wizards/
+    ModelImportWizard.java
+
+
+End
+---
+
+$Log: i3366.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2008/01/18 20:05:59  rmulvey
+Job:3366
+Addressed review observations.
+
+Revision 1.1  2008/01/18 18:42:45  rmulvey
+Job:3366
+Introduced

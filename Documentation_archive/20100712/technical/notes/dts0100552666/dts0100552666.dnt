@@ -1,0 +1,150 @@
+========================================================================
+
+File:      $RCSfile: dts0100552666.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+The common-data-for-state-test (data signature test) does not handle/consider
+array "dimensions" in OAL parser/Verifier.
+
+1. Abstract
+-----------
+This note describes the work needed to be done to make the OAL parser flag an
+error when trying to access an event's parameter as an array while its defined
+with no array dimensions.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100552666
+
+4. Background
+-------------
+The OAL parser does not check to see if the event's parameters is an array. 
+If intPar was an integer parameter in a event (not an array), 
+<localVar = rcvd_evt.intPar[10];> would produce no error from the OAL parser 
+both in the transition action language and the state action language.
+
+5. Analysis
+-----------
+5.1 Parser 
+5.1.1 In case having an event's parameter with no array dimensions, and trying 
+      to access it using <rcvd_evt.intPar[i]> or <param.intPar[i]>, the parser
+      flags no error for this statement.
+      Here the parser will flag an error, to stop the execution of the 
+      verifier at this line.
+5.1.2 In case the event's parameter does have an array dimensions, but the 
+      index used is out of the array bound, the parser recognize it and flags 
+      it as an array out of bounds error:-
+      "The rvalue contains an Array Index Out of Bounds.".
+      Here the verifier is operating normally, no need to handle this case here.
+
+5.2 Verifier
+5.2.1 In case having an event's parameter with no array dimensions, and trying 
+      to access it using <myLocalVar = rcvd_evt.intPar[i]> or 
+      <myLocalVar = param.intPar[i]>, the verifier completes execution normally
+      ,with a warning message appearing at the console:-
+      "Warning: access made to unwritten array element. Using default value", 
+      and the value assigned to the local variable "myLocalVar"- appearing in 
+      the variables view - is 'integer [1]'.
+      As the parser will flag an error here, the verifier will not execute this
+      statement after the fix.
+5.2.2 In case the event's parameter does have an array dimensions, and the 
+      passed value to the event is an integer array, and trying to access a 
+      non-initialized element in the array using 
+      <myLocalVar = rcvd_evt.intPar[i];>, where 'intPar[i]' was not initialized
+      at the event's generator side, BridgePoint assigns the local variable 
+      with a '0' value and a warning message appears at the console :- 
+      "Warning: access made to unwritten array element. Using default value".
+      Here the verifier operation is normal, and the initial value for integer 
+      array member is returned '0'.
+5.2.3 In case the event's parameter does have an array dimensions, and the 
+      passed value to the event is an integer array, and trying to access an 
+      initialized element in the array using <myLocalVar = rcvd_evt.intPar[i];> 
+      where 'intPar[i]' was initialized at the event's generator, the verifier
+      assigns the local variable with the value assigned at the event's 
+      generator successfully.   
+
+6. Design
+---------
+6.1 ::event_root_value_validate
+6.1.1 This function should check the passed V_VAL instance with V_EDV subtype,
+to see if this value is also a root for an array element reference.
+If yes then check that the corresponding SM_EVTDI has also array dimensions,
+and flag an error if it doesn't have dimensions, also check that the dimensions
+of the SM_EVTDI is greater than or equal the specified array dimensions, which 
+will make this assignment valid.
+Note that BridgePoint already checks if the accessed array member is out of 
+bound, so no need to handle this case here.
+
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+The work required is fully detailed in the design section.
+
+9. Unit Test
+------------
+9.1 Test to assure that the parser flags <localVar = rcvd_evt.intPar[1];> as 
+    an error, if intPar was defined with no array dimensions.
+
+_- Create an ISM with 1 state A
+_- Create a transition from A and back to A.
+_- Create an Event E1 with a parameter named intPar which is of type int, 
+   without specifying an array dimensions.
+_- Assign E1 to the transition.
+_- Put the following OAL in State A's action body
+   myLocalVar = rcvd_evt.intPar[1];
+_R A parsing error is raised.
+_- Put the following OAL in the transition action body
+   myLocalVar = rcvd_evt.intPar[1];
+_R A parsing error is raised.
+_- Put the following OAL in State A's action body
+   myLocalVar = param.intPar[1];
+_R A parsing error is raised.
+_- Put the following OAL in the transition action body
+   myLocalVar = param.intPar[1];
+_R A parsing error is raised.
+
+9.2 Run existing unit tests and verify it passes.
+
+End
+---
+
+$Log: dts0100552666.dnt,v $
+Revision 1.6  2010/03/31 17:32:13  ayoussef
+job:dts0100552666
+Design note after the modifications in the review minutes.
+
+Revision 1.5  2010/03/31 17:26:06  ayoussef
+job:dts0100552666
+Design note.
+
+Revision 1.4  2010/03/28 16:11:34  ayoussef
+job:dts0100552666
+Design note.
+
+Revision 1.3  2010/03/18 18:15:43  ayoussef
+job:dts0100552666
+Committing the design note after the required modifications by the review minutes.
+
+Revision 1.2  2010/03/17 17:28:19  ayoussef
+job:dts0100552666
+Initial version of the design note
+
+Revision 1.1  2010/03/17 17:24:58  ayoussef
+job:dts0100552666
+Initial version of the design note
+

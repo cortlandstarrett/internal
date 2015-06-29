@@ -1,0 +1,492 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support state machine child copy cut and paste
+
+1. Abstract
+-----------
+This note describes changes that are required to support copying, cutting, and
+pasting of states and transitions.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2826
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2826
+[2] Bugzilla item 2854
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2854
+[3] Bugzilla item 2851
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2851
+[4] Bugzilla item 2778
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2778
+        
+4. Background
+-------------
+The tool currently does not support copying, cutting, and pasting of any state
+machine child element.
+
+5. Analysis
+-----------
+Support shall be added for the following elements:
+
+State Machine State
+Transition
+Creation Transition
+
+In order to support this the above classes need paste* operations added.  The
+data type resolution operations already exist for data items.
+
+A pasteStateMachineState operation shall be added to the State Machine class.
+There is no difference between pasting a state into a class based or instance
+based state machine therefore pasteStateMachineState operations shall be added
+to both the Class State Machine and Instance State Machine classes that just
+call the operation added above.  The pasteStateMachineState operation shall
+perform the following:
+
+A. Hook up the state to the destination state machine
+B. Hook up the state's action to the destination state machine
+C. Guarantee a unique state name (when enforced by the tool) and number
+D. Create new matrix entries for all event's in the destination state machine
+
+A pasteTransition operation shall be added to the State Machine class.  There
+is no difference between pasting a transition into a class based or instance
+based state machine therefore pasteTransition operations shall be added to both
+the Class State Machine and Instance State Machine classes that just call the
+operation added above.  Pasting a Creation Transition is similar to pasting
+other transitions therefore a pasteCreationTransition operation is added to the
+Instance State Machine class which calls the pasteTransition operation, passing
+in the supertype Transition instance's id.  The pasteTransition operation shall
+perform the following:
+
+A. Hook up the transition to the destination state machine
+B. Hook up the transition's action to the destination state machine
+C. Update the event that was assigned when copied (See below for details)
+
+We decided that when copying a transition the event assigned to it shall also be
+copied.  When pasting the transition a search shall be done in the destination
+state machine for a similar event.  If one is found the copied event shall be
+removed and the existing event shall be assigned to the transition.  A similar
+event is one that shares the same name and data set.  The event, if polymorphic,
+is similar only if that event is not used in any subtype or supertype of the
+current state machine's class.  If the transition being pasted is a Creation
+Transition then a similar event is one that matches the above criteria, but has
+an additional restraint that disallows an event if already assigned to another
+Creation Transition.  The data set of an event is similar if all of the data
+item names and types match.  If no event was found then the copied event shall
+be added to the destination state machine with a unique number.  Additionally,
+the data set of the copied event shall be resolved against the destination state
+machine using the criteria above, those data items not matched shall be added to
+the destination state machine.
+
+6. Design
+---------
+6.1. Add paste operations
+
+The following operations are added:
+
+State Machine.pasteStateMachineState(id)
+State Machine.pasteTransition(id)
+
+Instance State Machine.pasteStateMachineState(id)
+Instance State Machine.pasteTransition(id)
+Instance State Machine.pasteCreationTransition(id)
+
+Class State Machine.pasteStateMachineState(id)
+Class State Machine.pasteTransition(id)
+
+All operations above shall do as the analysis section described.
+
+6.2 Add event resolution support
+
+The file_io model shall be modified to include a new class which shall capture
+alternative export paths.  This class relates two EO instances together
+describing an export path that does not normally exist.  This class shall
+capture the relationship chain required to get the alternate instance to export.
+It shall also capture the cardinality desired.  Additionally a boolean attribute
+shall be added to indicate whether or not the retrieved instance shall have it's
+children exported.  A case where the children would not be exported would be
+when a Creation Transition is exported, the supertype Transition shall be
+exported but exporting it's children would cause a loop.  Another boolean shall
+be added which captures the fact that the alternate children should be exported
+as proxies.  This allows additional data to be exported and removed when pasting
+is complete.
+
+To correctly prevent duplicate elements during copying and cutting checks shall
+be added to not write instances that have already been written.  In order to
+properly support this a set of copied elements shall be passed to the stream
+export code.  This shall allow all copied elements to be processed at the same
+time.
+
+The following archetypes are modified to support any alternative path defined:
+
+export_functions.inc
+gen_export_java.inc
+gen_stream_export.arc
+
+Alternate paths shall be added to allow event export from transitions.  This
+shall include exporting all supplemental data.
+
+To correctly handle event resolution the batchRelateAll method shall be
+generated such that the relateProxies parameter of batchRelate can be set.  For
+pasting we need the proxies to be related for full traversal capabilities.
+
+An operation, updateAssignedEvent(), shall be added to the Transition class.
+This operation provides the event resolution described in the analysis section.
+Non-local events shall be removed if being pasted into a machine that does not
+contain a matching polymorphic event.  A dialog shall be shown to the user when
+this occurs.  To support these dialogs at the end of the paste action, the
+PasteAction class shall have a HashMap added.  This map shall contain keys which
+are the message that shall be shown to the user as well as an array of elements
+that had problems.  The dialog that is shown shall give the message and list
+the elements contained in the array.  The user shall have to options at this
+point, Proceed or Undo.  If undone the pasting shall be undone.  The undoing of
+the paste shall not be redoable.
+
+Another operation, updateCopiedSupplementalData, shall be added to the State
+Machine Event class.  This operation shall check for pre-existing supplemental
+data matching the copied event, if found that supplemental data shall be used.
+Otherwise, the copied supplemental data shall be associated with the destination
+state machine.
+
+A new function shall be added to the parse_chain.inc archetype in core.  This
+function shall generate a relationship chain from given key letters.  This
+function shall be used to generate the required code for alternate paths.
+
+6.3 Change Creation Transition graphics
+
+To prevent allowing pasting of Creation Transitions into Class State Machines,
+the graphics for a Creation Transition shall be changed to represent the actual
+Creation Transition instance.
+
+The Creation Transition.get_connector_text operation exists already but shall be
+modified so that it can standalone.  The Transition.get_connector_text operation
+shall be modified to not delegate the call to the
+Creation Transition.get_connector_text operation.
+
+New functions shall be added to support the following for Creation Transitions:
+
+SM_CRTXN_Rename
+SM_CRTXN_Delete
+SM_CRTXN_AssignEvent
+SM_CRTXN_RemoveEvent
+
+The necessary context menu entries shall also be added.
+
+The class, Cl_c.java, is modified so that the Getinstancefromooa_id() method
+returns a creation transition instance instead of a Transition instance.
+
+6.4 Support polymorphic event resolution
+
+When a state machine exists within a copied set, non-local events need to
+resolve thier related polymorphic event.  To do this an operation,
+resolveInheritedEvent, shall be added to the Non Local Event class.  This
+operation shall delete the event if the following is true:
+
+A. The supertype/subtype association was not also copied
+B. The polymorphic event was not copied
+
+A warning shall be given to the user if the event was removed.
+
+New operations starting at the subsystem level and proceeding down into any 
+state machine shall be added.  These operations shall get all classes and their
+state machines and check all non-local events for incompleteness.  This is
+required when an imported class represents the supertype of a copied non-local
+event, there is no guarantee that the represented class is copied as well.  In
+such a case the imported class must be resolved first to allow for event
+resolution to occur.  Doing this will break the supertype/subtype link for any
+other non-local event which receives it's inherited event through the same
+supertype.  To handle this all non-local events delivered through the same
+supertype/subtype association shall be resolved at once.  A check shall also be
+added to prevent trying to resolve these non-local events a second time.
+
+6.5 Remove non-local events when subtype is removed
+
+See [2] for details.
+
+If the delivering subtype of a non-local event is deleted then the non-local
+event shall also be deleted.
+
+A new operation shall be added, disposeLowerNonLocalEvents.  This operation
+shall traverse the subtype hierarchy removing any non-local events that were
+delivered through the subtype that was removed.
+
+6.6 Keep non-local event's names in sync with polymorphic event
+
+See [3] for details.
+
+The rename context menu function for events shall be modified to get all
+polymorphic events and rename all non-local events that are related.
+
+6.7 Display non-local events in model explorer
+
+We decided that a polymorphic event is consumed when any ignore, can't happen,
+or new state transition is related to a non-local event that inherits it.
+
+Given this decision, we decided that a polymorphic event is freed when the
+non-local event that inherits it is deleted.  Therefore we shall show non-local
+events in Model Explorer.  The necessary pei data shall be changed to allow
+this.  The special code which prevented these from showing shall also be
+removed.
+
+It was also decided that we will show the non-local events with the following
+label format:
+
+Event Meaning::Declaring Class Name
+
+To support showing this in Model Explorer a new attribute is added to the Non
+Local Event class, Name.  This attribute shall be derived and shall return the
+required label.
+
+The get_name operation and the derived attribute Drv_Lbl of State Machine Event
+shall be modified to return the correct label for non-local events.
+
+When unassigning transitions we no longer need to remove non-local events so the
+code that supports this shall be removed.
+
+In order to correctly show the label for non-local events during compare,
+proxies must exist for the event that is related to the SM_PEVT.  A proxy must
+also exist for the class that the event is declared under.  To support this pei
+data shall be added to file_io.pei which defines these alternate child paths.
+
+A delete context menu entry shall be added for non-local events.
+
+6.8 Clean up canvas copy/cut code
+
+There is a lot of common code duplicated between the CanvasCopyAction class and
+the CanvasCutAction class.  This code shall be moved to the CanvasCopyAction
+class and called out by the CanvasCutAction class.
+
+6.9 Fix data imported from 6.1 model
+
+See [4] for details.
+
+BridgePoint 6.1 did not consider ignored events or events that can't happen to
+be inherited.  It only considered an assigned event to be inherited.  This is
+not correct and 1.4.x shall consider a polymorphic event inherited when any of
+the following are true:
+
+1. The event is assigned along a supertype/subtype hierarchy
+2. The event is ignored along a supertype/subtype hierarchy
+3. The event is set to can't happen along a supertype/subtype hierarchy
+
+The tool follows this, with the exception of the can't happen.  The tool shall
+be changed to consider event's inherited when set to can't happen.
+
+In order to correct 6.1 data we need to do the following:
+
+1. Locate all non-local events that are assigned to a transition and remove any
+   other non-local event that is related to the same polymorphic event and is
+   not in the same state machine.
+2. Locate remaining non-local events that are set as ignored, starting from the
+   polymorphic event's class and traversing down the subtype hierarchy.  Once
+   one ignored event is found all lower non-local events shall be removed.
+3. Remove any non-local event's that are set as can't happen, and are also not
+   assigned to a transition or ignored.
+   
+A new function, Ooaofooa.removeInconsistentNonLocalEvents, shall be added.  This
+function shall be called after the import code for 6.1 models has completely
+loaded a model.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+All required work is described in the design section.
+
+9. Unit Test
+------------
+_- Copy a state
+_- Paste the state into the same machine
+_R The state is pasted correctly
+_R The state number is unique
+
+_- Copy a state with a creation transition that has an event assigned
+_- Right click in a Class State Machine
+_R The Paste menu item is available
+_- Paste the state and creation transition into the same machine as copied from
+_R The state and creation transition are pasted correctly
+_R A new event is created
+_R The new event has a unique number, but the same name
+
+_- Copy two states with a transition between them where the transition has an
+   event assigned
+_- Paste the elements into a different machine with an event that matches the
+   assigned one
+_R No new event is created
+_R The existing event is used
+
+_- Copy two states with a transition between them where the transition has an
+   event assigned
+_- Paste the elements into a Class State Machine with an event that matches the
+   assigned one
+_R No new event is created
+_R The existing event is used
+
+_- Copy two states with a transition between them, where the transition has an
+   event assigned that has a data item
+_- Paste the elements into a different machine with an event that matches the
+   assigned one (including the data item)
+_R No new event is created
+_R No new data item is created
+_R The existing event is used
+
+_- Copy two states with a transition between them, where the transition has an
+   event assigned that has a data item
+_- Paste the elements into a different machine with no matching event but does
+   have a matching data item
+_R A new event is created
+_R The event's number is unique
+_R No new data item is created
+_R The existing data item is used
+
+_- Copy two states with a transition between them, where the transition has an
+   event assigned that has a data item
+_- Paste the elements into a different machine with an event that matches and
+   a data item that name matches but does not type match
+_R A new event is created
+_R The event's number is unique
+_R A new data item is created
+
+_- Copy two states with a transition between them, where the transition has a
+   polymorphic event assigned
+_- Paste the elements into a state machine with no matching poly available
+_R A warning dialog is shown
+_- Select Proceed
+_R The event is deleted
+_R The states and transition are copied
+
+_- Copy two states with a transition between them, where the transition has a
+   polymorphic event assigned
+_- Paste the elements into a state machine with a non-local event which inherits
+   the same polymorphic event
+_R The event appears the same
+_R Only one non-local event appears
+
+_- Copy two states with a transition between them, where the transition has a
+   polymorphic event assigned
+_- Paste the elements into the state machine where the polymorphic event is
+   defined
+_R A warning dialog is shown
+_- Select Undo
+_R The paste operation is undone
+_R Nothing is changed
+
+_- Copy a subtype class which has a state machine that utilizes a polymorphic
+   event (do not copy the supertype class)
+_- Paste the class into the same subsystem
+_R A warning dialog is shown
+_- Select Proceed
+_R The class is pasted
+_R The classes state machine is complete, except for the polymorphic event
+
+_- Copy a subtype class which has a state machine that utilizes a polymorphic
+   event and it's supertype class (do not copy the supertype association)
+_- Paste the class into the same subsystem
+_R A warning dialog is shown
+_- Select Proceed
+_R The class is pasted
+_R The classes state machine is complete, except for the polymorphic event
+
+_- Copy a subtype class which has a state machine that utilizes a polymorphic
+   event and it's supertype class as well as the supertype/subtype association
+_- Paste the class into the same subsystem
+_R The non-local event is unchanged
+
+_- Copy a subsystem which has a subtype class that has a state machine which
+   utilizes a polymorphic event and has a supertype class that is imported
+_- Paste the subsystem into a subsystem where the represented class (of the
+   imported supertype) can be resolved
+_R The paste completes
+_R The state machine is unchanged
+
+_- Copy a subsystem which has a subtype class that has a state machine which
+   utilizes a polymorphic event and has a supertype class that is imported
+_- Paste the subsystem into a subsystem where the represented class (of the
+   imported supertype) can not be resolved
+_R A warning dialog is shown
+_- Select Undo
+_R The changes are undone
+
+_- Delete a subtype line which provides event inheritence
+_R The non-local event's under the subtype are removed
+
+_- Delete a subtype line which is at the first level of subtyping and provides
+   inheritence to a subtype at a third level
+_R The non-local event in the third level subtype is removed
+
+_- Delete a subtype line which provides event inheritence, where at least one
+   other subtype line exists on the same class.  Making sure that the second
+   subtype line also provides inheritence
+_R The non-local event under the deleted subtype is removed
+_R The non-local event in the second subtype is not removed
+
+_- Rename a polymorphic event
+_R All non-local events inheriting that event are renamed as well
+
+The model found in [4] contains SM_EIGN instances through-out the entire
+supertype/subtype hierarchies as well as assigned events in the SubType1_Level2
+class and the SubType2 class.  Checking that the non-local events exist under
+these classes and no others proves that the fix up code correctly removes
+inconsistent non-local events.
+
+_- Import the 6.1 model found in [4]
+_R The following non-local event references exist:
+  _R SubType1 > PolyEvent2::Supertype
+  _R SubType1_Level2 > PolyEvent1::Supertype
+  _R SubType2 > PolyEvent1::Supertype
+  _R SubType2 > PolyEvent2::Supertype
+  
+_- Create a new instance state machine
+_- Create a new state and transition
+_- Assign the transition to a polymorphic event
+_- Unassign the polymorphic event
+_- Delete the non-local event from model explorer
+_R There are no SUPDT instances left
+
+_- Delete a polymorphic event
+_R All non-local events inheriting it are also removed
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.2  2007/05/04 05:49:16  rmulvey
+Job:2826
+Corrected a cut and paste error.
+
+Revision 1.1  2007/04/24 19:45:03  tlondon
+Job: 2826 2854 2851 2778
+
+Update according to review minutes.
+
+Revision 1.1  2007/04/23 23:02:34  tlondon
+Job: 2826
+
+Introduce

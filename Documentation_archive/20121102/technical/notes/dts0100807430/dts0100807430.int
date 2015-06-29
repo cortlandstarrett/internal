@@ -1,0 +1,114 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Repair signal parameter computation
+
+1. Abstract
+-----------
+This note describes the change needed to repair a defect where parameters to
+signals were not being computed before the signal was being sent.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100807430 - Verifier execution errors on UDT
+    communication between components.
+
+4. Background
+-------------
+When sending literal and pre-computed values as arguments, Verifier behaves
+correctly. However, if an inline call is made to compute a value, Verifier
+enqueues the message before the necessary values have been created.
+
+5. Requirements
+---------------
+5.1 All arguments to signals must be fully computed before the signal is
+    sent.
+
+6. Work Required
+----------------
+6.1 As described in the issue notes, in Signal Invocation.execute() the logic
+block which handles signal events needs to be modified thus:
+
+Change 'discard' to 'complete' and replace the following two statements with:
+
+    if complete
+      relate localEngine to pendingEvt across R2976;
+      pendingEvt.fire();
+    else
+      // Value computation is incomplete, exit and allow computation of event
+      // arguments to complete. Dispose this event instance,
+      // another will be created on re-entry above.
+      pendingEvt.dispose();
+    end if;
+
+The comment was added to clarify the reason for the added logic.
+
+7. Implementation Comments
+--------------------------
+None.
+
+8. Unit Test
+------------
+The fix is confirmed manually against the model attached to the issue. However,
+the model is rather large to be used for a unit test. Accordingly, a new model,
+dts0100807430, is created and added to the BridgePoint Models test project. The
+model consists of two components, a sender and a receiver. They are wired across
+a simple interface that offers one signal that takes two integer arguments. The
+sender sends two signals, the first sends a literal value and a value in a
+temporary variable. The second sends a literal value and supplies the second
+value by means of a function returning a value. Prior to this work, the first
+signal works but the second does not, with several instances of the Verifer
+suspending due to internal errors.
+
+Running this model is added to the Verifier JUnit test.
+
+_- Set a breakpoint in the entry action of the state machine receiving the
+   signal.
+_- Execute the startTest function.
+_R The breakpoint is hit
+_R The literalValue and computed values are shown in the variables window as
+   '2' and '5' respectively.
+_- Resume.
+_R 'Test passed.' is shown in the console.
+_R The breakpoint is hit again.
+_R The literalValue and computed values are shown in the variables window as
+   '2' and '5' respectively.
+_- Resume.
+_R 'Test passed.' is shown in the console.
+_R The Verifier session is quiescent and can be terminated.
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100807430-2
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Signal Invocation/Signal Invocation.xtuml
+
+com.mentor.nucleus.bp.debug.ui.test/src/(default package)/VerifierTestSuite.java
+com.mentor.nucleus.bp.debug.ui.test/src/com.mentor.nucleus.bp.debug.engine/
+    SignalParameterPassingTest.java
+com.mentor.nucleus.bp.debug.ui.test/src/com.mentor.nucleus.bp.debug.test/
+    BPTestLaunchConfiguration.java
+
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/BaseTest.java
+
+
+
+
+End
+---
+
+$Log$

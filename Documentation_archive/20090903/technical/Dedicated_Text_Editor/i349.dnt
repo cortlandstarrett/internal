@@ -1,0 +1,144 @@
+===============================================================================
+
+File:      $RCSfile: i349.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+===============================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+===============================================================================
+
+Tiger Implementation Note
+Typing slowing down due to parser threads
+
+Abstract
+--------
+This issue deals with the slow typing in activity editor while the activity 
+in the editor is being parsed.
+
+History
+-------
+final  M7/i349-031105-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue # 349
+[2] Bugzilla Issue # 745
+
+Background
+----------
+When a slightly large OAL file is being edited the editor gets very slow and 
+less responsive.
+For further details see issue # 349 [1].
+
+Analysis
+--------
+This issue deals with slow typing only and provides no coverage for the 
+performance of parse threads. A seperate issue 745 [2] has been raised to 
+address parser performance problems.
+The problem arises when the Listener class inside the ActivityEditor recieves a 
+'documentAboutToBeChanged' event and kills the already running parse thread.
+It does so by calling killParseThread() method which first interrupts the 
+running thread and then join it by calling the 'Thread.join()' method of the 
+running parse thread. Actually the join() method is a blocking function and it 
+blocks the caller thread till the thread whose join() method has been called, 
+finishes with its execution. The caller thread in our case is our main thread 
+i.e. the thread in which the editor is running.
+When a 'documentChanged' event is recieved by the Listener class, it creates a 
+new instance of the parse thread and starts its execution.
+Therefore, every time when a user types a letter in the activity editor, a 
+running parse thread is interrupted which causes the main thread to stop for 
+some time and a new parse thread starts executing after that. This stopping of 
+the main thread at every single key press (editing) is the main cause of 
+slow typing.
+
+Design
+------
+
+i349.1
+
+To deal with the above stated problem, it is necessary that the interruption 
+and joining of the parse thread should be done from some worker thread, so that 
+the UI thread should not get blocked.
+
+Solution is that the parse thread should join an already running parse 
+thread by itself. In this case, one parse thread will be waiting for the other 
+one to finish, before starting parsing.
+
+For the implementation of this solution, the following steps are required.
+
+- Remove killParseThread() method call from documentAboutToBeChanged()
+
+- Make a new inner class TolerantThread inside the ActivityEditor class. This 
+  thread class is used to launch the parser(Runnable). It should:
+   -  Interrupt and then join an already running TolerantThread, if there is 
+      one.
+   -  Allow Runnable.run() invocation to be delayed for 500 ms. This delay 
+      can be re-initialized by the method hangOn().
+   
+- Whenever Listener recieves a 'documentChanged' event it should: 
+   -  Start a new TolerantThread.
+   -  Call the TolerantThread.hangOn() method, if a running instance of the 
+      TolerantThread is in its wait period. 
+      
+Thus, whenever a new parse thread is started, it will interrupt and join any 
+already running thread. Therefore, the main thread will never be blocked.
+
+Work Required
+-------------
+
+i349.1   Implement the class TolerantThread and Modify ActivityEditor.java as 
+         mentioned in the design section.
+
+Unit Test
+---------
+
+i349-UT.1
+
+_- Open Tiger and load the model 'ex1'
+_- Open Activity Editor for the method 'i_parm_ret_i' of the class 'Any Object'
+_- Get each character from the activity of the 'Runnning F17 Timestamp and F18 
+   Date Operators' state of the class 'Expression Text' and send it in the form 
+   of KeyEvent to the opened activity editor, one by one.
+_- After sending every 20 KeyEvents, wait for 550 ms, so that the parser should 
+   start parsing.
+_R Each character sent in the event appears on the opened activity editor 
+   within acceptable duration. 
+
+
+End
+---
+
+$Log: i349.dnt,v $
+Revision 1.1  2009/09/03 18:24:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.42.1  2008/12/31 16:10:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/03/24 07:56:24  farrukh
+Job:349
+Addressed the observations specified in i349-031105-01.rvm
+
+Revision 1.3  2005/03/11 06:44:49  farrukh
+Job:349
+Unit Test section modified.
+
+Revision 1.2  2005/03/10 13:12:13  farrukh
+Job:349
+Minor Modifications.
+
+Revision 1.1  2005/03/10 12:09:12  farrukh
+Job:349
+Introduced.
+

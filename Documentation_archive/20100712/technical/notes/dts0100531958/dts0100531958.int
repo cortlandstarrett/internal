@@ -1,0 +1,155 @@
+========================================================================
+
+File:      $RCSfile: dts0100531958.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Request for user confirmation on removing datatypes and interfaces that may 
+cause a model crash. 
+
+
+1. Abstract
+-----------
+When a datatype/datatype package/interface is deleted or even moved, it can have 
+far reaching consequences for the system model. A model crash can happen because 
+all dependent data elements are reverted to "integer" types and function 
+to "void" return types.
+
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100531958
+[2] /Documentation/internal/technical/notes/dts0100531958/dts0100531958.dnt
+
+
+4. Background
+-------------
+[2]
+
+
+5. Design
+---------
+5.1 Add Bridge to ooaofooa > External Entities > Utilities
+    BridgeName :collectModelElementsNames
+    Bridge first Parameter : String elementName
+    Bridge Second Parameter : String elementType
+    Bridge Description :This bridge will add element names that are 
+                        affected by the datatype/Interface being deleted to 
+                        a list that is kept in the TransactionManager. 
+                        The TransactionManager will check this list and 
+                        display a confirmation dialog to the user indicating the 
+                        names of the elements affected.                        
+                        Translate:native [6.1]
+
+5.2 In the function dispose of the class Data Type
+     ooaofooa > Domain > Data Type >dispose()
+     at each part where Datatype is being downgraded to "integer" 
+     or function that is downgraded to "void"
+     The name of the element being downgraded as well as it's type 
+     are passed to the Bridge function collectModelElementsNames() that collect 
+     them in the list, that is kept at the TransactionManager.
+
+5.3 In the function dispose of the class Interface
+    ooaofooa > Component > Interface >dispose()
+    for each Interface being deleted the associated Ports and
+    the containing components for these ports are being collected in the List of
+    affectedElementsNames,that is kept at the TransactionManager.
+    
+5.4 In the TransactionManager class
+5.4.1 Add new array list to collect the model elements names 
+       named affectedModelElementsNames [6.2].
+5.4.2 Add new function to be called from the Bridge collectModelElementsNames
+      this function adds the names of the affectedModelElements
+      to the private static list [6.3].
+5.4.3 In the function checkIfTransactionCanComplete()add another check
+      for the affectedModelElementsNames list and if this list is not empty 
+      then a Confirmation dialog containing the affected elements and their 
+      types is shown to the User with two buttons Ok and Cancel
+      If Ok is pressed : The deletion transaction is continued
+      If Cancel is pressed: The deletion transaction is terminated without the
+                            deletion being done [6.4].
+       
+
+6. Implementation Comments
+--------------------------
+6.1 The Implementation of the Bridge in (5.1)
+    TransactionManager.collectModelElementsNames(p_Elementtype,p_Elementname); 
+ 
+6.2 The array list mentioned in (5.4.1)
+static ArrayList<String>  affectedModelElementsNames= new ArrayList<String>();
+
+6.3 Function mentioned in (5.4.2) 
+    public static void collectModelElementsNames(String elementType,String elementName)
+    {
+     if(!elementName.isEmpty()&&!affectedModelElementsNames.contains(elementType+elementName))
+     affectedModelElementsNames.add(elementType+elementName);	
+    }    
+
+6.4 The Check added to the function checkIfTransactionCanComplete() in (5.4.3)
+
+		if (!affectedModelElementsNames.isEmpty()) {
+			String message = "";
+			String str[] = (String[]) affectedModelElementsNames
+					.toArray(new String[0]);
+			for (int i = 0; i < str.length; i++) {
+				message = message + str[i] + "\n";
+			}
+			affectedModelElementsNames.clear();
+			return MessageDialog
+					.openConfirm(
+							PlatformUI.getWorkbench()
+									.getActiveWorkbenchWindow().getShell(),
+							"Confirm Delete",
+							"Are you sure you want to delete the selected elements? \nThis deletion affects the following model elements:\n"
+									+ message);
+		}
+
+
+7. Unit Test
+------------
+7.1 Some JUnitTests Had to be adjusted with the "Deletion Confirmation dialog"
+    That shows with each deletion or cut transaction being done:
+    RTOMoveTests.java
+    DanglingReferenceTest.java
+    DeleteDatatypesTest.java
+
+8. Code Changes
+---------------
+Branch name: R3_1_1-HKA-dts0100531958-04 (Branch)
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    TransactionManager.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface/Interface.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type/Data Type.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml
+
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    DeleteDatatypesTest.java
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test.rtomove/
+    RTOMoveTests.java
+
+>com.mentor.nucleus.bp.io.mdl.test/src/
+    com.mentor.nucleus.bp.io.mdl.test.dangle/DanglingReferenceTest.java
+
+
+End
+---
+
+$Log: dts0100531958.int,v $
+Revision 1.1  2010/03/28 14:35:26  hkhaled
+job:dts0100531958
+Committing an implementation note

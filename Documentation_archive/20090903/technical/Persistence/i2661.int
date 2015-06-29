@@ -1,0 +1,274 @@
+========================================================================
+
+File:      $RCSfile: i2661.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:28 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Handle system datatype upgrades correctly
+
+Abstract
+--------
+This note describes fixes which allow for handling projects which have already
+been upgraded to include system level data types.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 2661
+[2] Issue 2490 Comment 7
+
+Background
+----------
+The issue describes a problem where a system model file will be written with no
+graphics when it has already been upgraded to include graphics.
+
+Design
+------
+1. Check for existence of Model_c instance before upgrading
+
+When a connection to a repository is slow the code for loading a system model
+can be called before the system level datatypes folder exists.  If this occurs
+the code assumes the model has not yet been upgraded and proceeds to upgrade it
+again.  This causes an NPE in the upgrade code which causes the import code to
+exit.  Due to the exitted import only the system model instance exists in
+memory.  Another bug [2] causes the system model file to be persisted, which
+only the system model instance is written as it is all that is in memory.
+
+We know at the point of this problem that a Model_c instance will exist if the
+project has already been updated.  The code is changed to check for this and
+exit the upgrade code if found.  This allows for the completion of the import
+code allowing for the persisted system model file to include all of the
+graphical data.
+
+2. Only handle system model folder under the models directory
+
+It was also noted in [1] that under the Models project another file was being
+persisted when it should not be.
+
+The file:
+
+Models/models/compareTest/models/compareTest/test/Datatypes/Datatypes.xtuml
+
+was being persisted due to the test model being loaded during import.  The load
+causes the S_DID upgrade to occur which in turn triggers the persistence.  This
+is not a valid xtUML model and should not be processed by the resource listener.
+
+The class ComponentResourceListener is changed to ignore all resources under the
+models directory except for the folder which matches the system name.
+
+Implementation Comments
+-----------------------
+It was noticed during the testing of this issue that the upgrade code was never
+hit when a project was imported that was created prior to plcm.  This is due to
+the fact that the new system model instance is created in memory and therefore
+no loading is required.  To properly upgrade these projects the loading code
+must run.  The code which creates the system component is changed to reload the
+system component after creation.  This allows for the proper upgrade code to be
+used.  This change is made in the class PersistenceManager.
+
+The test suite, CoreTestSuite, was split into two.  This allows for quicker
+response to test failures as well as prevents conflicts between test runs.
+
+The slow deletion test was changed to use a new copy of the ooaofgraphics model.
+This model will not change and is therefore a better comparison for deletion
+times.
+
+Due to the splitting of the CoreTestSuite, the test system used in the
+testRenamingTransactionOnExplorer test changed.
+
+A test failure was introduced due to the change which removes trailing
+whitespace from element names.  This failure was caused by a trailing space in
+the DeleteTest generation.  The model, DeleteTestModel, was changed to rename
+a state which had a trailing space in it's name.
+
+Unit Test
+---------
+Manual tests:
+
+_- Begin copying the file:
+		\\riviera.wv.mentorg.com\tucson\software_archive\largefile.test
+_- Import the project Models
+_- After import has completed double click the System Package in ME
+_R The graphics are still present
+_R The file,
+   Models/models/compareTest/models/compareTest/test/Datatypes/Datatypes.xtuml
+   is not dirty
+   
+Code Changes
+------------
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+		PersistenceManager.java
+
+com.mentor.nucleus.bp.core.test/models/DeleteTestModel.xtuml
+com.mentor.nucleus.bp.core.test/models/com.mentor.nucleus.bp.core.test/
+    DeleteTestModel/Import Subsystem/Test Import Class/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite.java
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite2.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    I810_SlowDeletionTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ModelTransactionTest.java
+com.mentor.nucleus.bp.core.test/Test_Readme.txt
+
+com.mentor.nucleus.bp.io.core/src/com/mentor/nucleus/bp/io/core/
+    ImportHelper.java
+
+Models/models/ooaofgraphics.xtuml
+Models/models/Models/ooaofgraphics/ooaofgraphics.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Canvas Tools.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Connector Tool/
+    Connector Tool.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Connector Tool/
+    InstanceStateMachine/InstanceStateMachine.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Model Tool/Model Tool.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Model Tool/
+    InstanceStateMachine/InstanceStateMachine.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Scroll Tool/Scroll Tool.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Scroll Tool/
+    InstanceStateMachine/InstanceStateMachine.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Selection Tool/
+    Selection Tool.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Selection Tool/
+    InstanceStateMachine/InstanceStateMachine.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Shape Tool/Shape Tool.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Shape Tool/
+    InstanceStateMachine/InstanceStateMachine.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Tool Activation Policy/
+    Tool Activation Policy.xtuml
+Models/models/Models/ooaofgraphics/Canvas Tools/Tool Activation Policy/
+    InstanceStateMachine/InstanceStateMachine.xtuml
+Models/models/Models/ooaofgraphics/Datatypes/Datatypes.xtuml
+Models/models/Models/ooaofgraphics/External Entities/External Entities.xtuml
+Models/models/Models/ooaofgraphics/Functions/Functions.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Graphical Data.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Anchor On Segment/
+    Anchor On Segment.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Client Class Dependency/
+    Client Class Dependency.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Connector/Connector.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/
+    Element in Model Specification/Element in Model Specification.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Element In Move/
+    Element In Move.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Element In Resize/
+    Element In Resize.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Element Specification/
+    Element Specification.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Floating Text/
+    Floating Text.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Graphical Element/
+    Graphical Element.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Line Segment/
+    Line Segment.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Model/Model.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Model/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Model Specification/
+    Model Specification.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Shape/Shape.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Text In Move/
+    Text In Move.xtuml
+Models/models/Models/ooaofgraphics/Graphical Data/Waypoint In Move/
+    Waypoint In Move.xtuml
+Models/models/Models/ooaofgraphics/Terminal Specifications/
+    Terminal Specifications.xtuml
+Models/models/Models/ooaofgraphics/Terminal Specifications/
+    Connector Specification/Connector Specification.xtuml
+Models/models/Models/ooaofgraphics/Terminal Specifications/Connector Terminal/
+    Connector Terminal.xtuml
+Models/models/Models/ooaofgraphics/Terminal Specifications/Shape Specification/
+    Shape Specification.xtuml
+Models/models/Models/ooaofgraphics/Terminal Specifications/Shape Terminal/
+    Shape Terminal.xtuml
+Models/models/Models/ooaofgraphics/Terminal Specifications/
+    Terminal Specification/Terminal Specification.xtuml
+Models/models/Models/ooaofgraphics/Terminal Specifications/WhiteSpace Terminal/
+    WhiteSpace Terminal.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/
+    UML 2.0 Diagram Interchange.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/
+    CoreSemanticModelBridge/CoreSemanticModelBridge.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Diagram/
+    Diagram.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/DiagramElement/
+    DiagramElement.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/DiagramLink/
+    DiagramLink.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Element/
+    Element.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Ellipse/
+    Ellipse.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/GraphConnector/
+    GraphConnector.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/GraphEdge/
+    GraphEdge.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/GraphElement/
+    GraphElement.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/
+    GraphicPrimitive/GraphicPrimitive.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/GraphNode/
+    GraphNode.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Image/Image.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/LeafElement/
+    LeafElement.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Point/Point.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/PolyLine/
+    PolyLine.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Property/
+    Property.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Reference/
+    Reference.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/
+    SemanticModelBridge/SemanticModelBridge.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/
+    SimpleSemanticModelElement/SimpleSemanticModelElement.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/TextElement/
+    TextElement.xtuml
+Models/models/Models/ooaofgraphics/UML 2.0 Diagram Interchange/Waypoint/
+    Waypoint.xtuml
+
+End
+---
+
+$Log: i2661.int,v $
+Revision 1.1  2009/09/03 18:22:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.14.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2007/01/09 17:50:05  tlondon
+Job: 2661
+
+Add test code changes.
+Fix according to review minutes.
+
+Revision 1.2  2007/01/08 19:36:20  tlondon
+Job: 2661
+
+Add change required to properly upgrade pre-plcm projects.
+
+Revision 1.1  2007/01/08 19:03:20  tlondon
+Job: 2661
+
+Initial

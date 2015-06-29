@@ -1,0 +1,166 @@
+========================================================================
+
+File:      $RCSfile: dts0100925140-dts0100925115.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+BridgePoint CLI is not showing all errors by default
+
+1. Abstract
+-----------
+The BridgePoint CLI batch file does not specify the -consoleLOG option by 
+default.  
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100925140
+    Without the -consoleLog option messages that go to the eclipse error log 
+    are not seen on the console when using CLI
+[2] ClearQuest DEI dts0100925115
+    CLI Build -prebuildOnly does not output SQL, produces no errors 
+    when .cproject is not present
+[3] ClearQuest DEI dts0100921544
+   Unit testing for CLI
+   
+4. Background
+-------------
+The -consoleLog option is an eclipse preference that causes messages that are
+sent to the Eclipse error log to be redirected to the console.  This option was 
+removed from the BridgePoint_CLI.bat file because there were too many non-fatal
+messages being displayed that are the cause of unnecessary alarm.
+
+5. Requirements
+---------------
+5.1 When running from CLI users shall be notified, on the console, of any 
+    BridgePoint errors.
+5.2 Errors normally reported to the error log will be optionally available on 
+    the console of the CLI.
+5.3 The default mode of the BridgePoint_CLI script will NOT include -consoleLog.
+5.4 The -prebuildOnly option will not depend upon other builders in the 
+    build sequence.
+
+6. Work Required
+----------------
+6.1 Several options were considered for [1]:
+6.1.1 Leave the code how it is, and modify the troubleshooting section of the 
+    Command Line Reference to tell users to put -consoleLog on the command line 
+    when troubleshooting.
+6.1.2 Modify CLI to not go through our standard logging, and instead have it go 
+    to stdout
+6.1.3 Modify CorePlugin.logError and add a flag or parameter to have it send 
+    things to stdout as needed.
+6.1.4 Always have -consoleLog set, and address all of the exceptions that 
+    currently flood the runs.
+    The problem with this option is that many of the errors are not BridgePoint
+    errors.
+6.1.5 The decision:
+After considering all options a combination of both 6.1.1 and 6.1.2 was 
+selected.  Option 6.1.3 is nice, but a single point of entry for the error log 
+messages shall be added to bp.cli/BPCLIPreferences.java named 
+logError(String, Throwable) that mirrors the signature found in 
+CorePluguin.java.    There is not much benefit of  expanding the scope of the 
+change outside of the bp.cli plugin, so 6.1.3 is not used.
+
+6.1.6 The implementation:
+Introduced a new function, static void logError(String, Throwable).  Use search 
+and replace to find all places where we use BPCore.logError in bp.cli, and 
+replace them with this new function, BPCLIPreferences.logError.  
+There are 17 places modified.
+
+6.2 If a .cproject is not present CLI silently fails to build a project when the
+    -prebuildOnly option is used [2].
+    
+    Currently when setting a selected build configuration, CLI utilizes 
+    ManagedBuildManger which comes from CDT.  The flow of the build process 
+    in CLI is such that it obtains this build information before processing 
+    other command-line options.   This causes an error in the case where a 
+    project does not have a CDT nature in cases where the project really 
+    shouldn't need a CDT nature.   To resolve this we simply move the code 
+    that obtains the ManagedBuildInfo into the function that actually needs 
+    that information (when setting and restoring a build configuration).  
+ 
+ 
+7. Implementation Comments
+--------------------------
+None
+
+8. Unit Test
+------------
+These are manual tests but shall be automated as part of [3].
+8.1 Assure that errors are properly displayed on the console
+_- Create a workspace that does NOT contain the model "GPS Watch"
+_- Run this CLI command
+_- BridgePoint_CLI.bat Build -project "GPS Watch" 
+_R The follow error is seen on the console:
+	Error! The specified project does not exist: GPS Watch
+	com.mentor.nucleus.bp.cli.BPCLIException: The specified project does not exist: GPS Watch
+	at com.mentor.nucleus.bp.cli.BuildWorkbenchAdvisor.performCLIBuild(BuildWorkbenchAdvisor.java:71)
+	...
+
+8.2 Assure that -preBuildOnly works on project with no .cproject file
+_- Create a workspace with GPS Watch
+_- Remove the gen/code_generation folder if one exists
+_- Delete the .cproject file from the GPS Watch project
+_- Run this CLI command
+_- BridgePoint_CLI.bat Build -project "GPS Watch" -prebuildonly
+_R gen/code_generation/GPS Watch.sql exists
+
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100925140
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/
+    BPCLIPreferences.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/
+    BPCLIWorkbenchAdvisor.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/Build.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/
+    BuildWorkbenchAdvisor.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/
+    ErrorOutputStreamListener.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/Execute.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/
+    ExecuteWorkbenchAdvisor.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/Import.java [change]
+com.mentor.nucleus.bp.cli/src/com.mentor.nucleus.bp.cli/
+    OutputStreamListener.java [change]
+
+
+End
+---
+
+$Log: dts0100925140-dts0100925115.int,v $
+Revision 1.6  2012/10/30 21:17:04  rmulvey
+job:dts0100925140 dts0100925115
+Addressed review observations
+
+Revision 1.5  2012/10/30 21:06:37  rmulvey
+job:dts0100925140 dts0100925115
+Updated during review
+
+Revision 1.4  2012/10/30 20:50:50  rmulvey
+job:dts0100925140 dts0100925115
+Fixed a couple typos
+
+Revision 1.3  2012/10/30 20:50:05  rmulvey
+job:dts0100925140 dts0100925115
+Fixed a couple typos
+
+Revision 1.2  2012/10/30 20:49:10  rmulvey
+job:dts0100925140 dts0100925115
+Fixed a couple typos
+
+Revision 1.1  2012/10/30 20:45:43  rmulvey
+job:dts0100925140 dts0100925115
+Introduced the note

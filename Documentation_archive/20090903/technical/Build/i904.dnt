@@ -1,0 +1,202 @@
+========================================================================
+
+File:      $RCSfile: i904.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:23 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Design Note
+Make MC-3020 work out of the box
+
+Abstract
+--------
+This issue describes the changes needed to allow the getting started procedure
+to take the user through translating a model.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 904
+
+Background
+----------
+MC-3020 and its associated plugin currently need some configuration to make them
+run out of the box. Out of the box, the path to the MC-3020 installation is set
+at a fixed location. Also out of the box the built executable currently builds
+but just hangs when it is run.
+
+Design
+------
+i904.1 Modify the MC-3020 plugin
+       The MC-3020 plugin currently caches a set of default marking files to be
+       installed in a new project by its new project wizard performFinish
+       method. This has the disadvantage that these files must track any changes
+       made to the MC-3020 originals. Similarly, any new configuration files
+       needed because of some future change to the MC-3020 design would have to
+       be duplicated in this directory.
+       
+1.1    This design is changed so that MC-3020 provides a default-manifest.xml
+       file in the root of its installation. This file shall take the form:
+       
+       <manifest>
+          <system>
+             <file src="source path relative to mc-3020 install root"
+                dest="destination path relative to the Eclipse project root"/>
+          </system>
+          <model>
+             <file src="source path relative to mc-3020 install root"
+                dest="destination path relative to the Eclipse project root"
+                prefix="true"/>
+          </model>
+       </manifest>
+       
+       The manifest shall contain exactly one system element and one model
+       element. Multiple files inside the system and model elements are legal.
+       In the case of the model element, if the attribute 'prefix' is present
+       and has the value true, then the filename shall be prefixed with the name
+       of the model being added.
+       
+1.2    Change the MC-3020 plugin to locate and read this manifest file and to
+       iteratively copy each file from the source path to the destination path.
+
+1.3    Create an initial manifest file and pass it to the MC-3020 development
+       team.
+
+1.4    The MC-3020 plugin file 'build_settings/build_setting.properties'
+       contains an absolute path. The relevant setting in this file is
+       'build_command'. The value of this setting is currently:
+
+       build_command = c:/mgc/embedded/mc3020/bin/rox_build
+
+       This string value needs to include an environment variable so that this
+       can be easily set by the installer:
+
+       build_command = ${env_var:ROX_MC_BIN_DIR}/rox_build
+
+1.5    The default launch specification is also modified to use an evironment
+       variable in place of the fixed path to pdksh.exe.
+
+i904.2 Modify the getting started procedure
+       The MC-3020 development team undertake to provide a problem free out of
+       the box experience for the user. Specifically, they undertake to:
+       
+       - Provide transition and action language tracing to the console by
+         default.
+       - Provide timers that are enabled and ticking by default (or by default
+         if the model uses them).
+       - Provide an ARCH::shutdown implementation that gracefully exits the
+         program.
+         
+       The getting started initialization is then limited to:
+
+       - Create a new project called MicrowaveOven
+       - Copy the Microwave Oven model to the models folder in this new project.
+       - Locate the default MicrowaveOven_domain.mark file and insert the two
+         initialization archetype function calls needed to have the generated
+         code execute the Microwave Oven demonstration.
+
+2.1    Create a new project
+       This behavior is unchanged over the existing functionality. There is
+       therefore nothing to do.
+
+2.2    Copy the Microwave model
+       This behavior is unchanged over the existing functionality. There is
+       therefore nothing to do.
+
+2.3    Relocate the Microwave model
+       The sample model is relocated to a models folder in the root of the
+       com.mentor.nucleus.bp.welcome project. The project is changed to have an
+       xtUML nature. This allows the model to be maintained in a Tiger
+       workspace.
+       
+2.4    Modify the Microwave model
+       The model uses the 'TIM::timer_start_recurring' bridge operation. This is
+       not supported by MC-3020. The Oven Beeper class has one state action re-
+       written so that it uses only the 'timer_start' bridge operation. This
+       operation is fully supported by MC-3020.
+
+2.5    Rename the sample-project folder
+       Since this folder no longer contains the microwave model, it is renamed
+       to 'project-files'.
+
+2.6    Modify the GettingStartedAction
+       The GettingStartedAction class is modified to locate the default domain
+       marking file installed by the changes made to the MC-3020 plugin
+       specified above[1.2, 1.3]. The contents of this file shall be read and
+       the following two lines inserted in the proper place in the file:
+       
+       .invoke TagInitializationFunction( "DefineOven" )
+       .invoke TagInitializationFunction( "TestSequence1" )
+
+2.7	   Remove constant strings from GettingStartedAction
+	     There are quite a few strings that are constants in the
+	     GettingStartedAction class.  These strings are moved to an interface,
+	     IGettingStartedConstants.  All methods in GettingStartedAction are
+	     changed to use the strings from this interface.
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+Since no change in functionality (beyond out of the box install and getting
+started behavior) is affected, existing unit tests are adequate to show that no
+functional regression has occurred.
+
+End
+---
+
+$Log: i904.dnt,v $
+Revision 1.1  2009/09/03 18:22:23  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:12:59  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.34.1  2008/12/31 16:10:02  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/05/09 15:57:41  campbell
+Job: 904
+Address review issues.
+
+Revision 1.3  2005/05/09 15:52:31  campbell
+Job: 904
+Moved code changes to correct place in int.
+
+Revision 1.2  2005/05/09 15:29:23  campbell
+Job: 904
+Addressing review issues.
+
+Revision 1.1  2005/05/06 20:22:25  campbell
+Job: 904
+Renamed from int.
+
+Revision 1.4  2005/05/06 19:35:13  campbell
+Job: 904
+Added more detail to manifest schema.
+
+Revision 1.3  2005/05/06 19:05:30  tlondon
+Job: 904
+
+Adding section for new interface
+
+Revision 1.2  2005/05/06 18:24:14  campbell
+Job: 904
+Rewritten based on conversation with CS and WGT.
+
+Revision 1.1  2005/05/05 23:38:55  campbell
+Job: 904
+Introduced.

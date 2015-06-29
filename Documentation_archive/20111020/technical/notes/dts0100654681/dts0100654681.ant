@@ -1,0 +1,162 @@
+========================================================================
+
+File:      $RCSfile: dts0100654681.ant,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Request support for inter-project component references
+
+1. Abstract
+-----------
+This note describes how we will support the ability to refer to components
+declared in other projects.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100654681 - Request support for inter-project component
+    references.
+[2] ClearQuest DEI dts0100775231 - Modify MC-Java to use getGlobal() in select
+    where statements that use referential ids
+[3] ClearQuest DEI dts0100781398 - Provide a model repair feature
+
+4. Background
+-------------
+Customers, Sales and Marketing have been asking for a more library based
+approach to creating models. With this approach, Reusable model artifacts are
+stored in library projects and these elements are then referred to from other
+production projects.
+
+5. Analysis
+-----------
+The BridgePoint persistence and proxy infrastructure uses a system of relative
+paths that is already compatible with inter-project references. However, there
+are several areas that will need attention in order to enable it:
+
+5.1 UI code currently limits choices to elements found within the same project.
+This limitation is imposed in two areas; chooser and action filter support.
+Since the chooser is generated, a change to this will enable system wide
+references generically. The OAL written for action filters is specified per
+referring element, because the rules for each referring element differ.
+
+5.2 Architectural identifier resolution
+Like the UI infrastructure, the code that finds required elements based on their
+identifier is limited to searching within the current project. The current
+implementation starts by looking within the current model root, then expands its
+search to all model roots under the current project. By adding an additional
+level of search that searches all model roots in the workspace, the required
+inter project identifier resolution is enabled. This multiple level search means
+that the performance impact of searching the larger scopes is not incurred on
+smaller, simpler projects. 
+
+5.3 Review model management OAL
+A general review of the model management OAL is required to ensure that it is
+compatible with cross project references.
+
+5.4 Core types
+Currently, core types are specified on a per project basis. Once inter-project
+references are permitted, core types need to be compatible when accessing
+elements defined in another project. This affects both the OAL parser and
+Verifier. Two solutions are suggested:
+
+5.4.1 Core types are defined and managed globally in the workspace, which means
+      they will no longer appear on any diagrams. Any modifiable core type
+      properties would have to be edited in the BridgePoint preferences.
+
+5.4.2 Core types remain specified per project, and the Parser and Verifier are
+      modified to perform name bound as opposed to instance bound compatibility
+      checking.  This solution has parser and Verifier performance implications,
+      since everything ultimately maps onto core types, they are validated and
+      accessed very frequently. 
+
+5.5 Verifier
+5.5.1 The launcher needs to work with models that contain only component
+references.
+
+5.5.2 When running with inter-project component references, the launch needs to
+be extended with extra source lookup paths, so that when breakpoints are hit the
+source from the other project can be located and displayed. This addition can
+and should be done automatically.
+
+5.6 Model integrity and repair
+Because the relative path data stored in the proxy must include specific names
+to unambiguously identify target data files. Inter-project references are more
+sensitive to naming changes and file system based model manipulation such as
+revision management changes. A separate issue[3] is raised to track this work.
+
+5.7 Limited first step proposal
+The activities required to address action filter functionality[5.1] and OAL
+based model management[5.3] incur a per element engineering overhead (and
+associated defect introduction risk). It is therefore proposed that we move
+forward with inter-project references for components only at this time. Note
+that strictly limiting references to components only does not provide a usable
+feature by itself. It is therefore proposed that inter-project Interface and
+Data Type references also be supported. This work paves the way for arbitrary
+inter-project element references in the future.
+
+6. Work Required
+----------------
+6.1 Enhance UI code
+The reference chooser wizard shall be special cased for element instance types
+specified in[5.7] to add a system wide search for target components. The
+existing interface filtering infrastructure shall still be used to only show
+compatible components. The Data Type reference chooser wizard shall be similarly
+enhanced. For Interfaces, a new reference chooser wizard is required to replace
+the existing generated Formalize dialog.
+
+There are several aspects of the parser and reference chooser functionality that
+need to know whether inter-project references are enabled. It is therefore
+required that inter-project references are enabled at the project or workspace
+preference level.
+
+6.2 Enhance the instance extent identifier resolution infrastructure to add the
+extra workspace level identifier resolution step.
+
+6.3 Modify all OAL associated with the Component Reference.assignComponent()
+operation to use PackageableElement based select statements.
+
+6.4 Core types
+The two alternative solutions will be researched and the optimum proposal shall
+be implemented.
+
+6.5 Verifier
+6.5.1 Modify the launcher code to support component reference only models.
+6.5.2 Automatically add referenced projects to the source lookup tree.
+
+7. Acceptance Test
+------------------
+_- Create a new project and build a deployment consisting of a mixture of
+   component references to components in other projects, local components and
+   local component references. The interfaces between them shall be defined both
+   locally in the project and in other projects. The messages shall carry a mix
+   of core, locally and remotely defined data types.
+_R The project is persisted and unchanged after a tool restart.
+_R The project parses correctly.
+_R The project executes correctly.
+
+End
+---
+
+$Log: dts0100654681.ant,v $
+Revision 1.3  2011/06/30 14:48:18  campbell
+Job: dts0100654681
+Ready for review.
+
+Revision 1.2  2011/06/29 11:07:47  campbell
+Job: dts0100654681
+Move design details to design note. Add requirements for core types.
+
+Revision 1.1  2011/06/10 12:01:33  campbell
+Job:dts0100654681
+Ready for pre-review.
+

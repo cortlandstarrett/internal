@@ -1,0 +1,486 @@
+========================================================================
+
+File:      $RCSfile: i865.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Prework for i473; Incorporating batch event delivery mechanism
+
+Abstract
+--------
+This document describes the implementation details as well as certain design 
+changes after the design note's review made to incorporate batch event delivery
+mechanism
+
+History
+-------
+
+Document References
+-------------------
+[1] Documentation/internal/technical/Architecture/i865.dnt
+[2] Documentation/internal/technical/Architecture/i871.int
+[3] Documentation/internal/technical/Architecture/i871.dnt
+
+Background
+----------
+See the design note [1]
+
+Implementation Comments
+-----------------------
+
+- ModelRoot class is moved to com.mentor.nucleus.bp.core.common package. 
+  Following classes are also modified to correct thier imports:
+  com.mentor.nucleus.bp.core/InstanceList.java
+  com.mentor.nucleus.bp.core/NonRootModelElement.java  
+  com.mentor.nucleus.bp.core/EditorUtil.java
+  com.mentor.nucleus.bp.ui.text/ParseAllActivitiesAction.java  
+  
+- The Ooaofgraphics is added the support of transactions. 
+  . The following two bridges are added to the 'Client' external enttiy and 
+    thier native code is written in the com.mentor.nucleus.bp.ui.canvas/
+    Cl_c.java file:  
+    - startTransaction(Object modelElement, String transactioName)
+    - endTransaction(Transaction transaction)
+  . A User Data Type 'Transaction' of type inst_ref<Mapping> is also added.
+  . The Instance State Machines of the following classes in the 'Canvas Tools'
+    subsystem are changed:
+    - Shape Tool
+      Transaction started and ended bridge calls added in the 
+      'Creating Element' state.
+    - Selection Tool
+      Two new states are added to start transaction for drag and resize 
+      seperately.
+    - Connector Tool
+      Start transaction statement was added in 'Creating First Segment' state.
+      While the end transaction statements were added in 'Creating Element', 
+      'Clearing Partly Drawn Connector' and 'Clearing Partly Drawn Connector on 
+      Deactivate' states.
+  . A class "SortedCompoundDeltaCollector" is also added to support collection 
+    of events in the sequence that 'Ooaofooa' realted events are fired before 
+    the 'Ooaofgraphics' related events in a transaction.
+    
+  . The listeners "CanvasModelListeners" and "CanvasEditorListener" defined in 
+    ui.canvas are not batch enablled. As they make further changes to the model
+    and depend on those changes for correct behavior.
+  
+- The follwoing method is added to IModelChangeListener
+   "modelEventRecieved(ModelChangedEvent event)" for event type UNKNOWN.
+
+- The class "ModelChangeAdapter" is added following methods, to provide default 
+  behavior for each of the method specified in the IModelChangeListener 
+  interface:
+  . void performDefault(ModelChangedEvent event)
+  . void performDefault(ModelChangedEvent event, IModelDelta delta)
+
+- Transaction support was added to the following actions/modules:
+  - All actions defined in the bp.core plugin
+  - Changing of a property from poperty view
+  - Saving of description and activity editors. 
+  
+- The following contructor is added to the class "ModelChangedEvent" to support
+  construction with multiple deltas:
+  . ModelChangedEvent(ModelElement source,  IModelDelta[] delta)
+
+- The following methods in the class "TransactionManager" are added to support
+  transaction based on a ModelRoot and also on multiple model elements:
+  - Transaction startTransaction(String name, ModelElement[] modelElements) 
+                                                     throws TransactionException
+  - Transaction startTransaction(String name, ModelRoot modelRoot) 
+                                                     throws TransactionException
+
+- The constructor for the class RelationshipChangeModelDelta is modified to add
+  a String parameter 'relFuncSuffix', which is the he suffix added to the 
+  relate/unrelate method name in case of a reflexive association. Accessor
+  method is also added for this field. 
+  
+- The Following code changes give list all files that are changed under issues 
+  871 and 865. Refer to the [2] and [3] for details of the changes made under 
+  issue 871.
+  
+Unit Test
+---------
+- i865.UT.1 General
+  _- Run all unit tests for Tiger
+  _R All tests pass successfully.
+
+- i865.UT.2 Verifying if given actions result in transactions with right 
+            sequence and number of events.
+            
+  Validated test results are checked in and following tests check their results
+  with the validated test results.
+  
+- i865.UT.2.1  Canvas tests
+  
+  _- Open domain editor.
+  _- Register a transaction listener.
+  _- Create a new sub-system by drawing on the canvas.
+  _R Check if a valid transaction is received with right sequence and number of 
+     events.
+
+  _- Open domain editor.
+  _- Register a transaction listener.
+  _- Select any data type package and move it to a different location.
+  _R Check if a valid transaction is received with right sequence and number of 
+     events.
+     
+  _- Open a class diagram with existing classes and relations.
+  _- Register a transaction listener.
+  _- Create a new simple association with a partial connector.
+  _- Attempt to join this connector with another association.
+  _R The connector will disappear and transaction will be cancelled.
+  _R Check if given cancelled transaction is received with right sequence and 
+     number of events.
+
+- i865.UT.2.2  Property view test
+  
+  _- Open a class diagram.
+  _- Register a transaction listener.
+  _- Select a class in the class diagram or subsystem diagram.
+  _R Property view will be updated with properties of selected model class.
+  _- Select and change the name property of the model class through property
+     view.
+  _R Check if a valid transaction is received with right sequence and number of 
+     events.
+     
+- i865.UT.2.3 Text editor tests
+
+  _- Register a transaction listener.
+  _- Select a model class in model explorer.
+  _- Open description editor for this model class.
+  _- In an opened description editor, change the description and save it.
+  _R Check if a valid transaction is received with right sequence and number of 
+     events.
+     
+  _- Repeat the same test for activity editor by editing activity of valid ME.
+  
+- i865.UT.2.3 Core Action tests and tests from Explorer.
+
+  _- Register a transaction listener.
+  _- Select an ME and perform rename action on it.
+  _R Check if a valid transaction is received with right sequence and number of 
+     events.
+     
+  _- Select a model class in the explorer.
+  _- Register a transaction listener.
+  _- From the context menu, select delete operation
+  _R The class will be deleted from all views.
+  _R Check if a valid transaction is received with right sequence and number of 
+     events.
+  
+  _- Open canvas editor for a sub system with existing elements. 
+  _- Register a transaction listener.
+  _- Select a simple and un-formalized association between two model classes.
+  _- From the context menu select "Formalize.."
+  _- Follow the wizard and perform appropriate actions to execute the action
+     properly.
+  _R The relation becomes formalized.
+  _R Check if a valid transaction is received with right sequence and number of 
+     events.
+     
+- i865.UT.3 Testing of InstantListener and BatchedListener
+  
+  This tests if events delivered by both instance listeners and batched 
+  listeners are same in number.
+  
+  _- Create two listeners, one instance listener and one batched listener
+  _- Register these listeners
+  _- Execute different operations on a loaded model such as following.
+  _- Create new instance state chart for a class
+  _- Delete a sub system.
+  _R Number of events received by two listeners are same.
+
+- i865.UT.4 Testing of disabled events
+
+  _- Register a transaction listener.
+  _- From the explorer view, navigate to model class with two attributes.
+  _- Select top attribute and from the context menu, select 'move down'
+  _R Top attribute moves down.
+  _- Select the same attribute and from the context menu, select 'move up'
+  _R The attribute moves back to its original order.
+  _R Check if valid transactions are received with right sequence and number of 
+     events.
+  _R Check if events that took place while events were disabled are also 
+     received.
+  
+  _- Execute similar test on a class with three attributes.
+  
+  Note: Deletion of a model class in i865.UT.2.3 also tests if events are 
+        received even when events are disabled.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core/arc/create_global_action.inc
+- Changed fireModelChange to fireModelElementAboutToBeDeleted().
+
+com.mentor.nucleus.bp.core/arc/create_object_action.inc
+- Updated imports to add Transaction related classes.
+
+com.mentor.nucleus.bp.core/arc/function_body.inc
+- Added transaction support for the actions.
+- Added function to generate appropriate transaction name.
+
+com.mentor.nucleus.bp.core/arc/wizard.arc
+- Include function_body.inc to provide transaction naming support.
+
+com.mentor.nucleus.bp.core/arc/wizard.inc
+- Added transaction support for the wizard based actions.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+- Updated fire*() method calling as per new signatures.
+- Added method logError(String, Exception) that overrides the abstract method 
+  in the ModelRoot.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/OoaofooaBase.java
+- Updated SystemModelChangeListener and ModelChangeListener to extend from 
+  ModelChangeAdapter in order to utilize from separate fire* methods.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/
+    PropertyViewListener.java
+- Updated to extend from ModelChangeAdapter as per new API.
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/
+    ResourceChangeListener.java
+  - Updated fire*() method calling as per new signatures.
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/
+    ResourceUpdaterModelChangeListener.java
+- Updated fire*() method calling as per new signatures.
+- Listener now extend ModelChangeAdapter
+- Listener code updated to adhere to new methods in the IModelChangeListener.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    BaseModelDelta.java
+- BaseModelDelta.getAffectedChildren() is removed as it is no more needed.
+   
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    CompoundDeltaCollector.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    IDeltaCollector.java
+- Introduced.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    IModelChangeListener.java
+- Added individual listener methods as per new API.
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    IModelDelta.java
+- getAffectedChildren() method is removed as it is no more needed.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    InstanceList.java
+- Removed import for ModelRoot after move to core.common.    
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ITransactionListener.java
+- Introduced.
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ModelChangeAdapter.java
+- Introduced.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ModelChangedEvent.java
+- Updated to support multiple deltas in an event.
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+- Moved from core to core.common package
+- Added ability to deliver batched delta events
+- Provided separate methods for firing different types of events.
+- Added class DeltaCollector, which makes batched delta possible
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    NonRootModelElement.java
+- Removed references of ModelRoot import.
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    RelationshipChangeModelDelta.java
+- Added support for relationPhrase.    
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    SortedCompoundDeltaCollector.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    Transaction.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    TransactionException.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    TransactionManager.java
+- Introduced.    
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/
+    NewDomainWizard.java
+- Updated fire*() method calling as per new signatures.
+    
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/EditorUtil.java
+- Updated import for ModelRoot class.
+
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    activity_editor_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    cancel_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    delete_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    editor_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    formalize_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    menu_item_useraction_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    property_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    rename_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    shape_creation_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    shape_move_transaction.exp
+com.mentor.nucleus.bp.core.test/models/testTransaction.xtuml
+- Introduced.
+
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    CoreTestResultCreator.java
+com.mentor.nucleus.bp.core.test/generate.xml    
+- Added Transaction tests.
+    
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ModelChangeListenersBatchingTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ModelTransactionTest.java
+- Introduced.
+
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+- Updated fire*() method calling as per new signatures.
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/BaseTest.java
+- Added common code used by transactions tests.
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/ILogable.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    ObjectLogger.java
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    TransactionListener.java
+- Introduced.
+
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+- Added 'startTransaction' and 'endTransaction' bridge in the Client external 
+  entity
+- Added 'Transaction' data type
+- Added the support of transaction. Following instance state machines are 
+  upated:
+  - Shape Tool
+     Transaction started and ended in the 'Creating Element' state.
+  - Selection Tool
+    Two new states added to start transaction for drag and resize.
+  - Connector Tool
+    Add code to start and end transaction in the required states.
+- Enabled event delivery generated for required graphics sub systems.
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasEditorListener.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasModelListener.java
+- Listener now extend ModelChangeAdapter
+- Listener code updated to adhere to new methods in the IModelChangeListener.
+- Batch notifications disabled, this listener needs not to batch events, as 
+  it fires further events and continue working based on these events.
+    
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/Cl_c.java
+- Added native code for Starttransaction and Endtransaction bridges.
+- Updated imports for ModelRoot class.
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    ModelContentOutlinePage.java
+- Listener now extend ModelChangeAdapter
+- Listener code updated to adhere to new methods in the IModelChangeListener.
+    
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    OoaofgraphicsBase.java
+- Updated imports for ModelRoot class.
+
+com.mentor.nucleus.bp.ui.explorer/arc/create_explorer_view.inc
+- Listener now extend ModelChangeAdapter
+- Listener code updated to adhere to new methods in the IModelChangeListener.
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+- Added transaction support for the property changes.
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    AbstractModelElementListener.java
+- Listener now extend ModelChangeAdapter
+- Listener code updated to adhere to new methods in the IModelChangeListener.
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    DocumentProvider.java
+- Listener code updated to adhere to new methods in the 
+  AbstractModelElementListener class.
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    ModelElementPropertyStorage.java
+- Added transaction support for the description and activity editor changes.    
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/TextPlugin.java
+- Listener now extend ModelChangeAdapter
+- Listener code updated to adhere to new methods in the IModelChangeListener.
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/
+    ParseAllActivitiesAction.java
+- Updated imports for ModelRoot class    
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/placeholder/
+    PlaceHolderManager.java
+- Listener code updated to adhere to new methods in the 
+  AbstractModelElementListener class.
+
+MC-Java/java.arc
+- Used the individual fire*() method instead of using fireModelChange()
+  method.
+
+MC-Java/referring.inc
+- Used the individual fire*() methods instead of using fireModelChange()
+  method.
+- Added the new func_suffix parameter to the RelationshipChangeModelDelta.java
+- Added support for generating model change event firing code other then root 
+  package.
+
+MC-Java/statement.inc
+- Used the individual fire*() methods instead of using fireModelChange()
+  method.
+
+End
+---
+
+$Log: i865.int,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.30.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/07/29 11:41:17  babar
+Job:865
+added comments for tests
+
+Revision 1.2  2005/07/28 21:10:08  babar
+Job:865
+- Added unit tests
+- Update code changes.
+  method.
+
+Revision 1.1  2005/06/06 17:36:39  siddique
+Job:865
+Introduced.

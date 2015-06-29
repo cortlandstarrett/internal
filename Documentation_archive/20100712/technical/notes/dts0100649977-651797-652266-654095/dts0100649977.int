@@ -1,0 +1,239 @@
+========================================================================
+
+File:      $RCSfile: dts0100649977.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+undetected AOOB error for array parameter in parser
+
+1. Abstract
+-----------
+The array validation process has some wrong technique and does not validate
+some part of code. This note is about to fix the mutli-dimensional array index
+validation, and add index/depth validation for parameter array.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100649977 - undetected  AOOB error for array parameter 
+	in parser
+[2] ClearQuest DEI dts0100651797 - Parser does not check for array depth 
+	properly inside operation body
+[3] ClearQuest DEI dts0100652266 - Parser validates array dimensions for 
+	Operation Return value backward
+[4] ClearQuest DEI dts0100654095 - array length is not calculated for property 
+	parameter arrays
+[5] dts0100649977.dnt design note.
+[6] dts0100583660.dnt - Dimension "columns" are being evaluated backwards 
+	by parser
+[7] dts0100583660.int - Dimension "columns" are being evaluated backwards 
+	by parser
+
+4. Background
+-------------
+See [5].
+
+5. Design
+---------
+5.1 Undo the work done in [7 §5].
+
+Before: 
+	dimension = 0;
+	select many dims related by 
+						aer->V_VAL[R838]->V_TVL[R801]->V_VAR[R805]->S_DIM[R849];
+	if (not_empty dims)
+	// Change the dimension value (created above) to index the array's 
+		dimensions backward
+		dimension = (cardinality dims) - 1;
+	end if; 
+	while (isValid and not_empty aer)		
+		<snipped code>
+  		dimension = dimension - 1;
+  	end while;
+
+After:
+	dimension = 0;
+	while (isValid and not_empty aer)
+  		<snipped code>
+  		dimension = dimension + 1;
+  	end while;
+
+
+5.2 Implementing the approach [6 §5.5.2]
+5.2.1 "SetRank()" operation in bp.core::ooaofooa::Value::Value::SetRank()
+
+Before:
+
+<snipped code>
+varID = rootVal.setRank(dimension:param.dimension+1, rval_id:param.rval_id);
+<snipped code>
+create object instance dim of S_DIM;  
+dim.dimensionCount = param.dimension;
+dim.elementCount = elementCount;
+relate vvar to dim across R849;
+  end if;
+end if;
+return varID;
+
+After:
+
+<snipped code>
+varID = rootVal.setRank(dimension:param.dimension+1, rval_id:param.rval_id);
+<snipped code>
+create object instance dim of S_DIM;  
+select many numberOfDims related by vvar->S_DIM[R849]; 
+dim.dimensionCount = cardinality numberOfDims;
+dim.elementCount = elementCount;
+relate vvar to dim across R849;
+  end if;
+end if;
+return varID;
+
+5.3 "Assigment_expr_end()" in bp.core::ooaofooa::Functions::OAL Validation 
+ Functions::Assigment_expr_end()
+
+Before:
+<snipped code>
+  if ( dt == GD::NULL_UNIQUE_ID() )
+    err_msg = "Data types are not assignable or " +
+                                       "compatible across assignment statement";
+    lval.dispose();
+    rval.dispose();
+    ::clear_value_data();
+    ERR::reportParseError( msg: err_msg, token: param.a1_rule_token );
+  else
+// The required code should be add here 
+    create object instance atm of ACT_AI;
+    select any stmt from instances of ACT_SMT where
+                                selected.Statement_ID == param.a2_upper_rule_id;
+    relate atm to stmt across R603;
+    relate lval to atm across R689;
+    relate rval to atm across R609;
+  end if;
+end if;
+return param.a2_upper_rule_id;
+
+After:
+<snipped code>
+if ( dt == GD::NULL_UNIQUE_ID() )
+    err_msg = "Data types are not assignable or " +
+                                       "compatible across assignment statement";
+    lval.dispose();
+    rval.dispose();
+    ::clear_value_data();
+    ERR::reportParseError( msg: err_msg, token: param.a1_rule_token );
+  else
+  	if (lval.getDimensions() !=rval.getDimensions())
+		assign_ok = false;
+		err_msg = "Parameter has incompatible array depth.";
+	elif (not lval.isElementCountValid())
+		assign_ok = false;
+		err_msg = "Parameter contains an Array Index Out of Bounds.";
+	else
+	    create object instance atm of ACT_AI;
+	    select any stmt from instances of ACT_SMT where
+	                                selected.Statement_ID == param.a2_upper_rule_id;
+	    relate atm to stmt across R603;
+	    relate lval to atm across R689;
+	    relate rval to atm across R609;
+	end if;
+	if (not assign_ok)
+		lval.dispose();
+		::clear_value_data();
+		ERR::reportParseError( msg: err_msg, token: param.a1_rule_token );
+	end if;
+  end if;
+end if;
+return param.a2_upper_rule_id;
+
+
+5.4 "getArrayLength" operation in bp.core::ooaofooa::Value::Value
+
+Before :
+
+<snipped code>
+select one parmVal related by self->V_PVL[R801];
+<snipped code>
+elif not_empty parmVal
+  select one fnParm related by parmVal->S_SPARM[R832];
+  select one opParm related by parmVal->O_TPARM[R833];
+  select one brParm related by parmVal->S_BPARM[R831];
+  if not_empty fnParm 
+<snipped code>
+  elif not_empty opParm
+<snipped code>
+  elif not_empty brParm
+<snipped code>
+  else
+    // Cannot happen - required to satisfy parser
+  end if;
+<snipped code>
+
+After:
+<snipped code>
+select one parmVal related by self->V_PVL[R801];
+<snipped code>
+elif not_empty parmVal
+  select one fnParm related by parmVal->S_SPARM[R832];
+  select one opParm related by parmVal->O_TPARM[R833];
+  select one brParm related by parmVal->S_BPARM[R831];
+  select one prParm related by parmVal->C_PP[R843];
+  if not_empty fnParm
+    select any dim related by fnParm->S_DIM[R52] where (selected.dimensionCount == param.dimension);
+  elif not_empty opParm
+    select any dim related by opParm->S_DIM[R121] where (selected.dimensionCount == param.dimension);
+  elif not_empty brParm
+    select any dim related by brParm->S_DIM[R49] where (selected.dimensionCount == param.dimension);
+  elif not_empty prParm
+    select any dim related by prParm->S_DIM[R4017] where (selected.dimensionCount == param.dimension);
+  else
+    // Cannot happen - required to satisfy parser
+  end if;
+<snipped code>
+
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+See [5].
+
+8. Code Changes
+---------------
+
+Branch name : Review-dts0100649977-651797-652266-654095
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+
+
+
+End
+---
+
+$Log: dts0100649977.int,v $
+Revision 1.3  2010/02/10 14:35:10  nmohamad
+job:dts0100649977
+Add branch name..
+
+Revision 1.2  2010/02/09 18:03:23  nmohamad
+job:dts0100649977
+complete the note..
+
+Revision 1.1  2010/02/07 14:56:10  nmohamad
+job:dts0100649977
+Creating..

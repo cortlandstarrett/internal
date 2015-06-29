@@ -1,0 +1,212 @@
+========================================================================
+
+File:      $RCSfile: dts0100707215.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support for Pre-defined channel handling in SystemC MC
+
+
+1. Abstract
+-----------
+SONY has requested the ability to mark specific packages as containing pre-
+defined channels.  These modules would not undergo typical code generation.  
+Instead, their implementation would come from legacy code provided outside the
+model.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100707215
+
+4. Background
+-------------
+See Abstract.
+
+Analysis
+---------
+5.1  Pre-defined channels
+5.1.1  In SONY models, there is often a SystemC channel modeled in between two
+       application modules.  This channel typically implements signals and oper-
+       ations through a provided interface.
+5.1.2  It is sometimes the case that this channel should be considered
+       "pre-defined", meaning the implementation of the channel module will come
+       from legacy (external) code.  In this scenario, SONY has requested that 
+       the code generator should skip generating application code for the pre-
+       defined channel.  They also request that the port binding code for the
+       channel module not be generated and that the port binding code for the
+       modules connected to the channel bind to the module name itself, not to 
+       the long form generated port name that we currently use.
+       
+       
+Design
+-------
+6.1  Pre-defined Channels
+6.1.1  Extend the model compiler metamodel.  In the TM_C (Component Mark) class,
+       add two new attributes:
+       
+       isChannel (boolean) - Used the flag whether the associated component is
+         to be handled as a pre-defined channel. Default is false.
+       include_file (string) - Stores the name of the include file that declares
+         the pre-defined channel implementation.  Default is empty string.
+         
+6.1.2  Add new marking function to m.component.arc:
+
+   .invoke MarkAsChannel( <package name>, <component name>, <include file name>)
+
+       For example:
+
+   .invoke MarkAsChannel( "*", "wait_hs", "my_channel.h")
+6.1.2.1  The marking function locates (or create if necessary) an instance of 
+         TM_C associated with the component being marked.  Once the TM_C
+         instance is in hand, the isChannel flag is set to true and the include
+         file field is populated with the parameter to the marking function. 
+
+6.1.3  Enhance q.component.ports.arc
+6.1.3.1  This archetype drives the creation of the module header and implemen-
+         tation files.  It iterates over each component in the system generating
+         the application code.
+6.1.3.2  The iteration is modified to now check if the module is marked as a 
+         pre-defined channel.  If it is, the queries and template population for
+         the component is skipped.  Instead, we populate a new template file 
+         named "t.component.ports.stub.h".  This file simply creates a header 
+         file for the module that includes the file specified in the marking 
+         function, effectively redirecting the implementation of the module to
+         the external source.
+
+6.1.4  Enhance q.component.port.arc
+6.1.4.1  This file controls the generation of the internal behavior of a compo-
+         nent.  There are several places where new behavior is required:
+6.1.4.1.1  TE_MACT_CreateSignals_helper
+           This function generates class attributes that define the channel
+           instances used.  In a typical application, these are attributes of 
+           the simple or structued channel classes generated to interfaces.h.
+           
+           The interface classes are generated for each port modeled on the
+           diagram.
+           
+           We now check to see if the component under generation is a pre-
+           defined channel.  If it is, we bypass generation of the port channel
+           interface attribute.
+6.1.4.1.2  TE_MAC_BindSignals_helper and TE_MAC_BindStructuredInterface
+           These functions generate the port bindings, where the module ports 
+           are bound to the channel/interfaces declared in 6.1.4.1.1.
+           
+           If the module is a pre-defined channel, do not generate any bindings 
+           for the ports inside this module.
+           
+           If the module is not a pre-defined channel, but the target of the 
+           port binding is, then bind to the target channel/module name, not to 
+           the long form name "<module>_<port>_<interface>_<description>".
+          
+           Must handle all 16 cases of [local|imported][provision|requirement] 
+           bound to [local|imported][provision|requirement] where one side or 
+           the other is a channel.
+           
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+See Design.
+
+9. Unit test
+------------
+The test model is stored at: \\wv\dfs\bridgepoint\test_data\dts0100707215\
+  skb_catapult_1_extended.xtuml
+  
+Bindings generation
+-------------------
+key:
+  C1 = Component 1
+  C2 = Component 2
+  Code Point = commented reference point in q.component.port.arc // SKB - <letter>
+  ir = imported requirer
+  ip = imported provider
+  lr = local requirer
+  lp = local provider
+  
+Created new interfaces and pre-defined channel modules in the Catapult_lab1 
+module.  Changed the markings to set the desired elements under test as 
+pre-defined channels. Generated code.  Inspect simtop.h to verify correct
+output.
+
+No Channels
+-----------
+C1      C2      Code Point
+ir      ip      c
+ir      lp      d
+ip      ir      a
+ip      lr      a
+lp      ir      b
+lp      lr      b
+lr      lp      e
+lr      ip      f
+
+IP as channel (wait_hs and skb_io2)
+-------------
+ir      ipc     c - CORRECT: uses channed name instead of port name
+ir      lp      -
+ipc     ir      CORRECT: not generated
+ipc     lr      CORRECT: not generated      
+lp      ir      -
+lp      lr      -
+lr      lp      -
+lr      ipc     f - CORRECT: uses channel name instead of port name
+
+
+IR as channel
+-------------
+irc     ip      CORRECT: not generated
+irc     lp      CORRECT: not generated
+ip      irc     a - CORRECT: uses channed name instead of port name
+ip      lr      -
+lp      irc     b - CORRECT: uses channel name instead of port name
+lp      lr      -
+lr      lp      -
+lr      ip      -
+
+
+LP as channel (wait_hs_local and skb_ch3)
+-------------
+ir      ip      -
+ir      lpc     d - CORRECT: uses channel name instead of port name
+ip      ir      -
+ip      lr      -
+lpc     ir      CORRECT: not generated
+lpc     lr      CORRECT: not generated
+lr      lpc     e - CORRECT: uses channel name instead of port name
+lr      ip      -
+
+
+LR as channel (skb_chn and skb_chn2)
+-------------
+ir      ip      -
+ir      lp      -
+ip      ir      -
+ip      lrc     a - CORRECT: uses channel name instead of port name
+lp      ir      -
+lp      lrc     b - CORRECT: uses channel name instead of port name
+lrc     lp      CORRECT: not generated
+lrc     ip      CORRECT: not generated
+
+End
+---
+
+$Log: dts0100707215.dnt,v $
+Revision 1.1  2010/12/16 20:45:27  kbrown
+job:dts0100707215
+Completed DNT.
+

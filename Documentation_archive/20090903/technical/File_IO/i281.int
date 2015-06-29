@@ -1,0 +1,262 @@
+========================================================================
+
+File:      $RCSfile: i281.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:36 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Remove tasks when domain is cleared
+
+Abstract
+--------
+This note describes the changes to remove tasks from the task list
+when a domain is cleared, and add them when a domain is imported.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 281
+
+Background
+----------
+
+When a domain is cleared, all information for that domain should
+be deleted.  The task list is not currently cleared.   Once we
+clear the task list, we will need to reparse the domain on import
+to recreate the task list entries.
+
+Design
+------
+
+i281.1  Add activity processing infrastructure
+
+The class ui.text.activity/AllActivityModifier is created. 
+The class has the public constants PARSE and CLEAR.
+The class has the following public functions:
+
+AllActivityModifier(Domain_c dom, IProgressMonitor monitor)
+  - dom is the domain the work is to be done on
+  - monitor is the progress monitor that will be updated
+    as work is done.
+  - the function merely caches the input data
+  
+void processAllActivities(int op)
+  - op is either PARSE or CLEAR
+  - If op == PARSE, then all activities are parsed, and any errors 
+    are put in the task list. If an activity has no errors, its
+    placeholder file is deleted.
+  - If op == CLEAR, then the placeholder files for all activities 
+    are deleted
+    
+i281.2  Clear task list entries
+
+In ImportBPSql.doLoadSql(), just before the domain data is cleared,
+clearAllActivities() in invoked.  We need to do this before
+we clear the domain, since there won't be any activity instances
+present once the domain is cleared.  This means that the io.sql
+plugin is now dependent on the ui.text plugin, so the io.sql
+plugin.xml file is updated.
+
+i281.3  Parse all after import
+
+In ImportBPSql.finishLoad(), parseAllActivities() is executed
+after a successful import.  The result of the invocation does not
+affect the return value of this function.
+
+i281.4  Add parse all menu entry
+
+To allow the user to parse all at any time, the menu entry "Parse All Activities"
+is added to the Domain context menu.
+
+i281.4.1  Add menu action class
+
+The class ui.text.activity/ParseAllActivitiesAction is created. 
+The class implements the IActionDelegate interface.  The 
+selectionChanged() function passes the selection on to 
+Ooaofooa.setSelection().  The run() function iterates thru the set
+of selections received from Ooaofooa.getSelection(), and for each one that
+is a Domain_c instance, creates an instance of AllActivityModifier, and invokes 
+parseAllActivities().
+
+i281.4.2  Add object contribution
+
+The ui.text plugin.xml file is updated to add an object contribution
+for the parse all menu item.  The new entry follows:
+
+   <extension
+         id="com.projtech.bp.ui.explorer.viewer"
+         name="Model Explorer"
+         point="org.eclipse.ui.popupMenus">
+      <objectContribution
+            adaptable="false"
+            objectClass="com.projtech.bp.core.Domain_c"
+            id="com.projtech.bp.ui.text.ParseAllAction">
+         <action
+               label="Parse All Activities"
+               class="com.projtech.bp.ui.text.activity.ParseAllActivitiesAction"
+               menubarPath="com.projtech.bp.ui.context-internal"
+               enablesFor="*"
+               id="com.projtech.bp.ui.text.ParseAllAction">
+         </action>
+      </objectContribution>
+   </extension>   
+
+Work Required
+-------------
+
+i281.1  Add activity processing infrastructure
+
+The new class is created as described in the design.
+
+i281.2  Clear task list entries
+
+The change is made to gen_import_java.arc.
+The new dependency is added to plugin.xml.  This causes changes in
+.classpath and .project.
+
+i281.3  Parse all after import
+
+The change is made to gen_import_java.arc.
+
+i281.4  Add parse all menu entry
+
+i281.4.1  Add menu action class
+
+The new class is created as described in the design.
+
+i281.4.2  Add object contribution
+
+The change is made to create_plugin_xml.arc.
+
+Implementation Comments
+-----------------------
+
+- The IOTest and OalparserTest tests don't run in a workbench,
+so we need to add a check in PlaceHolder.getFolderMembers()
+for a null workspace pointer.  
+
+- Added a check for the marker list being null in ActivityEditor.dispose().
+
+- com.projtech.bp.ui.text was added to the classpath for the compile target
+in generate.xml
+
+- feature.xml was also changed to build ui.text before io.sql.
+
+
+Unit Test
+---------
+
+- Rebuild All
+R No build or compile errors
+- Run all unit tests (OalParserTest, ParseAllInDomain, IOTest, CanvasTest, UITextTest)
+R All tests pass
+- Start Tiger
+- Import odms
+R 'Parsing All Activities' appears in progess dialog
+- Switch to Resource Perspective
+R There are no .oal files in the perspective
+- Import odms
+R 'Clearing All Activities' appears in progess dialog at start of import
+R 'Parsing All Activities' appears in progess dialog
+- Refresh Resource Perspective
+R There are no .oal files in the perspective
+- Switch to BridgePoint Perspective
+- Open PIO_robot_move_complete function
+- Change 'D_R2' to 'D_R', causing a syntax error
+- Save change
+- Export model to odms_t1.sql
+- Import odms.sql
+R 'Clearing All Activities' appears in progess dialog at start of import
+R After import task list is empty
+- Import odms_t1.sql
+R After import, task list has error entry
+- Switch to Resource Perspective
+R The pio_robot_move_complete__function.oal file exists
+
+Code Changes
+------------
+
+com.projtech.bp.io.sql/arc/gen_import_java.arc
+Initial Version: 1.18 Final Version: 1.19
+
+com.projtech.bp.io.sql/.classpath
+Initial Version: 1.8  Final Version: 1.9
+
+com.projtech.bp.io.sql/.project
+Initial Version: 1.5  Final Version: 1.6
+
+com.projtech.bp.io.sql/generate.xml
+Initial Version: 1.11 Final Version: 1.12
+
+com.projtech.bp.io.sql/plugin.xml
+Initial Version: 1.9  Final Version: 1.10
+
+com.projtech.bp.pkg-feature/feature.xml
+Initial Version: 1.5  Final Version: 1.6
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/PlaceHolder.java
+Initial Version: 1.3  Final Version: 1.4
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityEditor.java
+Initial Version: 1.11 Final Version: 1.12
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/AllActivityModifier.java
+Introduced version: 1.2
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ParseAllActivitiesAction.java
+Introduced version: 1.1
+
+com.projtech.bp.ui.text/arc/create_plugin_xml.java
+Initial Version: 1.5  Final Version: 1.6
+
+End
+---
+
+$Log: i281.int,v $
+Revision 1.1  2009/09/03 18:20:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.154.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2004/07/29 20:22:10  greg
+Job: 281
+Added changes for feature.xml
+
+Revision 1.5  2004/07/28 23:03:54  greg
+Job: 281
+Add changes to generate.xml
+
+Revision 1.4  2004/07/27 14:00:43  greg
+Job: 281
+Update unit test, file versions
+
+Revision 1.3  2004/07/27 00:10:47  greg
+Job: 281
+Add ActivityEditor.java change
+
+Revision 1.2  2004/07/16 23:33:27  greg
+Job: 281
+Changes after review
+
+Revision 1.1  2004/07/16 19:42:00  greg
+Job: 281
+Initial intro
+
+

@@ -1,0 +1,198 @@
+========================================================================
+
+File:      $RCSfile: sql_export.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Drop 1 Analysis Note 
+Add export sql to BridgePoint format
+
+Abstract
+--------
+
+This document describes the addition of the ability to export
+an sql file for a domain in a format that can be used by BridgePoint 6.1
+
+History
+-------
+
+final D1_5-061203-01.rvm
+
+Document References
+-------------------
+
+[1] bp.core/doc/internal/technical/drop_1.ant
+
+Background
+----------
+
+Drop 1 of Tiger will only support editing of functions and operations,
+so if we need to change something else (add an attribute, class, etc.),
+we need a way to get that information out of the Tiger tool and back into
+Model Builder.
+
+Analysis
+--------
+
+User Interaction
+----------------
+
+The standard Eclipse export menu item is used to invoke a wizard 
+that follows the Eclipse look and feel for an export wizard.
+The wizard prompts the user for the location to save the 
+exported information, and when the user selects Finish, the
+data is exported.
+
+File Format
+-----------
+
+The format is the same as what Model Builder would output if
+Export Sql/Domain was selected from the Domain Partition Diagram.
+We can't use the backup format, because .bak files store action
+language in relocatable format, which Tiger doesn't support yet.
+
+All datatypes defined in the domain are exported.
+All graphical data for the domain is exported.
+
+Export Code
+-----------
+
+The code to export the data should be generated. The exported SQL
+needs to be output in the same order as BridgePoint.  The following
+OAL is derived from examining the code in the file 
+bp:/source/bp50/imp_exp/src/ie_esql.cpp.  We start with the 
+function export_S_DOM(inst:inst_ref<S_DOM>,  fh:file_handle)
+to output the sql:
+
+::write_S_DOM_sql(inst: param.inst, fh: param.fh);
+
+select many dt_set related by param.inst->S_DT[R14];
+for each dt in dt_set
+  ::export_S_DT(inst: dt, fh: param.fh);
+end for;
+
+select many ee_set related by param.inst->S_EE[R8];
+for each ee in ee_set
+  ::export_S_EE(inst: ee, fh: param.fh);
+end for;
+
+::export_S_DOM_graphical_data(inst: param.inst, fh: param.fh);
+
+select many ss_set related by param.inst->S_SS[R1];
+for each ss in ss_set
+  ::export_S_SS(inst: ss, fh: param.fh);
+end for;
+
+From the above OAL, we see that we need to define a
+function to write the sql for the specific class
+(::write_<KL>_sql), and we need a function export_<KL>( inst, fh )
+for each of the classes "owned" by the Domain class,
+that allow them to output themselves and classes that
+they own.
+
+The other export_<KL> operations follow the same pattern:
+
+- write my sql
+- call the export operations on things I own
+- if necessary, output graphic data at the appropriate time
+
+The model to generate this code is yet another 
+tree model.  The model needs to capture the following:
+
+- The owner node needs to know the order to
+  export the owned nodes.
+- We need to know if there is graphical data to output.
+  We may need to know where in the order of the owned
+  nodes output to output the graphical data.
+- We need to know the order to output the attributes
+  for each class in the write_sql function.
+
+The result of this generation is a set of function
+definitions which can be run through MC-Java to
+get the java code needed to do the actual export.
+
+The ::export_<KL> functions have OAL in action 
+specifications that are translated
+by MC-Java, and the ::write_<KL>_sql functions 
+have "native" action specifications (i.e., the
+actual Java code to write to a file).
+
+Aside: The use of functions was chosen so that all
+the function implementations would be in one (implementation) package.
+Another approach would be for each class in ooaofooa50
+to define an export and write_sql operation.  This is seen
+as polluting the ooaofooa50 model.  The solution described
+above keeps the export logic out of the main model,
+which is necessary for when we want to support other
+mappings of export functions from the ooaofooa50 model.
+Plus we can generate most of the code, versus 
+having to write (by hand) each export and write_sql operation.
+
+The first line of the export file must be the following:
+
+-- BP 6.1D content: domain syschar: 3
+
+Work Required
+-------------
+
+D1_5.1  Add an export wizard extension to the 
+com.projtech.bp.io.sql plugin.xml file.  This creates 
+the code to hook into the export menu item.
+
+D1_5.2  Create a model to capture the export ordering
+data.  Or perhaps reuse a model that already exists.
+
+D1_5.3  Create the model population to match how
+MB outputs sql.
+
+D1_5.4  Create archetypes to generate the function
+definitions needed to output the model data.
+
+D1_5.5  Create infrastructure to translate the 
+generated functions into the Java code in the 
+appropriate location, and hookup with menu item
+action.
+
+End
+---
+
+$Log: sql_export.ant,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.168.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2003/07/11 17:43:44  greg
+Job: 30
+Fix typos after review
+
+Revision 1.1  2003/06/23 01:54:50  greg
+Job: 30
+Renamed and moved file
+
+Revision 1.2  2003/06/23 01:51:29  greg
+Job: 30
+Changes from review
+
+Revision 1.1  2003/06/11 21:32:27  greg
+Job: 30
+Initial introduction
+
+
+
+

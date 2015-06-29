@@ -1,0 +1,397 @@
+========================================================================
+
+File:      $RCSfile: dts0100782775.ant,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+BridgePoint does not support multiple versions of model compiler
+
+1. Abstract
+-----------
+This is raised to provide a mechanism that allows customers to use multiple 
+model compilers in a BridgePoint model without the manual intervention 
+that is currently required in the current version to support such an 
+environment.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100782775
+[2] ClearQuest DEI dts0100809568
+    Allow the CDT-based BridgePoint new project wizard to be extensible
+[3] ClearQuest DEI dts0100654681
+    Inter-project component references
+[4] ClearQuest DEI dts0100843233
+    Update the pre-builder to work with inter-project references
+    
+4. Background
+-------------
+Currently, BridgePoint permits only one version of the model compiler per 
+BridgePoint installation. However, customers are now using both embedded C and 
+SystemC model compilers on the same BridgePoint project. With current 
+BridgePoint restrictions, customers are forced to manually manage the 
+mc3020 arcs, the /gen and the /src folders.  Customers desire a way to specify 
+multiple build configurations per project such that each configuration 
+identifies a model compiler, a collection of marking files, a unique gen 
+folder and a unique src folder to store produced models.
+
+This document must consider that BridgePoint has multiple model compilers
+that may be used by a customer and additionally customers may have their own 
+model compilers that may be selected.  In addition to this, current support 
+for the MC3020 binary model compiler must be taken into consideration in the 
+solution.
+
+
+5. Requirements
+---------------
+5.1 Allow multiple build configurations per project
+    Customers desire a way to specify multiple build configurations per 
+    project such that each configuration identifies a model compiler, a 
+    collection of mark files, a unique gen folder and a unique src 
+    folder to store produced models.
+
+5.2 When creating a new project the user shall be able to select multiple
+    model compilers based on the availability of these model compilers on 
+    their system.
+
+5.3 Allow separate configuration management of models, marks, and model 
+    compiler selection. Presently, the configuration-management boundary is 
+    the project, and the project contains all three types of data 
+    (/models, /gen, /.externalToolBuilders), so it is not easy to 
+    configuration manage them independently.
+
+5.4 Provide simple, repeatable, one-button build for a given combination of 
+    models, marks, model compiler and source code compiler options.
+
+5.5 Allow the specification of configuration-specific destination directory 
+    structures for the output of the model compilation process. Presently 
+    everything is spewed into /src, but in some cases this is not acceptable 
+    as the code needs to be put into a specific location within a larger 
+    build environment.
+    
+    Note that after review, the above requirement, which originally came 
+    directly from the CQ issue was modified.  The new requirement is this:
+    Output from different MCs needs to go to different output folders.
+
+5.6 Allow the specification of the builder list per build configuration.
+
+
+6. Analysis
+-----------
+In this section we examine the approaches investigated.  At the end of this 
+section the selected approach is called out and the reasoning for the selection
+is explained.
+
+6.1 Utilize inter-project references (IPR)
+6.1.1 This is the approach we have been advocating to users.  In this 
+    approach, reusable components are created in one or more separate projects 
+    (defined by functionality)that wrap some desired functionality.  These
+    reusable components are referred to as libraries.  These reusable libraries 
+    are used in different "Application Configurations".  An Application 
+    Configuration refers to a project that uses the same reusable component(s) 
+    but has different model compiler build settings.
+
+6.1.2 With this approach, new "Application Configurations" may be created for 
+    each different set of model compiler build settings.  An application 
+    configuration can simply wire-together reusable components.
+ 
+    New application configurations can be created using copy/paste.
+
+    While this approach seems to introduce redundancy across projects, in 
+    reality each combination almost certainly contains some components and/or 
+    settings that are specific to a given target platform.  This approach 
+    allows these differences to be easily accommodated on a per-project basis.
+ 
+
+6.2 Support multiple model compilers in a single project
+    With this approach the user would be allowed to multi-select from the 
+    available MCs during new project creation.
+
+6.2.1 For each MC selected a new folder shall be created at project creation 
+    to represent the particular MC and hold all its artifacts.  This allows 
+    each select model compiler to store it artifacts in the same structure
+    used today by mc3020.  Read on to learn about where these folder names 
+    come from.
+6.2.2 The name of this folder shall be obtained from a new element created in 
+    the bp.model-compilers extension point.  
+6.2.2.1 This new element shall be: folder
+6.2.3 In the initial implementation, when a build is performed the entire model 
+    is translated as occurred prior to this change, and the artifacts are placed 
+    in the same relative locations as before.  The only difference is the new
+    model-compiler specific folder name introduced in 6.2.1.
+6.2.4 Builder configuration is still managed through builder selection and 
+  build configurations.  
+6.2.5 Managing the archetype folders
+    Keep the arc/ arc_sysc/ arc_vhdl/, etc... under the plugin and modify our 
+	xtumlmc_build copy routine to copy the one we want into 
+    gen/code_generation/arc/ at build time. Of course this is dependent on 
+    some mechanism the user manipulates to choose the MC somewhere inside BP.
+6.2.6 Our license determination looks at the arcs under the plugin to see 
+	if mc3020/arc/specialized/t.sysc_main.c exists (or t.vhdl_main.c).
+
+	It uses the existence of this file to decide if it should use the SC 
+	(or VHDL) license in the xtumlmc_build command.
+	
+	In this approach, this functionality remains the same.
+
+6.2.7  Recently the BridgePoint model compilers were modified significantly 
+      to move towards support for a modeled model compiler.  As part of this, 
+      a new folder structure was created for the model compilers to make it 
+      clear that there is a "base" from which all model compilers are taken and
+      then "specialized".  A folder named  mc/ was created and under it 
+      folders named arc/ and arc/specialized/ were created.  When this was 
+      done, a small change to the xtumlmc_build process was made. Instead of 
+      using the arcs under the plugin in the BridgePoint extension dir, with 
+      each build the files under arc/ and arc/specialized are now copied under 
+      a _single_ arc folder under gen/code_generation/.
+  
+  	  With this approach, this functionality remains the same.
+  	  
+
+6.2.8 Consider the use case where a customer has some components systemc, 
+  some MC3020.  In this approach to combine the different source after 
+  translation becomes difficult.  
+6.2.8.1 Introduce a way to mark packages in a model for a given MC.  With this,
+  the pre-builder would be modified to only export artifacts for the specified 
+  MC.
+6.2.8.2 A setting shall be present to make one of the MCs the default.  This 
+  allows the user to not have make a selection for every package.  Instead, they
+  only must change those they do not wish to be the default.
+  
+6.3 Common issues between the choices that must be addressed
+
+  With the introduction of IPR support [3] the ability for users to start
+  taking advantage of the proposed IPR approach is already present in the tool.
+  Given this fact, there are no tasks that are unique to the IPR approach.
+  All tasks required to implement the IPR approach (6.1) are also present for 
+  the single-project approach (6.2).
+  
+6.3.1 The pre-builder must be modified as needed to work with inter-project 
+  references.  Unfortunately, the requirements for what it is needed to make
+  the pre-builder work with IPRs are not clearly defined right now.  Therefore,
+  a separate issue has been raised for this task [4].  Currently the pre-builder
+  is exporting not only the component and interface references from an 
+  "Application Configuration" project, but it is also including the referred-to
+  elements from other projects and the OAL instance data for those referred-to 
+  elements.  The reason for this is tied to the fact that Verifier does need
+  this information.  However, the pre-builder should likely not span 
+  inter-project boundaries during export.  However, the separate issue raised
+  [4] shall determine this.
+
+6.3.2 Mentor Graphics Model Compilers should all be listed as available options
+  from the New Project Wizard.  For this issue we must support SystemC.  
+  However, in addition to SystemC support, the implementation shall strive to 
+  allow others to be easily introduced.
+
+6.3.3 When multiple MCs are present on a system the tool must be modified to
+  use the MC(s) selected by the user in the New Project Wizard.
+6.3.3.1 The design shall allow for all current Mentor Graphics MCs as well 
+  as customer MCs.  The current Mentor Graphics MCs to support are:
+  MC3020 Binary MC
+  MC3020 Source MC
+  SystemC Source MC
+  C++ Source
+      
+6.3.4 Single-project specific issues
+6.3.4.1 In the single-project approach, a mechanism must be introduced that 
+  allows packages to be marked for a particular MC.  Without somehow marking 
+  individual packages as compilation units, this approach would translate all 
+  components under all selected MCs.  This would cause CDT (or any builder) 
+  problems during link.
+
+6.4 Requirements Satisfaction
+    In this section we will look at each requirement and describe how each 
+    approach satisfies the requirement (if it does).  Note that there are six
+    stated requirements (5.1 - 5.6).  We examine each in this section.
+6.4.1 Allow multiple build configurations per project
+    Both approaches satisfy this requirement.  IPR does it by putting the 
+    different configuration in different projects.  The single-project approach 
+    does it by putting the MC artifacts in separate folders.  Actually, IPR
+    offers more flexibility to resolving this requirement because it is easy
+    to create new "Application Configurations" as needed.
+    
+    Satisfaction:
+    -------------
+    IPR: Yes
+    Single-Project: Yes
+    
+6.4.2 When creating a new project the user shall be able to select multiple
+    model compilers based on the availability of these model compilers on 
+    their system.
+    
+    The xtUML New Project Wizard is extensible [2].  It allows new MCs to be 
+    introduced by simply creating a new plugin and extending the 
+    bp.core.model-compilers extension point.  Right now, when multiple model 
+    compilers are present, the user may select only 1 per project.  
+    
+    While either option allows the user to select from multiple MCs and have 
+    them present in a workspace, only the single-project approach would allow
+    users to multi-select from the MC options.
+
+    Satisfaction:
+    -------------
+    IPR: No. However, with this approach there is no need to select multiple
+             MCs in one project.
+    Single-Project: Yes
+
+6.4.3 Allow separate configuration management of models, marks, and model 
+    compiler selection. 
+
+	Both options provide this.  IPR does it using separate projects.  The
+	single-project approach does it by putting all MC-specific model artifacts
+	in separate folders under a single project.
+
+    Satisfaction:
+    -------------
+    IPR: Yes
+    Single-Project: Yes
+	
+6.4.4 Provide simple, repeatable, one-button build for a given combination of 
+    models, marks, model compiler and source code compiler options.
+    
+    Both options provide this.  In the IPR approach it is done using project 
+    dependencies, and in the single-project approach it is done using 
+    build configurations.
+
+    Satisfaction:
+    -------------
+    IPR: Yes
+    Single-Project: Yes
+
+6.4.5 Output from different MCs need to live in different output folders. 
+    
+    Although the output folder is not configurable, both options do allow model
+    artifacts to go to different folders dependent on the MC used.  Again, the
+    IPR approach is a more flexible because with it, the user creates
+    new Application Configuration projects as needed to clearly define 
+    functional boundaries of the model.
+
+    Satisfaction:
+    -------------
+    IPR: Yes
+    Single-Project: Yes
+
+6.4.6 Allow the specification of the builder list per build configuration.
+
+	Neither approach defines "build configurations" that include MCs.  The 
+	single-project approach would allow the user to select builders to run,
+	but that information is not stored as a build configuration.  However,
+	at the root of this requirement is the desire to have different groups of
+	components be built in different ways.  The IPR approach does provide for 
+	this, the single project approach does not.
+
+    Satisfaction:
+    -------------
+    IPR: No, but this approach does allow reusable components to be built in
+         different configurations.
+    Single-Project: No
+
+6.5 Decision
+    The inter-project reference (IPR) approach [6.1] is favored and is selected 
+    for multiple reasons.
+6.5.1 It offers greater flexibility
+6.5.2 Creation of reusable libraries is an approach we have been advocating to 
+      customers even before IPRs were introduced.  This approach maintains 
+      continuity with what has been taught to customers. 
+6.5.3 The alternate approach would require a mechanism to "mark" individual
+      packages within a project and to update the interface with the builder
+      (for example CDT) to know which packages to build.
+      The selected approach does not require any of this and therefore is
+      thought to be a simpler solution to the problem.  It is simpler for the 
+      customer as well as easier to implement and maintain internally.
+
+
+7. Work Required
+----------------
+7.1 When creating a new project in the New Project Wizard, present the user 
+    with an option to use SystemC.  
+    The work shall follow the guidance described in (6.3.2).
+7.1.1 The option shall only be present when SystemC is present in the users
+    System AND there is a valid license.
+7.1.2 Assure that the proper MC is used based on the selection made.  
+    Code present in the MC 3020 plugin to modify the xtumlmc_build command-line
+    based on presence of a particular MC must be modified to simply always use
+    the selected MC.
+7.1.3 As described in section 6.2.7, the latest MCs now allow multiple MCs to
+    be present on a system at once.  This feature needs to be exercised
+    with the new SystemC MC plugin.
+7.2 Modify the model pre-builder to support IPRs [4].
+    A separate issue is raised for this task.  It will not be included in this
+    work.
+
+8. Acceptance Test
+------------------
+8.1 Verify that SystemC MC options appears when licensed
+8.2 Verify that SystemC MC does NOT appears when not licensed
+8.3 Verify that when multiple MCs are present in the NPW selection menu the
+    one selected is the one used and that no other MC settings are used.
+8.4 Test systemC with MC3020 test
+_- start with an empty workspace and create 3 projects:
+_- create a xtUML project named library 
+_- Add a package to "library" and copy-in our LOG EE.   
+_- Add another package to "library" that contains 2 components and an interface
+   Component 1 has a provided interface
+   Component 2 has a required interface
+_- Add some OAL to the port (just log a message)   
+_- create a xtUML project named MC3020-config and select MC3020 as the MC
+_- This project contains only a single package (system) at the system level 
+   with 2 component references (one to each of the components in project "library")
+_- create a xtUML project named SystemC-config and select SystemC as the MC
+_- Copy the "system" package from the MC3020-config model into the 
+   SystemC-config model
+_- Build MC3020-config
+_R Project is translated with MC3020
+_- Build SystemC-config
+_R Project is translated with SystemC
+_- Execute the MC3020 project
+_R execution is successful
+_- Execute the SystemC project
+_R execution is successful
+
+
+End
+---
+
+$Log: dts0100782775.ant,v $
+Revision 1.8  2011/12/30 18:45:49  rmulvey
+job:dts0100782775
+Observations addressed
+
+Revision 1.7  2011/12/29 18:42:08  rmulvey
+job:dts0100782775
+Added a couple more details to work required and corrected a numbering problem.
+
+Revision 1.6  2011/12/29 17:18:16  rmulvey
+job:dts0100782775
+Clarified a sentence
+
+Revision 1.5  2011/12/29 17:07:06  rmulvey
+job:dts0100782775
+Updated a reference
+
+Revision 1.4  2011/12/29 17:04:02  rmulvey
+job:dts0100782775
+Updated after further analysis and discussions.
+
+Revision 1.3  2011/12/21 15:05:13  rmulvey
+job:dts0100782775
+Added an additional requirement
+
+Revision 1.2  2011/12/14 22:14:47  rmulvey
+job:dts0100782775
+Added another test
+
+Revision 1.1  2011/12/14 22:13:04  rmulvey
+job:dts0100782775
+Started the analysis note.
+

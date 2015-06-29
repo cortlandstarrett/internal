@@ -1,0 +1,266 @@
+========================================================================
+
+File:      $RCSfile: i104.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+MC-Java Implementation Note
+Add full support for referential attribute values
+
+Abstract
+--------
+This note describes the changes to MC-Java to fully support 
+reading the value of a referential attribute.
+
+History
+-------
+
+i104_012904-01.rvm
+
+Document References
+-------------------
+
+Bugzilla issue 104
+
+Background
+----------
+
+Currently MC-Java adds data members for all attributes to
+the class.  Referential attributes are updated when a 
+relate occurs if the base attribute is not referential.
+There are lots of referential attributes in the Tiger
+metamodel for which this is not true.  Thus when reading
+these attribute values, the return value is always 
+'not participating'.
+
+Design
+------
+
+There are two alternatives.  The first is to finish the 
+current implementation so that referential attribute 
+cached values are updated whenever the relationship 
+status changes anywhere in the chain back to the 
+non-referential base attribute.  The second is to
+remove the referential attribute cache values, and
+change the referential attribute accessor to get the value from
+the base attribute through perhaps multiple relationship
+hops.  The second alternative would be nice from the
+performance standpoint of the relate statement, but
+since we still need to support importing BridgePoint models,
+as well as supporting persistence, the first alternative 
+will be implemented.
+
+i104.1  Update all referential attributes
+
+The design currently only updates referential attributes
+for relate and unrelate if the related attribute is 
+non-referential. The archetype is changed so that all
+referential attribute values are updated.
+
+i104.2  Add propagation of attribute value changes
+
+When an attribute value (referential or not) is changed,
+any related referential attributes that reference the attribute
+should have their value changed as well.  
+
+i104.2.1 Each class with attributes that are referenced by 
+referentials has a function generated named 
+propagate<attribute.Name> for each attribute that is referenced.
+The function invokes the set() operation on each of the related
+referential attributes.  If the relationship is not formalized,
+then nothing happens.
+
+i104.2.2 The attribute set() operation is changed so that if the
+attribute is referenced by referentials, the propagate function
+is invoked.
+
+Work Required
+-------------
+
+i104.1  Update all referential attributes
+
+i104.1.1  In referring.inc, the function declare_canonical_nav_path
+is changed to generate set() invocations for all the 
+referential attributes.  The archetype code to find the
+referential attributes is also restructured for better
+readability.  Both the relate and unrelate sections are
+updated.
+
+i104.1.2  The name of the reference variable that points
+to the related instance is hard-coded throughout this
+file.  The utility archetype get_referential_var_name is added
+to arch_names.inc, and used where the hardcoded names 
+were before.
+
+i104.2  Add propagation of attribute value changes
+
+i104.2.1 In java.arc, the generation of the
+propagate<attribute.Name> function is added.
+
+i104.2.2 In java.arc, the invocation of the propagate
+function is added to the attribute set operation.
+
+Implementation Comments
+-----------------------
+
+- At one point in the design, it was considered to set the 
+referential attribute by chaining back to the actual base.
+While this ended up not being part of the design,  the
+archetype to read the base attribute was interesting:
+
+              .invoke baa = get_base_attribute_accessor( attribute )
+  public $r{typedecl.body} ${baa.body}()
+  {
+              .select many oref_set related by referential->O_REF[R108]
+              .for each oref in oref_set
+                .select one b_attr related by oref->O_RTIDA[R111]->O_OIDA[R110]->O_ATTR[R105]
+                .select one tgt_obj related by b_attr->O_OBJ[R102]
+                .select one rto related by oref->O_RTIDA[R111]->R_RTO[R110]
+                .assign text_phrase = ""
+                .select one part related by rto->R_PART[R204]
+                .if ( not_empty part )
+                  .assign text_phrase = part.Txt_Phrs
+                .else
+                  .select one aone related by rto->R_AONE[R204]
+                  .if ( not_empty aone )
+                    .assign text_phrase = aone.Txt_Phrs
+                  .else
+                    .select one aoth related by rto->R_AOTH[R204]
+                    .if ( not_empty aoth )
+                      .assign text_phrase = aoth.Txt_Phrs
+                    .else
+                      .assign text_phrase = "is supertype"
+                    .end if
+                  .end if
+                .end if
+                .invoke ref_var_name = get_referential_var_name( tgt_obj, text_phrase )
+                .invoke aa = get_attribute_accessor( b_attr )
+    if ( ${ref_var_name.body} != null )
+      return ${ref_var_name.body}.${aa.body}();
+              .end for
+              .if (type.Name == "string")
+    return "";
+              .else
+    return 0;
+              .end if
+  }
+            .end if
+
+
+Unit Test
+---------
+
+- Rebuild core
+R No errors
+
+- Rebuild als
+R No errors
+
+- Run OAL unit test
+R All tests pass
+
+- Execute the following code.  This code creates instances in the 
+Relationship subsystem, and relates them in bottom up order.  This
+tests that the referential values are propagated.
+
+	Object_c formObj = new Object_c();
+	Object_c partObj = new Object_c();
+	
+	Relationship_c rel = new Relationship_c();
+	SimpleRelationship_c sr = new SimpleRelationship_c();
+
+	ObjectAsSimpleFormalizer_c form = new ObjectAsSimpleFormalizer_c();
+	ReferringObjectInRel_c rgo = new ReferringObjectInRel_c();
+	ObjectInRelationship_c oir1 = new ObjectInRelationship_c();
+	form.relateAcrossR205To(rgo);
+	oir1.relateAcrossR203To(rgo);
+	oir1.relateAcrossR201To(rel);
+	oir1.relateAcrossR201To(partObj);
+		
+	ObjectAsSimpleParticipant_c part = new ObjectAsSimpleParticipant_c();
+	ReferredToObjectInRel_c rto = new ReferredToObjectInRel_c();
+	ObjectInRelationship_c oir2 = new ObjectInRelationship_c();
+	part.relateAcrossR204To(rto);
+	oir2.relateAcrossR203To(rto);
+	oir2.relateAcrossR201To(rel);
+	oir2.relateAcrossR201To(formObj);
+
+	rel.relateAcrossR206To(sr);
+	form.relateAcrossR208To(sr);
+	part.relateAcrossR207To(sr);
+
+	assertNotEquals( form.getRel_id(), 0, "form.getRel_id" );
+	assertNotEquals( form.getObj_id(), 0, "form.getObj_id" );
+	assertNotEquals( form.getOir_id(), 0, "form.getOir_id" );
+	assertNotEquals( rgo.getObj_id(), 0, "rgo.getObj_id" );
+	assertNotEquals( rgo.getRel_id(), 0, "rgo.getRel_id" );
+	assertNotEquals( rgo.getOir_id(), 0, "rgo.getOir_id" );
+	assertNotEquals( oir1.getObj_id(), 0, "oir1.getObj_id" );
+	assertNotEquals( oir1.getRel_id(), 0, "oir1.getRel_id" );
+
+	assertNotEquals( part.getRel_id(), 0, "part.getRel_id" );
+	assertNotEquals( part.getObj_id(), 0, "part.getObj_id" );
+	assertNotEquals( part.getOir_id(), 0, "part.getOir_id" );
+	assertNotEquals( rto.getObj_id(), 0, "rto.getObj_id" );
+	assertNotEquals( rto.getRel_id(), 0, "rto.getRel_id" );
+	assertNotEquals( rto.getOir_id(), 0, "rto.getOir_id" );
+	assertNotEquals( oir2.getObj_id(), 0, "oir2.getObj_id" );
+	assertNotEquals( oir2.getRel_id(), 0, "oir2.getRel_id" );
+
+where assertNotEquals is defined as:
+
+private static void assertNotEquals(long a, long b, String msg)
+{
+	if ( a == b )
+		System.out.println( "Failure: " + msg );
+	else
+		System.out.println( "Success: " + msg );
+}
+
+R All tests pass
+
+Code changes
+------------
+
+TinyJava/arch_names.inc
+Initial version:  1.6  Final version: 1.7
+
+TinyJava/java.arc
+Initial version:  1.8  Final version: 1.9
+
+TinyJava/referring.inc
+Initial version:  1.7  Final version: 1.8
+
+
+End
+---
+
+$Log: i104.int,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.166.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/01/30 00:03:33  greg
+Job: 104
+Update from review
+
+Revision 1.1  2004/01/29 16:48:26  greg
+Job: 104
+Initial introduction
+

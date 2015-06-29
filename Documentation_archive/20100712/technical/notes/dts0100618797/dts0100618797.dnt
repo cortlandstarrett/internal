@@ -1,0 +1,159 @@
+========================================================================
+
+File:      $RCSfile: dts0100618797.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+AUTOSAR sender/receiver, client/server multi-parameters communication support
+
+1. Abstract
+-----------
+This note is to cover the design for updating the MC3020 to support:
+1.1 Mapping the xtUML interface operations to AUTOSAR client/server
+	communication with multiple parameters and with return parameter.
+1.2 Mapping the xtUML interface signals(with multiple parameters) to AUTOSAR
+	sender/receiver communication.
+	
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100618797 - Packing/unpacking of records for multi-
+    parameter signals and operations
+[2] ClearQuest DEI dts0100580443- BP AUTOSAR
+[3] ClearQuest DEI dts0100631987 - Extend ARXML generation from xtUML for
+	Client/Server support
+[4] xtUML to AUTOSAR transformations document
+    http://beta.wv.mentorg.com/tenmile_svn/tenmile/trunk/documentation/notes/   
+    dts0100581974/xtUML_AUTOSAR_transformations.doc
+[5] AUTOSAR_SWS_RTE.pdf - www.autosar.org/download/r2/AUTOSAR_SWS_RTE.pdf
+
+4. Background
+-------------
+4.1	  AUTOSAR supports both widely used communication patterns:
+	  Sender-Receiver and Client-Server.
+	  
+4.2   Sender-Receiver Communication: 
+	  The sender is not blocked(asynchronous communication) and neither expects
+	  nor gets a response from the receivers, i.e. the sender just provides the
+	  information and the receivers decides when and how to use it. 
+	  
+4.3   Client-server communication: 
+	  It involves two entities, the client that requires a service and the
+	  server that provides the service.
+4.3.1 The client initiates the communication, requesting the server to perform
+      a service, transferring parameters if necessary.
+4.3.2 The server in turn waits for incoming requests from a client, performs
+	  the requested service and dispatches a response to the client’s request
+4.3.3 The direction of initiation is used to categorize whether an AUTOSAR
+	  software-component is a client or a server.
+	
+4.4   There are synchronous and asynchronous Client/Server communication.
+	  xtUML operations are synchronous in nature.
+	
+4.5   Currently the MC3020 supports only:
+		- one parameter call in signals and operations.
+		- operation without a return value.
+
+5. Analysis
+-----------
+5.1   Every xtUML signal with multiple parameters in an interface will be
+      mapped in AUTOSAR to a SenderReceiver interface.
+	  The SenderReceiver interface can only have one DataElementPrototype.
+	  The communication will be done through Rte_Write and Rte_Read APIs.
+5.1.1 Rte_Write API call includes exactly one IN parameter for the data element
+	  this will be passed by value for primitive data types and by reference
+	  for all other types[5].
+5.1.2 Rte_Read API call includes exactly one OUT parameter to pass back the
+	  received data[5].
+	  
+5.2   Every xtUML operation in an interface will be mapped in AUTOSAR to a
+      ClientServer interface.
+	  Each parameter will be mapped to an ArgumentPrototype.
+	  The communication will be done through Rte_Call API.
+5.2.1 Rte_Call API includes zero or more IN, IN/OUT and OUT parameters.
+	   - IN parameters are passed by value for primitive data types and by 
+	     reference for all other types.
+	   - OUT parameters are always by reference.
+	   - IN/OUT parameters are passed by value when they are primitive data 
+	     types and the call is asynchronous, and by reference for all 
+		 other cases[5].
+	  
+5.3   The RTE only uses the function return value to return application error
+	  codes of a server operation[5].
+	  So, the return data type for the operation will be passed by reference to
+	  the server to set the return value for the client.
+	
+6. Design
+---------
+6.1 If the xtUML Signal has multiple Parameters, the parameters are packaged
+	into an AUTOSAR RecordType which is a composite data type equivalent to
+	data structure in C.
+	The interface has a single data element and each Parameter is added to this
+	data element. This allows the xtUML signal sent to be mapped to a single 
+	invocation of Rte_Write API. 
+	So, In the sender runnable an instance of this structure is to be created,
+	the parameters are packed into it then unpacked after reading at the
+	corresponding receiving point.
+   
+6.2 If the xtUML Operations has multiple Parameters, each parameter is mapped 
+    to an ArgumentPrototype, then passed to the Runnable.
+	if the xtUML parameter is passed by reference then instead of passing it to
+	the Runnable, only a pointer to the Parameter will be passed. 
+	
+6.3 The return parameter for the operation will be passed as an OUT parameter
+	in the Rte_Call API.
+	
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+The work required is spelled out in the Design section above.
+Edit in archetype files related to the components' ports.
+
+9. Unit Test
+------------
+9.1   use the Tick model with some modifications
+9.1.1 Signal with multi-parameters.
+9.1.2 Operation with multi-parameters
+      with some parameters passed by reference and others by value.
+9.1.3 Operation with a return data type.
+9.2   Disable the AUTOSAR then build and run .
+9.3	  Enable AUTOSAR and build the Test Model
+9.4	  Check if the sent and received data is correct.
+
+End
+---
+
+$Log: dts0100618797.dnt,v $
+Revision 1.5  2010/01/05 04:30:15  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.4  2009/12/10 16:09:45  domedhat
+job:dts0100618797
+update design note
+
+Revision 1.3  2009/11/24 13:32:28  domedhat
+job: dts0100618797
+modification in the design note.
+
+Revision 1.2  2009/11/17 17:26:31  domedhat
+job: dts0100618797
+some edits in the design note.
+
+Revision 1.1  2009/11/12 18:21:33  dmahmoud
+job: dts0100618797
+
+design note for AUTOSAR sender/receiver, client/server multiple parameters communication support
+

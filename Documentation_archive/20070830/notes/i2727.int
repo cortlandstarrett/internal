@@ -1,0 +1,175 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Handle duplicate element names during single file import
+
+1. Abstract
+-----------
+This note describes the changes required to keep persistable model components
+unique.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2727
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2727
+
+4. Background
+-------------
+Prior to PLCM the tool allowed elements with the same name to be created.  With
+introduction of PLCM, certain elements cannot have the same name.  This is true 
+for elements which are configured as persistable model components.
+
+5. Design
+---------
+5.1 Modify import code to rename duplicates
+
+The class, bp.core/src/.../ui/NewDomainWizard.java, shall be modified to store a
+map of elements based on their class type and the element's name.  This change
+shall be made in the persistSelfAndChildren method of the class.  The map shall
+be created per child iteration and shall contain all children.
+
+A check shall be added to see if an element with the same class type and name 
+exists in the map described above.   If one does exist the element shall be 
+renamed to a unique value.  A unique value is defined as a name that does not 
+exist in the map.  Once this value is determined the element shall be named as
+such.  At this point the element shall be stored in the map. 
+
+After the initial call to persistSelfAndChildren a dialog shall be shown which
+indicates that some elements were renamed due to a naming conflict.  We shall
+consider storing the renamed elements and populating the dialog with a list of
+all elements that were renamed.
+
+
+6. Implementation Comments
+--------------------------
+6.1 The dialog created to report that duplicates were found is titled: 
+    "Duplicate Model Elements Renamed".
+6.1.1 This dialog tells the user 3 things:
+      -The name of the parent where the duplicate was found.
+      -The name of the element before it was renamed.
+      -The name of the element after it was renamed.
+6.1.2 This dialog is displayed one time for each domain that contains 
+      duplicates.  Of course if there are no duplicates, the dialog is not 
+      displayed.
+6.1.3 A screen capture of this dialog is available under this issue's test
+      results: <cvs>Documentation/internal/test_results/R1_5_0/i2727/
+      DuplicateModelElementsDialog.PNG
+6.2 The naming convention used when duplicates are found, is to append 
+    "-<incrementing value>" to the duplicate name.
+
+6.3 It was determined that the code for converting single file models needs to
+    handle duplicate names as well.  The code actually calls out the newly added
+    duplicate handling code.  The problem was that the dialog to a user was not
+    being displayed.  The ConvertToMultifileWizard.java class is modified to
+    display the dialog if necessary after completion.
+    s
+7. Unit Test
+------------
+7.1 Verify that when a model with duplicate names is imported the new 
+    dialog reports the duplicates.  This test was implemented in 
+    TigerNatureTest.java::testNewDomainWithDuplicatesInSubsystem().
+_- Import bp.core.test/models/Duplicates.xtuml
+_R Dialog is displayed and it shows that duplicates were found in the Security 
+   subsytem and they were renamed.
+   
+7.2 Verify that when duplicate class names exist across multiple subsystems they
+    are not renamed.  This test was implemented in 
+    TigerNatureTest.java::testNewDomainWithDuplicatesInMultipleSubsystems().
+_- Import bp.core.test/models/Duplicates2.xtuml
+_R Dialog is displayed and it shows that duplicates were found in the Security 
+   subsytem and they were renamed.
+_R There is only 1 element that was renamed in the TestSS subsystem.   
+
+8. Code Changes
+---------------
+The changes are in Review-i2727-01.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    NonRootModelElement.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/
+    NewDomainWizard.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/
+    ConvertToMultifileWizard.java
+    
+com.mentor.nucleus.bp.core.test/expected_results/DuplicatesTest/
+    DuplicatesRenamed1.txt
+com.mentor.nucleus.bp.core.test/expected_results/DuplicatesTest/
+    DuplicatesRenamed2.txt
+com.mentor.nucleus.bp.core.test/models/DuplicateNames.xtuml
+com.mentor.nucleus.bp.core.test/models/DuplicateNames2.xtuml
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    TigerNatureTest.java
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/TestUtil.java
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.9  2007/02/08 17:20:28  tlondon
+Job: 2727
+
+Add changes to ConvertToMultifileWizard.java
+
+Revision 1.8  2007/02/07 16:25:30  rmulvey
+Job:2727
+Added a note that an example screen capture for the new dialog is available
+ here:
+Documentation/internal/test_results/R1_5_0/i2727/DuplicateModelElementsDialog.PNG
+
+Revision 1.7  2007/02/07 15:25:02  rmulvey
+Job:2727
+Added TestUtil.java to the list of modified files.
+
+Revision 1.6  2007/02/06 23:56:47  rmulvey
+Job:2727
+File was missing from the code changes section, I added it.
+
+Revision 1.5  2007/02/06 23:10:44  rmulvey
+Job:2727
+Describe the naming convention used to rename the duplicates ("-<incrementing value>" is appended)
+
+Revision 1.4  2007/02/06 22:48:21  rmulvey
+Job:2727
+Fixed a couple of typos.
+
+Revision 1.3  2007/02/06 22:44:41  rmulvey
+Job:2727
+Added implementation comments and information about the unit tests.
+
+Revision 1.2  2007/02/05 22:44:43  tlondon
+Job: 2727
+
+Rework to indicate that fix is handled in NewDomainWizard.java.
+
+Revision 1.1  2007/02/03 00:06:57  tlondon
+Job: 2727
+
+Introduce

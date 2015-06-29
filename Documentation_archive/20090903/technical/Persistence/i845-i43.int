@@ -1,0 +1,238 @@
+========================================================================
+
+File:      $RCSfile: i845-i43.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Parse all should load all referenced packages
+
+Abstract
+--------
+This note describes changes for the parse all activity so that it loads
+all components that could have OAL to parse.
+
+History
+-------
+final i845-i43-121405-01.rvm
+
+Document References
+-------------------
+MFP issue 43
+
+Background
+----------
+When doing a parse all, the code fails to force the loading of external 
+entity packages, function packages, and nested packages.
+
+Design
+------
+
+1.  Load all components for external entity packages
+
+The method AllActivityModifier.getAllBridges() uses the navigation 
+S_DOM->S_EE[R8]->S_BRG[R19] to find all the bridges in a domain.  Using 
+these relationships for navigating doesn't cause any lazy loading to occur.
+The method is changed to use code equivalent to the following (pseudo) OAL:
+
+  select many eepk_set related by domain->S_EEPK[R36];
+  select many bridge_set related by eepk_set->S_EEIP[R33]->S_EE[R33]->S_BRG[R19];
+  for each eepk in eepk_set
+    loadChildEEPKs(bridge_set, eepk);
+  end for;
+  
+And the new method is added:
+
+  function loadChildEEPKs(bridge_set: inst_ref_set<S_BRG>, eepk: inst_ref<S_EEPK> )
+    select child_eepk_set related by eepk->S_EEPIP[R34]->S_EEPK[R35];
+    select many child_bridge_set related by child_eepk_set->S_EEIP[R33]->S_EE[R33]->S_BRG[R19];
+    bridge_set = bridge_set + child_bridge_set;
+    for each child_eepk in child_eepk_set
+      ::loadChildEEPKs(bridge_set, child_eepk);
+    end for;
+  end function
+  
+Navigation of relationships R35 and R36 do cause lazy loading to occur.
+
+2.  Load all components for function packages
+
+The method AllActivityModifier.getAllFunctions() uses the navigation 
+S_DOM->S_SYNC[R23] to find all the bridges in a domain.  Using 
+this relationship for navigating doesn't cause any lazy loading to occur.
+The method is changed to use code equivalent to the following (pseudo) OAL:
+
+  select many fpk_set related by domain->S_FPK[R29];
+  select many function_set related by fpk_set->S_FIP[R31]->S_SYNC[R31];
+  for each fpk in fpk_set
+    ::loadChildFPKs(function_set, fpk);
+  end for;
+  
+And the new method is added:
+
+  function loadChildFPKs(function_set: inst_ref_set<S_SYNC>, fpk: inst_ref<S_FPK> )
+    select child_fpk_set related by fpk->S_FPIP[R30]->S_FPK[R32];
+    select many child_function_set related by child_fpk_set->S_FIP[R31]->S_SYNC[R31];
+    function_set = function_set + child_function_set;
+    for each child_fpk in child_fpk_set
+      ::loadChildFPKs(function_set, child_fpk);
+    end for;
+  end function
+  
+Navigation of relationships R29 and R32 do cause lazy loading to occur.
+
+3. Load all nested subsystem packages
+
+In several places in the code, the subsystems for a domain are found by 
+using the navigation S_DOM->S_SS[R1].  A new method getAllSubsystems()
+is added, with the following OAL:
+
+            inst_ref_set<S_SS> ss_result_set;
+            select many ss_set related by domain->S_SS[R43];
+            for each ss in ss_set
+                ss_result_set = ss_result_set + ss;
+                ::loadChildSSs(ss_result_set, ss);
+            }
+
+The following method is also added:
+
+  function loadChildSSs(ss_result_set: inst_ref_set<S_SS>, ss: inst_ref<S_SS> )
+    select child_ss_set related by ss->S_SIS[R41]->S_SS[R42];
+    for each child_ss in child_ss_set
+      ss_result_set = ss_result_set + child_ss;
+      ::loadChildSSs(ss_result_set, child_ss);
+    end for;
+  end function
+
+Navigation of relationships R42 and R43 do cause lazy loading to occur.
+
+The result of this function is stored in the new private data member
+m_ss_set.  The getAllSubsystems() method is invoked at the beginning of the
+processAllActivities() method, before the getAllActivities() invocation.
+
+The m_ss_set data member is used instead of the domain->S_SS[R1] navigation
+in the methods that search for activities in subsystems (operations, MDAs,
+and state actions).
+
+4. Load all datatype packages
+
+The OAL validation routines assume that all datatypes are loaded.  If
+datatypes are used that are not in the default datatypes package, then
+errors will occur.
+
+4.1  Create method to load all datatypes packages
+
+The method PersistableModelComponent.ensureDataTypesAvailable(ModelRoot)
+is created.  The method causes all datatype packages to be loaded.
+
+4.2  Add invocations of ensureDataTypesAvailable()
+
+ensureDataTypesAvailable() is invoked at the beginning of the
+processAllActivities() method, if we are doing a parse.
+
+The invocation of ensureCoreDataTypesAvailable() is changed to 
+ensureDataTypesAvailable() in TextParser.action().
+  
+Implementation Comments
+-----------------------
+
+- An alternative design was considered where the proxies would be 
+bidirectional (proxies placed in both referring and referred to components)
+but this would cause many files to change due to proxy updating when
+a component name was changed.
+
+- The following relationships should be deprecated: R1, R8, R14, and R23.
+A separate MFP issue is opened to change any navigations populating or using 
+these relationships to use the alternative navigations through the 
+package associations.  Additional issues are raised in the main Bugzilla
+database for changing MC-Java to detect use of deprecated relationships
+and to review the proxy implementation regarding support of 
+uni-/bi-directional implementation of proxies.
+
+- In com.mentor.nucleus.bp.ui.properties.test/generate.xml, the unused file
+models/testProp.sql was created by a copy command.  The copy command is
+removed.
+
+- During testing, ComponentResourceListener.addComponentResource() raised
+SWT exceptions when the resource change occurred in a non-UI thread, and
+parse all on resource change was enabled (due to the progress dialog trying
+to execute).  The code is changed to detect if we are not in the UI thread,
+and if so, do the parse via a call to asyncExec().
+
+- A null check was added to TextPlugin.java in the model change listener
+to handle the case of the reloaded model not loading correctly.
+
+Unit Test
+---------
+A model "NestedActivites" is created.  The model contains nested 
+packages for EE's, functions, subsystems, and datatypes.  There are nested
+packages in the "Datatypes" package as well as in a "DTP 1" datatype 
+package.  The activities in these nested packages reference datatypes
+in the nested packages.
+
+- The method ProcessAllActivitiesTest.testNestedPackageLoading is added.
+The test loads just the domain component, then does a parse all.  The
+test verifies that:
+
+  - All nested packages were loaded
+  - There were no parse errors
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.core/src/.../common/ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/.../common/PersistableModelComponent.java
+
+com.mentor.nucleus.bp.ui.properties.test/generate.xml
+
+com.mentor.nucleus.bp.ui.text/src/.../TextPlugin.java
+com.mentor.nucleus.bp.ui.text/src/.../activity/AllActivityModifier.java
+com.mentor.nucleus.bp.ui.text/src/.../activity/TextParser.java
+
+com.mentor.nucleus.bp.ui.text.test/models/NestedActivities.xtuml
+com.mentor.nucleus.bp.ui.text.test/models/NestedActivities/*
+com.mentor.nucleus.bp.ui.text.test/src/.../activity/ProcessAllActivitiesTest.java
+
+End
+---
+
+$Log: i845-i43.int,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.28.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/12/16 00:32:05  greg
+Job: 845
+MFP 43
+Added history entry
+Final changes from testing
+
+Revision 1.3  2005/12/15 21:28:04  greg
+Job: 845
+MFP 43
+Fixed typo
+
+Revision 1.2  2005/12/15 21:26:11  greg
+Job: 845
+MFP 43
+Addressed observations
+
+Revision 1.1  2005/12/14 18:38:25  greg
+Job: 845
+MFP issue 43
+Introduce

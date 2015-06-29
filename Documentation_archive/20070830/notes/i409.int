@@ -1,0 +1,220 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Inflate very small shapes
+
+1. Abstract
+-----------
+This note describes changes to prevent creating shapes smaller than 16x16
+pixels.  It also describes a fix for a problem where changes to the attribute
+Model.SelRectW were not causes diagram refreshes.  This meant that the selection
+rectangle would not stretch when the mouse was moved only along the x-axis.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 409
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=409
+[2] Bugzilla item 2683
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2683
+
+4. Background
+-------------
+It is possible to create a shape that is smaller then the resize handles.  It is
+even possible to create a shape that cannot be seen on the diagram.
+
+5. Design
+---------
+5.1. Rework Shape Tool state machine
+
+The Shape Tool state machine is reworked such that a single click causes a shape
+creation.
+
+In the state Creating Element a check is added to see if the selection rectangle
+size is greater than 16x16 pixels.  The check is done through a new operation
+named exceedsMinimumSize.  If this operation returns false the shape is inflated
+to a default size which is either defined in the plugin.xml definition or
+defaults to 200w x 150h through the operations:
+Element Specification.getDefaultWidth and getDefaultHeight.
+
+The above changes make it possible for delta's to get added to the firing of
+a previous transaction.  This is due to a while loop in ModelRoot which tries
+to force eclipse ui events to get processed before the delta firing is complete.
+Since these changes allow a user to quickly create many shapes a following
+creation's delta will get added to the first one.  The misplaced delta's will
+not actually get handled as they are not part of the first transaction, this
+causes the first transaction's lock to never get released.  I could not find any
+reason, or documentation, as to why this was added.  I therefore removed the
+while loop as we should not be forcing eclipse to run it's deferred events.
+
+5.2. Start transaction for shape creation before initial SelRect* settings
+
+The Notify_Changes coloring was used on the Model.SelRectW attribute which was
+causing diagram updates to not occur.  This was originally added as a special
+case to handle a problem where the undo of a shape creation would redraw the
+selection  rectangle.  The reason that it would redraw is that the shape
+creation transaction did not capture the initial setting of the SelRect* values
+and therefore could not revert to a zero value.  The Shape Tool state machine
+is reworked to start the transaction before the intial setting of these
+attributes.
+
+6. Implementation Comments
+--------------------------
+During testing of this work an issue was found where drawing fixed aspect shapes
+does not work properly.  The problem is that the width of the selection
+rectangle is not updated when the mouse is only moved along the y-axis.  Issue
+2704 was raised to handle this bug.
+
+The test testActorNameIsNotShownWhenExtentGreaterThanOneQuarter was updated to
+make the test shape size big enough so that a default size actor is not created.
+
+Now that the all SelRect changes are captured in the transaction the expected
+results for a shape creation transaction are changed.  This is because of the
+redundant attribute change delta check.  The check will just update the first
+delta's values changing the expected result values to be 0 -> 0 changes only.
+
+7. Unit Test
+------------
+Manual tests:
+
+_- Begin drawing any shape
+_- Once you have a "rubberband box", extend the box in the x-axis only
+_R The "rubberband box" is updated correctly
+
+_- Select any shape tool
+_- Click the mouse a few times very quickly
+_R The tool does not hang
+_R Each mouse down/mouse up combination created a shape
+
+Automated tests:
+
+_- Select any shape tool
+_- Perform a mouse down/mouse up
+_R A shape is created
+
+_- Select any shape tool
+_- Draw such that the selection rectangle is smaller than 16x16 pixels
+_R A shape of size 200w x 150h is created
+
+_- Draw a shape
+_- Undo the shape creation
+_R The selection rectangle is not present
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+		shape_creation_transaction.exp
+
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Shape Tool/Shape Tool.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Canvas Tools/Shape Tool/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Connector/Connector.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Element Specification/
+    Element Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Model/Model.xtuml
+    
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_108/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_108/1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_109/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_109/1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_110/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_110/1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_111/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_111/1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_112/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_112/1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_113/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_113/1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_113a/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_113a/
+    1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_113b/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_113b/
+    1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_114/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_114/1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_114a/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_114a/
+    1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_114b/1048578-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ODMStest_114b/
+    1048578-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/odmstest_115/
+    odmstest_115-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/odmstest_115/
+    odmstest_115-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/odmstest_116/
+    odmstest_116-5
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/odmstest_116/
+    odmstest_116-5.jpg
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    ConnectorsAsAnchorsTest.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    ShapeToolSCTest.java
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.6  2007/01/26 12:39:04  rmulvey
+Job:409
+CanvasEditorListener.java from the list of changed files, its modification  was already captured by the promotion of i2529.
+
+Revision 1.5  2007/01/25 20:15:52  tlondon
+Job: 409
+
+Add code change entry for shape creation transaction test.
+
+Revision 1.4  2007/01/25 17:35:12  tlondon
+Job: 409
+
+Add expected result changes to code change list.
+
+Revision 1.3  2007/01/24 21:30:56  tlondon
+Job: 409
+
+Update note to fix actor test changes.
+
+Revision 1.2  2007/01/24 21:25:00  tlondon
+Job: 409
+
+Update according to review minutes
+
+Revision 1.1  2007/01/24 21:10:49  tlondon
+Job: 409
+
+Introduce

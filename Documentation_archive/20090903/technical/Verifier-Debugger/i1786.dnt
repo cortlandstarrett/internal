@@ -1,0 +1,171 @@
+========================================================================
+
+File:      $RCSfile: i1786.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add a BridgePoint External Class Loader to Model Verifier
+
+Abstract
+--------
+This note explains how a class loader is implemented to make use of a realized
+class supplied by the user or by Mentor Graphics.
+
+History
+-------
+Initial revisions.
+
+Document References
+-------------------
+[01] Bugzilla issue 1702.
+[02] Bugzilla issue 1786.
+[03] Analysis note: Documentation/internal/technical/Verifier-Debugger/i1786.ant
+
+Background
+----------
+As described in the Background section of the Analysis Note [03].
+
+Analysis
+--------
+As described in the Analysis section of the Analysis Note [03].
+
+Design
+------
+1. New Classloader
+
+A new class BPClassLoader is created under com.mentor.nucleus.bp.core.util to
+load an external class. Because the loaded classes need to have access to the
+BridgePoint plugins which must be loaded by Eclipse, the standard java Class
+Loader cannot be used. The new class loader instead extends EclipseClassLoader.
+The constructor is simplified from the EclipseClassLoader, requiring only the
+parent classloader (all class loaders require one of these) and the classpath to
+use when looking for a class, passed as a string array. The new class loader
+implements the standard class loader method 'findClass(String name)'. When this
+is called, it attempts to load the named class from the classpath passed in the
+constructor. If it fails, control is passed to the EclipseClassLoader to attempt
+to resolve the class that way. If this fails, a ClassNotFoundException is thrown
+by the EclipseClassLoader itself.
+
+
+2. New External Entity
+
+2.1 Modeled VM class
+
+A new External Entity 'Virtual Machine' is created. This EE represents the
+virtual machine under the executing verifier.  It contains the following bridge
+operations documented in order of typical use:
+
+   - resetValues(): Initializes the VM so that classpath and variable values
+     are erased.
+   
+   - void addArgumentValue(instance value, string type): Enables argument
+     passing by allowing the bridge invocation implementation to add a set of
+     arguments types and values.
+
+   - setUserClassPath(): Finds and sets the user’s current workspace path. 
+     For instance, 'C:\Documents and Settings\theUser\workspace\test\lib'. The
+     additional 'lib' is added to path to provide the user with a well known
+     place to put the classes they want to have executed.
+     
+   - boolean loadClass(string name): Attempts to load the realized class
+     specified by 'name' in the currently set path. Returns true if class was
+     loaded successfully.
+
+   - boolean execute(name): Executes the method specified by 'name'. Both the
+     name and the previously added argument types are used to find the method,
+     so polymorphism is supported.
+
+   - setInternalClassPath().  Finds and sets the path to the BridgePoint core
+     plugin, e.g. 'C:\eclipse\plugins\com.mentor.nucleus.bp.core_1.0.5\lib'.
+     Standard Mentor supplied realized classes that implement frequently used
+     External Entities shall be installed in this folder. The 'loadClass' and
+     'execute' API's above are then called again.
+
+   - instance getResult(). Where a Bridge Operation returns a value, calling
+     this obtains the result. This is used in Bridge Value to pass the rValue
+     result back into the verifier execution engine.
+
+2.2 Realized Vm_c class
+
+Because invocation of realized code involves use of specialized java reflection
+features, we cannot describe the behavior of the 'Virtual Machine' EE in OAL.
+The EE is therefore marked as translate:native, so that a hand written
+implementation may be supplied.
+
+As required by MC-Java Vm_c.java is created in com.mentor.nucleus.bp.core.
+
+This class contains all code used in the EE Virtual Machine to load the realized
+external class, organized into the methods required to implement the VM bridges
+specified above.
+
+3 Verifier Model Changes
+
+NOTE: If OAL is found, then that code is executed in preference to the realized 
+code.
+
+Action language is added to:
+	
+   - Invocation::Bridge Invocation::execute(): The Virtual Machine is reset,
+     then each parameter has its value and type sent to the VM. Then, the user's
+     class path is set up and loading the class is attempted using
+     VM::loadClass. The name of the class must match the name of the EE that
+     owns the bridge being invoked. If the load succeeds, then an attempt is
+     made to invoke the required method using VM::execute. The method name must
+     match that of the bridge being called. The argument types must also match
+     for successful execution. If this fails, the process is repeated, except
+     setting the internal path.
+
+   - Value::Bridge Value::getValue(): This carries out the same procedure as for
+     Bridge Invocation::execute, except that the VM::getResult bridge is called
+     after a successful execution, the value returned by this bridge call is
+     returned to the virtual machine.
+
+Design Comments
+---------------
+None.
+
+Work Required
+-------------
+As described in the Work Required section of the Analysis Note [03].
+
+Unit Test
+---------
+As described in the Acceptance Test section of the Analysis Note [03]. 
+
+End
+---
+
+$Log: i1786.dnt,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.24.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/04/04 20:58:02  acampos
+Job: 1786
+Updates were applied, revision is complete.
+
+Revision 1.2  2006/03/30 23:29:30  campbell
+Job: 1786
+Reorganized and add more detail.
+
+Revision 1.1  2006/03/30 20:07:12  acampos
+Job: 1786
+Documentation on how an external class loader was implemented in BridgePoint.
+

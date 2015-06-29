@@ -1,0 +1,532 @@
+========================================================================
+
+File:      $RCSfile: i1694.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+MV: Engine, Event Specification Statement
+
+Abstract
+--------
+This note describes the design for executing statements that can either
+create or generate events.
+
+History
+-------
+update i1694-022806-01.rvm
+  The above file is the review minutes for an analysis note.  It was determined
+  in that meeting that an analysis note was not necessary, and the required
+  changes were implemented this design note. The analysis note was deleted.
+
+update i1694 - 040706-01.rvm
+update i1694.dnt-051006-01.rvm
+final i1694-051106-01.rvm
+
+Document References
+-------------------
+[1]OAL Reference Manual provided with Nucleus BridgePoint under Help
+[2]Model Verifier Specification - Documentation\external\requirements\SRS_MV.doc
+[3]Bugzilla issue 1983 - NPE in parser
+[4]Bugzilla issue 2081 - SWT exception is thrown when a referential attribute
+                         getvalue lookup returns "not participating"
+[5]Bugzilla issue 2082 - Add additional support for identifying the sender of
+                         an event
+[6]Bugzilla issue 1727 - MV: Engine, Add a relationship from Value to Stack
+                         Frame
+[7]Bugzilla issue 2032 - Relate an instance to a stack frame to explicitly
+                         identify the currently executing instance
+
+
+Background
+----------
+There are about 15 distinct create and generate event statements, but they all
+stem from the following 4 basic types:
+
+Generate to target
+Generate with parameters to target
+Create event to target
+Generate a pre-existing event
+
+<target> is specified in a variety of ways, depending on the destination
+of the event.  A target can be an instance state machine, class state machine,
+or creation event.
+
+The results of create event statements can be stored as either an attribute or a transient
+variable.
+
+All of the generate statements can take an optional event meaning string in
+order to make the code more readable.
+
+Analysis
+--------
+Campbell McCausland has already accomplished some of this work.  Specifically,
+Model Verifier already supports both creating and generating events where 
+the target is an existing instance of a class with a state machine, but the
+created event currently cannot be generated.  Generating events to a class
+is also supported.
+
+An Event Specification Statement class is the primary supertype for over 15
+different create and generate event statements.  Thankfully some of those 
+differences are already handled by the parser such as the optional 
+:<Event Meaning> tags that are used for descriptive purposes.
+
+In addition to the Event Specification Statement class, a Generate Preexisting
+Event class stands alone as a separate type of statement with no subtypes.
+This class is responsible for generating any pre-existing event regardless of
+the target.
+
+Execute() operations will need to be either completed or created for all of the
+indicated subtypes of Event Specification Statement shown below:
+
+Generate Preexisting Event				(has no execute statement)
+
+Event Specification Statement			
+- Create Event Statement				(execute statement incomplete)
+  - Create SM Event Statement			(execute statement incomplete)
+    - Create Event to Instance			(execute statement incomplete)
+    - Create Event to Class				(has no execute statement)
+    - Create Event to Creator			(has no execute statement)
+  - Create Event to External Entity		(has no execute statement)
+
+- Generate Event Statement				(execute statement incomplete)
+  - Generate SM Event Statement			(execute statement incomplete)
+    - Generate							(execute statement incomplete)
+    - Generate Event to Class			(execute statement incomplete)
+    - Generate Event to Creator			(has no execute statement)
+  - Generate Event to External Entity	(has no execute statement)
+
+
+According to Campbell McCausland, BridgePoint does not allow the creation of
+external entity events.  Therefore, no support will be added to do so since it
+cannot be tested.
+
+Design
+------
+1.   Greg Rochford completed issue 1624 in order to give sufficient information
+     to generate a pre-existing event stored as an attribute.  The class was
+     related to an attribute, but there was no way to know which instance to
+     use.  The class is now related to an attribute value reference in order
+     to get both the attribute and an instance handle.
+     
+2.   Joe Luebker completed issue 1727 in order to provide a way to look up the
+     correct stack frame for evaluating instance handles and the like, which
+     improves the reliability of generating a pre-existing event since it will
+     find the correct instance handle through the given stack frame.
+
+3.   When a model class or instance is disposed, any pending events they sent
+     shall lose the knowledge of who sent them.
+
+4.   After much debate, Campbell McCausland and I decided that inst<event>s
+     shall be passed around as actual java objects without maintaining
+     relationships to the pending event wherever it has been stored.  This
+     approach greatly simplifies the implementation and has even allowed
+     existing objects to be removed as they are no longer necessary.  These
+     include:
+       - operation - Body:Block.newLocalEventReference()
+       - class - Local:Event Reference
+       - Relationship - Local:1010 - Event reference to Pending Event
+       - Relationship - Local:1011 - Event reference to Transient Variable
+     
+4.1  A getValue() operation shall be added to Pending Event in order to
+     return the actual java object as type Instance in OAL.
+
+4.2  If relationships to the pending event class were created and maintained as
+     the object is stored in different locations, many relationships would need
+     to be created from pending event to local value, attribute value, event
+     data item, function value, actual parameter, and the like.  Campbell has
+     suggested a long term solution of treating inst<event> the same way that
+     instance handles are going to be treated, but in the meantime inst<event>s
+     shall be treated and passed like every other data type with the difference
+     being that while other data types contain a value, inst<event>s shall store
+     the actual java object.
+     
+4.3  In order to do anything with this java object in OAL, the object shall
+     be passed into a new utility function called instance_to_pending_event_id.
+     This function shall return the unique ID of the pending event, and a
+     select from instances call will yield an OAL handle to the pending
+     event.  This can prove to be an inefficient approach when dealing with
+     systems with large quantities of pending events, but we hope to minimize
+     that risk by eliminating the need to search through all possible storage
+     locations, relating, and unrelating every time the object is passed around
+     or fired.
+     
+4.4  Pending Event.fire() shall contain logic to ensure that a stored event has
+     not already been fired to eliminate the risk.
+     
+5.   In order to better support creation transition events, which need to 
+     initialize the attributes of a newly created instance, as well as provide
+     a way for users to create a new instance of a class through the GUI,
+     the logic of initializing attribute values and setting up the initial
+     state machine shall be moved to a single operation called initialize() in
+     the Instance class.  This has the added benefit of removing duplicate code
+     in both Create.execute and Create No Variable.execute().
+     
+5.1  In order to easily identify an event as being a creation transistion event,
+     a boolean attribute called isCreation shall be added to Pending Event.
+
+5.2  A createInstance operation shall be added to Pending Event so the
+     code responsible for creating an instance for a creation transition
+     lives in one place regardless of whether a generate pre-existing event or
+     a generate to creator statement is executed.
+
+5.3  When firing a creation event, the event will target a class.  Class.poll
+     will then be responsible for identifying the event as a creation event,
+     creating an instance for it, and transitioning that instance to the
+     appropriate state so its body of OAL can be executed.
+
+5.4  Multiple creation transitions can exist on the same state machine.  Based
+     on the event being generated, instance.poll will transition to the
+     appropriate state.
+
+6.   Pending Event.fire() currently only fires events for instance state
+     machines.  This operation shall now delegate control to 1 of 2 new
+     operations:  fireToClassSM() or fireToInstSM().  This will allow all
+     events, whether targeting an instance or class state machine, to be fired
+     the same way, and provides a place to place logic that applies to all
+     events being fired.
+
+7.   As specified in the analysis section, execute operations of all classes
+     in the event subsystem shall be updated or created in order to support
+     executing the particular Event Specification Statement.
+
+7.1  A pending event shall know what sent it.  To accomplish this requirement,
+     a pending event shall be related to both an instance and a model class.
+     At this time, a pending event shall not know who sent it if:
+       * It was sent from a user-invoked domain function
+       * It was sent from a bridge call from another domain
+       * The instance that sent the event has been disposed
+       * The instance that sent the event never used the keyword self
+
+7.2  Since a new, distinct relationship shall be added between pending event
+     and instance, multiple referential attributes will have the name Inst_ID.
+     To avoid conflicts and confusion, the new relationship will have the
+     prefix Sent_By_, and the old attribute name will gain the prefix Target_.
+     This yields the names Sent_By_Inst_ID and Target_Inst_ID.  In the same way,
+     the relationships between pending event and model class will add the
+     prefixes Sent_By_ and Target_ to the Obj_ID attributes.
+     
+7.3  Since all Event Specification Statements will need to know what sent it,
+     an operation will be added to the Event Specification Statement class
+     called relateToOriginatingInst(evtInst_ID:unique_ID) that can be used by
+     its subtypes to relate the pending event to the appropriate object that
+     sent it.
+     
+7.4  Since all Event Specification Statements will need to hook up any event
+     data items that are passed with the event, an operation shall be added to
+     Event Specification Statement called 
+     hookUpEventData(unique_ID:evtInst_ID, unique_ID:stack_frame_ID)
+     that can be used by its subtypes.
+     
+7.5  Since all create event statements will need to hook up the pending event
+     to the transient variable handle, an operation shall be added to
+     Create Event Statement called 
+     hookUpEvtInstToHandle(unique_ID:evtInst_ID, unique_ID:stack_frame_ID)
+     that can be used by its subtypes.
+
+8.   Both Model Class.poll and Instance.poll shall be updated to prioritize
+     events to self.  An event to self shall be identified by comparing the
+     class or instance that sent the event against its target class or instance.
+     In both operations they will traverse a new reflexive relationship on the
+     pending event class to order events to self.  Only when no events to self
+     are pending for the class or instance being polled shall other pending
+     events be processed.     
+
+9.   An error message shall be logged if an event is created or generated to
+     an external entity.  The parser should prevent such OAL from being
+     executed, but in the event that the parser does one day support that
+     feature, the error message will help inform the developer that generating
+     events to external entities is not supported at this time.
+
+10.  When disposing a pending event, if the event being disposed is in the
+     middle of either the event to self queue or the standard queue, then
+     relate the next and previous events in the queue to each other in order
+     to restore the queue's integrity.
+
+11.  In order to fix a bug in the referential attribute work recently promoted
+     into verifier head, Attribute Value.Value now calls attribute
+     value.getValue rather than returning the internal value.  Otherwise,
+     no referential lookup would occur and returning internal value could
+     throw a null pointer exception if the object on the other side of the
+     referential does not exist and a value had not previously been set.
+
+11.1 Attribute Value.getValue will no longer report an error if the object
+     on the other side of the referential does not exist.
+
+12.  If a state has been marked as a final state, instance.poll shall dispose
+     of the instance after executing the body of OAL in that state.
+
+13.  In order to enable all datatypes to be passed around the same way, the 
+     datatype checking and special casing of assignment based on datatype
+     have been removed from all known areas including the setupParameterValues()
+     operation of Operation, Bridge, and Function Value and Invocation classes
+     as well as Assign to Transient.execute() and Assign to Attribute.execute().
+     Even the incomplete Assign To Parameter.execute() code was updated so
+     the developer assigned the task of assigning to parameter will not have to
+     wonder why the data type checking is there.
+
+14.  The review branch for this issue contains some changes in the Bridge Value
+     execute() operation.  These changes were promoted with issue 1786, but
+     an inadvertant mistake during the merge and promotion of issue 1727 caused
+     the 1786 changes for this operation to be lost.  Therefore, these changes
+     will be restored to the verifier-HEAD branch when this issue is promoted.
+
+Design Comments
+---------------
+During the implementation of this issue, I was hindered by several problems that
+laid outside of my issue.  For example, Greg Rochford created bugzilla issue
+1983[3] as a result of a parser error I came across, and I used his fix supplied
+in that issue to continue my work.  A problem with gen_erate.exe getting stuck
+in an infinite loop cost me well over a day to fix apparently because even
+after reverting to a known good model, some temporary file that was not cleaned
+remained to keep the bug alive.  Another problem arose from an issue that
+had been merged into what is now known as verifier-HEAD before we began using
+the formal process.  The value subsystem had been changed to pass all values
+around as type Instance, and the external entity containing the conversion
+operations was renamed.  All of their tests passed, but 1 archetype file was not
+updated to use the new external entity name.  No compiler errors were created,
+and everything proceeded along fine until I needed to assign an event to a
+transition.  Since no one had needed to create or modify a model in at least a
+month since the external entity was renamed, no one noticed that the work had
+broken a seemingly unrelated area.  That change has since been promoted into
+verifier-HEAD and will not be provided in this issue.  The formal process we use
+now should catch such problems in the future, but that problem along with many
+other such issues cost me a great deal of time to debug and fix.
+
+Two known issues remain to be fixed later:
+   A SWT exception error is being thrown when the instance explorer tree
+attempts to display the value of a referential attribute after the instance 
+across the referential has been disposed.  This error should have been caught
+before issue 1727[6] was promoted, but the special conditions required to see
+the error were not included in the test.  Since I discovered the error while
+executing my tests, I was asked to look into the cause, but it was determined 
+to promote this issue now and create bugzilla issue 2081[4] to address the SWT
+exception later.
+   The logic to identify the sender of an event is limited to instance state
+machines that use the keyword self and class state machines.  User invoked
+domain functions, bridge calls from other domains, and instances that do not
+use the keyword self currently cannot be identified as the sender of events.
+The latter source affects the reliability of event to self prioritization, and
+bugzilla issue 2032[7] covers that problem.  For the remaining sources, bugzilla
+issue 2082[5] covers the need to support them.  The lack of this support
+mainly impacts execution logging and the user debugging experience.  A developer
+looking at a particular event while debugging his application may need to know
+who sent the event.
+
+Work Required
+-------------
+No additional work is required beyond what is specified in the design section.
+
+
+Unit Test
+---------
+Since the testing of Event Specification Statements requires many events to be
+sent, whenever possible individual state machines will be used to test specific
+behavior.  Domain functions shall be created for each test, and unless otherwise
+stated each test shall create an instance of a log class which only contains
+a single attribute called msg of type string.  Upon starting each test, a log
+shall be created that reports a failure message for the test.  If the test
+succeeds, the pass state for each test is responsible for finding its particular
+error log message and disposing of it.  The JUNIT version of these tests can
+then report all remaining log messages as errors to the logging external entity.
+
+1. Test class machines by creating a class with a class state machine.
+   In that state machine, both generate and create event statements will be used
+   to send an event to the class.  The state that creates the event will store
+   that event in an attribute, and another state will use that attribute to fire
+   the event.  This will ensure that when the transient variable that was
+   created when the event is created falls out of scope, the local value dispose
+   operation does not destroy the pending event.  Only if all events are sent
+   will the test transition to the pass state.
+
+2. Test creation events by creating a class with an instance state machine.
+   In that state machine, a creation event will cause the initial state to
+   execute, which will generate an event to transition to the pass state.
+
+3. Test proper execution of state machines with creation events by creating a
+   domain function to create an instance of the class specified in section 2
+   instead of generating an event to create the instance.  The class should not
+   move from its initial state.
+
+4. Test creating and generating events to an instance state machine by creating
+   a class with an instance state machine that both creates and generates an
+   event to self.  Only if all events are sent will the test transition to the
+   pass state.
+
+5. Test sending event data items along with a creation transition event by
+   creating a class with an instance state machine.  This test differs from
+   the other tests in that it is related to another class called Pass Or Fail.
+   As the name suggests, another class with an instance state machine shall be
+   created whose state machine consists of a Pass and a Fail state.  An
+   attribute called name shall be added to the class so it can be used by other
+   tests as an identifier rather than maintaining relationships.  The domain
+   function that initiates this test shall create an instance of the Pass or
+   Fail class and send its unique id as an event data item along with the
+   creation event.  The event to transition this class from the fail to the pass
+   state is also created at this time and passed along with the creation
+   transition as an event data item.  In the other state machine, the initial
+   state after receiving the creation transition event shall use the given data
+   to relate itself to a particular instance of the pass or fail class and to
+   store the given event as an attribute.  After proceeding to the next state,
+   the stored event shall be generated and another event shall transition this
+   instance to the next state in order to give the pass or fail instance time
+   to process the event.  The test instance will then confirm that the pass or
+   fail test is in the pass state before transitioning the test instance to its
+   pass state.
+
+6. Test the final state indicator of a state by creating a class with a very
+   simple instance state machine consisting of an init and a terminating state.
+   When the instance transitions to the terminating state, the code inside
+   should be executed and then the instance should be disposed.  Since nothing
+   of the instance will remain after it has processed its final state, the
+   terminating state will create an instance of the Pass or Fail class specified
+   in test #5 and set the name attribute to "Final State test".  Due to the
+   nature of this experiment, two domain functions shall be used to execute
+   this test.  The first simply creates the instance and generates the event
+   to transition the instance to the terminating state.  The second function
+   then tests to ensure that no instance remains of the test class and that a
+   pass or fail instance with an attribute value of "Final State test" exists.
+   If both conditions are true then the test passed, otherwise an error log
+   is created to report the specific error.
+
+7. Test event to self prioritization for instances by creating two classes.  The
+   first class shall have an instance state machine and a boolean attribute
+   called processed_event_to_self.  The second class shall contain an operation
+   that simply selects any instance of the first class and sends an event to
+   that instance.  The state machine for the first class will set the
+   processed_event_to_self boolean to false, create an instance of the second
+   class, call the operation to have an event sent to this instance, and then
+   generate another event to itself.  If the event to self is processed first
+   even though it was executed second then the state machine will transition
+   to a processing event to self state where the boolean is flipped to true.
+   The event from the other instance will then be processed and transition the
+   state machine to a validation state.  If the event to self boolean is true,
+   then the instance can transition to the pass state.  However, if from the
+   initial state the event from the other instance is processed first, then the
+   instance will transition immediately to the validation state.  Since the
+   boolean is false, nothing will happen, but when the event to self is
+   processed then the instance will transition to a fail state.
+
+8. Test event to self prioritization for classes in much the same way as test
+   #7.  A new class is created with a class state machine with a few
+   differences from the instance state machine in test #7.  Since no boolean
+   can be set, it does not exist, and therefore the validation state becomes the
+   pass state.  This pass state deletes the error log created by the initiation
+   of the test just like in test #7.  However, if the event to self is not
+   processed first then the assigner class will transition from the pass state
+   to the fail state where a new error log message is created.  The same
+   second class is used in this test as well, but with a new operation to
+   generate an event to the assigner class.
+
+9. Test event to self without using the self keyword by again creating a test
+   very similar to test #7.  A new class with an instance state machine shall
+   be created that is identical to the one in test #7 except that the keyword
+   self shall never be used.  Instead, a select from instances statement will
+   find the one and only one instance of this class in the system.  Even without
+   the self keyword, events that are sent to the same instance should be
+   prioritized.  The same second class that was created in test #7 shall be
+   reused, but a new operation shall be added to generate an event to the test
+   instance.  
+     At the time of this review meeting, bugzilla issue 2032[7] exists
+   to cover the failure of this test.  The logic in verifier that determines
+   who sent the event currently looks for the self variable in the enclosing
+   block to find the originating instance.  However, the parser only creates
+   a variable named self when the self keyword is used somewhere by the
+   instance.  Therefore, this test fails to prioritize events correctly.  The
+   expected results log file for the JUNIT test will contain the failure message
+   for this test.  Issue 2032 will cause this test to pass once it is complete,
+   and that issue is also responsible for updating the expected results file.
+
+10.Test event ordering by creating a class with an instance state machine.
+   In the init state, a series of events are all queued up at one time.
+   The state machine then transitions to a new state in sequence as each event
+   is processed.  If all events are processed in order, then the test reaches
+   the pass state.
+
+11.Test generating stored events twice by creating a class with an instance
+   state machine and an attribute of type inst<event>.  In the init state, an
+   event is created and stored in the attribute.  That attribute is then 
+   generated twice followed by another generate event statement that sends a 
+   different event to the instance.  When the stored event is generated the
+   first time, the instance transitions to a new state.  The next event to be
+   processed should be the stored event again, but instead an error message
+   should be written to the eclipse error log.  This is because the pending
+   event should be disposed upon event consumption.  The next event to be
+   processed will transition the instance to the pass state.
+
+12.Test multiple creation events on the same state machine by creating a class
+   with an instance state machine containing 3 states and an attribute named
+   msg.  Two creation events with no parameters shall also be created named
+   simply one and two.  State number 1, which should be the initial state if a
+   creation event is not used, will do nothing and have no creation event.
+   State number 2 will have creation event one assigned to it, and upon
+   entering that state, self.msg will be assigned, "created by creation event
+   one."  Likewise state number 3 will have creation event two assigned to it,
+   and upon entering that state, self.msg will be assigned, "created by creation
+   event two."  
+     Additional states will then be added to execute the test.  The init
+   state that does not have a creation transition will transition to a start
+   test state, which will generate the 2 creation transitions and a 3rd event
+   to transition to a validation state.  In that state, select statements will
+   look for instances with msg attributes that match the 2 distinct statements.
+   Until both are not_empty, a "keep_going" event will continue to transition
+   back to the validation state in order to give the polling engine time to
+   execute the creation transitions.  Once it finds both of them, then continue
+   to the pass state. 
+
+13.A JUNIT test shall be added to com.mentor.nucleus.bp.core.test that extends
+   the VerifierTest class in order to execute all of the above tests
+   automatically.
+       
+End
+---
+
+$Log: i1694.dnt,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2006/05/19 19:41:42  jeremyr
+Job: 1694
+Addressed additional observations made during promotion
+
+Revision 1.6  2006/05/11 22:17:19  jeremyr
+Job: 1694
+Updated design note per i1694-051106-01.rvm
+
+Revision 1.5  2006/05/11 17:34:05  jeremyr
+Job: 1694
+Updated design note per i1694.dnt-051006-01.rvm
+
+Revision 1.4  2006/05/10 05:46:30  jeremyr
+Job:1694
+Submitting for review
+
+Revision 1.3  2006/05/09 21:18:16  jeremyr
+Job:1694
+Reduced the analysis section and added some initial tests to the Unit Test section.  More test information will follow soon.
+
+Revision 1.2  2006/05/08 23:48:35  jeremyr
+Job: 1694
+Updated design note based on review minutes and further implementation.
+
+Revision 1.1  2006/04/06 22:12:49  jeremyr
+Job:1694
+Introduce
+

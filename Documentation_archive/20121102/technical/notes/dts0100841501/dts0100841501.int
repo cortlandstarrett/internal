@@ -1,0 +1,250 @@
+========================================================================
+
+File:      $RCSfile: dts0100841501.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Honor text phrase direction during unrelate execution
+
+1. Abstract
+-----------
+This note describes the changes required to honor text phrase direction when
+executing unrelate statements against reflexive associations.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100841501
+[2] ClearQuest DEI dts0100908349 - Workspace created in 3.5.0 will not pre-build
+                                   in 3.5.4
+[3] ClearQuest DEI dts0100915626 - Copy paste with UDT references failed to
+                                   complete correctly when ME was used as the
+                                   source
+[4] ClearQuest DEI dts0100915902 - Parser fails to parse a UDT that refers to an
+                                   enumeration type correctly
+[5] ClearQuest DEI dts0100874481 - Allow new User Defined Types (UDT) to be
+                                   based off prior UDT
+[6] ClearQuest DEI dts0100916286 - Satisfaction is not associated with PE
+                                   supertype during imported requirement
+                                   connecting
+[7] ClearQuest DEI dts0100916287 - Paste of component reference diagram
+                                   unformalizes component references
+                      
+4. Background
+-------------
+Saab has reported an issue where an unrelate statement using the text phrase is
+not unrelating the proper instances.
+
+5. Requirements
+---------------
+Verifier shall honor the text phrase specified when unrelating two instances
+that participate in a reflexive association.
+
+6. Work Required
+----------------
+6.1 Add reflexive check in Unrelate.execute()
+
+When executing an unrelate we need to check that the destination is not the
+formalizer in the association.  If it is we need to swap the source and
+destination instances.  This will allow the matching link to be found.
+
+In addition to adding the check for reflexive associations there was a bug in
+the link matching logic.  The part which compares the source instance with the
+link's source instance ID was using the ID stored in the link for the
+destination.
+
+6.2 Add null checks for Satisfaction.label
+
+[2] was raised due to an NPE preventing a model from being built in 3.5.4.  The
+OAL in question never checked for empty elements because they should never be
+empty.  It is assumed that the model has an orphaned satisfaction which will not
+hurt anything once null checks are added.  To address this the label DBA is
+modified to get the path of the provision and requirement only if they are not
+empty.  If they are empty this value is used: "[undetermined path]".
+
+6.3 Do not resolve base types during paste calls
+
+The tool currently calls resolveDatatype during the pasteUserDataType operation
+invocations.  This does not fit with what the infrastructure expects, which is
+to call resolution operations after all elements have been moved to the
+destination.  This has worked for UDTs up until now as they could only refer to
+core types which were always present in the destination.  To address this issue
+the early resolution calls are removed.  The infrastructure then calls the
+necessary resolution operations at the appropriate time. [3] is addressed with
+these changes.
+
+6.4 Support enumeration access on UDTs
+
+During the work for [5] the parser was modified to support all other data types
+as the base type to User Data Types.  The work enabled access for members of
+SDTs and IRDTs through UDTs that were assigned to such types.  It did not
+however enable enumeration access when a UDT was assigned to an Enumeration Data
+Type.
+
+To support this the following functions are modified to look for a UDT that is
+pointing at an EDT.  When such a case is found the EDT's supertype S_DT is used
+rather than the UDTs.  The functions are
+OAL Validation Functions::Enum_data_type_validate() and
+OAL Validation Functions::Enumerator_validate()
+
+6.5 Fix resolution issue during paste
+
+This section resolves [6] and [7].
+
+A resolution issue during component reference pasting was found.  The operation
+Component Reference.updateImportedReferences() was not properly locating a 
+resolved interface when it lived in a different package.  To address this the
+getGlobal functionality is now used to locate the interface.
+
+Additionally it was found that satisfactions were not being created properly for
+component reference diagrams.  This was due to a missing relate between the
+satisfaction and its supertype PE.  The testing for this lead to another issue
+where the satisfaction was being exported for copy without its supertype PE.
+For this the stream.pei.sql file is adjusted to add an alternate export path for
+the satisfaction's PE.  This is only required when copying the imported
+interface references that make up the satisfaction, in other words the
+satisfaction's PE is properly exported if the parent package is exported.
+
+7. Implementation Comments
+--------------------------
+
+8. Unit Test
+------------
+8.1 Unrelate execution
+
+_- Create a model that has one class (Person) with a reflexive association
+_- Create a function that has the following:
+
+create object instance Adam of Person;
+create object instance Bob of Person;
+relate Adam to Bob across R1.'is patting back of';
+relate Bob to Adam across R1.'is patting back of';
+
+unrelate Adam from Bob across R1.'is patting back of';
+
+select one Person related by Adam->Person[R1.'is patting back of'];
+
+_- Launch the model in verifier
+_- Execute the above function
+_R The last selection is empty
+
+9.2 UDT paste
+
+_- Create a model with two UDTs
+_- Set the base type of one UDT to the other
+_- Create a new project with a package
+_- Select the two UDTs in model explorer making sure to select the one that has
+   the other UDT as its base type first
+_- Copy the selection
+_- Paste the copy into the new project's package
+_R The UDT is still assigned to the other UDT
+
+9.3 Enumeration access
+
+- The model, udt_assignment is modified to include enumeration access through a
+  UDT.  This modification automatically adds the required test in the Parse All
+  tests.
+
+9.4 Copy/Paste and satisfaction creation
+
+Note - this test assumes IPRs are enabled
+
+_- Create a project containing two components (one with a provision and one with
+   a requirement) and an interface
+_- Create another project with two component references pointing at the above
+   components
+_- Drag the imported requirement over the imported provision
+_R The connection is made
+_- Close and reopen the project containing the component references
+_R The Satisfaction still exists
+_- Create another package in the component reference project
+_- Copy the contents of the component reference diagram and paste into the new
+   package
+_R The component references are still connected through a satisfaction
+
+The following test suites shall be run:
+
+- Parse All Tests Generics
+- CoreTestSuite2Generics
+- Verifier Tests
+- RTO Move Tests
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100841501
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component/Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Component Reference/Component Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Satisfaction/Satisfaction.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Domain/Data Type Package/Data Type Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Package/Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Unrelate/Unrelate.xtuml
+
+com.mentor.nucleus.bp.core.test/src/(default package)/
+    CoreTestSuite2Generics.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+	CopyPasteComponentReferences.java
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    UserDataTypeCopyPasteTests.java
+com.mentor.nucleus.bp.core.test/generate.xml
+
+com.mentor.nucleus.bp.debug.ui.test/src/(default package)/VerifierTestSuite.java
+com.mentor.nucleus.bp.debug.ui.test/src/com.mentor.nucleus.bp.debug.engine/
+    RelateAndUnrelateTests.java
+com.mentor.nucleus.bp.debug.ui.test/src/com.mentor.nucleus.bp.debug.test/
+    VerifierUDTAsUDTInitializationTests.java
+
+com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql
+
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/
+    TestingUtilities.java
+    
+udt_assignment/models/udt_assignment/udt_assignment/udt_assignment/
+	udt_assignment/udt_assignment/udt_assignment.xtuml
+	
+End
+---
+
+$Log: dts0100841501.int,v $
+Revision 1.5  2012/09/21 18:41:58  tlondon
+Job: dts0100841501
+
+Address review minutes
+
+Revision 1.4  2012/09/21 17:27:17  tlondon
+Job: dts0100841501
+
+Complete note
+
+Revision 1.3  2012/09/19 20:57:58  tlondon
+Job: dts0100841501
+
+Add all code changes
+
+Revision 1.2  2012/09/19 14:55:18  tlondon
+Job: dts0100841501
+
+Add changes for dts0100915626
+
+Revision 1.1  2012/09/18 22:26:48  tlondon
+Job: dts0100841501
+
+Add implementation note

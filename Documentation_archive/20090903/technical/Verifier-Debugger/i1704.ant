@@ -1,0 +1,321 @@
+========================================================================
+
+File:      $RCSfile: i1704.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:48 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Execution Control
+
+Abstract
+--------
+This note describes the requirements for execution control.
+
+History
+-------
+update /Documentation/internal/review_minutes/Verifier/i1704-ant-042406-01.rvm
+update /Documentation/internal/review_minutes/Verifier/i1704.ant-042806-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 1704
+[2] Bugzilla issue 1703
+
+Background
+----------
+In order to debug a system, execution control is essential. Execution
+control consists of the following: halting, resuming, and stepping. 
+Unfortunately, Verifer lacks execution control support at the current time. 
+
+Analysis
+--------
+
+1. Add capability to halt
+
+Whenever Verifier executes an action, a stack frame is created. The
+executing of the action is initiated by an execute operation that lives on the 
+Java stack. Whenever the action is completely executed, the stack frame is 
+disposed. Furthermore, all blocks in the stack frame and local references are 
+disposed.  In order to support halting in execution control, we will need 
+to prevent any stack frames, blocks in the stack frame, and locals from being
+deleted when a stack is in a halted state. 
+
+In order for halting of execution to occur correctly, Verifier will need to
+"remember" its current state of execution so it can eventually resume.
+Verifier does not keep track of its execution state. As a
+result, a mechanism needs to be devised so that the next statement to be 
+executed in each stack frame is saved. 
+
+It is also desirable for Verifier to halt at the stack level. 
+To enable this, each stack will have to 
+maintain its running state. The running state for each stack can be one of
+several values: running, halted, resuming, stepping.   
+
+2. Add capability to resume
+
+To properly resume execution, we must recreate the state of execution prior to 
+the halt. Fortunately, almost all execution data that existed prior to the halt
+will still exist once we resume. The only data that we will need to recreate 
+is the sequence of execute operations that existed on the Java stack prior to 
+the halt.   
+
+
+3. Add capability to step
+
+Verifier lacks the capability to perform stepping.  
+There are two main approaches that can be taken to handle stepping in Verifier. 
+The first approach involves creating an execution control class that has the 
+responsibility of stepping through statements until the correct statement is
+reached. Another approach would be to set a breakpoint on the statement that 
+will be stepped to. In this issue it was decided that OAL breakpoints would be 
+incorporated from issue 1703, ref[2], for testing purposes. Hence, the 
+breakpoint approach to stepping is a viable approach for this issue.   
+
+There are a few reasons why using breakpoints to implement stepping would
+be a better approach than creating a seperate execution control class. First, 
+by using breakpoints, the execution of statements can occur in one central 
+body of code. Currently, breakpoints are checked for and statements are executed 
+in the same operation,Block.execute. If we created a seperate execution control 
+class, the execution of statements would occur in the control class and 
+Block.execute, making code maintenance more difficult. Furthermore, many 
+debuggers make use of breakpoints to step, so interfacing Verifier with  
+debuggers in the future might require less sophisticated adapters. 
+Because of these reasons, 
+breakpoints will be used to implement stepping in Verifier.  
+
+Because users will be allowed to set breakpoints on statements, there should 
+be a distinction between user-created breakpoints and stepping breakpoints. 
+Without this distinction, an application might halt on a stepping breakpoint 
+that was created in a previous debugging session.
+
+To create a distinction between user-created breakpoints and stepping 
+breakpoints, a boolean, for_step, will be added to all breakpoints. 
+When for_step is true, the breakpoint will be considered a stepping-breakpoint, 
+and will be disposed of differently than a user-created breakpoint. 
+After a stepping-breakpoint has been used to 
+perform a step, all stepping-breakpoints will be queried and disposed of. 
+Furthermore, if a user-created breakpoint is reached while stepping, all
+stepping-breakpoints will be queried and disposed of. 
+
+Since breakpoints can easily be set on statements, we will create stepping
+operations that are responsible for locating the statement that will be stepped
+to and setting a breakpoint on the statement. 
+
+
+Work Required
+-------------
+ 
+1. Add capability to halt
+
+To prevent stack frames or blocks from being deleted when a halt occurs, 
+we will create an enumerated variable,Run_State, for the stack class. 
+Run_State will indicate the state of a particular stack: Running, Halted, 
+Resuming, and Stepping. Whenever Run_State is set to Halted, no data necessary 
+for execution of an action will be deleted. 
+
+The capability to halt will be enabled by creating a relationship between 
+statement and stack frame. This relationship will allow the statement that
+will be executed next to be saved for each stack frame. Once we have saved
+the next statement for a stack frame, we will halt execution on that stack 
+frame. Halting execution on a stack frame will be achieved by returning control
+in each block that is executing in a stack frame. Once we have halted execution
+on a stack frame, we will move to the previous stack frame, and halt execution.
+This process will continue until all executing stack frames have been halted. 
+
+2. Add capability to resume
+
+Resuming will be initiated by setting the Run_State of a halted stack to 
+Resuming. Once this occurs, the execution engine should eventually poll the 
+stack and begin the resuming process. 
+
+Resuming execution on a stack will begin by executing the action related with 
+the bottom stack frame in a stack. We must iterate through each statement in the
+action, looking for the correct statement to resume execution on. If the 
+statement that we resume on is not a function, bridge, or operation invocation, 
+we have resumed to the correct state of execution prior to the halt. 
+Otherwise we will move up the stack to the next 
+stack frame, and execute the action associated with the next stack frame. By 
+moving up the stack instead of executing the invocation statement, 
+we will prevent any extra strack frames from being created when resuming. 
+When we get to the top stack frame and we locate the proper statement to 
+resume on, we have resumed to the correct state of execution prior to the halt.
+At this point, we will set the Run_State of the stack to Running and resume
+normal execution. 
+
+
+3. Add capability to step
+
+--Action Context--
+
+An important question is where the stepping operations that make use of 
+breakpoints should be located. Since halting and resuming will occur on 
+stacks, it seems natural that stepping should also occur on stacks. Therefore, 
+the  stepping operations (stepOver, stepIn, stepReturn) in the action context 
+will be located in the stack class.
+
+To perform stepping, all we need to do is set a breakpoint on that statement 
+that we wish to step to. Before stepping can occur, we must be in a halted 
+state. When we are in a halted state, the next statement that will be executed
+in a stack frame will always be related to that stack frame.
+To perform a step over in a majority of circumstances, 
+we will simply set a breakpoint on the statement that follows the next statement
+in the block. If the next statement is a while or for statement, we will set a 
+breakpoint on the first statement in the loop's block.  If the next statement 
+is an if statement, we will set breakpoints on the first statements in all 
+branches of the if statement. If the next statement is the last statement in a
+loop's block, we will set a breakpoint on the first statement in the loop's 
+block, and the first statement that follows the loop's block. All stepping 
+breakpoints that exist will always be disposed of whenever any breakpoint is 
+found during execution.
+
+With step in, the next statement will be examined to see if it is a function, 
+bridge, operation, or derived attribute invocation. If the next statement is 
+a function, bridge, operation, or derived attribute invocation, 
+a breakpoint will be set on the first statement in the invocation's block. 
+Otherwise, we will perform a step over. 
+
+With step return, we will examine the stack frame below the top stack frame to 
+locate the statement that invoked the function or operation. Then, a breakpoint
+will be placed on the statement that follows the invoking statement. 
+
+-- Event Queue Context --              
+
+Whenever stepping in an event queue context, we will be stepping on a particular
+instance's event queue. Because of this, we will create stepping operations 
+(stepIn, stepOver) in the instance class. In addition, it is assumed that 
+whenever stepping is performed in an event queue context, we are in a halted 
+state. 
+
+For stepOver, we will first set the Run_State of the halted stack to Running.
+Currently, Instance.poll() is responsible for dequeueing an event and executing 
+the action associated with the transition. 
+We will invoke Instance.poll() to stepOver the selected event in the 
+event queue. Finally, we will set the Run_State of the stack back to Halted
+to ensure no more events are dequeued. 
+
+For stepIn, we will perform the same procedure as stepOver. However, we will
+modify Instance.poll() to accept a boolean (step_in) that indicates whether we 
+are performing a step in. If the boolean is set to true, Instance.poll() will 
+set a breakpoint on the first statement of the executed action.    
+
+Whenever we are stepping on the event queue of a class, we will use the same 
+procedure as described above except Model Class.poll() will be used instead of
+Instance.poll().  
+
+Acceptance Test
+---------------
+
+Test that we can halt and resume execution at various instants in time without 
+errors. 
+
+1. Stop and Run
+
+	- Halt execution on a non-nested block of code and resume 
+	
+	- Halt execution on a nested block of code and resume
+	
+	- Halt execution on a recursive call and resume
+	
+	- Halt execution of a loop and resume
+	
+	- Halt execution during event polling with pending events and resume
+	
+	- Halt execution during event polling without pending events and resume
+
+2. Stepping
+
+	* Action Context
+	
+		* Step over operation invocation
+		
+		* Step over function invocation
+		
+		* Step over statement that is not an invocation
+		
+		* Step over statements in a while loop for several iterations and exit
+		
+		* Step over statements in a for loop for several iterations and exit
+		
+		* Step over statements in an if block
+		
+		* Step over statements in an elif block
+		
+		* Step over statements in an else block
+		
+		* Step over statements in a multiple nested block of code 
+	
+		* Step into operation invocation
+		 
+		* Step into function invocation
+		
+		* Step into bridge invocation
+		
+		* Step into statement that is not an invocation
+		
+		* Step return on function invocation
+		
+		* Step return on operation invocation
+	
+	- Event Queue Context
+	
+		* Step into an event queue
+		
+		* Step over an event
+		 
+  
+End
+---
+
+$Log: i1704.ant,v $
+Revision 1.1  2009/09/03 18:20:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.24.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2006/05/01 16:32:40  kurtb
+Job: 1704
+Addressed Observations
+
+Revision 1.7  2006/04/28 03:39:44  kurtb
+Job: 1704
+Re-introduce for Review
+
+Revision 1.6  2006/04/27 22:23:27  kurtb
+Job: 1704
+Re-introduce for Review
+
+Revision 1.5  2006/04/24 18:35:22  kurtb
+Job: 1704
+Re-introduce for Review
+
+Revision 1.4  2006/04/24 15:04:37  kurtb
+Job: 1704
+Re-introduce for Review
+
+Revision 1.3  2006/04/24 05:40:31  kurtb
+Job: 1704
+Re-introduce for Review
+
+Revision 1.2  2006/03/30 15:38:25  kurtb
+Job: 1704
+Addressed observations
+
+Revision 1.1  2006/03/27 19:34:14  kurtb
+Job: 1704
+Introduce
+

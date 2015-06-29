@@ -1,0 +1,227 @@
+========================================================================
+
+File:      $RCSfile: i2597.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:36 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Class lost after restart
+
+Abstract
+--------
+A test model (im1 [2]) is not persisted properly.  This results in a class 
+being lost when the tool is restarted after importing this model.
+
+History
+-------
+    
+Document References
+-------------------
+[1] Bugzilla issue 2597
+    http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=2597
+[2] <cvs>/com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/im1.sql
+    This is the model that caused the problem.  Note that the model was
+    was uploaded into the bugzilla item [1].  To reproduce the problem use the 
+    model in the bugzilla item.
+
+Background
+----------
+Investigation into the cause of this problem revealed that the name of the class
+being lost contained trailing whitespace (ie "Passive Object ").  The current 
+version of BridgePoint will not allow the user to create a model element with 
+leading or trailing whitespace (thus it avoids this problem).  However, previous 
+versions of the product did allow this and therefore models imported from prior 
+versions (in this case v6.1) may contain leading and/or trailing spaces.
+
+Design
+------
+During import of models remove any leading or trailing whitespace from the names
+of model elements.  There are two options:
+1. Modify the parser to remove the white space.
+2. Modify the archetype that generates the import code to remove the whitespace.
+
+The parser is very generic, it has very little knowledge of the details of the
+meta-model.  To modify the parser requires adding code to the grammar that 
+introduces detail about the meta-model (the names of classes and perhaps even
+attributes).  Doing this would also require enumeration of many different model 
+elements in the grammar which would be error prone (we would be likely to miss 
+some).  The archetype on the other hand allows us to specify that whitespace be 
+trimmed with just a few lines of code and it will generate that code to all 
+places where there is a model element that contains a name.  Option 2 will be 
+used.
+
+Implementation Comments
+-----------------------
+1. In gen_import_java.inc a function named generate_params() is called from
+   function gen_import() to create function parameters for methods used by the 
+   generated import class (.../bp/io/mdl/ImportModel.java).  This code already 
+   includes a call to a function named removeTics() which returns a string 
+   that contains the string from the source model file with the tics ("'") 
+   removed.  This function was modified and a call to "trim()" was added for 
+   attributes named "Name".
+
+The properties tests were failing due to the addition of system level dts.  The
+archetype which generates the test was changed to guarantee that domain level
+dts are used for testing.
+
+Unit Test
+---------
+1) Manual test
+_- Import the model from the bugzilla item [1] into a project
+_- Open Resource Navigator
+_- Explore in the im1 model tree down to the folder named
+   models->im1->Passive Object
+_R A file named "Passive Object.xtuml" exists in this folder
+_- Exit and restart BridgePoint
+_- Open the xtUML modeling perspective and open the class diagram for the 
+   im1 subsystem.
+R- The class named "Passive Object" is displayed in the diagram.
+
+
+Code Changes
+------------
+The changes are in branch Review-i2597
+
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br1f.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br2f.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/cl.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/event.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_G_EVT_LE_precreated.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/G_ALL_R_BRG_tim.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im4.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ims.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ims2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/imx.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/init1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/init2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/poly.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/select.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/self.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/sm.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/syntax.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wim2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wim3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wims.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wimx.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/br1.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/br1f.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/br2.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/br2f.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/cl.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/enum1.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/enum2.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/event.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/ex1.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/ex2.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/
+    G_ALL_G_EVT_LE_precreated.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/G_ALL_R_BRG_tim.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/im1.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/im2.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/im3.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/im4.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/ims.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/ims2.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/imx.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/init1.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/init2.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/ooaofooa.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/poly.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/select.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/self.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/sm.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/syntax.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/wim2.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/wim3.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/wims.sql
+com.mentor.nucleus.bp.io.mdl.test/expected_results/sql/wimx.sql
+
+com.mentor.nucleus.bp.io.sql.test/expected_results/br1.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/br1f.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/br2.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/br2f.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/cl.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/enum1.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/enum2.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/event.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/G_ALL_G_EVT_LE_precreated.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/G_ALL_R_BRG_tim.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/im1.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/im2.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/im3.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/im4.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/ims.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/ims2.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/imx.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/init1.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/init2.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/ooaofooa.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/poly.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/select.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/self.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/sm.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/syntax.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/wim2.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/wim3.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/wims.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/wimx.sql
+
+com.mentor.nucleus.bp.properties.test/arc/create_view_test.arc
+
+End
+---
+
+$Log: i2597.int,v $
+Revision 1.1  2009/09/03 18:20:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.14.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2007/01/04 23:00:35  rmulvey
+Job:2597
+Added files to the code changes section to account for the updated bp.io.mdl.test expected results.
+
+Revision 1.4  2007/01/04 21:45:09  rmulvey
+Job:2597
+Added files to the code changes section to account for the updated io.sql.test expected results.
+
+Revision 1.3  2007/01/04 18:04:27  tlondon
+Job: 2597
+
+Add comment about properties test changes which fixes a system level dt test conflict.
+
+Revision 1.2  2006/12/22 18:55:13  rmulvey
+Job:2597
+Fixed a typo found in the review.
+
+Revision 1.1  2006/12/22 18:36:25  rmulvey
+Job:2597
+Created implementation note.

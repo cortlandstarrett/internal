@@ -1,0 +1,150 @@
+========================================================================
+
+File:      $RCSfile: i153.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Fix implicit declaration in for statement
+
+Abstract
+--------
+This note describes changes to fix the implicit declaration of the
+loop variable in a for statement.
+
+History
+-------
+
+Document References
+-------------------
+Issue 153
+
+Background
+----------
+
+The following OAL:
+
+select many d_set from instances of D_D;
+for each d in d_set
+  x = empty d;
+end for;
+
+gives a syntax error on line 3, "Variable ->d<- has not been data typed yet"
+This is incorrect.
+
+Design
+------
+
+Looking at the rule for the for statement, 
+
+for_statement
+  :
+    "for"! "each"! local_variable[true] "in"! inst_ref_set_var
+      block[false]
+    "end"!  "for"!
+  ;
+
+the local_variable rule declares the variable, but the type 
+of the variable is not determined until the for_statement_end
+validation function, which is executed after the statements
+in the block.  
+
+i153.1  The inst_ref_set_var_validate function is changed to 
+set the data type for the local_variable if it has not
+already been data typed.  The attribute Instance.IsImplicitInFor
+is set to true or false depending on if the data type was 
+set by this function.  Note that we can do the checking in
+inst_ref_set_var_validate, because this rule is only 
+referenced by the for_statement rule.
+
+i153.2  The attribute Instance.IsImplicitInFor is added to the
+ooaofooa model.
+
+i153.3  The for_statement_end() function is changed to 
+set the ForStmt.is_implicit attribute to the value of the
+Instance.IsImplicitInFor attribute.
+
+Work Required
+-------------
+
+i153.1  The changes are made to function_import.sql
+i153.2  The changes are made to ooaofooa.bak
+i153.3  The changes are made to function_import.sql
+
+Implementation Comments
+-----------------------
+
+- The version numbers for the sourcepath attributes in
+core/.classpath were updated.  The dependency on antlr
+was removed.
+
+Unit Test
+---------
+
+Tests are added for the initial error case, as well as
+the non-implicit variable declaration, with both a single
+for statement and multiple for statements in the activity.
+
+// testForSimpleImplicitWithReference
+select many d_set from instances of D_D;  for each d in d_set x = empty d; end for;
+
+// testForSimpleWithReference
+select any d from instances of D_D; select many d_set from instances of D_D;  for each d in d_set x = empty d; end for;
+
+// test2ForSimpleWithReference
+select any d from instances of D_D; select many d_set from instances of D_D;  
+   for each d in d_set x = empty d; end for; 
+   for each d in d_set x = empty d; end for;
+
+// test2ForSimpleImplicitWithReference
+select many d_set from instances of D_D;  
+   for each d in d_set x = empty d; end for; 
+   for each d in d_set x = empty d; end for;
+
+Code Changes
+------------
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.16  Final version: 1.17
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/OalParserTest.java
+Initial version:  1.1   Final version: 1.2
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.22  Final version: 1.23
+
+com.projtech.bp.core/.classpath
+Initial version:  1.7   Final version: 1.8
+
+End
+---
+
+$Log: i153.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/03/18 23:32:05  greg
+Job: 153
+Update from review
+
+Revision 1.1  2004/03/18 18:13:41  greg
+Job: 153
+Initial introduction
+

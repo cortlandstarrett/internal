@@ -1,0 +1,206 @@
+========================================================================
+
+File:      $RCSfile: i440.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:22 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Nightly build failures with newly introduced plugins
+
+Abstract
+--------
+
+This note describes the changes necessary for allowing a nightly build to
+complete successfully when new plugins are introduced.
+
+History
+-------
+
+final - i440-101404-01.rvm 
+
+Document References
+-------------------
+
+Issue 440
+
+Background
+----------
+
+Currently the nightly build system uses the feature.xml file from the previous
+nightly build to generate the modules list to build.  This causes build failures
+if a new plugin is introduced, because the feature.xml file that it uses from
+the previous nightly build will not include the new plugins.  Another defect
+that is covered by this issue is that when a new unit test module is introduced
+the nightly build will try to verify that new module for the previous nightly
+build tag.  This causes a failure because the tag that is being verified will
+not exist on the unit test module. 
+
+Design
+------
+
+i440.1 Add call to get_required_modules
+
+To get the correct feature.xml before a build a call must be made to the
+get_required_modules function.  The get_required_modules function will generate
+a modules list every time it is called, using the value of product_version to
+get the correct version.
+
+A call to get_required_modules is added before the call to compile the modules.
+At this point product_version is equal to the tag for the current night.
+
+i440.2 Add separate call to verify unit test modules
+
+Since the unit test modules are not currently used during the build, they should
+not cause the script to exit if a tag does not exist.  Instead, if a checkout
+failure occurs with the unit test modules a warning shall be thrown.
+
+A new for loop is added immediately after the for loop that is right before the
+promotion step.  This for loop is to take care of verifing the unit test
+modules.  The for loop is almost identical to the one used right before the
+promotion step, except that it iterates through only the unit test modules and
+it sets the severity variable, SEVERITY, equal to WARN.
+
+The unit test modules variable is removed from the previously existing for loop
+which is right before the promotion step.
+
+i440.3 Modify verify_checkout to support severity level variable
+
+To support the requirement of throwing a warning for unit test modules, a
+check to see if the variable set in 440.2 is equal to WARN shall be added.  If
+this variable is set to WARN a warning will be added to the error list, which
+is sent in the nightly build email, whenever a checkout is not successful.  If
+the variable is not set to WARN the function processes the pre-existing shell
+script.
+
+i440.4 Change feature.xml format
+
+The nightly build system uses the feature.xml file found in bp.pkg-feature to
+compile a list of modules needed to build Tiger.  It currently uses the grep
+command and searches for: 
+"<plugin
+	id="
+		
+This is very brittle as the carriage return and the spaces must be exact,
+otherwise the module list will be incorrect.
+
+The format of the plugin entries in feature.xml are changed to the following:
+"plugin id=".
+
+This is harder to get the format wrong as there is only one space involved.
+
+The grep call in get_required_modules is changed to search for the new plugin
+entries.
+
+i440.5 Add MC-Java to list of modules to verify
+
+The MC-Java check out should be verified at the time of promotion.  It was not
+included in the list of modules to verify.  The model_compiler variable is added
+to the for loop which calls the verify_checkout function. 
+
+Work Required
+-------------
+
+i440.1 Add call to get_required_modules
+
+The call to get_required_modules is added to create_nightly_build.sh.
+
+i440.2 Add separate call to verify unit test modules
+
+The changes are made to create_nightly_build.sh.
+
+i440.3 Modify verify_checkout to support severity level variable
+
+The changes are made to create_release_functions.sh.
+
+i440.4 Change feature.xml format
+
+The changes are made to feature.xml and create_release_functions.sh as described
+in the design.
+
+i440.5 Add MC-Java to list of modules to verify
+
+The changes are made to create_nightly_build.sh according to the design.
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+
+- Log into svr-azt-eng-01 using Remote Desktop
+- Log in as build
+- Open a cygwin shell
+- Change directory to d:/nightly_build
+
+_- Change cvsroot variable to equal "/arch1/products/tiger/tt_rep" in create_release_functions.sh
+_- Move the pre-existing test N20041012 directory with the following command:
+  "mv nightly_builds/N20041012 nightly_builds/N20041012_hold"
+_- Run the following command: "./create_nightly_build.sh 20041012"
+_R There are no errors found during the build
+_R An email is sent which includes a warning about io.mdl.test checkout
+
+_- Set product_version to foofoofoo at line 99
+_- Run the following command: "./create_nightly_build.sh N20041012"
+_R An email is sent saying that foofoofoo doesn't exist for bp.pkg
+
+_- Remove the test directory created with the following command:
+  "rm -rf nightly_builds/N20041012"
+_- Move the pre-existing test directory back with the following command:
+  "mv nightly_builds/N20041012_hold nightly_builds/N20041012
+
+
+Code Changes
+------------
+
+com.projtech.bp.core/tools/create_nightly_build.sh
+Initial Version: 1.31	Final Version: 1.32
+
+com.projtech.bp.core/tools/create_release_functions.sh
+Initial Version: 1.13	Final Version: 1.14
+
+com.projtech.bp.pkg-feature/feature.xml
+Initial Version: 1.12	Final Version: 1.13
+
+End
+---
+
+$Log: i440.int,v $
+Revision 1.1  2009/09/03 18:22:22  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:00  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.152.1  2008/12/31 16:10:03  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/10/14 23:05:50  tlondon
+Job: 440
+
+Added change to verify_checkout for loop
+
+Revision 1.3  2004/10/14 18:55:12  tlondon
+Job: 440
+
+Fixed according to review minutes
+
+Revision 1.2  2004/10/13 21:52:32  tlondon
+Job: 440
+
+Updated issue with unit test fixes
+
+Revision 1.1  2004/10/13 16:36:41  tlondon
+Job: 440
+
+Introducing int

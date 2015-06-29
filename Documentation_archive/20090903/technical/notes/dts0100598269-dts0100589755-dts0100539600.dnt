@@ -1,0 +1,254 @@
+========================================================================
+
+File:      $RCSfile: dts0100598269-dts0100589755-dts0100539600.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Use rcvd_evt instead of param 
+Report an error when "param" is used instead of "rcvd_evt" in ISM
+Parser failures during parse all can mask OAL errors
+
+1. Abstract
+-----------
+This issue is raised to address a few parser bugs.  
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100525576  
+    use rcvd_evt instead of param 
+[2] ClearQuest DEI dts0100598269  
+    OAL parser accepts send statement without keyword 
+[3] ClearQuest DEI dts0100589755  
+    Parser failures during parse all can mask OAL errors.
+[4] ClearQuest DEI dts0100539600 
+    OAL parsing thread interrupted pre-maturely when relationships are removed
+[5] Bugzilla issue 2772 
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2772
+    Parser allows param keyword in place of rcvd_evt in state action, crashes 
+    editor and Verifier.
+    
+4. Background
+-------------
+
+5. Analysis
+-----------
+5.1 Use rcvd_evt instead of param [1]
+
+When accessing event parameters in an instance based state machine a user
+may accidently use the param keyword instead of the rcvd_evt keyword to access 
+values that are passed-in.  Currently, the parser does not report an error, and 
+the problem then manifests itself during execution as a verifier crash.  To fix
+this, the parser shall be modified to hook up the param instance.  This will
+allow the param or rcvd_evt keywords to be used interchangeably in this 
+situation.
+
+
+5.2 OAL parser accepts send statement without keyword [2]
+
+The OAL parser will currently accept the following syntax and not display an
+error (note that there is no send keyword specified):     
+  port::signal()  
+
+Currently there is no parser error. This allows this statement to be executed by 
+Verifier, and execution results in behavior that is unexpected by the user and 
+is hard to find/fix.  The behavior during execution is that the statement does 
+not produce an error and it does not execute (it behaves like a no-op).  The 
+reason for this is that the parser does not properly hook up the statement 
+instance in this case.  The fix for this shall be to modify the parser to hook 
+up the statement in the absence of the send keyword.  Thus the send keyword 
+shall be optional in this situation.
+
+5.2.1 Name conflicts 
+
+The possibility exists for parser conflicts when the send keyword is not 
+present.  Conflicts may occur between Ports, EEs, and class key letters for
+messages, bridge operations, and class operations.  Currently class-based 
+operations take precedence in this situation.  As part of this issue, if such
+a conflict occurs, a parser error shall be reported to tell the user there is 
+a conflict.
+
+5.3 Parser failures during parse all can mask OAL errors. [3]
+
+An OAL parser exception can completely exit the code that is iterating over 
+all OAL in an action. This means any parser error that is not explicitly 
+handled causes an exception that in turn masks all OAL errors in any OAL not 
+yet visited at the time the exception is thrown.
+
+This can lead the user to think that they have no errors when in fact they 
+may have many.
+
+5.3.1 
+The issue states that the solution is to place a try/catch clause around the 
+code that parses expressions.  However, this solution will not work in this 
+situation.  The code already catches "Throwable" in 
+.../bp/ui/text/activity/ActivityEditor.java::run().  The problem is that the 
+antlr parser is a recursive decent parser, and it "throws" when it encounters
+a grammar error that it can not recover from.  In this situation we write
+an error to the error log, but because the parser thread was killed, we report 
+no error to the user.  The error reported in the error log is:  "Parsing thread 
+interrupted pre-maturely".  We shall make a modification to report this error
+on line 1, position 1 of the OAL in this situation so the user is notified of
+the problem.
+
+
+6. Design 
+---------
+6.1 Use rcvd_evt instead of param [1]
+
+Investigation into this problem reveals that this issue is fixed in the current 
+version of the product.  In fact, it was fixed in version 2.0.2.    The fix was 
+part of bugzilla issue 2772 [5].  The relevant file change was "...\bp.core\
+ooaofooa\Functions\OAL Validation Utility Functions\
+OAL Validation Utility Functions.xtuml" version 1.24.2.1.  This change 
+modified event_root_value_validate() to hook up the 'param' instances if they 
+are present.  
+
+Given this information, this issue was marked as a duplicate of the bugzilla 
+issue [5] and closed.
+
+6.2 OAL parser accepts send statement without keyword [2]
+6.2.1 Refactor Send_statement_end so the code that hooks-up the operation/signal
+      can be called from another location (as well as this location).
+      
+6.2.2 This code shall be moved into 
+        OAL Validation Utility functions::is_valid_operation_or_signal()
+
+6.2.3 Modify Message_invocation_end to call the new 
+      is_valid_operation_or_signal() function after it has determined 
+      there is a valid message.
+      
+6.2.4 Modify is_valid_operation_or_signal() and when there is a valid 
+      signal/operation, check to see if its instance data
+      has already been created and hooked-up before doing so again.
+
+6.2.5 Modify is_valid_operation_or_signal() to check for conflicts with 
+      similarly named ports, EEs and class key letters for messages, bridge 
+      operations, and class operations.  When there is a conflict report the 
+      error.
+
+6.3 Parser failures during parse all can mask OAL errors. [3]   
+    Modify .../bp/ui/text/activity/ActivityEditor.java::run() to report a
+    parser error when the parser throws an exception.  The error shall be
+    "Parsing thread interrupted pre-maturely" and it shall be reported on line 
+    1.
+     
+     
+7. Design Comments
+------------------
+7.1 OAL parsing thread interrupted pre-maturely when relationships are 
+    removed [4]
+
+This issue was added to the list of parser errors to investigate with this 
+issue after the others had already been investigated.  It appears to be the 
+same type/form as other being investigated with this issue, therefore it shall
+be investigated and resolved during the final-review stage for this issue.
+If significant changes must be made a re-review of this note shall be called.
+Otherwise, any necessary changes shall be called-out in the implementation
+note.
+
+8. Work Required
+----------------
+Specified in section 6.
+
+9. Unit Test
+------------
+9.1 Test to assure the rcvd_evt and param keywords are interchangeable in an
+    ISM
+_- Create an ISM with 2 states A and B
+_- Create a transition from A to B
+_- Create an Event E1 with a parameter named P1 which is of type int.
+_- Assign E1 to the transition between States A and B
+_- Put the following OAL in State B
+   a = rcvd_evt.p1;
+   b = param.p1;
+   if (a == b) and (a == 1)
+     LOG:LogSuccess(message:"Param and rcvd_evt values are the same");
+   else
+     LOG:LogFailure(message:"Param and rcvd_evt values are NOT the same");
+   end if;
+_R No parse errors are present 
+_- Execute the above OAL
+_R The param and rcvd_evt values are the same
+_- Repeat the test for signals
+
+    
+9.2 Test to assure the send keyword is optional with an interface 
+    signal invocation.    
+_- Create an interface Package IPkg1 with an interface named interface.
+_- In the interface create one signal (sig1) and one operation (op1)
+_- Create 2 formal Components (Client and Server)
+_- Draw a provided interface from Server, and a required interface from Client,
+   connect them, and formalize the connection to "interface"
+_- In Client, create an ISM with 1 state named A
+_- Put the following OAL in state A
+	send interface::op1();
+	interface::op1();
+	send interface::sig1();
+	interface::sig1();	
+_R No parser errors are present
+_- Execute the code
+_R The signal is sent 2 times (with and without the send keyword)
+_- Add bridge and class operations with the same names and repeat the test
+_R Parser errors are reported for the name conflicts.
+_- Test that the send keyword is not allowed for bridges and operations
+_R Parser error when send is used with bridges and class operations.
+
+9.3 Verify that unexpected parser errors are handled properly
+_- Create some OAL that can cause an unexpected exception during a parse and
+   contains a syntax error after the unexpected exception.
+_- Parse the OAL
+_R Information about the unexception exception is logged
+_R The syntax error is reported
+
+ 
+End
+---
+
+$Log: dts0100598269-dts0100589755-dts0100539600.dnt,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.1  2009/07/20 14:03:40  rmulvey
+job:dts0100598269 dts0100589755 dts0100539600
+Updated note following review
+
+Revision 1.5  2009/07/17 15:34:21  rmulvey
+job:dts0100539600
+Updated this to include this issue.
+
+Revision 1.4  2009/07/17 15:33:34  rmulvey
+job:dts0100598269 dts0100589755
+Updated the note to include issue dts0100539600 which is a parser crash.
+
+Revision 1.3  2009/07/17 02:58:56  rmulvey
+job:dts0100598269 dts0100589755
+Updated the note
+
+Revision 1.2  2009/07/17 02:29:44  rmulvey
+job:dts0100598269 dts0100589755
+Updated the note
+
+Revision 1.1  2009/07/17 01:08:05  rmulvey
+job:dts0100598269 dts0100589755
+Updated the note
+
+Revision 1.2  2009/07/09 14:29:51  rmulvey
+job:dts0100525576 dts0100598269
+Updated branch and note
+
+Revision 1.1  2009/07/06 17:39:31  rmulvey
+job:dts0100525576 dts0100598269
+Introduced
+

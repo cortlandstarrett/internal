@@ -1,0 +1,227 @@
+========================================================================
+
+File:      $RCSfile: i1758.tnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:28 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Technical Note
+Remove the need for reference counting.
+
+Abstract
+--------
+This note investigates how the need for reference counting could be removed from
+PLCM.  Furthermore, it compares the current implementation to these alternative
+implementations.  This information will be used to determine if the current
+reference counting implementation should be refactored, removed, or left as is.
+
+History
+-------
+final  - i1758-060206-01.rvm
+update - i1758-060524-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 1758
+[2] Bugzilla issue 1615
+    Empty Model Explorer in restored state
+[3] <cvs>Documentation/internal/technical/Persistence/i845-PLCM_1_0.ant
+[4] Bugzilla issue 1602
+    Component name conflict errors when recreating a new model from an import
+    file
+[5] Issue 1754
+    Refactor PLCM to account for the new proxy policy
+[6] Bugzilla issue 1755
+    Refactor PLCM to account for the new persistence rules
+[7] Bugzilla issue 1756
+    Refactor PLCM lazy-loading
+
+Background
+----------
+The PLCM analysis note stated that reference counting was not necessarily
+needed [3 - Analysis 3.10.2.5].  This led to a bugzilla item being created [1]
+which called for reference counting to be removed.  This note will help us
+investigate the pros and cons of refactoring the current reference counting
+implementation.  This note is being used as a tool to help us make a decision if
+the current reference counting implementation should be modified or not.  If the
+decision is made to proceed with modification, the note will help us define the
+path forward.
+
+The primary reason reference counting was to be removed, is that it was
+considered complex, and the feeling was that this complexity was leading to
+problems.  Now that PLCM has been refactored for other reasons [5,6,7] the
+requirement that the dangling reference code be removed
+[3 - Analysis 3.10.2.5] is being re-analyzed in this note.  It is possible
+that removal of reference counting will make the PLCM implementation more
+complex.  If this is true (and there are no known issues with the current
+implementation), it will be best to leave reference counting as is.
+
+Analysis
+--------
+1. Reference counting was created to remove unreferenced proxies.  The goal of
+   this issue is to develop a method that satisfies the requirements met by the
+   current reference counting implementation, but refactors to simplify the
+   implementation if possible.
+2. The proposed design should account for the following requirements.
+2.1 Proxies must be removed properly when a component is unloaded.
+    (example: clearDatabase is called for the component)
+2.2 Proxies must be removed properly when model element is disposed. (Example:
+    Disposing Imported Class may leave Model Class proxy in the memory.)
+2.3 Proxies must be removed properly when any unrelate is performed. (Example:
+    Changing the base class of any imported class may leave old base class proxy
+    in the memory.
+
+Design Alternative 1:
+---------------------
+This approach was the first alternative that I thought of.  Unfortunately, this 
+approach only meets one of the requirements specified in the analysis section.
+
+  find all elements(including proxy candidate) of the given component using same
+   logic as used in export code generation
+   for each element in the list
+     if element has external RGO
+       convert this element to proxy
+     else
+       remove element.
+     end if
+  end for
+
+Design Alternative 2:
+---------------------
+1. Refactor reference counting.
+   This design meets all three requirements given in the analysis section.
+
+1.1 Keep reference counting, but don’t automatically remove the proxy when the
+    refCount reaches 0. Earlier proxies were being removed in the unrelate
+    method when the reference count reached 0, but the analyst may continue
+    using that orphaned proxy element.
+
+1.2 A List is created in ModelRoot to hold unreferenced proxies.
+
+1.3 When refCount reaches 0 add proxy to the unreferenced proxies list.
+
+1.4 At the end of every transaction unreferenced proxies list is evaluated and
+    all unreferenced proxies are removed.
+
+Design Alternative 3:
+---------------------
+1.  Create non-singleton proxies
+1.1 Every RGO will have its own proxy.
+1.2 CreateProxy will return a new proxy instance if it can not look up a real
+    instance.
+1.3 When the component containing the real instance is loaded, it will remove 
+    all the proxies and perform bactchRelate on all RGOs.
+1.4 When the component containing the real instance is unloaded, all RGOs will
+    be updated by creating separate proxies for each RGO.
+
+2. Use of multiple proxies has following disadvantages:
+
+2.1 If more then one proxy exists in memory for one element, select many will
+    return more then one instance representing same element. A change to select
+    many is required to filter multiple proxies.
+2.2 When the component containing the real instance is loaded, we have to remove
+    all other similar proxies and relate all referring elements with loaded real
+    instance.
+2.3 The non-singleton proxy approach would still need to remove proxies given in 
+    analysis section (2).
+    
+Design Alternative 4:
+---------------------
+1.  Keep the current implementation.
+1.1 The current implementation of reference counting removes proxy instances in
+    the relate method when the reference count reaches 0.
+
+2.  Problems associated with the current implementation.
+2.1 The analyst may continue to use a proxy instance after unrelate has occurred
+    (he may relate it to some other instance). One can't expect removal of 
+    instances just upon unrelate, Because delete and unrelate are two different
+    operation.
+
+Summary
+-------
+We have spent a good deal of time implementing and fixing proxy policies 
+[5,6,7].  We should choose the path that should capitalize or experience with
+current implementations. Every new implementation will bring some new issues.
+Keeping reference counting intact may not leave any outstanding issues but it is
+vulnerable to many others as Design 4 points. So to be safe I recommend to
+choose refactoring current Reference Counting (Design 2) to make it practical.
+
+End
+---
+$Log: i1758.tnt,v $
+Revision 1.1  2009/09/03 18:22:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.15  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.14.16.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.14  2006/06/20 11:52:32  araza
+Job:1758
+Addressed observations.
+
+Revision 1.13  2006/06/02 13:30:03  araza
+Job:1758
+Removed repeated phrase.
+
+Revision 1.12  2006/06/02 09:55:19  araza
+Job:1758
+Addressed pre-review comments.
+
+Revision 1.11  2006/06/01 18:18:27  araza
+Job:1758
+Explained summary.
+
+Revision 1.10  2006/06/01 17:32:58  araza
+Job:1758
+Addressed Bob's observations.
+
+Revision 1.9  2006/06/01 16:16:20  rmulvey
+Job:1758
+Minor changes.  I added one "Asif todo" that needs to be dealt with (in the summary).
+
+Revision 1.8  2006/06/01 15:35:54  araza
+Job:1758
+Addressed Bob's observations.
+
+Revision 1.7  2006/05/31 16:01:41  rmulvey
+Job:1758
+Reviewed and added detail.  Also added comments labeled "Asif TODO:" where more information is needed.  This is not yet ready for review.
+
+Revision 1.6  2006/05/31 12:58:04  araza
+Job:1758
+Addressed observations.
+
+Revision 1.5  2006/05/23 12:34:37  rmulvey
+Job:1758
+Added a conclusion to the analysis.
+
+Revision 1.4  2006/05/19 06:54:36  araza
+Job:1758
+Addressed Bob's Pre-review observation.
+
+Revision 1.3  2006/05/18 15:40:09  araza
+Job:1758
+Removed Contradictory reason.
+
+Revision 1.2  2006/05/18 12:00:26  rmulvey
+Job:1758
+Review and updated grammar.
+
+Revision 1.1  2006/05/18 08:22:04  araza
+Job:1758
+
+Introduced.
+

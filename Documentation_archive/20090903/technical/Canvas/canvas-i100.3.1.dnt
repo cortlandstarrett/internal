@@ -1,0 +1,182 @@
+========================================================================
+
+File:      $RCSfile: canvas-i100.3.1.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:57 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Canvas New Symbol Functionality
+
+Abstract
+--------
+Eclipse based BridgePoint needs a canvas on which to show diagrams. This
+note defines the design chosen to allow the user to add symbols to the
+canvas.
+
+History
+-------
+
+Document References
+-------------------
+[1] core/doc/internal/technical/Canvas/canvas.ant
+[2] canvas/mdl/ooaofgraphics.bak
+[3] core/mdl/ooaofooa.bak
+[4] core/doc/internal/technical/Canvas/canvas-i100.1.dnt
+[5] Bugzilla issue 100
+[6] Bugzilla issue 187
+
+Design
+------
+The new functionality introduced by this work is achieved partly by action
+language added to the Canvas[2] and Core[3] models. It is also partly achieved
+by extensions to hand written code. Consequently, this design note falls into
+two sections. The first section discusses the changes made to the domain models.
+The second section describes the changes made to the hand written classes to
+support the interactive canvas requirements.
+
+i100.3.1     Modeled Changes
+i100.3.1.1   Graphics Domain Changes
+i100.3.1.1.1 In the Graphics Domain, a new subsystem is added, named
+             Canvas Tools.
+i100.3.1.1.2 A new class 'Model Tool' is created. This is related to Model by
+             an association, which captures the set of tools assigned to a
+             model canvas. A boolean attribute of Model Tool, 'active'
+             captures the currently activated tool instance. Two subtypes of
+             Model Tool, 'Shape Tool' and 'Selection Tool' are added in this
+             new subsystem. A state machine delegates incoming events to the
+             appropriate subtype instance. This state machine also takes care
+             of setting and resetting the Model Tool.active attribute to
+             record which instance is the active tool.
+i100.3.1.1.3 A Shape Tool state machine is added to control the drawing of a
+             new symbol.
+i100.3.1.1.4 A Selection Tool state machine is added that deactivates all of the
+             other tools allocated with that model canvas.
+i100.3.1.1.5 The state model for Model is modified to delegate mouse events to
+             the currently active Model Tool instance when the user enables a
+             tool button in the toolbar above the canvas.
+i100.3.1.1.6 In the Graphics::Graphics Data subsystem, attributes creator,
+             isFixedAspectRatio, defaultWidth, defaultHeight and iconName are
+             added to the class, Element Specification.
+i100.3.1.1.7 Also in the Graphics::Graphics Data subsystem, the association
+             R16 is added to denote a graphical element that has not yet been
+             initialized with its counterpart client instance.
+i100.3.1.2   Client Domain Changes
+             The new operations specified below create new client model
+             instances. They are triggered from the Graphics Domain using the
+             method name cached in the creator attribute added above
+             (i100.3.1.1.6).
+i100.3.1.2.1 The ooaofooa is extended to add the operation Domain::newSubsystem.
+i100.3.1.2.2 The ooaofooa is extended to add the operation
+             Domain::newExternalEntity.
+i100.3.1.2.3 The ooaofooa is extended to add the operation Subsystem::newClass.
+i100.3.1.2.4 The ooaofooa is extended to add the operation Subsystem::newIClass.
+i100.3.1.2.5 The ooaofooa is extended to add the operation
+             StateMachine::newState.
+
+i100.3.2     Code Changes            
+i100.3.2.1   Add a new entry, 'createMethod', to the symbol element in the
+             core.editors extension point schema to define the metamodel
+             operation to be called when the user completes the symbol drawing
+             process (i100.3.1.1.6 and i100.3.1.2).
+i100.3.2.2   An additional entry, 'icon', is added to the symbol element in the 
+             core.editors extension point schema to define the icon to be shown
+             on the tool button.
+i100.3.2.3   In the canvas plugin definition, suitable values for the above new
+             required attributes are added to each symbol element.
+i100.3.2.4   In CanvasPlugin, new code is added to read the new plugin registry
+             entries and populate the new attributes at startup.
+i100.3.2.5   CanvasEditorActionContributor is extended to add the editing tool
+             buttons dynamically each time a canvas is focussed. The tools are
+             created based on the pre-existing Element Specification instances.
+             For each tool, it also creates a suitable instance of Model Tool
+             and relates it to both the corresponding Element Specification and
+             the current canvas Model instance.
+i100.3.2.6   CanvasEditorActionContributor is also extended with a new method
+             setTools. This method scans the state of each of the modeled tool
+             instances and forces the displayed buttons to always accurately
+             reflect that state.
+i100.3.2.7   A new subtype of IAction, ToolAction is added to the canvas plugin
+             package. Each instance caches the modeled tool to which it is
+             attached. This allows the instantiated subtypes to send the events
+             Activate and Deactivate to the state machine created in
+             i100.3.1.1.2.
+i100.3.2.8   A new class, CanvasEditorListener is added to the canvas plugin.
+             This listens for changes to the model. Depending on the kind of
+             Delta, this class creates and deletes Model instances and forces
+             the diagrams to refresh as required.
+
+Work Required
+-------------
+i100.3.1     Modeled Changes
+i100.3.1.1   Graphics Domain Changes
+i100.3.1.1.1 Add subsystem Canvas Tools.
+i100.3.1.1.2 Add class Model Tool with state machine.
+i100.3.1.1.3 Add class Shape Tool with state machine.
+i100.3.1.1.4 Add class Selection Tool with state machine.
+i100.3.1.1.5 The state machine for Model is modified to delegate mouse events to
+             the currently active Model Tool instance when the user enables a
+             tool button in the toolbar above the canvas.
+i100.3.1.1.6 In the Graphics::Graphics Data, class Element Specification,
+             attributes iconName and creator are added.
+i100.3.1.2   Add the new operations specified in the design.
+
+i100.3.2     Code Changes            
+i100.3.2.1   Modify core/schema/editors.exsd, a new entry, 'createMethod' is
+             added to define the metamodel operation to be called when the user
+             completes the drawing process (i100.3.1.1.4 and i100.3.1.2).
+i100.3.2.2   An additional entry is added to define the icon to be shown on the
+             tool button.
+i100.3.2.3.1 In canvas/plugin.xml, values for the creator attribute are derived
+             from the code generated from each of the corresponding new
+             operations added to the metamodel.
+i100.3.2.3.2 In canvas/plugin.xml, values for the icon attribute are specified
+             to allow the plugin to find the required icon bitmap at startup.
+i100.3.2.3.3 Corresponding new icon bitmaps are added to core/icons.
+i100.3.2.4   In CanvasPlugin.java, new code is added as prescribed in the
+             design.
+i100.3.2.5   CanvasEditorActionContributor.java is extended as described in the
+             design.
+i100.3.2.6   ToolAction.java is introduced as prescribed in the design.
+i100.3.2.7   CanvasEditorListener.java is introduced as prescribed in the
+             design.
+
+End
+---
+
+$Log: canvas-i100.3.1.dnt,v $
+Revision 1.1  2009/09/03 18:18:57  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.158.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2004/07/15 16:44:14  campbell
+Job: 187
+Renamed from i100.3.dnt.
+
+Revision 1.3  2004/05/27 18:33:41  campbell
+Job: 187
+Addressed review minutes.
+
+Revision 1.2  2004/05/26 16:10:44  campbell
+Job: 187
+Substantially reworked to support the break out
+of Tools into separate classes.
+
+Revision 1.1  2004/05/25 18:39:21  campbell
+Job: 187
+Renamed from i187.int.

@@ -1,0 +1,244 @@
+========================================================================
+
+File:      $RCSfile: dts0100691478.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Delete/undo of supertype class with orphaned supertype association causes 
+ClassInAssociation error
+
+
+1. Abstract
+-----------
+There is an error that happens when you have a superType and the superType 
+association is not connected to a subType class,
+then delete the superType class and hit 'Undo'. 
+
+The error looks like this 
+ "ClassInAssociation <ClassName> is referring to missing or incorrect ModelClass 
+ file"
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100691478
+
+
+4. Background
+-------------
+
+
+5. Analysis
+-----------
+5.1 How to Reproduce the issue 
+    _- Create Class "One" SuperType 
+    _- Connect the "SuperType" part of the Relation "R1" to class "One"  
+	_- Create Class "Two" 
+	_- Connect the subType class "Two" to the Relation "R1"
+	_- Select only the SuperType Class "One" and the "SuperType part of the 
+                                                                  Relation "R1"
+	_- Copy the selected
+	_- Paste 
+	R- The pasted relation "R2" still has ClassAsSubType "Two"  
+	_- Delete the pasted part Then undo the deletion 
+	R- This Error shows in the problems view
+       "ClassInAssociation (Two) is referring to missing or incorrect ModelClass 
+        file"
+       
+- Another Place where the same issue occurs:
+    _- Create Class "One" SuperType 
+    _- Connect the "SuperType" part of the Relation "R1" to class "One"  
+	_- Create Class "Two"  
+	_- Connect the subType class "Two" to the Relation "R1" 
+    _- Create Class "Three" 
+	_- Connect the subType class "Three" to the Relation "R1" 
+    _- Select only the SuperType Class "One ", 
+                   the SubType   Class  "Two",
+                   the superType Part of the Relation "R1"
+                   and the SubType Part of the Relation "R1".
+    _- Copy the Selected 
+    _- Paste 
+    R- The Pasted Relation "R2" has ClassAsSubType "Two" and "Three"
+    _- Delete the pasted part Then undo the deletion 
+	R- This Error shows in the problems view
+       "ClassInAssociation (Three) is referring to missing or incorrect 
+        ModelClass file"             
+                    
+5.2 The Above error occurs because when exporting an Association the function 
+    export_Association_c() gets all class instances of "ClassInAssociation_c" 
+    connected to the Association being exported across the relation "R201"
+    and export them all.
+    
+    The function export_ClassInAssociation_c() exports the class instance 
+    "ReferringClassInAssoc_c" that's connected to it across the relation "R203".
+    The class instance should not be exported if the 
+    "ModelClass_c"/"ImportedClass_c" connected to it are not included in the 
+    instances being exported.   
+    
+      
+ 
+6. Design
+---------
+6.1 The "ReferringClassInAssoc_c" instance should not be exported unless the 
+    associated "ModelClass_c" or "ImportedClass_c" are exported as well.
+
+6.2 A modification is being added to the function 
+    export_ReferringClassInAssoc_c() to check if the referring class is subType 
+    and the ModelClass_c or the ImportedClass_c connected to it is not selected.
+    If so, the function returns without exporting that instance of 
+    class ReferringClassInAssoc_
+
+
+7. Design Comments
+------------------
+7.1 The function export_ReferringClassInAssoc_c() lives in the file
+    /com.mentor.nucleus.bp.io.mdl/src/com/
+                                mentor/nucleus/bp/io/mdl/ExportModelStream.java
+   This file is auto-generated and the file that generates the export function 
+   is /com.mentor.nucleus.bp.io.core/arc/export_functions.inc
+   
+   The modifications are made to this file. 
+   
+7.2 The modification in "export_functions.inc" will be like the following 
+...
+...
+protected void export_${parent_name}( ${parent_arg_type} inst, IProgressMonitor 
+                                                     pm, boolean writeAsProxies, 
+                        boolean isPersistable, boolean exportAlternateChildren )
+ .end if
+throws IOException
+{
+  if ( inst == null )
+  {
+    return;
+  }
+>  .if  ( (parent_name =="ReferringClassInAssoc_c") and (domain_class_name=="")) 
+>   if (ClassAsSubtype_c.getOneR_SUBOnR205(inst) !=null)
+>   {	  
+>	  if(m_inst.getClass().toString().endsWith("Association_c"))
+>	  {
+>		ClassInAssociation_c classInAssociation =ClassInAssociation_c.
+>		                                               getOneR_OIROnR203(inst) ;
+>	    ModelClass_c modelClass = ModelClass_c.
+>	                                    getOneO_OBJOnR201( classInAssociation );
+>	    ImportedClass_c importedClass = 
+>	                   ImportedClass_c.getOneO_IOBJOnR202( classInAssociation );  
+>	     if (! Cl_c.Isselected( modelClass )&&!Cl_c.Isselected( importedClass ))
+>		   {
+>		     return;
+>		   }    
+>	   }  
+>   } 
+   .end if
+....
+....                                
+
+8. Work Required
+----------------
+stated in the design section
+
+9. Unit Test
+------------
+9.1 Manual Tests
+
+9.1.1
+9.1.1.1  
+    _- Create new Package "PKG" 
+    _- Create Class "One" SuperType 
+    _- Connect the "SuperType" part of the Relation "R1" to class "One"  
+	_- Create Class "Two"  
+	_- Connect the subType class "Two" to the Relation "R1"
+	_- Select only the SuperType Class "One " and the "SuperType part of the 
+                                                                       Relation"
+	_- Copy the Selected
+	_- Paste 
+	R- The pasted relation "R2" still has No ClassAsSubType   
+	
+	_- Delete the pasted part Then undo the deletion 
+	R- No errors show
+       
+9.1.1.2
+    _- Create new Package "PKG"
+    _- Create Class "One" SuperType 
+    _- Connect the "SuperType" part of the Relation "R1" to class "One"  
+	_- Create Class "Two"  
+	_- Connect the subType class "Two" to the Relation "R1" 
+    _- Create Class "Three"  
+	_- Connect the subType class "Three" to the Relation "R1" 
+    _- Select only the SuperType Class "One ", 
+                   the SubType   Class  "Two",
+                   the superType Part of the Relation "R1"
+                   and the SubType Part of the Relation "R1".
+    _- Copy the Selected 
+    _- Paste 
+    R- The Pasted Relation "R2" has No ClassAsSubType
+    
+    _- Delete the pasted part Then undo the deletion 
+	R- No errors show
+
+ 
+9.1.2
+9.1.2.1
+    _- Create New xtUml domain "Domain" 
+    _- Create new SubSystem "subSystem" 
+    _- Create Class "One" SuperType 
+    _- Connect the "SuperType" part of the Relation "R1" to class "One"  
+	_- Create Class "Two"  
+	_- Connect the subType class "Two" to the Relation "R1"
+	_- Select only the SuperType Class "One " and the "SuperType part of the 
+                                                                       Relation"
+	_- Copy the Selected
+	_- Paste 
+	R- The pasted relation "R2" still has No ClassAsSubType   
+	
+	_- Delete the pasted part Then undo the deletion 
+	R- No errors show
+       
+9.1.2.2
+    _- Create New xtUml domain "Domain" 
+    _- Create new SubSystem "subSystem" 
+    _- Create Class "One" SuperType 
+    _- Connect the "SuperType" part of the Relation "R1" to class "One"  
+	_- Create Class "Two"  
+	_- Connect the subType class "Two" to the Relation "R1" 
+    _- Create Class "Three"  
+	_- Connect the subType class "Three" to the Relation "R1" 
+    _- Select only the SuperType Class "One ", 
+                   the SubType   Class  "Two",
+                   the superType Part of the Relation "R1"
+                   and the SubType Part of the Relation "R1".
+    _- Copy the Selected 
+    _- Paste 
+    R- The Pasted Relation "R2" has No ClassAsSubType
+    
+    _- Delete the pasted part Then undo the deletion 
+	R- No errors show
+
+
+9.2 Run All JUnit Tests
+
+
+
+End
+---
+
+$Log: dts0100691478.dnt,v $
+Revision 1.2  2010/08/12 11:56:28  hkhaled
+job: dts0100691478
+committing dnt modifications adding test cases under generic package
+
+Revision 1.1  2010/07/28 13:43:33  hkhaled
+job:dts0100691478
+committing dnt to the issue Delete/undo of supertype class with orphaned supertype association causes ClassInAssociation error
+

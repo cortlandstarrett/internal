@@ -1,0 +1,254 @@
+========================================================================
+
+File:      $RCSfile: i2349.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Saving Intermediate Values
+
+Abstract
+--------
+This note describes how the requirements and design for saving intermediate 
+values.
+
+History
+-------
+
+Document References
+-------------------
+[1] BZ issue 1703
+[2] /Documentation/internal/technical/Verifier-Debugger/i1703.ant
+
+Background
+----------
+To mimic JDT, Verifier needs to halt on breakpoints set on values within a 
+statement. To accomplish this, all the previously evaluated values in the 
+statement need to be saved to prevent side-effects.   
+
+Analysis
+--------
+1. Verifier uses the getValue operation of the Value class to retrieve values. 
+Whenever Verifier retrieves a value via the getValue operation, the value is not
+saved. A mechanism needs to devised where evaluated values are saved as 
+intermediate values. The intermediate values will be used when resuming
+so that values are not re-evaluated.  
+
+2. Intermediate values should be disposed of as they are no longer needed to 
+prevent memory leaks. In most cases, intermediate values should only be disposed 
+when the statement for which the intermediate values were created for completes
+execution. However, with binary operations, the intermediate values for the    
+LHS and RHS of the operation should be disposed once the operation is performed.
+
+  
+Design
+------
+1. Create a mechanism to save intermediate values
+
+Intermediate Value Stack (L_IVS) will be created in the local subsystem. 
+Intermediate Value (L_IV)  will also be created in the local subsystem.
+Since values are passed as instances, the intermediate values will have an
+instance attribute (value), that will contain the intermediate value.  
+There will be three associations between Intermediate Value Stack and 
+Intermediate Value: top(R1014), current(R1015), and bottom(R1016). The top 
+association will be used to locate the top intermediate value on the stack and 
+will be primarily used when pushing/popping values.  The bottom and current 
+associations will be used when resuming to retrieve intermediate values.
+
+To provide execution context, there will be an association between Stack Frame
+and Intermediate Value Stack. Whenever a stack frame is created, an intermediate
+value stack will be created. Whenever the stack frame is disposed, the 
+intermediate value stack will also be disposed.
+
+To enabled pushing/popping, a reflexive association will be created on 
+Intermediate Value. The association will indicate the next/previous intermediate
+value. Intermediate values will be pushed and popped from a intermediate value
+stack in the same fashion as stack frames are pushed and popped from the stack. 
+      
+If Value.getValue() is invoked while the stack Run_State is Running, the read
+value will be pushed to an intermediate value stack, assuming a halt did not 
+occur while reading the value.  If getValue is invoked while the stack Run_State 
+is Resuming, the current intermediate value will be retrieved from the 
+intermediate value stack, assuming that the intermediate value was
+pushed.  If a value is read while the stack Run_Sate is Halted, 
+no value will be read, and a null value will be returned.   
+
+Value.getValue() will be modified to contain the following in order to 
+save/retrieve values as described above:
+
+// Get intermediate value stack
+select one ivs related by stack_frame->L_IVS[R1013]; 
+
+// Compute value and save as intermediate value
+if(stack.Run_State == RunModeType::Running)
+  value = self.computeValue(stack_frame_id:stack_frame.Stack_Frame_ID); 
+  // If we halted while computing value, mark the value. Otherwise, push the intermediate value
+  if(stack.Run_State == RunModeType::Halted)
+    self.haltOnValue(stack_frame_id:stack_frame.Stack_Frame_ID);  
+  else
+    ivs.push(value:value,value_id:self.Value_ID);  
+  end if; 
+  return value; 
+  
+// Resume to value we halted on
+elif(stack.Run_State == RunModeType::Resuming)
+  value = UTIL::unique_id_to_instance(value:UTIL::NULL_UNIQUE_ID()); 
+  select one halt_value related by stack_frame->V_VAL[R944]; 
+  select one current_iv related by ivs->L_IV[R1015]; 
+  
+  // We have reached value that we halted on, so compute it
+  if(halt_value.Value_ID == self.Value_ID)
+    unrelate halt_value from stack_frame across R944;  
+    value = self.computeValue(stack_frame_id:stack_frame.Stack_Frame_ID);   
+  // Already pushed intermediate value, so get it
+  elif(current_iv.Value_ID == self.Value_ID)
+    value = ivs.currentValue();
+    return value; 
+  // Never pushed intermediate value, so compute it
+  else 
+    value = self.computeValue(stack_frame_id:stack_frame.Stack_Frame_ID);   
+  end if; 
+  
+   // If we halted while computing value, mark the value. Otherwise, push the intermediate value
+  if(stack.Run_State == RunModeType::Halted)
+    self.haltOnValue(stack_frame_id:stack_frame.Stack_Frame_ID);  
+  else
+    ivs.push(value:value,value_id:self.Value_ID); 
+  end if; 
+  return value;
+
+// We are halted, do not compute a value
+elif(stack.Run_State == RunModeType::Halted)
+  return UTIL::unique_id_to_instance(value:UTIL::NULL_UNIQUE_ID());  
+end if; 
+
+   
+2. Create a mechanism to dispose intermediate values
+
+After completely executing a statement, we will dispose all intermediate values
+for the statement by popping from the stack.  A popAll operation will be added
+to the intermediate value stack class to dispose all intermediate values. 
+This operation will be invoked in Statement.execute() after a statement 
+has completed execution: 
+
+// Pop all intermediate values used while executing statement
+if(stack.Run_State != RunModeType::Halted)
+  select one ivs related by stack_frame->L_IVS[R1013];
+  ivs.popAll();  
+end if; 
+
+Binary operations currently invoke the getValue operation to retrieve the LHS
+and RHS of the operation. As specified in Design 1, this guarantees that the
+LHS and RHS values are pushed to the intermediate value stack. If we do not halt
+while retrieving the LHS and RHS, we can pop their intermediate values. The
+following OAL code will be added to Binary Operation.getvalue(): 
+
+// Get intermediate value stack
+select one ivs related by stack_frame->L_IVS[R1013];
+
+// Get left and right operand value
+select one leftOp related by self->V_VAL[R802];
+select one rightOp related by self->V_VAL[R803];
+leftOpValue = leftOp.getValue(stack_frame_id:param.stack_frame_id);
+rightOpValue = rightOp.getValue(stack_frame_id:param.stack_frame_id); 
+
+// If we halted while getting left or right operand value, return null instance. 
+// Otherwise, pop intermediate values from intermediate value stack.
+if(stack.Run_State == RunModeType::Halted)
+  return UTIL::unique_id_to_instance(value:UTIL::NULL_UNIQUE_ID());  
+else
+  ivs.pop(); 
+  ivs.pop(); 
+end if;   
+
+ 
+Design Comments
+--------------- 
+
+
+Work Required
+-------------
+The following operations will be added to Intermediate Value Stack: 
+
+1. void push(instance value,unique_id value_id): 
+	Creates an intermediate value and pushes it to the top of the intermediate 
+	value stack. 
+	
+2. void pop(): 
+	Pops the intermediate value from the top of the intermediate value stack.
+
+3. void popAll(): 
+	Pops all intermediate values from the intermediate value stack.
+	
+4. instance currentValue():
+	Retrieves the value specified by the current association between 
+	intermediate value stack and intermediate value. Once the value has been 
+	retrieved, current is updated to point at next intermediate value.    
+	
+The following operation will be added to Value:
+
+1. void haltOnValue(): 
+	Relates the value we halted on to the stack frame. Also updates current 
+	to point at bottom intermediate value.   
+
+2. instance computeValue(unique_id stack_frame_id):
+	Computes value and returns it as an instance. 
+	
+
+Unit Test
+---------
+Unit tests will be performed on all statements that retrieve values. With each
+tested statement, there will be values that create side effects and a value 
+that has a breakpoint. With each test, we will execute a statement, halt on the
+breakpoint, check for the correct number of side effects, resume execution, and
+re-check the number of side-effects. Unit tests will be performed on the 
+following statements:  
+
+1.	function(sideEffect(),breakpoint_val,sideEffect()); 
+
+2.	operation(sideEffect(),breakpoint_val,sideEffect()); 
+
+3.	bridge(sideEffect(),breakpoint_val,sideEffect()); 
+
+4.	attribute = sideEffect() + breakpoint_val + sideEffect(); 
+
+5.	select any FOO from instances of I_FOO where (selected.something == breakpoint_val 
+		and selected.somethingElse == sideEffect());
+		
+
+End
+---
+
+$Log: i2349.dnt,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/07/27 15:17:36  kurtb
+Job: 2349
+Re-introduced
+
+Revision 1.1  2006/07/26 20:58:27  kurtb
+Job: 2349
+Introduced
+
+Revision 1.1  2006/07/26 15:08:47  kurtb
+Job: 1703
+Introduced
+

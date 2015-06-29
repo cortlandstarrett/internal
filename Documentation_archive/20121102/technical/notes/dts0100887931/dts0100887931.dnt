@@ -1,0 +1,668 @@
+========================================================================
+
+File:      $RCSfile: dts0100887931.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Add support for realized components
+
+1. Abstract
+-----------
+This note describes the work required to support transfer of control and data
+between Verifier and a component realized in Java code.
+
+2. History
+----------
+  update - dts0100887931.rvm
+  
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100887931 - Enable users to co-simulate xtUML models
+     together with external code packaged in pre-compiled libraries
+[2]  cvs:\Documentation\internal\technical\notes\dts0100887931\dts0100887931.ant
+[3]  cvs:\Documentation\external\requirements\
+                                          SRS_mixed_abstraction_verifier.20.docx
+[4]  ClearQuest DEI dts0100896786 - Update User documentation for new Verifier
+     features
+[5]  ClearQuest DEI dts0100896789 - Message argument orderings differ in Session
+     explorer from how they appear in the interface definition
+[6]  http://docs.oracle.com/javase/1.4.2/docs/api/java/util/ArrayList.html
+[7]  http://docs.oracle.com/javase/1.4.2/docs/api/java/lang/reflect/Proxy.html
+[8]  ClearQuest DEI dts0100897446 - Parser allows a binary operation to be
+     passed as a by reference argument value
+[9]  ClearQuest DEI dts0100857951 - Verifier launch issues
+[10] ClearQuest DEI dts0100898296 - Prevent Verifier launch mis configuration or
+     report to the user.
+ 
+4. Background
+-------------
+This note and the preceding analysis note[2] describe the features provided in
+this first phase of providing realized component support in Verifier. The full
+feature set described in the requirement[3] will be completed in the next
+development cycle.
+
+This design note describes a new feature being added to Verifier. Consequently,
+all uses in this document of terms such as 'in', 'out', 'into', 'ingoing',
+'outgoing' etc. are used with respect to Verifier and not to the Java
+environment. So an 'incoming' message is one which is transitioning from a Java
+context into a Verifier context.
+
+5. Requirements
+---------------
+See [2].
+
+6. Analysis
+-----------
+6.1 Introduction 
+This section is provided as an extension to the analysis provided in the
+preceding document[2]. This section describes the user experience associated
+with the new Verifier Interface to External Code (VIEC) feature. It is intended
+that this text be reformatted for user use. An issue [4] is raised to track its
+addition to the BridgePoint user documentation.
+
+6.2 Overview
+To provide a Java realized component, the user must provide a hand written class
+in a location where Verifier will find it (see 6.9). The external interface
+presented by this class must take a particular form (see 6.3 and 6.5 below). In
+particular, the class must implement and use methods defined by the modeled
+interfaces presented by the modeled component being realized. Finally, in order
+to use structured data types in realized code, both the Java language compiler
+and Verifier will require class definitions for these.
+
+6.3 Interface definition
+For each interface surfaced by a class, there will be two Java interfaces
+defined (to understand why, see 6.5.4). The form of these definitions shall be:
+
+ - I<BPInterfaceName>ToProvider
+ - I<BPInterfaceName>FromProvider
+
+Note that <BPInterfaceName> is the name of the modeled interface, with all
+spaces removed and case preserved. Each message defined on the modeled interface
+is expected to be represented by a method in the Java interface definition. Each
+method shall take the form:
+
+<ReturnType> <BPMessageName>(ComponentInstance_c senderReceiver,
+                                            list of <BPArgument>s)
+
+So a complete interface definition is of the general form:
+
+public interface I<BPInterfaceName>ToProvider {
+  // to provider message definitions of form
+  // <ReturnType> <BPMessageName>(ComponentInstance_c senderReceiver,
+                                                   list of <BPArgument>s);
+}
+
+Note that, as for realized External Entities, com.mentor.nucleus.bp.core must be
+imported into user code.
+
+6.3.1 <ReturnType> takes the form described in 6.4 below.
+6.3.2 <BPMessageName> is exactly the same name as given to the modeled message.
+      The names are case sensitive.
+6.3.3 The meaning of 'senderReceiver' depends on whether the Interface is being
+      used in an incoming or outgoing context (recall that incoming means
+      relative to Verifier). In an outgoing context, senderReceiver holds a
+      reference to the modeled component instance which sent the message to the
+      realized component instance. In an incoming context, senderReceiver holds
+      a reference to the component instance the writer of the realized code
+      wishes to send the message to. In BridgePoint OAL specifying this target
+      is optional, in which case Verifier will automatically locate the target
+      component instance. When sending a message from realized code, passing
+      null in this argument achieves the same behavior.
+6.3.4 The list of <BPArgument>s is a comma separated list of arguments, each of
+      the form:
+
+      <ArgumentType> <BPArgumentName>
+
+      where <ArgumentType> takes the form specified in 6.4 below and
+      <BPArgumentName> is exactly the same as given to the modeled argument name
+      including character case. Parameter order is significant and follows the
+      order given as it appears under the interface definition itself (note that
+      the messages show in other places within the BP Views with _different_
+      argument orderings, a defect[5] is raised to get this rectified).
+
+6.4 Type mappings
+Depending on the modeled type chosen, <ReturnType> is either int, float,
+boolean, String, UUID, ComponentInstance_c, or a Java definition for a modeled
+structured data type (see 6.6). See 6.7 for array handling.
+
+6.5 Realized component class definition
+The declaration of a realized component class takes the form:
+
+public class <BPComponentName> implements <InterfaceList> {
+  public <BPComponentName> (<PortList>) {
+    // constructor body (cache ports here, see 6.5.3 below)
+  }
+  // public method list ...
+}
+
+6.5.1 <BPComponentName> is the modeled component name with spaces removed and
+      case preserved.
+6.5.2 <InterfaceList> is a comma separated list of the interfaces implemented by
+      the realized class. The interfaces are defined as already described in
+      6.3.
+6.5.3 The <PortList> is a comma separated list of arguments, one for each port
+      the modeled component presents to its environment. Each port argument
+      implements an interface as defined in 6.3 and the name of each argument is
+      the name of the modeled port. As will be described below, all calls into
+      Verifier from realized code are made through these port instances.
+      Therefore, it is the responsibility of the realized code writer to cache
+      these argument values during construction for later use.
+6.5.4 Interface direction
+      In section 6.3 above, it was stated that two interface definitions are
+      created for each xtUML interface. This is because xtUML interfaces are
+      bidirectional. That is, the messages inside an interface definition may
+      have their direction specified independently of each other. In xtUML, the
+      message direction is specified as either 'To Provider' or 'From Provider.
+      The mapping to Java interface definitions is such that messages that have
+      a 'To Provider' direction are defined in the I<BPInterfaceName>ToProvider
+      interface definition and messages that have a 'From Provider' direction
+      are defined in the I<BPInterfaceName>FromProvider interface definition.
+      
+      The 'implements' list of interfaces and the constructor argument list
+      complement each other to provide a complete implementation of the sum of
+      the ports a modeled component exposes.
+      
+      Thus, a component that exposes a Provided interface will add the
+      equivalent I<BPInterfaceName>ToProvider interface to its 'implements' list
+      and will add an argument of type I<BPInterfaceName>FromProvider to its
+      constructor and cache the value passed during construction. Conversely, a
+      component that exposes a Required interface does the opposite; adds the
+      FromProvider interface variant to the 'implements' list and the ToProvider
+      variant to the constructor argument list.
+      
+      To send a message, the realized code simply takes the form:
+      
+      <type> result = <portname>.<messagename>(sender, argumentvalues);
+      
+      Where <portname> is the name of the Java field used to cache the port
+      reference passed by Verifier at startup. As discussed in 6.3.3, the sender
+      argument may be null if the user wishes Verifier to assume a singleton
+      component instance target.
+
+6.6 Realized structured data type definition
+A Java realization of each structured data type must be provided to allow use of
+xtUML structured data types. These definitions take the form of a passive class
+(with no methods) containing a list of public fields whose type follows the
+rules defined in 6.4 above and whose name exactly matches that of modeled member
+name. Note that this definition is recursive, so nested structured data types
+are supported. In summary a structured data type definition takes the generic
+form:
+
+public class <BPSDTName> {
+  list of <BPMember>s
+}
+
+Where <BPSDTName> is the name of the modeled structured data type with spaces
+removed and preserving case, and each <BPMember> takes the form:
+
+public <MemberType> <MemberName>;
+
+Where <MemberType> follows the rules specified in 6.4 and <BPMemberName> is
+exactly the same as the modeled member name.
+
+6.7 Realized arrays
+Where an argument or structured type member is specified as an array, the type
+naming specified in 6.4 is followed (with one significant exception specified
+below), the resulting Java type is wrapped in a ArrayList<Type> definition.
+Access to array variables in realized code is thus made through the documented
+ArrayList<?> interface[6]. This definition is also recursive, so arrays of
+arrays and arrays of structured data types are supported. If the number of
+array elements is changed in realized code, this will be reflected in the
+array returned to Verifier. No checking against fixed size arrays will be
+performed for this release.
+
+The exception to the type rule is simply that the core int, float and boolean
+types are replaced by their java.lang definitions, Integer, Float and Boolean
+respectively. This exception is transparent to access in realized Java code.
+
+6.8 By reference arguments
+With the exception of the core types, by reference arguments are treated exactly
+as for by value arguments, except of course that the values are updated in both
+directions upon crossing the execution context boundary. If core types (int,
+float, boolean, string) are to be passed by reference, they must be wrapped in
+the appropriate BP container class (BPInteger, BPReal, BPString and BPBoolean)
+These are already implemented for realized bridge call by reference support.
+
+6.9 Expected location of executable resources
+The default root location for the various classes and interfaces specified above
+shall be the 'javasrc' folder in project containing the realized component
+definition. The user may specify the location of an alternate path to a root
+folder containing the class files or to a jar file containing the already
+compiled and jar'd realized code.
+
+Whether or not a specific path is specified, Verifier treats the location as the
+root of a source folder or package structure that exactly matches the modeled
+package structure. To conform to Java naming requirements, all package names
+have spaces removed and are forced to lower case. So a component, 'A' modeled
+within a package 'My Package' nested with a package 'ROOT' will be located in
+the javasrc folder (or jar package structure) at root.mypackage.A. This source
+layout convention will be familiar to and expected by any experienced Java
+programmer.
+
+These location rules apply equally to the realized component class and to all
+interface and structured data type definitions.
+
+So each Java interface, realized component and structured data class definition
+is found in its own *.java file at the locations specified by these rules.
+
+6.10 Execution
+To mark a component as realized, the user sets the 'Realized Component' Bridge-
+Point property to true and sets up a path to the class folder or jar file if
+necessary. Setting the path is done in the 'Realized Component Path' property of
+the component.
+
+When Verifier is launched, it instantiates the user specified class, passing the
+port instances to the constructor. The user code caches these port instances
+and uses them to send reentrant calls or signals back into Verifier. By
+convention, it is recommended that the user name the cached variables after the
+port names in the modeled component. That way, it is easy to see in the realized
+code which port is being used to send a message.
+
+Any server connection or other initialization is initiated in the constructor.
+Note that it is possible to initiate modeled behavior under control of events
+initiated by the constructor call, so it is possible for Verifier to wait for
+a signal to indicate that initialization has completed. Of course, this type of
+signaling is application specific and the required behavior would be modeled.
+
+6.11 User launched messages
+Launching an in-bound message to a realized component works the same way as for
+a modeled component, right click on the message in the session explorer and
+choose 'Execute'. Control will be passed to the realized java in the same way
+as execution of a modeled component is started.
+
+6.12 Termination
+When the Verifier session terminates, it will call a method called terminate()
+on the realized class. If this method is not present, Verifier does nothing.
+Note that if the realized code starts its own Java threads, it is the
+responsibility of the realized code to implement this method and cooperatively
+shut them down.
+
+6.13 Building realized Java
+It shall be up to the user to manually configure their project to build the
+realized Java.
+
+6.14 Location of marking
+There was some discussion over where to locate the marking data required to
+satisfy this requirement. The requirement[2] calls for two marks, for binding
+information and for feature enablement. The requirement calls for this to be
+done 'on a component/EE boundary as part of the component/EE'. This maps on to
+new attributes for the Component meta-class. It was felt that this is perhaps
+not the best place for this data, since it is platform specific (that is,
+specific to Verifier). There were two alternative locations considered; saving
+this information as part of the Verifier launch data and alternatively in the
+Component Reference.
+
+6.14.1 Location in Component
+The advantage of doing things this way is that it supports a development process
+that advocates one fully modeled component plus a stubbed test version and third
+realized version.
+
+The disadvantages of doing this is stated in 6.13; that it is platform specific
+data in a platform independent model. Another disadvantage is that in a process
+that uses locked read only components the user cannot quickly flip between
+modeled and realized execution. However, with a development process that uses
+three versions of the component, the same flipping behavior can be had by
+switching between the component versions a component reference is pointing at.
+
+6.14.2 Location in Component Reference
+The motivation for considering this is that it gives more flexibility when
+configuring a set of models for execution. The disadvantage is that it perhaps
+gives too much indirection, leading to potential user confusion about what is
+actually being executed. The platform specific nature of the data is still a
+problem, though arguably a component reference on a deployment style diagram is
+a little closer to a specific platform. Note that this option would force the
+user to use component references; they could not execute a realized component
+directly. Some would argue this is a good thing since it propels users in the
+direction of separated library and deployment component diagrams, but it does
+reduce user choice in the matter.
+
+6.14.3 Location in launch data
+This has the advantage that it puts the platform specific data in an appropriate
+place for it. However, it is more engineering effort to put it there and would
+add more columns to the launcher configuration display. Another disadvantage is
+that there is motivation in the method development team to move to graphical
+creation of executable configurations. After all, we advocate graphical modeled
+solutions everywhere else. As we move in this direction, data is more likely to
+move out of the launch than move in.
+
+6.14.4 Conclusion
+Given the rather balanced nature of the for and against observations for all of
+these alternatives, the explicitly specified solution is selected. Attributes
+will be added to the Component meta-class, see 7.2 below for the specific
+design for this.
+
+7. Design
+---------
+7.1 Overview
+The VIEC uses two Java reflection technologies, one for outgoing control and
+another for incoming messages.
+
+7.1.1 Outgoing control
+For this, standard Java reflection is used. Verifier loads the specified user
+realized class and uses Class.getMethod to obtain the required executable
+Java instance. If the required method is found, Verifier executes it, passing
+the data values marshaled into Java format. This strategy is essentially the
+same as that used to pass control to realized External Entities.
+
+7.1.2 Incoming control
+For incoming messages, a Java Proxy pattern is used[7]. When the user class is
+constructed, Verifier passes a Proxy instance for each port exposed by the model
+component. The Proxy instance is instantiated with the appropriate Java
+interface discussed in 6.3 and 6.5.4. To the realized code, the Proxy behaves
+exactly like a normal class. However, when a method of the Proxy is called by
+the realized code, Verifier is informed through a single entry point from Proxy;
+via the invoke() method.
+
+The invoke() method passes all the information necessary to action the call, the
+called method name, the passed argument values etc. The argument values are
+passed in Java reflection format. We do things this way because the reflection
+format is effectively Java program meta-data, which is a perfect impedance match
+with the BridgePoint model database. This data is used to identify the correct
+message to invoke. Once this is identified, the data is marshaled into Verifier
+runtime instances which are then set up on the appropriate component instance
+stack and the message is invoked.
+
+7.2 Meta-model changes
+7.2.1 New attributes
+To support the requirements, several new attributes are added.
+7.2.1.1 Component
+This has two new attributes, a boolean attribute 'isRealized' and a string
+attribute 'Realized Class Path'. Cascade changes are required in io.mdl and
+io.core to provide data upgrade capability for components. The class path
+attribute is a plain string. Any valid path will be accepted here (and in a
+later cycle, validated). Note that paths that include drive letters or other
+host platform specific identifiers will mean that models shared across a network
+cannot execute in a cross platform manner. The user can avoid this by specifying
+paths using platform independent paths such as URI's.
+
+7.2.1.2 Component Instance
+This class has a new attribute, 'RealizedBy' to cache the instance of the user
+realized class created at startup. Since Component Instances are not
+typically persisted, no data upgrade work is required. This attribute is marked
+as 'User Visible: false' since it cannot be edited.
+
+7.2.2 Signal execution changes
+Previously, the invoking component handled signals with Port OAL differently
+than those mapped to a class state machine pseudo event. A realized component
+treats all outgoing signals exactly the same way, because there is no
+standardized concept of a realized state machine. This makes the existing
+implementation rather inconvenient. It is reworked so that the receiving
+component dequeues all incoming signals the same way. When executing a modeled
+component, the receiving component instance now has the responsibility for
+identifying signals mapped to pseudo events. It then creates and delivers the
+event as required.
+
+This change is effected by removing a block of OAL from the operation,
+Signal Invocation.execute() and effectively moving it with some minimal
+rework to Stack.dequeue(). The dequeue() operation has a new argument added to
+optionally disable event delivery. When called during modeled execution,
+event delivery is enabled, when dequeue() is used for realized component
+execution event delivery is disabled so that the invocation information remains
+on the stack. In this way, the data to be used for finding and calling the
+realized code is easier to locate and no unnecessary instantiation of event
+instances occurs.
+
+7.2.3 Value In Stack Frame rework
+7.2.3.1 Background
+This class was a link class between a stack frame and a value. It has an
+association with a Runtime Value. This class is used to hold values that are
+computed during the execution of an action, but which are not held in OAL
+visible transient variables or passed parameter values. One good simple example
+of the use of a Value In Stack Frame is where a binary operation is performed.
+The two operands could be locals or literals (or of course another binary
+operation) but there is no named transient value which represents the binary
+operation itself. In this case the operation result is held by a Value in Stack
+Frame which links the Value (which has a Binary Operation subtype) with the
+Stack Frame in which it is being computed. It also has an optional association
+with a Runtime Value. This association is asserted when the computation is
+complete and the runtime value is then available to be read to (for example)
+assign the result of the binary operation to an attribute or transient variable.
+
+7.2.3.2 Motivation for rework
+Another common use for Value In Stack Frame instances is to hold the return
+value of an invocation. This gives us a problem when transferring control into
+Verifier because the realized side that eventually must obtain and return the
+result of the invocation does not have a concept of Value. Creating a dummy one
+would be rather inelegant, especially since Value instances are created by the
+parser and not during runtime. Fortunately, Verifier does not care that a Value
+is not present when returning the value of an invocation. It just looks for the
+Value In Stack Frame. Thus the realized code interface just creates a Value In
+Stack Frame instance before the invocation, and collects the result from the
+associated Runtime Value when control returns. The meta model is reworked so
+that having a Value In Stack Frame without an associated Value does not
+represent a schema cardinality violation. This small rework creates quite a
+large cascade change as it replaces R2951 with two separate associations (R2951
+and R2978).
+
+7.2.4 Refactor runtime channel handling
+In order to locate the correct receiving component instance Verifier traverses
+a network of runtime channel instances. When transferring control into Verifier,
+the realized execution interface must do the same. Rather than duplicating large
+amounts of already working code in handwritten Java, the OAL which does this is
+moved from Interface Operation Invocation.execute() into class operations,
+resolveTargetChannel() and resolveTargetBody() on Component Instance. Calls to
+this infrastructure are added to Interface Operation Invocation.execute() to
+complete the rework. The realized interface code can then also call this infra-
+structure when setting up incoming transfer of control.
+
+7.2.5 Refactor stack frame argument value setup
+The motivation for this change is the same as for 7.2.4. The reworked OAL is
+again moved to a class operation in Component Instance, transferValueToTarget().
+
+7.2.6 Clean up Stack handling
+Some redundant OAL which handled void return values was removed from the Stack
+operation, dequeue(). This behavior is already handled in Stack.unblock().
+
+7.2.7 New control transfer infrastructure
+A new Java class, VerifierInvocationHandler is abstracted to handle transfer of
+control into and out of Verifier. This class implements the InvocationHandler
+Java reflection interface. It resides in bp.debug.ui.
+
+7.2.7.1 invoke()
+This is the only method required to meet the programming contract of the
+InvocationHandler interface. Its operation is discussed 7.1.2 above. There are a
+number of important features of the implementation of this method.
+
+7.2.7.1.1 Blocking behavior
+In order to realize the semantics of calling an interface operation in realized
+code, this method must block while the remote component executes the message.
+This has an important consequence; realized code that makes Interface Operation
+calls cannot be run in Verifier Deterministic mode. This is because this mode
+runs on a single thread, so blocking in this way would hang the simulation. This
+restriction is not present for signals, which always return immediately.
+Launching in Deterministic mode does not attempt to access the realized code,
+but runs the component as modeled. A follow on issue[10] is raised to provide
+more user feedback for attempts to launch such bad configurations.
+
+7.2.7.1.2 Handling reentrant calls
+While blocked as discussed above, it is possible that remote component instances
+may make additional calls on the realized component. When this happens, Verifier
+will notify the blocked realized component instance. When the invoke() method
+unblocks it therefore checks for and handles additional incoming queued calls.
+
+7.2.7.1.3 Return values
+If an interface operation call returns a value, this is marshaled back into Java
+format (see 7.2.7.3 below) and returned to the calling realized code. Similarly,
+by reference argument values are updated upon return.
+
+7.2.7.2 executeRealizedCode()
+This method implements the outgoing transfer of control as discussed in 7.1.1.
+It is also called by the invoke() method to handle reentrancy as discussed in
+7.2.7.1.2 above. Once the realized code has returned, any return value is
+marshaled back into Verifier format and placed where the Verifier execution
+infrastructure expected it. Similarly, by reference values are marshaled back
+into their runtime value instances.
+
+7.2.7.3 Data marshaling
+Two groups of methods take care of transferring data between Java and Verifier
+formats. Each group is recursive to handle arrays and structured data types. The
+two key methods in these groups are respectively marshallContentIn() and
+marshallContentOut(). They take care of getting data from Java into Verifier
+format and from Verifier into Java format respectively. Both methods have three
+logical sections, one for primitive types, one for arrays and one for structured
+data. The latter two logical sections call the methods recursively to achieve
+full transfer of nested data values.
+
+7.2.8 Launching changes
+The Verifier launch infrastructure is extended to check for and handle component
+instances marked as realized. The infrastructure looks in the specified path
+(the default or the one specified in Component.Realized Class Path) for a
+suitable class and instantiates it, passing Proxy's for the components' ports.
+The instantiated realized class is cached in the created Component Instance.
+This is all done by a new method in BPDebugTarget, setUpForRealizedExecution().
+
+7.2.9 Extensions to BPThread
+This is the class that is the root for Verifier non deterministic execution.
+Everything happens within the startModel() method. Inside this, a Java thread
+is started with a run loop that accepts incoming messages and blocks when the
+component instance goes idle.
+
+7.2.9.1 Add realized execution to the run loop
+A new subsection of this run loop is added to handle execution in a realized
+context. The thread blocks and unblocks for realized execution in the same
+way as for modeled execution, but when it unblocks, the dequeued message is
+handled by VerifierInvocationHandler.executeRealizedCode() which transfers
+control out of Verifier as discussed above in 7.2.7.2.
+
+7.2.9.2 Call the user terminate method
+This is done in the BPThread stop() method. This is called when component
+execution is terminated. The code uses reflection to see if the method is
+present and calls it if it is. If it is not present, the NoSuchMethod exception
+is caught but not reported, since there is no requirement for the user to
+provide this method.
+
+7.2.10 UI changes
+The Verifier UI must be modified so that running components that are realized
+do not show some of their detail. Showing detail does not affect operation, but
+could confuse the user.
+
+7.2.10.1 Component Instance Label
+A running realized component instance in the Session Explorer tree shall show
+the term "(Realized)" after its name to confirm its status.
+
+7.2.10.2 Component Instance children filtering
+A running realized component instance shall show only its port instances and
+their children in the session explorer. Other elements relate to the internal
+modeled structure of the component and are not relevant to a realized component
+instance. In addition, execution of contained user executable elements such as
+functions is not supported for realized component instances (the realized java
+would likely not have an implementation for it in any case). Exposing this
+detail would lead to user expectation that the element could be executed.
+
+7.2.10.3 Debug View changes
+Stack frame instances are accumulated against a realized component instance as
+reentrant calls are made into Verifier. However, these frames do not map into
+anything that Verifier can usefully show. Since this would be confusing for the
+user, they are filtered from the Debug display.
+
+The root entry for a realized component is decorated with the word 'Realized'.
+This provides feedback for the user that the expected realized behavior is being
+executed.
+
+8. Design Comments
+------------------
+There were several known Verifier launch defects[9] that were found to block
+progress. The most egregious of these are fixed with this work. Principally,
+Generic packages were not well handled everywhere they needed to be in the
+launch infrastructure. Issue [9] is moved to the next development cycle for
+further work.
+
+8.1 BPDebugUtils.getPackageChildren()
+This method was added to the family of methods in this class that enable the
+launch infrastructure to traverse down through child model elements. It handles
+the generic package case and was previously completely missing.
+
+8.2 LaunchShortCut.getVerifiableElementId()
+A new logical section was added to this method to leverage the method introduced
+above.
+
+8.3 LaunchVerifierAction
+Has a new logical section added to its run method to handle generic packages.
+
+8.4 VerifierElementComposite
+Now checks for component references in isVerifiable element, otherwise component
+references do not appear in the launch tree.
+
+8.5 VerifierLaunchContentProvider
+The methods hasChildren() and getChildren are extended to handle generic
+packages.
+
+8.6 Parser defect
+During development and testing it was discovered that the parser permits a by
+reference variable argument value to be a binary operation. This cannot work for
+either modeled or realized execution. A defect[8] is raised to have the parser
+detect and report such bad code.
+
+9. Work Required
+----------------
+Fully described in the design section.
+
+10. Unit Test
+------------
+As suggested in [2], the VerifierMessageTest model is expanded to cover all the
+variants of message calling, by value and by reference argument passing,
+synchronous and asynchronous calling, void and value return.
+
+The Test Provider component in this model has a realized Java class created for
+it. The modeled and realized behavior should be identical. The realized class
+shall provide a terminate() method and log that it has been called.
+
+All existing Verifier JUnit tests must pass.
+
+The only changes made outside the Verifier implementation were to Component
+persistence. The io.mdl tests must therefore also be run. In addition, core,
+properties and compare tests should be run. Given this list, it is appropriate
+to run all test collateral.
+
+End
+---
+
+$Log: dts0100887931.dnt,v $
+Revision 1.10  2012/06/22 10:33:53  campbell
+Job: dts0100887931
+Add missed issue reference.
+
+Revision 1.9  2012/06/22 10:28:01  campbell
+Job: dts0100887931
+Address review observations.
+
+Revision 1.8  2012/06/19 14:00:26  campbell
+Job: dts0100887931
+Ready for review.
+
+Revision 1.7  2012/06/19 13:16:19  campbell
+Job: dts0100887931
+Ready for review.
+
+Revision 1.6  2012/06/15 17:17:07  campbell
+Job: dts0100887931
+Address review observations.
+
+Revision 1.5  2012/06/15 15:36:00  campbell
+Job: dts0100887931
+Address pre-review feedback.
+
+Revision 1.4  2012/06/15 15:18:34  campbell
+Job: dts0100887931
+Address pre-review feedback.
+
+Revision 1.3  2012/06/15 12:51:42  campbell
+Job: dts0100887931
+Corrected some internal cross references.
+
+Revision 1.2  2012/06/15 12:05:46  campbell
+Job: dts0100887931
+Added user visible execution details.
+
+Revision 1.1  2012/06/15 11:48:39  campbell
+Job: dts0100887931
+Ready for first review.
+

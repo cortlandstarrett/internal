@@ -1,0 +1,191 @@
+========================================================================
+
+File:      $RCSfile: dts0100739026-dts0100761926.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Pre-builder hang on customer model
+Invalid determination of isInGenericPackage status in parser
+
+1. Abstract
+-----------
+This notes describes the root problems and solutions for two issues.
+
+One issue is a problem seen during build by some customers.  The pre-builder
+appears to hang while parsing the model.
+
+The other issue addressed in this note, is a problem in  ooaofooa > 
+OAL Validation Functions > data_types_compatible that was introduced with 
+generic package functionality.   In this function, the test to determine if the 
+current action home is in a generic package is not always returning the correct 
+result.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100739026
+    Pre-builder hang on customer model
+[2] ClearQuest DEI dts0100761926
+    Invalid determination of isInGenericPackage status in parser
+
+4. Background
+-------------
+no background required
+
+5. Analysis
+-----------
+5.1 Pre-builder hang on customer model [1]
+
+    The problem is a deadlock that occurs during build.   The deadlock is 
+    between bp/ui/text/placeholder/PlaceHolderManager.java::getPlaceHolderFile() 
+    (parser thread) and a thread called, Finalizer, which is also manipulating 
+    the bp/ui/text/placeholder/PlaceHolderManager.java::placeHolderMap.  The 
+    finalizer thread acquires the placeHolderMap lock and then waits for the 
+    parser thread to complete.  The parser thread then attempts to acquire the 
+    placeHolder lock while parsing and thus the deadlock occurs.
+ 
+    This finalizer thread is created by the Eclipse FileDocumentProvider 
+    implementation of the StorageDocumentProvider class.  BridgePoint 
+    extends the FileDocumentProvider class in a class named OALDocumentProvider.
+    Another class in BridgePoint, DocumentProvider, extends OALDocumentProvider,
+    and in AllActivityModifier.java::parseAction(), a DocuemntProvider instance
+    is created, used, and destroyed.   This is what causes the finalizer thread 
+    to be spawned.
+
+	To resolve this deadlock, the parser, AllActivityModifier.java, shall be 
+	modified to inform the PlaceHolderManager that a parse is in progress.
+	The PlaceHolderManager shall be modified to delay garbage collection 
+	until the parse has completed.
+    
+5.2 Invalid determination of isInGenericPackage status in parser [2]
+
+	In ooaofooa > OAL Validation Utility functions > data_types_compatible
+	the test to determine is the current OAL Action home is under a generic
+	package is incorrect.  It currently uses the result of 
+	::getValidationDomain(), and when that result is null it set 
+	"isInGenericPackage" to true.   This is incorrect because there are 
+	situations where the OAL Action home is under a specialized package, but not
+	a domain.  In these situations, "isInGenericPackage" is set to true when
+	it should be false.
+	
+	To resolve this issue, a new way of determining if the current OAL Action
+	Home is under a generic package shall be used.  This new way shall take
+	advantage of the model root of the current action home.  It will search
+	the model root for any parent instance of Package_c.  If an instance is
+	found, the action home is under a generic package and if an instance is 
+	not found, it is not under a generic package.
+	
+6. Design
+---------
+6.1 Pre-builder hang on customer model [1]
+
+6.1.1 In PlaceHolderManager.java a new private boolean member variable named
+      parseInProgress was added and set it to false by default.  
+      This flag will tell us when the parser is running so we can delay garbage 
+      collection during that time. 
+6.1.2 In PlaceHolderEntry.java::PlaceHolderFileProxy::deleteOriginalFile(), the 
+      code was already checking to see if the workspace tree was locked before 
+      deleting the file, and when it is locked, we defer the deletion.  An 
+      additional condition was added at this spot, to also defer the deletion 
+      in the case the parser is running.
+6.1.3 In PlaceHolderEntry.java::ThreadedDeletor::run(), the 
+      code was already checking to see if the workspace tree was locked before 
+      deleting the file, and when it is locked, we defer the deletion.  An 
+      additional condition was added at this spot, to also defer the deletion 
+      in the case the parser is running.      
+6.1.4 In AllActivityModifier.java::processAllActivites() the code is modified to
+      get the PlaceHolderManager instance and call 
+      placeHolderManager.setParseInProgress(true) before parsing starts, and 
+      placeHolderManager.setParseInProgress(false) when parsing completes.
+            
+
+6.2 Invalid determination of isInGenericPackage status in parser [2]
+6.2.1 Two options were considered.  
+6.2.1.1 Introduce a new native function in OAL Validation Utility Functions:
+      boolean isInGenericPackage()
+		boolean isInGenericPackage = false;
+		if(modelRoot != null && modelRoot.getInstanceList(Package_c.class).size() != 0) {
+			isInGenericPackage = true;
+		} else {
+		 	isInGenericPackage = false;
+		}
+		return isInGenericPackage;
+      
+      This function has the following tags in the description field:
+		ParserValidateFunction: TRUE
+		ParserUtilityFunction: TRUE
+		Translate: native
+
+      Note that the above function takes advantage of the modelRoot instance
+      supplied by the parser infrastructure.  This modelRoot represents the 
+      model root currently being visited.      
+      
+6.2.1.2 In the parser there are several places that must determine if the 
+      current action home is under a generic package.  A solution has been
+      implemented that works in these places.  That solution is as follows:
+      
+		current_scope = ::get_current_scope();
+		select any block from instances of ACT_BLK where
+		                                             selected.Block_ID == current_scope;
+		select one body related by block->ACT_ACT[R612];
+		isInGenericPackage = body.associateWithContainer();
+		
+6.2.1.3 The option specified under 6.1.2.2 shall be used.   The reason it was 
+        is to provided consistency across parser for this isInGenericPackage
+        test.   Additionally, the option under 6.2.1.1 must search for the 
+        Package_c instance in the parents of the model root, and while this 
+        could be done, the implementation selected called out there does not 
+        currently do this.  Additionally, the OAL option is preferred over the 
+        native implementation.
+     
+
+      
+6.2.2 Modify data_types_compatible and replace the OAL that is currently used
+      to determine "isInGenericPackage" with the method called out in 
+      6.2.1.2.
+      
+
+7. Design Comments
+------------------
+none
+
+8. Work Required
+----------------
+The work required is called out in the design section.
+
+9. Unit Test
+------------
+9.1 Assure that issue [1] is resolved by adding a new parser test for the error
+    condition described by the CQ issue [1]
+    
+9.2 Assure that issue [2] is resolved by manually repeating the test called
+    out in the CQ issue [2].
+    
+9.3 Run all existing units and assure they pass.    
+
+End
+---
+
+$Log: dts0100739026-dts0100761926.dnt,v $
+Revision 1.3  2011/05/19 20:18:47  rmulvey
+job:dts0100739026 dts0100761926
+Addressed review observations
+
+Revision 1.2  2011/05/19 17:55:41  rmulvey
+job:dts0100739026 dts0100761926
+Introduced the design note.
+
+Revision 1.1  2011/05/19 17:38:59  rmulvey
+job:dts0100739026 dts0100761926
+Introduced the design note.
+

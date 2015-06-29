@@ -1,0 +1,242 @@
+========================================================================
+
+File:      $RCSfile: i3341.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Make transient array usage user friendly
+
+1. Abstract
+-----------
+With the introduction of fixed length arrays (bug 3085 [2]) and support for
+heterogeneous array assignments (bug 3333 [3]) transient declaration has become
+confusing.  This issue is raised to investigate this further and propose a 
+solution.
+
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3341
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3341
+[2] Bugzilla item 3085 (Establish fixed array lengths.)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3085
+[3] Bugzilla item 3333 (Heterogeneous array assignment may not work correctly)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3333
+[4] Bugzilla item 3328 (Fixed length dimensions must match exactly)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3328
+
+4. Background
+-------------
+In OAL the type of a transient variable is determined when the transient is 
+first seen.  This point in time is tracked using the V_VAL.isImplicit attribute.
+When arrays were first introduced in BridgePoint, the tool initially supported
+only dynamically sized arrays (DSAs).  However, the tool did support multiple
+array dimensions at that time.  When DSAs were introduced, the OAL syntax for 
+transients was enhanced to allow transient DSAs to be declared. The following
+syntax was allowed:
+// One dimension
+foo1[0]=0;
+foo1[1]=1;
+
+// multiple dimensions
+foo2[0] = foo;
+foo2[1] = foo;
+
+During the end of the development cycle of the introduction of fixed length 
+arrays (FLAs) [2] testing uncovered that transient support was lacking.  The 
+problem was that the V_TRN class held only the number of dimensions, it had not 
+been updated in the same way that other classes with Dimension attributes had 
+been in order to support fixed-length arrays.  Therefore, V_TRN was updated in 
+the same way as the other classes in the meta-model had been updated to allow 
+support for fixed length arrays [2].
+
+The initial support added to V_TRN was not sufficient, and issue 3333 [3] was 
+raised to capture the fact that heterogeneous assignment into transients was not
+properly handled.  For example, the following is a valid test which was not 
+properly handled:
+foo2[0][0] = 0;
+foo4[0][0] = foo2;
+ASSERT(foo4.length == 4)  
+
+The cause of this problem was that V_VAL.setRank() did not properly create 
+dimensions for the lval in this case.  When the above syntax is encountered,
+the routine "OAL Validation Functions".Assignment_expr_end() eventually gets
+invoked by the parser, and it finds that "foo2" has never been seen before, so
+it calls setRank() to create dimensions for foo2().  The setRank() routine
+had not been updated properly to handle this case.  It was updated by issue 3333
+[3].
+
+With this update, the transient array was still defined at the point that it was
+seen for the first time.  Therefore, the transient syntax that was allowed when 
+only DSAs were supported now causes errors.  For example:
+// One dimension
+foo1[0]=0;
+foo1[1]=1;  // !! Error: AOOB
+
+If the largest dimension is defined first, there is no error:
+// One dimension
+foo1[1]=1;  // Works fine
+foo1[0]=0;  // Works fine
+
+This issue has been raised to discuss the problem and determine a solution.
+
+
+5. Analysis
+-----------
+5.1 Array bounds of transients shall be allowed to grow.  
+5.1.1 The following syntax shall be allowed.
+
+foo1[0] = 0;
+foo1[1] = 1;
+
+foo2[0][0] = 0
+foo2[0][1] = 1;
+foo2[1][0] = 3
+foo2[1][1] = 4;
+
+foo3[0][0] = foo1;
+foo3[0][1] = foo1;
+ 
+5.2 Dimensions of transients shall not be allowed to grow.
+5.2.1 The follow syntax shall not be allowed.  Attempting it will result in an
+      error of the form: 
+      "Variable ->"+ val.Text + "<- has incompatible array depth.".
+
+foo[0] = 0;
+foo[0][0] = 0;  // Error!!
+
+5.3 The data type of a transient variable that has dimensions is not allowed to
+    change once defined.  This behavior is enforced the same for transients
+    with or without dimensions.
+
+5.4 Only transient variables in the lval position of assignment expressions 
+    shall be effected by this change.  This change will not have any effect on 
+    the current requirement that dimensions match exactly [4] in any other
+    situation.  
+5.4.1 When a transient is used as an rval, a return value, or a parameter,
+      its dimensions and array bounds must match exactly with the given 
+      situation. For example given a class with an attribute in class C1 defined 
+      as "int attr[2]":
+      
+      select any c from instances of C1;
+      foo[0] = 0;
+      c.attr = foo;  // Error! incompatible array length for dimension 0
+      foo[1] = 1;
+      c.attr = foo;  // Success
+      
+      
+    
+6. Design
+---------
+6.1 Assignment_expr_end shall be updated to allow the array bounds of transients
+    to grow.
+6.1.1 The code in question currently is currently as follows:
+    if (lval.getDimensions() != rval.getDimensions())
+      if val.isImplicit
+        trnUpdated = lval.setRank(dimension:0, rval_id:rval.Value_ID);
+      else
+        assign_ok = false;
+        err_msg = "Variable ->"+ val.Text + "<- has incompatible array depth.";
+      end if;
+    elif ( not lval.validDimensionSizesSpecified() )
+        assign_ok = false;
+        err_msg = "Variable ->"+ val.Text + 
+                              "<- contains an Array Index Out of Bounds.";
+    elif ( not rval.validDimensionSizesSpecified() )
+        assign_ok = false;
+        err_msg = "The rvalue contains an Array Index Out of Bounds.";
+    end if;
+6.1.2 This code shall be modified to check the array length(s) of the lval and
+      grow the bounds if required.
+    if (lval.getDimensions() != rval.getDimensions())
+      if val.isImplicit
+        trnUpdated = lval.setRank(dimension:0, rval_id:rval.Value_ID);
+      else
+        assign_ok = false;
+        err_msg = "Variable ->"+ val.Text + "<- has incompatible array depth.";
+      end if;
+    elif ( not rval.validDimensionSizesSpecified() )
+        assign_ok = false;
+        err_msg = "The rvalue contains an Array Index Out of Bounds.";
+    elif ( not lval.validDimensionSizesSpecified() )
+        // This will only update V_TRN types and will return null for anything 
+        // else
+        trnUpdated = lval.setRank(dimension:0, rval_id:rval.Value_ID);
+        if (trnUpdated == GD::NULL_UNIQUE_ID()) {
+          assign_ok = false;
+          err_msg = "Variable ->"+ val.Text + 
+                                "<- contains an Array Index Out of Bounds.";
+        }
+    end if;
+
+7. Design Comments
+------------------
+7.1 There was no review for issue 3333 [3].  The opportunity is therefore being
+    taken here to point out one additional change that was made with that 
+    issue.  During testing an AOOB was encountered in the following situation.
+    _- create the following statement in OAL:
+       foo[0][1][2] = 0;
+    _- Delete the 0 from dimension 0.
+       foo[][1][2] = 0;
+    _R Parser encounters an AOOB
+    
+    This was resolved by adding a check for null S_DT in Array_refs_loop12_end.
+    The code was changed from:
+    
+    if ( dt.Name != "integer" )
+      ::clear_value_data();
+      ERR::reportParseError( msg: "Array index must be an integer.",
+                                                   token: param.a1_rule_token );
+      ...
+    
+    to:
+   
+    if ( (empty dt) or (dt.Name != "integer") )
+      ::clear_value_data();
+      ERR::reportParseError( msg: "Array index must be an integer.",
+                                                   token: param.a1_rule_token );
+      ...
+    
+    
+8. Work Required
+----------------
+In addition to the work described above, the follow changes will be made.
+8.1 The changes that were made to the als.oal.test/.../array_test model for 
+    issue 3333 [3] shall be backed out.  This is done to assure the transient 
+    syntax is compatible with the previous version where only DSAs were present.
+
+9. Unit Test
+------------
+9.1 All existing unit tests pass
+
+End
+---
+
+$Log: i3341.dnt,v $
+Revision 1.4  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.3  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/12/19 16:57:08  rmulvey
+Job:3342
+Updated

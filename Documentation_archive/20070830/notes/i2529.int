@@ -1,0 +1,211 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Enable problem marker support
+
+1. Abstract
+-----------
+This note describes the changes required to allow the delivery of problem marker
+support.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2529
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2529
+
+4. Background
+-------------
+Currently the problem marker support is disabled for any machine which does not
+have the SLE_DEVELOPMENT environment variable set to true.  This was done as the
+problem marker code seemed to be very unstable.
+
+5. Design
+---------
+
+5.1 Change problem marker code to run reliably
+
+The problem marker job used an event accumulator that would accumulate all
+problem events but was managing to lose events.  This was occuring due to a
+timeout of the accumulator which would try to schedule the job when the job was
+already running.  The timer expired and a job was not scheduled, therefore all
+events accumulated were lost.
+
+The job is changed to be scheduled when the first event is received.  The run
+method of the job is changed to reschedule the job after 200 milliseconds.
+After this changed the problem marker job will constantly run, processing all
+events in it's queue.  If no events exist it just reschedules.
+
+The problem decorator used for model explorer was not reflecting all of the
+created problem markers.  This was due to the fact that the update call for the
+decorator was being called before all markers were actually created.  In the
+problem marker job the run method has a call added to force an update on the
+decorator after all events are processed.  For this a constant was added to the
+CorePlugin class which captures the decorator id.
+
+6. Implementation Comments
+--------------------------
+A NPE was noticed when restarting the tool with a canvas editor left open.  A
+call to get the workbench's active page was being made before the active
+workbench window had actually been opened.  A check was added to prevent the
+NPE.
+
+The decorator tests in io.mdl.test were reworked to wait for the problem marker
+job's queue to be empty.
+
+The decorator tests were enabled in the test suite for io.mdl.test.
+
+The message in a problem marker was changed to more clearly reflect that
+something was referring to a missing file.
+
+The io.mdl.test expected results were updated due to the creation of package
+linking elements.  These are now existant due to the fix for issue 2593.
+
+7. Unit Test
+------------
+_- Run all existing tests
+_R All tests pass
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/marker/
+    CreateMarkerEvent.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/marker/
+    DelayedMarkerJob.java
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/asc.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/BP50_evt.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/BP50_evt2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br1f.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br2f.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/bridges.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/cl.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/dogs.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum4.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/event.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_G_EVT_LE_precreated.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_multiple_exit_return.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_nested_invoke.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_performance_test1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_performance_test2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_performance_test3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_performance_test4.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_performance_test5.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_performance_test6.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_performance_test7.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/G_ALL_R_BRG_tim.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_select_where_enum.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_BRG_G_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_COP_R_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_EVT_PE_G_EVT_NLE_nle_ignored.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_IOP_MDA_self_event.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_IOP_R_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_MDA_R_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/G_STE_assoc_rel.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_del_inst_mult.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_G_COP_compare_date.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_G_EVT_PE_to_creation.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_G_STE_pe_le_same_state.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im4.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ims.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ims2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/imx.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/init1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/init2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/interop_otherdom.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/memleak.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/mt1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/no_inst.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ooaofgraphics.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/poly.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/reflexive.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/select.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/self.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/sm.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/sync.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/syntax.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/trans.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wim2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wim3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wims.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wimx.xtuml
+com.mentor.nucleus.bp.io.mdl.test/src/IOMdlTestSuite.java
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/dangle/
+    DRBaseTest.java
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasEditorListener.java
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.2  2007/01/22 17:17:46  tlondon
+Job: 2529
+
+Address review minutes
+
+Revision 1.1  2007/01/19 21:56:29  tlondon
+Job: 2529
+
+Introduce.

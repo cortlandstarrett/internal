@@ -1,0 +1,291 @@
+========================================================================
+
+File:      $RCSfile: dts0100650381.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support GEF based editor
+
+1. Abstract
+-----------
+This note describes the changes required to support the remaining work items for
+a GEF based editor.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100650381
+[2] dts0100650381.ant
+
+4. Background
+-------------
+[2] describes the initial support that was added to support a GEF based
+graphical editor.  It also describes the changes that remain in order for the
+editor to be usable for development.  This note will address those remaining
+issues.
+
+6. Design
+---------
+6.1 Assure that required interface cup maintains it's cropping from the provided
+interface ball when moving the provided component.
+
+The existing move behavior that was achieved by calling GD_SHP.move() relies on
+the old selection tool to be used.  Rather than rework the existing operation
+and in order to maintain the direction of less in-house infrastructure, this
+support is moved to GEF.
+
+A new anchor is created (anchor class in GEF) which maintains the location of
+connectors during editing.  This anchor is called upon, by GEF, for an
+appropriate termination location.  There are three possible locations returned:
+
+1. End of target connector
+2. Start of target connector
+3. Middle of target connector
+
+The middle location is determined by calculating the intersection point of the
+connector's line segment.
+
+6.2 Support disconnect/reconnect of provided and required interfaces
+
+Disconnect support is not changed from the original BP behavior.  This means
+that currently a user disconnects the two connectors by using the Dissatisfy
+menu item.
+
+Reconnect support is added by modifying the existing connector end point policy.
+The policy is extended to check the new end point location, reconnecting the
+connectors if valid.  The same ooaofooa operations are called to reconnect the
+elements in the domain model.
+
+6.3 Support diagram panning
+
+The palette has the GEF selection panning tool added as the default tool.  This
+replaces the original selection tool which did not support panning.
+
+Additionally the GEF selection panning tool is overridden to support showing the
+hand icon which BP previously used.
+
+6.4 Add zoom tools
+
+The graphical editor is modified to add the GEF Zoom manager.  This enables the
+zoom combo box, allowing the user to selected a desired zoom level.
+
+The following combo box entries are added:
+
+10%
+20%
+25%
+50%
+75%
+100%
+125%
+150%
+175%
+200%
+225%
+250%
+300%
+350%
+400%
+Page
+Width
+Height
+
+The Page, Width, and Height entries will zoom to fit the page, zoom to fit the
+width or zoom to fit the height.
+
+A separate issue has been raised to add support for Zoom to selection.
+
+The zoom manager is initialized with the previous zoom level set by the user in
+the old BP graphics.
+
+6.5 Editor shall listen to resource changes
+
+When initially introduced the listeners from ui.canvas were copied to the new
+plug-in.  During this too much of the support was removed from the listener
+copies.  Support for this was added back exactly as it used to be supported in
+the original BP diagrams.
+
+6.6 Add key shortcuts
+
+Nothing was required here.  All of the shortcuts worked as one would expect.
+
+6.7 Floating text resize
+
+The floating text when selected has one handle created.  This handle lives on
+the east side of the outline box for the text.
+
+When moved it rearranges the text adding new lines as one would expect.
+
+6.8 Paste operation needs to use mouse location
+
+The selection tool is overridden to cache the last location of a context mouse
+button press.  This value is then used by the graphical paste action to
+determine the location for the newly created elements.
+
+6.9 Support component diagram
+
+The ShapeEditPart class has it's getModelChildren method extended to search for
+any contained elements using the DIM associations.
+
+Additionally the selection behavior is modified such that you can select the
+container symbol only by clicking around the edges or within the name
+compartment.
+
+The edit policies associated with creating shapes and connectors are extended to
+treat anything over the container symbol as whitespace.  One exception is when
+starting from true whitespace with a required or provided interface, in which
+case the tool treats the container symbol as the target.
+
+6.10 Support drawing Initial Node, Final Node, and Flow Node
+
+At this point the drawing logic is adjusted to allow drawing the symbol in a
+fixed aspect.  This allows the user to resize the elements if desired.
+Previously, the user was not allowed to resize these elements.
+
+6.11 Support floating text for shapes
+
+The ShapeEditPart getModelChildren() method is extended to return any floating
+text associated with it.
+ 
+Additionally the shape's drawing bounds are extended to encapsulate any floating
+text.
+
+6.12 Support printing
+
+GEF has support for a print operation.  This operation is used and has the
+FIT_PAGE print mode set.  This operation is run within the already existing
+handlePrint() method of the GraphicalEditor class.
+
+6.13 Palette tool drawers
+
+In order to support grouping in the palette a new attribute is added to the
+Element Specification class.  This attribute can be set in the plugin.xml
+definitions.  The attribute is named tool_category and can be any string value.
+
+During the initialization of the palette this value is checked and the tool
+created for the Element Specification is added to the group.  The tool can be
+added to multiple groups by using commas to separate values in the attribute.
+
+6.14 Add version attribute to Model class
+
+A new attribute is added to the Model class in ooaofgraphics.  This attribute is
+named version.
+
+The purpose of this attribute is to set a version which can be checked in order
+to determine when graphical data should be upgraded.
+
+Currently this is used to re-adjust graphical positioning.  GEF handles the
+scrolling system differently than the original BP graphics.  Scrolling has an
+origin point at 0,0.  In order to convert the original values everything is
+shifted such that the element which is farthest to the North West becomes
+positioned at 0,0.  Everything after that is adjusted by that delta.  When the
+diagram is initialized the scroll bars are moved such that the same viewable
+aspect is maintained.
+
+6.15 Support adaptable selections
+
+The BP selection manager is modified such that Edit Parts may be directly
+inserted.  These edit parts all adapt to the underlying NonRootModelElement for
+which they represent.  The selection manager is therefore modified to adapt any
+elements which are adaptable to NonRootModelElement.
+
+This adds support for showing the expected context menu items.
+
+Additionally all object contributions defined across the tool are marked as
+adaptable.
+
+6.16 Use GraphicalEditor.redrawAll
+
+In debug.ui there is a call to CanvasEditor.redrawAll, this call is changed to
+reference the new GraphicalEditor class.
+
+6.17 Add upgrade code for new Model attribute
+
+In io.core the archetypes to generate the import code are modified to create an
+empty string for the newly created version attribute of the Model class.
+
+6.18 Use GEF based editor to create graphical images for document generator
+
+The document generator is modified to use the GEF based editor for generating
+images of the various diagrams.
+
+6.19 Support link with editor
+
+The previous link with editor support in Model Explorer relies on the fact that
+the graphics will use the BP selection manager.  This is still true except that
+they now simply add the Edit part to the selection.  Therefore the Model
+Explorer code must now adapt the selection.
+
+Additionally, when selecting elements in Model Explorer the graphics side must
+adapt the core selections to the representing edit parts.
+
+6.20 Adjust existing unit tests
+
+All tests are re-factored to use the new GraphicalEditor class, rather than the
+CanvasEditor class.
+
+A new utility method is added which is used to find the palette tool expected
+during a test.  This is located by name.
+
+A new utility method is added which will activate the found tool according to
+GEF activation policies.  A deactivate method is also created.
+
+There were some tests that re-validate themselves against a previously used
+result.  GEF was adjusting the positional values by one pixel when this
+occurred.  For now these tests are modified to use newly created results.
+
+Expected results were updated to account for a difference in positional values.
+Expected results were updated to account for the way connectors are drawn in GEF
+meaning drawPolyline is called rather than drawLine multiple times.
+Expected results were updated to account for the new version attribute of the
+Model class.
+
+The image creation support for expected results is modified to get the image
+from GEF.  Currently the text (which is what is really compared) is correct, but
+the image is slightly off.  Where text happens to extend the shape slightly.
+For now we will do nothing about this.  An issue is raised to fix this such that
+the image matches what is really seen if using the tool.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See the design section.
+
+9. Unit Test
+------------
+_- Run all existing tests
+_R All tests pass
+
+A follow on issue will be addressed to test any new behavior.
+
+End
+---
+
+$Log: dts0100650381.dnt,v $
+Revision 1.3  2010/03/02 18:15:53  tlondon
+Job: dts0100650381
+
+Correct spelling
+
+Revision 1.2  2010/03/02 18:01:54  tlondon
+Job: dts0100650381
+
+Add missing entries
+
+Revision 1.1  2010/03/02 17:04:44  tlondon
+Job: dts0100650381
+
+Introduce design note
+

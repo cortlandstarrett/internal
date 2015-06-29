@@ -1,0 +1,326 @@
+========================================================================
+
+File:      $RCSfile: i66.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+MC-Java Design Note
+Support enumerated data types
+
+Abstract
+--------
+This note describes the changes to MC-Java to support enumerated 
+data types.
+
+History
+-------
+
+final i66-080103-01.rvm
+
+Document References
+-------------------
+
+Issue 65
+Issue 66
+[1] core/doc/internal/technical/Action_Semantics/i65.int
+
+Background
+----------
+
+The work for defining the type of an action being parsed (issue 65)
+requires enumerations, so we need to add support for them to MC-Java.
+
+Design
+------
+
+i66.1 Generate a class for the enumerator values
+
+i66.1.1 For each enumeration data type, a file is created with
+the data type name, that defines the values of the enumeration.
+The file enums.inc is created with the function gen_enum_classes.
+The function takes three arguments, the package name, the
+path to output the file to, and if persistence is enabled. 
+
+The class defines a final static int for each enumerator.
+The class also defines a final static int OOA_UNINITIALIZED_ENUM
+with a value of -1.  We must define a class rather than an interface,
+for when persistence is enabled, and the utility functions are defined.
+
+i66.1.2 If persistence is enabled, the following methods 
+are also generated:
+
+    public static String toString(int val) - returns a string version of
+    the value in val
+
+    public static int fromString( String val ) - returns an integer
+    with the value equivalent to val
+
+
+i66.2 Define enumeration type
+
+In do_type.inc, add a check if data type is an enumeration.
+Enumerations are translated to the int datatype.  This makes
+processing of the enumerations simple, since int is a built-in
+type that doesn't require allocation.
+
+i66.3 Support enumeration literals in OAL
+
+i66.3.1 The class Literal Enumerator (V_LEN) is added to 
+ooa_schema.sql.  It has two attributes, Value_Id and 
+Value, both of type STRING. The class is related to the 
+V_VAL class via R801.
+
+i66.3.2 The function rval_literal_enum is added to Fragment.arc.
+The function creates one instance each of V_VAL and V_LEN.
+
+i66.3.3 The function gen_literal_enumerations is added to 
+Value.arc.  The function sets the buffer attribute for
+each V_VAL that is a literal enumeration to 
+<enum class name>.<enumerator name>.
+
+i66.3.4 An invocation of gen_literal_enumerations is added to
+the function translate_values in Includes.inc.
+
+i66.3.5 If an attribute is an enumeration type,
+then we initialize the attribute with the default value
+for that type.
+
+i66.4 Persistence storage as string
+
+i66.4.1 In the constructor taking a ResultSet, test for an
+enumeration data type, and if present, pass the result of the
+query to the .fromString() function.
+
+i66.4.2 In the attribute write operation, if the data type is
+an enumeration, use the .toString() function to stringize 
+the value being written to the database.
+
+i66.4.3 In the addToDatabase function, if the data type is
+an enumeration, use the .toString() function to stringize 
+the value being written to the database.
+
+i66.4.4 In the delete operation, if an identifying attribute
+is an enumeration, use the .toString() function to stringize 
+the value before using it to find the row to delete.
+
+i66.4.5 In the <class>Instance(ResultSet rs) function, if an
+identifying attribute is an enumeration data type, then 
+pass the result of the query to the .fromString() function
+before comparing to the in-memory attribute value.
+
+i66.4.6 In pg_schema_gen.arc, check if the datatype is an
+enumeration, and if it is, make it a STRING in the database.
+
+Work Required
+-------------
+
+i66.1 Generate a class for the enumerator values
+
+
+i66.1.1  The code is written as described. The code 
+generated for the OalConstants data type (see [1]) would be:
+
+public class Oalconstants_c {
+    public final static int OOA_UNINITIALIZED_ENUM = -1;
+	public final static int FUNCTION_TYPE = 0;
+	public final static int BRIDGE_TYPE = 1;
+	public final static int OPERATION_TYPE = 2;
+	public final static int STATE_TYPE = 3;
+	public final static int MDA_TYPE = 4;
+}
+
+i66.1.1.1 The following utility functions are added to arch_names.inc:
+
+.function get_enumeration_class_name
+  .param inst_ref dt   .// S_DT
+$Cr{dt.Name}_c\
+.end function
+
+.function get_enumerator_name_from_str
+  .param string p_enum
+$_{p_enum}\
+.end function
+
+.function GetEnumElementDefaultValueInfoString
+  .//
+  .assign attr_name  = "OOA_UNINITIALIZED_ENUM"
+  .assign attr_value = -1
+.end function
+
+i66.1.1.2 An invocation of gen_enum_classes is added to
+Java.arc
+
+i66.1.2 The code is written as described.
+
+i66.2 Define enumeration type
+
+In do_type.inc, add a check if data type is an enumeration.
+Enumerations are translated to the int data type.
+
+i66.3 Support enumeration literals in OAL
+
+i66.3.1 The following is added to ooa_schema.sql:
+
+CREATE TABLE V_LEN (
+         Value_Id	STRING,
+	     Value		STRING );
+
+CREATE ROP REF_ID R801 FROM 1C 	V_LEN 	( Value_Id )
+		     TO 1  	V_VAL 	( Value_Id );
+
+i66.3.2 The following is added to fragment.arc:
+
+.function rval_literal_enum
+  .param string p_enum_dt_name
+  .param string p_enum_name
+  .assign attr_val_id = "${info.unique_num}"
+  .select any dt from instances of S_DT where ( selected.Name == p_enum_dt_name )
+  .assign attr_dt_id = "${dt.DT_ID}"
+  INSERT INTO V_VAL VALUES ('${attr_val_id}','','${attr_dt_id}') ;
+  INSERT INTO V_LEN VALUES ('${attr_val_id}', '${p_enum_name}' ) ;
+.end function
+
+i66.3.3 The following function is added to Value.arc:
+
+.function gen_literal_enumerations
+  .select many values from instances of V_LEN
+  .for each value in values
+    .select one val related by value->V_VAL[R801]
+    .select any dt from instances of S_DT where ( "${selected.DT_ID}" == val.DT_ID )
+    .invoke val_type = get_enumeration_class_name( dt )
+    .invoke en = get_enumerator_name_from_str( value.Value )
+    .assign val.buffer = "${val_type.body}.${en.body}"
+  .end for
+.end function
+
+i66.3.4 The change is made as described.
+
+i66.3.5 In Java.arc, the following is added to the attribute initialization
+code that is generated in the default constructor:
+
+        .select one edt related by type->S_EDT[R17]
+        .if ( not_empty edt )
+          .invoke en = get_enumeration_class_name( type )
+          .invoke default = GetEnumElementDefaultValueInfoString()
+     ${an.body} = ${en.body}.${default.name};
+        .end if
+
+i66.4 Persistence storage as string
+
+i66.4.1 In Java.arc, modify the constructor taking a ResultSet
+to generate the following code:
+
++               .select one edt related by type->S_EDT[R17]
++               .if ( empty edt )
+      ${an.body} = resultSet.get${SQLType}("${san.body}");  
++               .else
++                 .invoke en = get_enumeration_class_name( type )
++     ${an.body} = ${en.body}.fromString(resultSet.getString("${san.body}"));  
++               .end if
+
+i66.4.2 In Java.arc, modify the generated attribute write operation, 
+as follows:
+
+!     String update ="UPDATE ${tn.body} SET ${san.body} = '" + \
++                  .select one edt related by type->S_EDT[R17]
++                  .if ( not_empty edt )
++                    .invoke en = get_enumeration_class_name( type )
++${en.body}.toString(newValue)\
++                  .else
++newValue\
++                  .end if
+
+i66.4.3 In Java.arc, in the addToDatabase function, modify
+the attribute access as follows:
+
++              .select one edt related by type->S_EDT[R17]
++               .if ( not_empty edt )
++                 .invoke en = get_enumeration_class_name( type )
++       ${en.body}.toString(${aa.body}())\
++               .else
+        ${aa.body}()\
++               .end if
+
+i66.4.4 In Java.arc, in the delete operation, modify the
+instance lookup code as follows:
+
++           .select one type related by id_attr->S_DT[R114]
++           .select any referential related by id_attr->O_RATTR[R106]
++           .if (not_empty referential)
++             .select one type related by referential->O_BATTR[R113]->O_ATTR[R106]->S_DT[R114]
++           .end if
++           .select one edt related by type->S_EDT[R17]
++           .if ( not_empty edt )
++             .invoke en = get_enumeration_class_name( type )
+++ "${san.body} = '" + ${en.body}.toString(${aa.body}())\
++           .else
+ + "${san.body} = '" + ${aa.body}()\
++           .end if
+
+
+i66.4.5 In Java.arc, in the <class>Instance(ResultSet rs) 
+function, modify the code as follows:
+
++            .select one edt related by type->S_EDT[R17]
++            .if ( not_empty edt )
++              .invoke en = get_enumeration_class_name( type )
++${en.body}.fromString(rs.getString("${san.body}")) == $lr{object.Name}.${aa.body}() \
++            .else
+ rs.get${SQLType}("${san.body}") == $lr{object.Name}.${aa.body}() \
++            .end if
+
+
+i66.4.6 Modify pg_schema_gen.arc as described in the design.
+
+End
+---
+
+$Log: i66.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.168.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2003/08/02 16:58:25  greg
+Job: 66
+Changes from review
+
+Revision 1.6  2003/07/31 14:49:35  greg
+Job: 66
+Cleanup some code fragments
+
+Revision 1.5  2003/07/31 14:33:04  greg
+Job: 66
+Add get_enumeration_class_name function
+
+Revision 1.4  2003/07/30 22:20:23  greg
+Job: 66
+Changed to int type
+
+Revision 1.3  2003/07/29 21:47:12  greg
+Job: 66
+Finalize design
+
+Revision 1.2  2003/07/29 00:56:43  greg
+Job: 66
+Finished first pass
+
+Revision 1.1  2003/07/28 22:26:40  greg
+Job: 66
+Prelim design
+

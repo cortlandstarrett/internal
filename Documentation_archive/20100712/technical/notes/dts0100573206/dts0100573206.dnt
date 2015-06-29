@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile: dts0100573206.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Consistent context menu for creating model elements
+
+
+1. Abstract
+-----------
+This note describes how Bridge Point will create a new model element using 
+a context menu from within Model Explorer in any situation in which it makes 
+sense (e.g., creating a class using a context menu by right-clicking on a class 
+diagram canvas).
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100573206
+[2] <cvs>/Documentation/internal/technical/notes/dts0100573206/dts0100573206.ant
+    Analysis Note of the issue.
+
+4. Background
+-------------
+see [2].
+
+5. Analysis
+-----------
+see [2].
+
+6. Design
+---------
+6.1   Create the pop up menu extension in the core plugin.xml and define their 
+classes ,also need to enable the new entry in the class diagram .
+
+6.1.1 For each model element in [2] add a CME entry in the context_menu.pei.sql 
+file to define the plugin.xml entry ,an example of one of those entries:
+INSERT INTO CME VALUES ('New', 'Class','S_SS','O_OBJ',false );
+
+6.1.2 For each model element in [2] add new operation in the 
+bp.core -> ooaoofooa -> Functions -> Context Menu Entry Functions to specify 
+the creation method which will be used,this will generate the class that will be
+used when the new menu is selected ,an example:
+The function named : S_SS_NewClass
+The function body : 
+select any ss from instances of S_SS where USER::selectOne(id:selected.SS_ID);
+if(not empty ss)
+ss.newClass();
+end if;
+
+6.1.3 Write in the description property of each function :
+ContextMenuFunction: TRUE to take the body of the function and convert it to 
+Java code.
+
+6.2   Make the new created element drawn on the canvas.
+
+6.2.1 Add an association in Graphical Data Class diagram between GD_ARS and 
+GD_MS with cardinality conditional one for GD_MS and conditional many for GD_ARS
+(This association is added to distinguish the connectors reconciliation from 
+the  elements reconciliation against their diagrams)
+
+6.2.2 Put the autoReconcile tags needed for each element to be reconciled in the 
+"defaultFor" tag in the canvas plugin.xml (This tag define the diagrams that 
+will contain the new created elements)
+an example :
+ <autoReconcile
+               targetSymbol="Class"
+               countMethod="Getclasscount"
+               elementMethod="Getclassid"
+               elementExistsMethod="not used"/> 
+
+6.2.3 Update the initializeCanvases function in the CanvasPlugin.java to set the 
+new association when it find an autoReconcile tag inside defaultFor tag. 
+
+6.2.4 Create the needed operations in diagrams in the metamodel that will be 
+called from the updateAllElements operation,since the operations names are 
+specified in the plugin.xml.
+an example for the "getClassCount" operation in the "subsystem" class :
+
+select many classes related by self->O_OBJ[R2];
+return cardinality classes;
+
+an example for the "getClassId" operation in the "subsystem" class :
+id = GD::NULL_UNIQUE_ID();
+select many classes related by self->O_OBJ[R2];
+// We're preincrementing the index
+count = -1;
+for each modelClass in classes
+  if (not_empty modelClass)
+      count = count+1;
+  end if;
+  if (count == param.index)
+      return modelClass.get_ooa_id();  
+  end if;
+end for;
+return id;
+
+6.2.5 Create new operations in the "Client" external entity to handle the call 
+of the above mentioned operations in the metamodel using Java reflection.
+    
+6.2.6 Update the updateAllElements operation in Auto Reconciliation 
+Specification class to handle the created elements using the new menu entry .
+
+6.2.7 Create a new operation in the Model class (GD_MD) to draw the shape for 
+the new created element using the new menu entry, this function will be called 
+from the updateAllElements operation.
+
+Here's the pseudo code for it :
+
+get the model spec associated with this reconciliation
+get all the models for this model spec
+for each model
+  get the children of the represented element
+  select all the shapes associated with the model
+  for each child
+    -- find an associated shape
+    for each shape
+      if the shape represents the element, then a shape is associated
+    end for each shape
+    if no shape is associated
+      create a new shape and associate with this child
+    end if no shape found
+  end for each child
+end for each model
+
+6.2.8 Decide the layout policy of the new shape on the canvas ,if the user 
+right clicked on the canvas then the shape should be placed at the right of the 
+mouse position but if the user chose the menu entry from the explorer view then 
+the shape should be put in suitable place.    
+
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully covered in the Design section above.
+
+9. Unit Test
+------------
+see[2].
+the test will be automated JUnit test 
+End
+---
+
+$Log: dts0100573206.dnt,v $
+Revision 1.9  2010/01/19 15:34:38  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.8  2010/01/19 14:04:42  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.7  2010/01/19 13:57:54  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.6  2010/01/19 10:54:31  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.5  2010/01/19 10:06:57  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.4  2010/01/14 08:30:52  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.3  2010/01/06 08:59:39  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.2  2010/01/05 10:49:07  hessam
+job:dts0100573206
+
+Design note of the issue
+
+Revision 1.1  2010/01/05 10:38:20  hessam
+job:dts0100573206
+
+Design note of the issue
+

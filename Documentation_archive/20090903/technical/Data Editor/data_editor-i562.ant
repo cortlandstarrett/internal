@@ -1,0 +1,456 @@
+========================================================================
+
+File:      $RCSfile: data_editor-i562.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:31:20 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Data Editor Support
+
+Abstract
+--------
+There is a need for user friendly means of editing model data. This note
+specifies the requirements for this feature.
+
+History
+-------
+
+Document References
+-------------------
+[1] http://dev.eclipse.org/viewcvs/index.cgi/~checkout~/pde-ui-home/working/
+                                                  EclipseForms/EclipseForms.html
+[2] doc/internal/technical/Property_View/property_view.ant|dnt|int
+[3] doc/internal/technical/Property_View/i499.int
+
+Analysis
+--------
+The work on the property provider[2] and its enhancement to provide basic and
+advanced property settings[3] allows Tiger to self host. However, the nature of
+the BridgePoint metamodel is such that data that live together on a diagram are
+not necessarily always in the metamodel entity represented by the selectable
+element on the diagram. This makes the property view difficult to learn for a
+first time user and often inconvenient for an expert. In addition, the advanced
+properties mode must be selected for basic use cases like changing a association
+phrase or cardinality.
+
+It is clear that we are going to need something much more user friendly before
+first release. It is also clear that a generated solution to this problem will
+require a great deal of coloring data. While this is an option, it is known that
+lots of complex coloring data can be as difficult to maintain as hand written
+source code. We must therefore look at other options.
+
+First some basic requirements; we need an alternate data presentation method to
+the standard properties viewer. This presentation shall be called
+'Model Properties'. It shall have Eclipse Viewer behavior. Its content shall
+change as the user selects different items on the canvas or in the browser
+trees and users changes shall be applied to the model immediately a field loses
+focus. However the appearance of the Model Properties view shall be more like an
+Eclipse Multi Page Editor (for example, the Plugin Manifest Editor). This gives
+us an opportunity to produce some very acceptable, easy on the eye, forms. In
+particular, this choice of platform affords good control over layout, fonts and
+so on.
+
+One of the features of the Eclipse form support is the ability to specify layout
+and font control using a rich text format (it looks similar to RTF or HTML), in
+other words, XML.
+
+It is proposed that we build an extended xml schema based on this format that
+shall define fields and buttons in addition to the basic text output. For each
+field, this new format shall encode how to obtain the data to show and what
+client domain operation to call to apply a changed value to the model. For each
+button, the format shall define what arguments are needed and how to obtain the
+required values as well as what client operation must be called.
+
+Required data items may be simple values (integer, float, string, boolean), as
+well as client instance references based on the current selection in the canvas
+and the current selections of fields in the form.
+
+In common with the Eclipse Multi-Page Editor (MPE), the Model Properties viewer
+shall allow the use of tabbed pages. Also in common with the MPE the tabs shall
+be presented at the opposite side of the view from the Eclipse tabs to avoid
+confusion with those controls. Note that Eclipse Editor and Property tabs can be
+repositioned to top or bottom in the Workbench preferences (we need to check
+what Eclipse 3.0 does. It may allow positioning to left or right too).
+
+The following forms shall be provided:
+
+  - System
+    - Name:                      String
+    - Description:               Multi-line string field
+  - Domain
+    - Name:                      String
+    - Description:               Multi-line string field
+  - Core Data Type
+    - Name:                      String
+    - Description:               Multi-line string field
+  - User Data Type
+    - Name:                      String
+    - Description:               Multi-line string field
+    - Core Data Type:            Computed Drop list (->S_DOM[R14]->S_DT[R14]->S_CDT[R17]->S_DT[R17])
+    - Optional Size:             Integer
+  - Enumeration Data Type
+    - Name:                      String
+    - Description:               Multi-line string field
+    - Optional Size:             Integer
+    - Enumerators:               List (->S_EDT[R17]->S_ENUM[R27])
+      - Name:                    String
+      - Description:             Multi-line string field
+      - Optional Value:          Integer
+  - Composite Data Type
+    - Name:                      String
+    - Description:               Multi-line string field
+    - Fields:                    List (TBD)
+      - Name:                    String
+      - Type:                    Drop list
+      - Optional Bit Position:   Integer
+  - Subsystem
+    - Name:                      String
+    - Description:               Multi-line string field
+    - Prefix:                    String
+    - Number Range:              Integer
+  - Model Class
+    - Attributes Tab
+      - (Class)Name:             String
+      - Number:                  Integer
+      - Key Letter:              String
+      - Attributes:              List (->O_ATTR[R102])
+        - '{' Identifier* (->O_ID[R105])', ' '}' Name '{' Reference* (->O_RATTR[R106]->O_REF[R112]<R112>)',' '}'
+      - Naming Convention:       Enumerated drop list
+        - <As Builder>
+      - Description:             String
+      - Data Type:               Drop list (->O_OBJ[R102]->S_SS[R2]->S_DOM[R1]->S_DT[R14])
+      - Identifier:              Boolean (or maybe arbitrary # of identifiers?)
+      - Identifier 2:            Boolean
+      - Identifier 3:            Boolean
+      - Reorder:                 Enumerated menu
+        - Top                    (moveTop)
+        - Up                     (moveUp)
+        - Down                   (moveDown)
+        - Bottom                 (moveBottom)
+      - Insert:                  Enumerated menu
+        - Top                    (newTop)
+        - Before                 (newBefore)
+        - After                  (newAfter)
+        - Bottom                 (newBottom)
+      - Remove Attribute:        Button
+    - Operations Tab
+      - (Class)Name:             String
+      - Number:                  Integer
+      - Key Letter:              String
+      - Operations:              List (->O_TFR[R115])
+        - Name '(' Arguments* (->O_TPARM[R117])', ' '):' Return Type (->S_DT[R116])
+      - Description:             Multi-line string
+      - Return Type:             Drop list (->O_OBJ[R115]->S_SS[R2]->S_DOM[R1]->S_DT[R14])
+      - Arguments:               List (->O_TPARM[R117])
+        - Name:                  String
+      - Description:             Multi-line string
+      - Data Type:               Drop list (->S_DT[R118])
+    - Reference Management Tab
+      - (Class)Name:             String
+      - Number:                  Integer
+      - Key Letter:              String
+      - Attributes:              List
+        - '{' Identifier* (->O_ID[R105])', ' '}' Name '{' Reference* (->O_RATTR[R106]->O_REF[R112]<R112>)',' '}'
+      - References:              List (->O_RATTR[R106]->O_REF[R112]<R112>)
+        - Reference ' - ' Class.Name (->O_RTIDA[R111]->R_RTO[R110]->O_ID[R109]->O_OBJ[R104])'.' Attribute.Name (->O_RTIDA[R111]->R_OIDA[R110]->O_ATTR[R105])
+      - Reorder:                 Enumerated menu
+        - Top                    (moveTop)
+        - Up                     (moveUp)
+        - Down                   (moveDown)
+        - Bottom                 (moveBottom)
+      - Insert:                  Enumerated menu
+        - Top                    (newTop)
+        - Before                 (newBefore)
+        - After                  (newAfter)
+        - Bottom                 (newBottom)
+      - Remove Attribute:        Button
+      - Reorder Reference:       Enumerated menu
+        - First                  (moveFirst)
+        - Forward                (moveForward)
+        - Back                   (moveBack)
+        - Last                   (moveLast)
+      - Combine Reference:       Button
+      - Split Reference:         Button
+      - Cancel Combine:          Button
+      - Constrain Reference:     Button
+    - Description Tab
+      - (Class)Name:             String
+      - Number:                  Integer
+      - Key Letter:              String
+      - Description:             Multi-line string field
+  - Simple Association
+    - Association Tab
+      - One Side Class Name:     Label (->R_SIMP[R206]->R_PART[R207])
+      - Other Side Assoc Phrase: String (->R_SIMP[R206]->R_FORM[R208])
+      - Other Side Cardinality:  Enumerated drop list (->R_SIMP[R206]->R_FORM[R208])
+        - One
+        - Zero or One
+        - One or More
+        - Many
+      - Other Side Class Name:   Label (->R_SIMP[R206]->R_FORM[R208])
+      <Separator>
+      - Other Side Class Name:   Label (->R_SIMP[R206]->R_FORM[R208])
+      - One Side Assoc Phrase:   String (->R_SIMP[R206]->R_PART[R207])
+      - One Side Cardinality:    Enumerated drop list (->R_SIMP[R206]->R_PART[R207])
+        - One
+        - Zero or One
+        - One or More
+        - Many
+      - Association Number:      Integer
+      - Association Type:        Enumerated drop list
+        - Simple                 (migrateToSimple)
+        - Compositional          (migrateToCompositional)
+      - Identify One Side Using: Enumerated Menu
+        - Place References in this Class (->R_SIMP[R206]->R_FORM[R208]->R_RGO[R206]->R_OIR[R203]->O_OBJ[R201].formalize(1))
+        - Identify using Primary ID      (->R_SIMP[R206]->R_PART[R207]->R_RTO[R204]->R_OIR[R203]->O_OBJ[R201].formalize(1))
+        - Identify using Secondary ID    (->R_SIMP[R206]->R_PART[R207]->R_RTO[R204]->R_OIR[R203]->O_OBJ[R201].formalize(2))
+        - Identify using Tertiary ID     (->R_SIMP[R206]->R_PART[R207]->R_RTO[R204]->R_OIR[R203]->O_OBJ[R201].formalize(3))(or have arbitrary id set size?)
+      - Identify Other Side Using: Enumerated drop list
+        - Place References in this Class (->R_SIMP[R206]->R_PART[R207]->R_RTO[R204]->R_OIR[R203]->O_OBJ[R201].formalize(1))
+        - Identify using Primary ID      (->R_SIMP[R206]->R_FORM[R208]->R_RGO[R206]->R_OIR[R203]->O_OBJ[R201].formalize(1))
+        - Identify using Secondary ID    (->R_SIMP[R206]->R_FORM[R208]->R_RGO[R206]->R_OIR[R203]->O_OBJ[R201].formalize(2))
+        - Identify using Tertiary ID     (->R_SIMP[R206]->R_FORM[R208]->R_RGO[R206]->R_OIR[R203]->O_OBJ[R201].formalize(3))(or have arbitrary id set size?)
+      - Unformalize Association: Button  (unformalize)
+    - Description Tab
+      - Description:             Multi-line string field
+  - Linked Association
+    - Association Tab
+      - One Side Class Name:     Label
+      - Other Side Assoc Phrase: String
+      - Other Side Cardinality:  Enumerated drop list
+        - One
+        - Zero or One
+        - One or More
+        - Many
+      - Other Side Class Name:   Label
+      - Other Side Class Name:   Label
+      - One Side Assoc Phrase:   String
+      - One Side Cardinality:    Enumerated drop list
+        - One
+        - Zero or One
+        - One or More
+        - Many
+      - One Side Class Name:     Label
+      - Association Number:      Integer
+      - Link Class Cardinality:  Enumerated drop list
+        - One
+        - Many
+      - Link Class Name          Label
+      - Identify One Side Using: Enumerated drop list
+        - Place References in this Class
+        - Identify using Primary ID
+        - Identify using Secondary ID
+        - Identify using Tertiary ID  (or have arbitrary id set size?)
+      - Identify Other Side Using: Enumerated drop list
+        - Place References in this Class
+        - Identify using Primary ID
+        - Identify using Secondary ID
+        - Identify using Tertiary ID  (or have arbitrary id set size?)
+      - Unformalize Association: Button  (unformalize)
+    - Description Tab
+      - Description:             Multi-line string field
+  - Supertype Association
+    - Association Tab
+      - Association Number:      Integer
+      - Identify Using:          Enumerated drop list
+        - Identify using Primary ID    
+        - Identify using Secondary ID
+        - Identify using Tertiary ID  (or have arbitrary id set size?)
+      - Unformalize Association: Button  (unformalize)
+    - Description Tab
+      - Description:             Multi-line string field
+  - Subtype Association
+    - Association Tab
+      - Association Number:      Integer
+      - Identify Using:          Enumerated drop list
+        - Place References in this Class (Subtype)
+      - Unformalize Association: Button  (unformalize)
+    - Description Tab
+      - Description:             Multi-line string field
+  - Imported Class (Assigned or not)
+    - Subsystems:                List (->S_SS[R3]->S_DOM[R1]<excluding current SS>)
+    - Classes:                   List (Subsystems.selected->O_OBJ[R2])
+    - Warning:                   Label (all associations will be lost).
+  - Transition
+    - Assigned Event             Computed drop list (->SM_SM[R506]->SM_EVT[R502])
+      - No Event Assigned        (->SM_NETXN[R507])
+      - (->SM_NSTXN[R607]->SM_SEME[R504]->SM_EVT[R503]).Derived Label ':' (->SM_NSTXN[R507]->SM_SEME[R504]->SM_EVT[R503]).Mning '[' ->SM_SUPDT[R520]->SM_EVTDI[R522].Name* ',' ']'
+  - State
+    - State Tab
+      - Number:                  Integer
+      - Name:                    String
+      - Unassigned Events:       List
+        - Event.Derived Label ':' Event.Mning '[' Event Data* ',' ']'
+      - SEM Setting              Enumerated drop list
+        - Event Ignored
+        - Can't Happen
+    - Expected Data Tab
+      - Data Items:              Multi-selection list
+        - Data Item.Name
+      - Name:                    String
+      - Data Type                Enumerated drop list
+    - Activity Tab
+      - Activity:                Multi-line string
+    - Description Tab
+      - Description:             Multi-line string
+  - State model
+    - State Model Events Tab
+      - Events:                  List
+        - Event.Derived Label ':' Event.Mning '[' Event Data* ',' ']'
+      - Number:                  Integer
+      - Meaning:                 String
+      - Naming Convention:       Enumerated drop list
+        - Use Class Keyletters
+        - Use Customized Keyletters  (do our users _use_ this?)
+      - Keyletters:              String
+      - Description:             Multi-line string
+      - Data Items               Multi-selection list
+        - Data Item.Name
+    - State Model Data Tab
+      - Data Items:              List
+        - Data Item.Name
+      - Name:                    String
+      - Data Type:               Drop List
+      - Description:             Multi-line string
+    - Description Tab
+      - Description:             Multi line string
+
+Example XML
+-----------
+(Based on the Class Editor specification above)
+
+<form name="Class Editor" background="bp-graded.gif">
+  <tab name="Attributes">
+    <b>${Name} Attributes</b>
+    <separator type="horizontal"/>
+    <field name="Name" attribute="Name" type="string"/>
+    <field name="Number" attribute="Numb" type="integer"/>
+    <field name="Key Letter" attribute="Key_Lett" type="string"/>
+    <separator type="horizontal"/>
+    <list  name="Attributes" path="->O_ATTR[R102]">
+      <column>
+        <entry value="{" type="literal" cardinality="1"/>
+        <entry value="get_name" type="operation" path="->O_ID[R105]" cardinality="*"  separator=", "/>
+        <entry value="}" type="literal" cardinality="1"/>
+      </column>
+      <column>
+        <entry value="Name" type="attribute" path="" cardinality="1"/>
+      <column>
+      <column>
+        <entry value="{" type="literal" cardinality="1"/>
+        <entry value="get_ref_name' type="operation" path="->O_RATTR[R106]->O_REF[R112]" ordered-by"R112" cardinality="*" separator=", "/>
+        <entry value="}" type="literal" cardinality="1"/>
+      </column>
+    </list>
+    <menu name="Reorder" type="enumerated">
+      <entry name="Top" operation="@Attributes.moveTop"/>
+      <entry name="Up" operation="@Attributes.moveUp"/>
+      <entry name="Down" operation="@Attributes.moveDown"/>
+      <entry name="Bottom" operation="@Attributes.moveDown"/>
+    </menu>
+    <menu name="Insert" type="enumerated">
+      <entry name="Top" operation="@Attributes->O_OBJ[R102].newTop"/>
+      <entry name="Before" operation="@Attributes.newBefore"/>
+      <entry name="After" operation="@Attributes.newAfter"/>
+      <entry name="Bottom" operation="@Attributes->O_OBJ[R102].newBottom"/>
+    </menu>
+    <button name="Remove" operation="@Attributes.dispose"/>
+    <separator type="vertical"/>
+    <droplist name="refMode" path="@Attributes" type="enumeration" attribute="Pfx_Mode">
+      <entry label="Local Attribute Name" value="1"/>
+      <entry label="Prefix + Attribute Name" value="2"/>
+      <entry label="Referred to Attribute Name" value="3"/>
+      <entry label="Prefix + Referred to Attribute Name" value="4"/>
+      <entry label="Referred to Prefix + Local Attribute Name" value="5"/>
+      <entry label="Referred tp Prefix + Referred to Attribute Name" value="6"/>
+    </droplist>
+    <field name="Prefix" attribute="@Attributes.Prefix" type="string"/>
+    <field name="Description" attribute="@Attributes.Descrip" type="string">
+    <droplist name="Type" type="computed" content="@Attributes->O_OBJ[R102]->S_SS[R2]->S_DOM[R1]->S_DT[R14]" selection="@Attributes->S_DT[R114]"/>
+      <field name="Primary ID" attribute="?Attributes->O_ID[R105]" value="1" type="boolean"/>
+      <field name="Secondary ID" attribute="?Attributes->O_ID[R105]" value="2" type="boolean"/>
+      <field name="Tertiary ID" attribute="?Attributes->O_ID[R105]" value="3" type="boolean"/>
+    </droplist>
+  </tab>
+    - Operations Tab
+      - (Class)Name:             String
+      - Number:                  Integer
+      - Key Letter:              String
+      - Operations:              List (->O_TFR[R115])
+        - Name '(' Arguments* (->O_TPARM[R117])', ' '):' Return Type (->S_DT[R116])
+      - Description:             Multi-line string
+      - Return Type:             Drop list (->O_OBJ[R115]->S_SS[R2]->S_DOM[R1]->S_DT[R14])
+      - Arguments:               List (->O_TPARM[R117])
+        - Name:                  String
+      - Description:             Multi-line string
+      - Data Type:               Drop list (->S_DT[R118])
+    - Reference Management Tab
+      - (Class)Name:             String
+      - Number:                  Integer
+      - Key Letter:              String
+      - Attributes:              List
+        - '{' Identifier* (->O_ID[R105])', ' '}' Name '{' Reference* (->O_RATTR[R106]->O_REF[R112]<R112>)',' '}'
+      - References:              List (->O_RATTR[R106]->O_REF[R112]<R112>)
+        - Reference ' - ' Class.Name (->O_RTIDA[R111]->R_RTO[R110]->O_ID[R109]->O_OBJ[R104])'.' Attribute.Name (->O_RTIDA[R111]->R_OIDA[R110]->O_ATTR[R105])
+      - Reorder:                 Enumerated menu
+        - Top                    (moveTop)
+        - Up                     (moveUp)
+        - Down                   (moveDown)
+        - Bottom                 (moveBottom)
+      - Insert:                  Enumerated menu
+        - Top                    (newTop)
+        - Before                 (newBefore)
+        - After                  (newAfter)
+        - Bottom                 (newBottom)
+      - Remove Attribute:        Button
+      - Reorder Reference:       Enumerated menu
+        - First                  (moveFirst)
+        - Forward                (moveForward)
+        - Back                   (moveBack)
+        - Last                   (moveLast)
+      - Combine Reference:       Button
+      - Split Reference:         Button
+      - Cancel Combine:          Button
+      - Constrain Reference:     Button
+    - Description Tab
+      - (Class)Name:             String
+      - Number:                  Integer
+      - Key Letter:              String
+      - Description:             Multi-line string field
+
+Work Required
+-------------
+
+
+End
+---
+
+$Log: data_editor-i562.ant,v $
+Revision 1.1  2009/09/03 18:31:20  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:15:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.46.1  2008/12/31 16:12:44  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/02/22 17:00:13  campbell
+Job: 562
+Added reference to Eclipse document
+
+Revision 1.1  2004/11/17 14:11:53  campbell
+Job: 562
+Introduced.
+

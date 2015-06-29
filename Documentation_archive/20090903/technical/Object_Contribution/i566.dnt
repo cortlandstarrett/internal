@@ -1,0 +1,313 @@
+========================================================================
+
+File:      $RCSfile: i566.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Fix various refresh problems
+
+Abstract
+--------
+This note describes the changes to fix various refresh problems
+
+History
+-------
+
+final i566-120204-01.rvm
+
+Document References
+-------------------
+
+Issue 566
+
+Background
+----------
+
+The following problems are reported in the issue:
+
+    - unformalize, formalize of R1, disk_id shows up as "orphaned" in the
+      tree until it is moved up/down.  It needs to change to disk_id right 
+      away.
+    - when an attribute is moved up/down in the tree, it's position needs
+      to be changed as it is in the diagram.
+    - SC diagram is not getting updated when an event is disassociated with a
+      transition - need to click on canvas.  Greg has seen this with associating
+      an event with a transition.
+    - when the name of an event data item is changed in the ME, or property
+      editor, the change is not reflected in the diagram until it is selected
+      in the diagram.  It should be updated right away.
+	- The Can't Happen wizards for states and events have the incorrect text.
+
+Design
+------
+
+1. Update of referential attribute
+
+Model Explorer has a list of classes generated that contain those classes
+that Model Explorer will respond to changes to.  In the scenario described,
+the last update is to a AttributeReferenceInClass (O_REF) instance, which
+is not in Model Explorer's list.  The class is added to the list.
+
+2.  Display attributes in order specified by model
+
+The attributes are displayed in the order determined by the method
+ClassesAdapter.getChildren.   The method is changed to create the list of 
+attributes in the order specified by the data in the metamodel.
+
+2.1 Add data for ordering relationship
+
+The attribute Tree_Node_Specification.Sorted (boolean) is added to
+the UITree model.  A value of false indicates there is no ordering association
+for this tree node, and true indicates there is.
+
+2.2  Use Sorted to generate code
+
+The archetype create_adapters.inc is modified to check the Sorted
+attribute to generate code to sort the child nodes.
+
+2.3  Update pre-existing instances
+
+The UITree pre-existing instances are updated to add the value for the
+Sorted attribute.  All values are false except for O_ATTR, which has a 
+value of true.
+
+2.4  Disable model change messages while moving attribute
+
+The process of moving the attribute leaves the data in temporarily 
+inconsistent states, which cause null pointer errors when those changes
+cause canvas or model explorer updates.  The Attribute.MoveUp and 
+Attribute.MoveDown operations are changed to disable model change events 
+while the attributes are being moved.  The events are re-enabled just before 
+the last change is made, allowing the updates to occur.
+
+3.  Update of transitions
+
+The canvas editors have a list of classes for each symbol that cause a 
+refresh.  The classes NoEventTransition and NewStateTransition are added to 
+the dependency list for the Transition symbol.  The class CreationTransition
+is added to the dependency list for the Creation Transition symbol.  This
+way, changes to the subtypes of Transition will cause a refresh of the diagram.
+
+The Transition dependency list also has StateEventMatrixEntry added to it, 
+since this is all that changes when a transition with an event assigned to it
+has a different event assigned to it.
+
+4.  Update of event data
+
+The canvas editors have a list of classes for each symbol that cause a 
+refresh.  The class StateMachineEventDataItem is added to the dependency
+list for the Transition symbol.
+
+5.  Additional update changes
+
+Apopendix A lists the classes that the canvas editors listen to after the 
+chages due to this issue.  Appendix B lists the classes that the Model Explorer 
+listens to after the changes from this issue.  Comparing these lists, the 
+following classes should be added to the Transition dependency lists:
+
+Event Supplemental Data
+Supplemental Data Items
+
+All other classes that are in the ME list but not in the canvas list are 
+internal classes, or have no graphical information.  
+
+All classes that are in the canvas list but not in the ME list are 
+not displayed by the tree.  When they are displayed by the tree, they will
+be added to the list automatically by the code generation.
+
+6. Correct Wizard hint text
+
+The hint text for the can't happen and event ignored wizards is swapped 
+so that they read correctly.
+
+Work Required
+-------------
+
+1. Update of referential attribute
+
+The change is made to ui.explorer/arc/create_explorer_view.arc.
+
+2.  Display attributes in order specified by model
+
+2.1 Add data for ordering relationship
+
+The UITree model is updated as described in the design.
+
+2.2  Use Sorted to generate code
+
+The archetype create_adapters.inc is modified as described in the design.
+
+2.3  Update pre-existing instances
+
+UITree.pei.sql is updated as described in the design
+
+2.4  Disable model change messages while moving attribute
+
+The changes are made to the ooaofooa model as described in the design.
+
+3.  Update of transitions
+
+The changes are made to ui.canvas/plugin.xml as described in the design.
+
+4.  Update of event data
+
+The change is made to ui.canvas/plugin.xml, for both regular and creation
+transitions.
+
+5.  Additional update changes
+
+The change is made to ui.canvas/plugin.xml, for both regular and creation
+transitions.
+
+6. Correct Wizard hint text
+
+The change is made to context_menu.pei.sql as described in the design.
+
+Unit Test
+---------
+
+- All current unit tests pass
+- Manually test problems listed in Background are resolved
+
+Appendix A - Canvas Dependencies
+
+com.projtech.bp.core.Subsystem_c
+com.projtech.bp.core.ExternalEntity_c
+com.projtech.bp.core.Bridge_c
+com.projtech.bp.core.BridgeParameter_c
+com.projtech.bp.core.ExternalEntityDataItem_c
+com.projtech.bp.core.ExternalEntityEvent_c
+com.projtech.bp.core.ExternalEntityEventData_c
+com.projtech.bp.core.ExternalEntityEventDataItem_c
+com.projtech.bp.core.CoreDataType_c
+com.projtech.bp.core.UserDataType_c
+com.projtech.bp.core.EnumerationDataType_c
+com.projtech.bp.core.Enumerator_c
+com.projtech.bp.core.DatatypePackage_c
+com.projtech.bp.core.FunctionPackage_c
+com.projtech.bp.core.ExternalEntityPackage_c
+
+com.projtech.bp.core.ModelClass_c
+com.projtech.bp.core.ImportedClass_c
+com.projtech.bp.core.DataType_c
+com.projtech.bp.core.Association_c
+com.projtech.bp.core.ClassInAssociation_c
+com.projtech.bp.core.Operation_c
+com.projtech.bp.core.OperationParameter_c
+com.projtech.bp.core.Attribute_c
+com.projtech.bp.core.BaseAttribute_c
+com.projtech.bp.core.ReferentialAttribute_c
+com.projtech.bp.core.DerivedBaseAttribute_c
+com.projtech.bp.core.NewBaseAttribute_c
+com.projtech.bp.core.AttributeReferenceInClass_c
+com.projtech.bp.core.ClassIdentifier_c
+com.projtech.bp.core.ClassIdentifierAttribute_c
+com.projtech.bp.core.ReferredToIdentifierAttribute_c
+ 
+com.projtech.bp.core.ClassAsSimpleParticipant_c
+com.projtech.bp.core.ClassAsSimpleFormalizer_c
+com.projtech.bp.core.ClassAsAssociatedOneSide_c
+com.projtech.bp.core.ClassAsAssociatedOtherSide_c
+com.projtech.bp.core.ClassAsLink_c
+com.projtech.bp.core.ClassAsSupertype_c
+com.projtech.bp.core.ClassAsSubtype_c
+
+com.projtech.bp.core.StateMachineState_c
+com.projtech.bp.core.Action_c
+com.projtech.bp.core.Transition_c
+com.projtech.bp.core.NoEventTransition_c
+com.projtech.bp.core.NewStateTransition_c
+com.projtech.bp.core.CreationTransition_c
+com.projtech.bp.core.StateMachineEvent_c
+com.projtech.bp.core.StateMachineEventDataItem_c
+
+Appendix B - Model Explorer Dependencies
+
+ClassStateMachine_c
+Function_c
+EventSupplementalData_c
+StateMachine_c
+FunctionPackage_c
+Domain_c
+ExternalEntityPackage_c
+InstanceStateMachine_c
+Subsystem_c
+ModelClass_c
+ExternalEntity_c
+SystemModel_c
+FunctionPackageInPackage_c
+DataType_c
+OperationParameter_c
+SubsystemInSubsystem_c
+BridgeParameter_c
+FunctionParameter_c
+StateMachineEvent_c
+Operation_c
+Attribute_c
+EePackageInPackage_c
+StateMachineState_c
+StateMachineEventDataItem_c
+SupplementalDataItems_c
+UserDataType_c
+Bridge_c
+Enumerator_c
+EnumerationDataType_c
+DatatypePackageInPackage_c
+DatatypePackage_c
+CoreDataType_c
+ReferentialAttribute_c
+
+End
+---
+
+$Log: i566.dnt,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.72.1  2008/12/31 16:10:26  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2004/12/16 00:44:19  greg
+Job: 566
+Change sorting implementation
+Add wizard text fix
+
+Revision 1.6  2004/12/07 00:02:53  greg
+Job: 566
+Addressed observations
+
+Revision 1.5  2004/12/01 17:52:20  greg
+Job: 566
+Add unit test
+
+Revision 1.4  2004/11/23 18:23:57  greg
+Job: 566
+Add SEME dependency to transition
+
+Revision 1.3  2004/11/22 18:46:28  greg
+Job: 566
+Add work for item #3
+
+Revision 1.2  2004/11/22 02:27:07  greg
+Job: 566
+Add moveUp and moveDown changes
+
+Revision 1.1  2004/11/20 19:59:33  greg
+Job: 566
+Initial introduction
+

@@ -1,0 +1,253 @@
+========================================================================
+
+File:      $RCSfile: dts0100845339-dts0100846553.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Prevent model corruption
+
+1. Abstract
+-----------
+This note describes the design to prevent model corruption in a few specific
+situations.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100845339 - Sequence Diagram elements have disappeared in
+                                   Medtronic model
+[2] ClearQuest DEI dts0100846553 - Validate edit for proxy path changes
+
+4. Background
+-------------
+Recently Medtronic has been experiencing Message disappearance.  The delivered
+model was thoroughly inspected and the known issues were reproduced.  A few
+problems were identified:
+
+- Missing use case associations on restart
+- Corruption resulting in incomplete messages when deleting another message
+- Unexpected removal of messages when their represented element could not be
+  located
+- Corruption resulting in incorrect proxy paths
+- Corruption when renaming an element under SVN control to a name that has
+  previously existed but not been committed
+
+5. Requirements
+---------------
+The requirement is that normal BridgePoint operations shall not result in
+corrupted models.  This specific issue deals only with known problems.
+
+6. Analysis
+-----------
+As stated in the Background section the models were investigated.  BridgePoint
+shall avoid model corruption at all costs when the models are manipulated
+through BridgePoint code.  For this issue the corruption that can occur, stated
+in the Background section, shall not be allowed.
+
+7. Design
+---------
+7.1 Missing use case associations
+
+The data in file.pei.sql did not properly link Use Case Association children to
+the Use Case and Actor parents when under a Package.  This file is modified to
+use the correct child id.
+
+7.2 Incomplete messages after deletion of another message
+
+BridgePoint uses ArrayList instances to store back pointers to associated
+elements, this List class makes use of an elements equals() method to locate an
+element in the list.  When a message is created in a Sequence diagram an
+instance of Message In Sequence is created.  This instance is the key to
+persistence of messages under a sequence.  The Message In Sequence class had no
+identifying attributes.  MC-Java generates an essentially empty equals() body
+in this case.  This caused the tool to remove the first Message In Sequence in
+the back pointer list, regardless of what message was selected for deletion.
+When this occurs the message appears fine until you restart the tool.
+
+The Message In Sequence class is a link class and has two attributes, one the ID
+of the associated message and the other the ID of the containing sequence.  Both
+of these attributes are added to the primary identifier group.
+
+7.3 Unexpected removal of messages
+
+In ooaofgraphics::Graphical Data::Model::elementDeleted(instance) we were
+deleting a graphical element if its represents value was null, even when the
+passed in element had nothing to do with it.  Some of the corruption found in
+the Medtronic model [7.2] would cause connectors to lose their represents value,
+then upon deletion of another element these connectors would disappear.  We
+should not be removing elements in this situation as it makes it harder to debug
+the real problem.  It is also more disconcerting to users then a connector
+showing no decorations or text.
+ 
+The logic in the above mentioned operation is removed, now the graphical element
+will only be removed if the passed in element is equal to its represents value.
+
+7.4 Inconsistent proxy paths
+
+There are two known ways that proxy paths can become inconsistent.  One way for
+this to occur is by renaming a version controlled element, then replacing it
+with the latest and renaming again.  That issue is covered in this section.  The
+other way is when the referring elements files are not writable and the tool
+silently fails to report this.  For this issue see section 7.6 below.
+
+In the case covered here we have a listener that hears the file replacement.
+The following lists the events that are received and the order they are received
+in:
+
+- File content changed for the newly named model files
+- Removal of the old model files
+
+In this above order the model files that have the content changed eventually get
+reloaded.  During the reload batchRelate is called, which incorrectly associates
+elements with those that are going to be removed in the later event.  Two areas
+of code are changed to address this.  The first is in ComponentResourceListener,
+where rather then immediately load the model file we now store it and load after
+the removal has been handled.  The other is also in ComponentResourceListener
+and removes the model root if the file being deleted is the container for a
+model root.  This change is not necessary to resolve the issue at hand, but
+prevents a possible memory leak by leaving the old invalid model root in the
+list of all model roots.
+
+7.5 SVN rename support
+
+Renaming model files that are stored in SVN are for the most part supported.
+The one thing that is not supported is renaming an element such that its folder
+structure ends up being that of an existing folder structure.  In most cases
+this is not possible, but with SVN the old folders after a rename are left
+around and marked for deletion.  They will only be removed when the user commits
+the rename.  The ComponentTransactionListner is responsible for moving xtuml
+files and their folders around after a rename.  Currently it simply calls IFile
+or IFolder.move().  These fail currently as the destination folders already
+exist.  After failing the root xtuml file has been renamed but left in the
+original folder along with a newly persisted xtuml file with the old name.  This
+eventually results in error log entries indicating that the file name and
+element name do not match.
+
+To support this particular case the code in ComponentTransactionListener is
+modified such that if an existing folder is found the contents are merged rather
+than simply moved.  This allows the model to remain intact with no corruption.
+It however leaves the user in a situation where they must remove the folder
+structure from the deletion schedule.  This is easily achievable by using the
+SVN revert functionality.
+
+7.6 Validate edits on referring elements when renaming the referred to element
+
+In order to keep proxy paths in order we persist referring element's files if
+renaming the referred to element.  This works as expected, but we currently do
+not validate that the referring files can be modified.  In
+TransactionManager.endTransaction() before allowing completion we call on the
+eclipse platform to tell us if the file set to be modified can be modified.  If
+not we display the given dialog from eclipse to the user allowing them to
+intervene.  The user can either make the files writable or undo the transaction.
+The problem is that in this validation phase we did not cover referring element
+files.
+
+The TransactionManager code is modified to cover the same files that will be
+persisted in the ComponentTransactionListener class.  The code is only executed
+for rename deltas.
+
+8. Design Comments
+------------------
+
+9. Work Required
+----------------
+See Design section.
+
+10. Unit Test
+------------
+10.1 Missing use case associations
+
+_- Create a new package with each use association type
+_- Restart the tool
+_R The diagram still shows all use case associations
+
+10.2 Incomplete messages after deletion of another message
+
+_- Create two messages on a sequence diagram
+_- Delete the second created message
+_- Restart the tool
+_R The remaining message is shown with all adornments and text
+
+10.3 Unexpected removal of messages
+
+Note: this test is manual
+
+_- Create a synchronous message on a sequence diagram
+_- Open the xtuml file for the diagram
+_- Navigate to the INSERT INTO GD_GE statement (this will have a fourth
+   attribute value of 60)
+_- Change the third attribute value to: 00000000-0000-0000-0000-000000000000
+_- Restart the tool
+_R The diagram still contains a line, but it has no adornments 
+
+10.4 Inconsistent proxy paths
+
+_- Check out the CFMon model from SVN
+_- Rename CFMon::Function_Monitor to CFMon::Function_Monitor_2 in Model Explorer
+_R The Component Package is renamed
+_R The CFMon_Function_Monitor Component Package is marked dirty
+_- Replace with the latest from SVN
+_- Expand the CFMon_Function_Monitor Component Package in Model Explorer
+_R The Component Reference named CFMon::Function_Monitor::Function Monitor
+   exists
+_R There are no Component References without a label
+_- Rename CFMon::Function_Monitor to CFMon::Function_Monitor_2 in Model Explorer
+_R The Component Package is renamed
+_R The CFMon_Function_Monitor Component Package is marked dirty
+_R The Component Reference named CFMon::Function_Monitor_2::Function Monitor
+   exists
+_R There are no Component References without a label
+
+10.5 SVN rename support
+
+_- Check out the CFMon model from SVN
+_- Rename CFMon::Function_Monitor to CFMon::Function_Monitor_2 in Model Explorer
+_R The Component Package is renamed
+_- Attempt to rename the Component Package back to Function_Monitor
+_R A dialog is shown that explains why the rename is not allowed
+_R The component package is not renamed
+
+10.6 Validate edits on referring elements when renaming the referred to element
+
+_- Create a Package at the root containing a Component
+_- Create a nested Component under the above Component
+_- Create a Package at the root containing a Component Reference pointing at the
+   above root Component
+_- Change the nested Component's xtuml file to read only
+_- Change the Component Reference's xtuml file to read only    
+_- Rename the root Component
+_R A dialog is displayed that explains some of the files being modified are read
+   only and allows for changing them to writable
+_- Cancel the dialog
+_- Change the Mult attribute value in the root component
+_R No dialog is displayed
+
+End
+---
+
+$Log: dts0100845339-dts0100846553.dnt,v $
+Revision 1.3  2012/01/31 17:58:42  tlondon
+Job: dts0100845339 dts0100846553
+
+Adjust test to account for rename prevention
+
+Revision 1.2  2012/01/31 17:57:29  tlondon
+Job: dts0100845339 dts0100846553
+
+Address review minutes
+
+Revision 1.1  2012/01/26 18:54:12  tlondon
+Job: dts0100845339 dts0100846553
+
+Add design note and implementation note
+

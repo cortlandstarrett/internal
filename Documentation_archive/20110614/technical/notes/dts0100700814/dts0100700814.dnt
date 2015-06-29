@@ -1,0 +1,271 @@
+========================================================================
+
+File:      $RCSfile: dts0100700814.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Enhance performance
+
+1. Abstract
+-----------
+This note addresses some changes to enhance BridgePoint performance across the
+whole range of its behavior.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100700814 - Enhance performance
+[2] java.lang.String specification: http://download.oracle.com/docs/cd/
+            E17476_01/javase/1.5.0/docs/api/java/lang/String.html#hashCode%28%29
+[3] ClearQuest DEI dts0100642077 - Interface operation parameter access fails
+                            when components are imported from different packages
+[4] ClearQuest DEI dts0100701998 - Possible key leaks in MC-Java unrelate
+                                                                  implementation
+[5] ClearQuest DEI dts0100703191 - Consider using raw UUID values in graphics
+                                                                          plugin
+4. Background
+-------------
+Several customers have asked for improved Verifier performance and some have
+observed that the BridgePoint builder tool can sometimes be slow. Within the
+BridgePoint development team, the meta-model, ooaofooa in bp.core, is very slow.
+This performance problem is correlated with model size, since the canvas model
+and other smaller models do not show any obvious performance difficulty.
+
+5. Analysis
+-----------
+It is very difficult to profile the BridgePoint application. Because it is so
+large, profiling everything reduces performance to the point that no meaningful
+data can be gathered. Instead an informal stack sampling strategy is followed,
+where the tool is randomly halted and the stack examined to see where the tool
+is spending its time.
+
+This approach showed two key areas where the stack was frequently processing
+when halted during periods of dead air processing large models.
+
+5.1 InstanceList.removeOldKey()
+This method currently obtains and iterates over a keySet obtained from its
+internal instanceMap. When a key is found that identifies the passed element,
+it is removed.
+
+This is extremely inefficient for large models, since it visits every key in the
+set. It is also unnecessary, since by definition, each model element is known by
+exactly one key*.
+
+RemoveOldKey() is called a lot. Because referential attributes can participate
+in identifiers (on which the instance map keys are based), the key must
+potentially be updated whenever an association changes. Associations change
+particularly intensively during loading.
+
+It is recommended that removeOldKey instead uses the HashMap.remove() method
+which can use the hash value of the key to home in on the entry to remove very
+much faster.
+
+5.2 Use of String keys in InstanceList.instanceMap
+Because model elements can have multiple attribute key values, these are
+currently concatenated in a string to form the key used for instanceList lookup.
+
+Computing the hashValue for a string can be costly. From the java.lang.String
+documentation[2]:
+
+'The hash code for a String object is computed as
+
+     s[0]*31^(n-1) + s[1]*31^(n-2) + ... + s[n-1]'
+
+Because we concatenate id strings, the key can get quite long 36 * 7 = 252
+(example: Attribute Reference in Class). Since keys are added, removed, updated
+and used to locate instances very frequently, computing the hashCode for a
+string of this length adds significant overhead. Further, for UUIDs this
+comprehensive hash coverage is not required to provide a good spread across the
+hashed bin storage.
+
+Instead, it is recommended that we switch to storing raw UUIDs in the key. Since
+UUIDs are based on random numbers, a simple approach using the least significant
+bits of a single UUID is sufficient to provide a suitable hash code. All
+elements have at least one UUID this can be done with.
+
+6. Design
+---------
+6.1 InstanceList.removeOldKey()
+6.1.1 Modify removeOldKey() method
+This is modified as described in the analysis. Rather than searching the
+instance list for the key-element mapping to remove, the old key is used This
+argument was already present, but not used.
+
+Some assert code was considered. The first assures that the element was no
+longer present after removal (detects multiple keys for the same element (see *
+in 5.1) and, if the a key does not refer to any element, if the passed element
+has a different key (a general integrity issue). Unfortunately, both asserts
+require execution of code which hurts performance. It was considered placing
+this within a if test that checks for debug mode or uses the tracing mechanism,
+however, this method is called so frequently that even this overhead may be too
+much. For now, the assert code is left in comments.
+
+6.2 Move away from using strings as keys
+6.2.1 New java class BPElementID
+This class holds an Object [] to hold the different keys. The first attempt
+used a UUID array for this purpose, however a few model elements use attributes
+of type other than unique_id, so this was changed to an Object[].
+
+6.2.2 InstanceList
+Most changes are limited to InstanceList, where a BPElementID instance is
+constructed from the passed key set. 
+
+6.3 Cascade changes
+This change now requires the calling methods to pass the old key, so the
+interface to InstanceList.updateKey() is modified to require both an old key and
+the new key. This has a cascade effect on MC-Java and some other infrastructure
+classes:
+
+6.3.1 MC-Java
+- arch_utils.inc is modified to replace the old string concatenation method for
+  ids to instead build an array of attribute values (mostly UUIDs but some
+  Strings and Integers).
+- java.arc is modified to declare an Object array in all places it used to
+  declare a String to hold ids. This archetype also builds an id array in one
+  place, this is also modified to build an Object array.
+- referring.inc is modified to obtain the old key before executing a relate.
+  The unrelate implementation does not perform this key update and this is
+  perhaps a potential source of defects. An issue[4] is raised to investigate
+  this.
+- statement.inc is modified to pass the actual value in the select where
+  implementation, rather than passing a string.
+
+6.3.2 ConverToMultiFileWizard
+The method myWRunnable() in this class has cause to call updateKey() on the
+system model instance, it is modified to obtain and pass the old key.
+
+6.3.3 IDConvertor
+The converToUUID() method calls updateKey when it replaces an old id with a new
+UUID. It is modified to obtain and pass the old key.
+
+6.3.4 NonRootModelElement
+Has an updateInstanceKey() method. It is updated to add the extra argument. Code
+is also added to test if the old and new keys are the same and prevents
+delegating on to the InstanceList method of the same name (see above) if this is
+so.
+
+6.3.5 import_functions.inc
+In io.core import_functions.inc, code is generated to call updateInstanceKey()
+in finishLoad(). This is modified to obtain and pass the old key value.
+
+6.3.6 Cl_c.java
+In the canvas project, the Cl_c.Getinstancefromooa_id() method contains a long
+switch style block that obtains a metamodel element from an ooa_id. This is
+systematically modified to pass the id value rather than its string
+representation.
+
+7. Design Comments
+------------------
+7.1 During testing it was found that multiple elements can have the same key,
+which InstanceList cannot support. This was found to be happening in two cases:
+
+7.1.1 Null UUID as key
+It is frequently the case that an element has a null UUID or null UUID set as
+its key. This occurs when elements with all referential identifiers are being
+instantiated, loaded and disposed. Despite its Unique Identifier FLA, a Null
+UUID cannot be considered unique. It therefore cannot be found by a 'select from
+instances where' statement. Since this is the only function the instanceMap data
+structure is designed to support, it is proposed we place a filter in the
+InstanceList.put method to not store such key values in the instanceMap.
+
+7.1.2 Short UUID as key
+The other case this happens is with an element loaded from a legacy model. It
+has the old long based id inserted into the UUID least significant bits. This
+was causing the wrong instance to be found. Because this happens during element
+destruction, it is safe to modify the removeOldKey method to check for the
+correct element with a get() call before performing the removal.
+
+7.2 Special case null id's in InstanceList.getGlobal()
+During development, it was noticed that the getGlobal() interface introduced by
+the work for [3] does not detect and accelerate a null result for ids with a
+null UUID value. This is introduced so that the overhead of iterating over the
+global root population is eliminated.
+
+7.3 Rework loop in PersistenceManger.findAllComponents()
+In this method, we iterate over the list of components looking for ones which
+have paths in the current project. A filter is implemented which is designed to
+terminate the search when the component path is no longer under the required
+project path. The filter looks like this:
+
+if (path.isPrefixOf(pmc.getFullPath())) {
+  ....
+}
+else {
+  break;
+}
+
+The current positioning of this filter applies the break to a for loop which is
+considering the different component types. This does not save much time, since
+the list of types is always relatively short. The filter is moved so that it
+breaks out of the outer loop of components found. This provides improved
+performance for workspaces with large numbers of models.
+
+7.5 Performance analysis
+Performance gains of between 10 and 20% are observed across the tool. However,
+these are not observable in small models and for some unit tests a small
+degradation is even observed. Significant exceptions to this are parse time and
+Verifier execution time. This is because both these functions are obliged to use
+the 'select from instances where' idiom frequently. Parse time is improved by
+a factor of about 4 and Verifier execution improved by a factor of around 7.
+
+In many cases, this enhanced performance is observable in the unit test run
+times:
+                 before            after
+core              1515             1237
+core II            581              294
+ParseAll          4349             1104 *
+Canvas CCP        2508             2174
+canvas             184              155
+
+* much of this gain is from parsing ooaofooa, down from over 2000s to 588s
+
+7.6 Fix canvas.test
+It was noticed that this test was re-writing the test results when it should
+not. This was traced to a hard coded setting of a generate variable promoted in
+error. This is fixed.
+
+7.7 Issue to update graphics plugins
+An issue is raised[5] to leverage this work in the graphics plugins. They
+currently work fine, because the changes above include a backwards compatible
+string interface. However, some performance gain may be had.
+
+8. Work Required
+----------------
+Fully described in the design.
+
+9. Unit Test
+------------
+9.1 Since no new functionality is introduced, no new tests are envisaged.
+
+9.2 All existing JUnit tests must pass.
+
+End
+---
+
+$Log: dts0100700814.dnt,v $
+Revision 1.4  2010/07/14 15:25:11  campbell
+Job: dts0100700814
+Address review observations.
+
+Revision 1.3  2010/07/13 18:58:28  campbell
+Job: dts0100700814
+Change name of ID wrapper class.
+
+Revision 1.2  2010/07/08 15:40:13  campbell
+Job: dts0100700814
+Ready for review.
+
+Revision 1.1  2010/07/08 10:27:10  campbell
+Job: dts0100700814
+Introduced.
+

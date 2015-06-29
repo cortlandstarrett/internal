@@ -1,0 +1,114 @@
+========================================================================
+
+File:      $RCSfile: dts0100695128.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Verifier fails to assign large real typed values to integers
+
+1. Abstract
+-----------
+The problem was that a change to the file "External Entities.xtuml" was
+made to fix this issue before but it was overwritted in version 1.27.
+
+All I had to do is to make the change in v1.26 and add a test in debug.ui.test
+in VerifierExecuteActionTests.java file to make sure it is not missed again.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100695128 - Verifier fails to assign large real typed 
+values to integers
+
+4. Background
+-------------
+The problem was that an erroneous implementation of string to int, had 
+inadequate handling for the java language Float specification.
+
+The reason it works for smaller values is that Float.toString() changes 
+state at some point between 1.23E6 and 1.23E7 to print out the 
+mantissa/exponent form. This caused the bulk of the value to be thrown 
+away when the value was truncated at the decimal point.
+
+5. Design
+---------
+Update "External Entities.xtuml":
+In External Entity Graphics Domain, change the first few lines of the realized bridge from:
+
+String value = p_Value;
+// Coerce reals to integers
+int decimal = p_Value.indexOf('.');
+if (decimal != -1) {
+    value = p_Value.substring(0, decimal);
+}
+try {
+  // Convert alternate base to base 10 if necessary
+  int val = 0;
+  if (p_Value.startsWith("0b")) {
+    val = Integer.parseInt(p_Value.substring(2), 2);
+  } else if (p_Value.startsWith("0x")) {
+    val = Integer.parseInt(p_Value.substring(2), 16);
+  } else {
+    val = Integer.parseInt(value);
+  }
+  return val;
+} catch (NumberFormatException e) { . . .
+
+to
+
+String value = p_Value;
+try {
+  int val = 0;
+  // Coerce reals to integers
+  int decimal = p_Value.indexOf('.');
+  int exponent = p_Value.indexOf('E');
+  if (decimal != -1 || exponent != -1) {
+    val = (int) Float.parseFloat(p_Value);
+    // Convert alternate base to base 10 if necessary
+  } else if (p_Value.startsWith("0b")) {
+    val = Integer.parseInt(p_Value.substring(2), 2);
+  } else if (p_Value.startsWith("0x")) {
+    val = Integer.parseInt(p_Value.substring(2), 16);
+  } else {
+    val = Integer.parseInt(value);
+  }
+  return val;
+} catch (NumberFormatException e) { . . . . 
+
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+Update "VerifierExecuteActionTests.java" to add a function 
+"testExecuteIntegerOperationOAL" to run the operation "opIntegerValues" added 
+in the "VerifierLaunchConfigurationTests" model. This operation tries different
+Real to Integer conversions and in the test we make sure that the values are
+assigned correctly.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml
+
+com.mentor.nucleus.bp.debug.ui.test/src/
+    com.mentor.nucleus.bp.debug.ui.test.execute/VerifierExecuteActionTests.java
+
+
+End
+---
+
+$Log: dts0100695128.int,v $
+Revision 1.1  2010/09/09 21:21:44  mnassar
+job:dts0100695128
+Implementation note of this defect.

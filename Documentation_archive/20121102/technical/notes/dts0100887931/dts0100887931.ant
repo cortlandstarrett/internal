@@ -1,0 +1,253 @@
+========================================================================
+
+File:      $RCSfile: dts0100887931.ant,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Enhance Verifiers co-simulation capabilities.
+
+1. Abstract
+-----------
+This note clarifies the requirements associated with improved Verifier
+interfacing capability. It provides analysis of said requirements, and suggests
+possible designs.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100887931 - Enable users to co-simulate xtUML models
+    together with external code packaged in pre-compiled libraries.
+[2] SRS <location???>
+[3] ClearQuest DEI dts0100887796 - Static data in realized code classes can be
+    lost.
+[4] ClearQuest DEI dts0100843735 - Provide examples for connecting Verifier to
+    C/C++.
+
+4. Background
+-------------
+These requirements have been developed in collaboration with two of our largest
+customers. Both these customers make extensive use of Verifier and its ability
+to connect with external realized code. With the introduction of component based
+modeling, it is a natural progression that Verifier should be able to support
+full or partial realization of component behavior in external code.  
+
+5. Requirements
+---------------
+The requirements are fully outlined in [2]. Traceback is provided in section 7.
+
+6. Analysis
+-----------
+6.1 No support for JNI control or data transfer
+Traceback: mxd_sim_1, mxd_sim_3
+The requirement document specifies no High or Medium priority requirements for
+supporting non-Java languages. Since supporting JNI marshaling is likely to be
+a man month or more of engineering resource, no support for this is proposed at
+this time. Of course, future compiled language support shall be borne in mind
+during development of this work. An existing issue[4] can be re-targeted to add
+this capability in a later cycle.
+
+6.2 Generic Package support only
+In line with our progression towards generic packages, there is no plan to test,
+or create specific design to support, realized component execution in a specific
+package context.
+
+6.3 Suggested work breakdown
+The order of work is suggested by the section ordering. Note that the first
+three or possibly four work items represent what is needed as a technology
+demonstration in the Caelum release.
+6.3.1  Fix path and resource loading issues previously identified by the
+       customer.
+6.3.2  Implement outgoing transfer of control and data over modeled interface
+       definition on component boundary.
+6.3.3  Implement incoming transfer of control and data over modeled interface
+       definition on component boundary.
+6.3.4  Array and SDT data transfer (prior work will implement primitive data
+       type transfer).
+6.3.5  Add user specified class path support and external execution enablement
+       (prior work will rely on a default path as specified in mxd_sim_12).
+6.3.6  Add support for configuration error checking and reporting.
+6.3.7  Add support for execution in the context of multiple instances of the
+       same component.
+6.3.8  Add support for interface polling and specification of poll frequency.
+6.3.9 Add new Verifier UI to allow specification of parameter values prior to
+       running 'execute' in the UI.
+6.3.10  Add support for data type mapping (prior work will support primitive
+       types only).
+
+7. Work Required
+----------------
+7.1 Required jar and resource access
+7.1.1 jar access
+Traceback: mxd_sim_2
+Currently, Verifier cannot locate and load classes specified inside a jar file.
+This is true even if the required class is used only within the realized code
+and not accessed directly from Verifier. This is because the java build path
+used to make the users realized classes is not available to Verifier at run
+time. When running a java program, Eclipse normally passes these paths to the
+VM at startup. We need to provide the necessary paths to BPClassLoader at
+construction time. The BPClassLoader is already capable of supporting multiple
+class paths, even though it currently searches only one path (it stores the
+paths in a private ArrayList 'cpeList'). Since classes in jar files might have
+any package name, it is also necessary to remove some code which prevents
+BPClassLoader.loadClass looking for locally defined classes unless they are
+contained in the lib package.
+
+7.1.2 Resource access
+Traceback: none
+According to the customer, we need to implement getResourceAsStream() in
+BPClassLoader. This is apparently required to support the loading of images from
+a realized java package. It is not clear whether this is the only required
+additional method, nor is it clear what the required behavior should be. Some
+research needs to be done to see what other class loaders do.
+
+7.2 Outgoing control transfer
+Traceback: mxd_sim_4, mxd_sim_5, mxd_sim_8, mxd_sim_11, mxd_sim_15, mxd_sim_21
+7.2.1 Control transfer
+A similar mechanism as is used for realized Bridge invocation is needed here. We
+need to decide if it is adequate as is or requires some integration with the
+incoming control transfer infrastructure (see next section). As for the existing
+bridge infrastructure, failure to find a required realized method already
+results in a console error message. However, the current reporting is rather
+weak, giving the same generic message for any failure. For example, it is
+possible for the called realized code to cause an exception and Verifier
+currently reports that as if it had not found the method. The reporting will be
+enhanced to improve the user experience.
+
+7.2.2 Passing by reference
+Traceback: mxd_sim_9
+We need to review the existing by reference passing implementation to determine
+if it is working. If not, enhancement of both calling mechanisms will be made to
+support reference arguments. Note that Java does not support passing primitive
+arguments by reference. We will have to provide some new user visible wrapping
+infrastructure to support this if the existing arrangements are not workable.
+
+7.2.3 Binding policy
+Traceback: mxd_sim_11
+A similar binding policy as is currently used for realized bridges will be used
+to locate realized interface methods. Note that the specification requires
+binding by return type which is not technically possible to provide.
+
+7.3 Incoming control transfer
+Traceback: mxd_sim_5, mxd_sim_25, mxd_sim_26, mxd_sim_27, mxd_sim_28, mxd_sim_30
+mxd_sim_34, mxd_sim_35, mxd_sim_41
+
+7.3.1 Generate Java interface definition
+To allow the users code to compile, we will need to generate a Java interface
+definition declaring the required method signatures. This will need to be placed
+in the users source hierarchy in a configurable place. We need to consider
+whether we can safely overwrite this code at will, but no impediment to this is
+currently apparent.
+
+7.3.2 Create a realized interface class
+This could be done in two ways; we could either use the reflection API to create
+a class instance on a just-in-time basis, or we could generate source code in
+a manner similar to the interface creation above. This class will need to have
+methods with java source generated that can interface to the Verifier meta-model
+instances in order to create stack frame or event instances and deliver them
+into the executing models. The just-in-time approach is preferable as it
+protects Mentor Verifier internal IP. We also need to consider if 'realized to
+realized' component connection is legal and what if anything we would have to do
+differently to support such a configuration.
+
+7.3.3 Error reporting
+Traceback: mxd_sim_16
+If an incoming call is made and no matching message is found, a Java exception
+will be thrown.
+
+7.4 Array and SDT argument support
+Traceback: mxd_sim_7
+For default mappings (see 7.10 below), this will require the generation of java
+type definition source code. For user supplied mappings, the user shall provide
+conversion code that Verifier will invoke.
+
+7.5 User specified class path support and external code enable
+Traceback: mxd_sim_6, mxd_sim_12, mxd_sim_13, mxd_sim_18, mxd_sim_45
+This will require modifications to the meta-model and associated data upgrade.
+The path information captured here will be passed to the class loader. We should
+consider whether launch wide settings should be provided instead of, or in
+addition to, per component settings. If both are required, should there be any
+difference in execution semantics? i.e. between paths specified in the launch
+and paths specified in the component itself (for example, classes loaded on the
+component path might be considered private to the component, see [3] for an
+example of one expected behavior difference).
+
+7.6 Configuration error checking and reporting.
+Traceback: mxd_sim_17
+This requires the addition of new UI to invoke the checking behavior and to
+report the results. It is suggested that this check could additionally be run
+when Verifier is started, according to a user preference setting.
+
+7.7 Multiple instances of the same component.
+Traceback:mxd_sim_36, mxd_sim_38
+Prior to handling this, static methods could be used to communicate with the
+running model. However, after support for this is added, the user will have to
+obtain the required interface instance by passing its name to a factory method.
+Since this will affect the user API with the modeled components, it is
+recommended that a dummy method be implemented from the early stages which
+initially ignores a passed name and returns a singleton interface instance.
+There will be no difference between a component/interface reference object
+obtained by name and one which is passed in a 'sender' context.
+
+7.8 Interface polling frequency
+Traceback: mxd_sim_29
+New UI will be required to support this. Specification of frequency shall be
+made and persisted on a per launch configuration basis.
+
+7.9 Execute activities with parameters
+Traceback: mxd_sim_39
+Existing UI will be extended to add the ability to specify parameter values.
+Alternatively, the ability to invoke activities from the Console has been
+discussed in the past. This may provide a more usable solution.
+
+7.10 Support for data type mapping
+Traceback: mxd_sim_22, mxd_sim_23, mxd_sim_24
+This will require significant new UI and tool configuration persistence. Editing
+shall be provided on a per launch basis in the Launch configuration. Mappings
+shall be persisted with the launch configuration.
+
+8. Analysis Notes
+-----------------
+Note that mxd_sim_40 is addressed by [3]. The same work also addresses
+mxd_sim_44 to the extent that class static values are reset on termination of a
+Verifier session. More clarification of mxd_sim_44 is needed to establish if
+there are additional requirements to be met.
+
+9. Acceptance Test
+------------------
+(For Caelum only)
+_- Use (or make a copy of) the existing test model VerifierMessageTest (in svn)
+_- Construct a DoF matrix for Degree 1: Datatypes(Core, User, Structured and
+   Array Data types, the latter 2 to be at least three layers deep in all
+   combinations), Degree 2: By Reference, By Value.
+_- Extend the declared Interfaces in that model to use the data types identified
+   in the matrix.
+_- For each component messaging type in the model (Declared to Declared,
+   Declared to Referenced etc.), substitute each component one at a time with a
+   realized Java class and run the test model. All tests must pass.
+
+End
+---
+
+$Log: dts0100887931.ant,v $
+Revision 1.3  2012/05/17 12:24:18  campbell
+Job: dts0100887931
+Add test section and upgrade priority of array and SDT argument value transfer.
+
+Revision 1.2  2012/05/15 14:48:39  campbell
+Job:dts0100887931
+Cosmetic changes.
+
+Revision 1.1  2012/05/15 11:17:29  campbell
+Job:dts0100887931
+Introduced.
+

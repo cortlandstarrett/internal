@@ -1,0 +1,150 @@
+========================================================================
+
+File:      $RCSfile: dts0100567572.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Runtime Value instances not disposed properly
+
+
+1. Abstract
+-----------
+This note describes how memory leaks caused by a failure to dispose runtime
+instances were resolved. 
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest item dts0100567572
+	http://dtsweb.wv.mentorg.com/cqweb/main?command=GetPrintableEntity&entityDefName=Defect&entityId=34122004&tabName=All&print=yes&rmsessionid=0cbe650e-096b-4a61-a60d-932262b09da1   
+[2] Bugzilla item 3405, Inter-component verification
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3405
+[3] svn://phoenix.azt.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+                                          Development/BugzillaData/dts0100565723
+4. Background
+-------------
+Verifier was very slow and becoming even slower the longer an execution was
+running. In addition, the task manager reported a growing virtual memory
+requirement. Both of these observations indicate a memory leak.
+
+5. Analysis
+-----------
+Prior to the change, Verifier performance on the operation, updateAlgorithm() of
+the class SeatHeaterControlAlgorithm was measured as:
+
+Pass   1   100  200  300  400  500    leading to after about 30 minutes 
+mS    78   265  453  703  938  1221     2744
+
+After this time, the 1Hz clock rate is causing more events to appear in the
+queue than verifier could handle and the queue 'choked', so more measurements
+are not meaningful.
+
+After the change proposed below performance is stable at:
+
+mS 15 - 50
+
+Measurements in this range were still returned after 30 minutes runtime. The
+reason for the large range is due to occasional garbage collection occurring
+during execution.
+
+6. Design
+---------
+The problem is caused by multiple smaller defects, but primarily, the fact that
+many Runtime Value instances were not being disposed at all.
+
+Runtime values are created when a value needs to be stored for any reason, be it
+an attribute value, event data value or a transient local value. In all the
+previous cases, disposal is happening correctly; when the instance is deleted or
+when the event is consumed etc. However intermediate Runtime Values are also
+created when a nested expression is evaluated, one for each intermediate part of
+the expression. For each part of an expression that must be evaluated, a
+Runtime Value is created, together with an associated Value in Stackframe
+instance to tie it to the stackframe in which the evaluation is occurring. This
+allows recursion.
+
+When the computation of each part of the expression is complete, the Value in
+Stackframe instance is disposed, but the Runtime Value is not. In fact, the
+Runtime Values cannot be disposed at this time, because at least some of them
+are needed later in the calculation.
+
+The solution is to associate Runtime Values that are no longer needed with the
+stack frame and then dispose them when the stack frame is disposed. Since the
+stack frame defines the scope boundary for all local variables, this is a safe
+place to perform disposal of these values.
+
+In addition, the Simple Value dispose operation did not dispose the instance.
+Prior to the multi-component work[2], Simple Value was disposed by the super-
+class. However, with that work new subtypes of Simple Value were created to
+cover regular values and component references. At this point Simple Value was
+given its on dispose operation. Unfortunately, although it disposed the subtype,
+this operation did not actually delete the Simple Value instance and thus became
+a cause of a second memory leak.
+
+7. Implementation Comments
+--------------------------
+When Simple Value.dispose() is fixed to actually dispose the instance,
+additional runtime issues occur during assignment of a value to simple value.
+
+This is because the operation, Simple Value.setValue() also called
+Simple Value.dispose() to remove the old value subtype instance. The fix
+therefore causes the undesirable side effect that the current Simple Value
+instance is disposed during value assignment. This is prevented by firstly
+renaming the _old_ dispose() operation to disposeSubtype() (since it did not
+dispose the instance it was the wrong name for the operation anyway) and
+secondly continuing to call this new operation from setValue(). The new
+dispose() operation simply calls disposeSubtype() and then deletes self.
+
+8. Unit Test
+------------
+8.1  Execute the test case provided by the developer[3]. Allow execution to run
+     for 30 minutes. Note that the time taken to execute one cycle of the model
+     behavior after this time is about the same as it was at the beginning.
+     - Pause the root of the Verifier execution tree.
+     R No event build up (event 'choking') has occurred. At most only one or two
+       events are pending.
+     
+8.2  Execute all JUnit tests.  Verify they work correctly.
+
+9. Code Changes
+---------------
+Changes are in branch R2_1_2-CDM-dts0100567572
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+                                                   Stack Frame/Stack Frame.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+                                 Runtime Value/Runtime Value/Runtime Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+                                   Runtime Value/Simple Value/Simple Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+                                               Runtime Value/Runtime Value.xtuml
+
+End
+---
+
+$Log: dts0100567572.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/02/27 21:39:13  campbell
+Job: dts0100567572
+Address review typos.
+
+Revision 1.2  2009/02/24 11:49:51  campbell
+Job: dts0100567523
+Add analysis section.
+
+Revision 1.1  2009/02/24 11:15:01  campbell
+Job: dts0100567523
+Introduced.

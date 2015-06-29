@@ -1,0 +1,143 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Problem with state model imported from BP 6.1
+
+
+1. Abstract
+-----------
+Ericsson discovered a problem importing a model into BridgePoint 1.4 that had
+been exported from BridgePoint 6.1.  The issue manifested itself by producing
+strange behavior on a state machine diagram when the user clicked on the canvas
+to select a graphical element.  Most times, BridgePoint would hightlight a
+different element than the one selected by the user.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 2728
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2728
+
+4. Background
+-------------
+Users want to migrate models created in BP 6.1 to 1.4.  When a model is exported
+in a non-U.S. locale (such as Sweden), real numbers are exported with a ","
+where a "." is used in the U.S.  There are just a few locales that use this
+notation to represent reals.  Taking into consideration, the installed base for
+BridgePoint, we expect the scope of the problem to be quite narrow.
+
+5. Design
+---------
+5.1     The second to last element in INSERT INTO GD_MD statements has the
+        non-U.S. representation of reals.
+
+INSERT INTO GD_MD
+    VALUES (524292,
+    4,
+    151313584,
+    1,
+    1,
+    0,
+    1,
+    1,
+    0,
+    12,
+    1600,
+    4199,
+    1,000000,
+    0);
+
+vs
+
+INSERT INTO GD_MD
+    VALUES (524292,
+    4,
+    79965,
+    1,
+    1,
+    0,
+    1,
+    1,
+    0,
+    12,
+    1600,
+    4199,
+    1.000000,
+    0);
+
+        It has been verified that this entry GD_MD "ZoomFactor" is the only
+        real value in the entire BP6.1 meta-model (graphics and OOA).
+
+5.2     Create a filter script that can chug through a sql file and convert the
+        "," to a "." in the second to last field of "INSERT INTO GD_MD"
+        statements.
+
+6. Implementation Comments
+--------------------------
+6.1     We considered editing the import parser to make BP 1.4 more robust.
+        We contacted a customer and they specified no real preference.  So, at
+        this point, the filter seems to be the better bang for the buck.
+
+7. Unit Test
+------------
+7.1     Run the filter script on the sample model provided as an attachment to
+        [1]
+7.1.1   Diff the output SQL file with the input model.
+7.1.2   Verify that the only lines changed where the second to last field in
+        "INSERT INTO GD_MD" statements.
+7.1.3   Verify that the numbers in those lines were changed to use "." where ","
+        used to be.  E.g. " 1,000000," => " 1.000000,"
+7.1.4   Import the model into BridgePoint, verify the state machine canvas
+        behaves as expected in the class "pq".
+
+7.2     Repeat section 7.1 using an input model that has an "INSERT INTO GD_MD"
+        statement as the last statement in the file.  (Verifies a special case
+        for the filter script).
+
+7.3     Repeat section 7.1 using an input model that already has US-style
+        numbers in the field in question. (Verifies the script doesn't mess up
+        properly-formatted files).
+
+8. Code Changes
+---------------
+<CVS>/utilities/fix_graphics/fix_graphics.pl        (added)
+<CVS>/utilities/fix_graphics/README.txt             (added)
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:56  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.2  2007/05/21 21:29:04  kbrown
+Job:2728
+Checking in completed review mins and updated INT.
+
+Revision 1.1  2007/05/21 19:54:51  kbrown
+Job:2728
+Implementation note.

@@ -1,0 +1,348 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support instance reference type usage in the parser
+
+
+1. Abstract
+-----------
+This issue is a follow-up to our recently promoted work that adds instance
+reference support to BridgePoint for all classes.  The backend work to add the
+new instance reference data types for all classes was completed as part of [2].
+The design presented here lays out changes to the existing HEAD and additional
+work to be completed to deliver fully functional instance references.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 3492
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3492
+[2] Bugzilla item 1666 (Support Instance Reference Data Types)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1666
+[3] Bugzilla item 3414 (No data type for V_VAL on implicit V_IRF assign.)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3414
+[4] Bugzilla item 530 (set operations)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=530
+[5] i3085-01.dnt (Fixed Length Arrays Design Note)
+[6] BridgePoint Modeling Suite Design Guide
+    <SVN>\AE\presentation\Model Compiler Internals Class\design.pdf
+[7] Bugzilla item 3501 (IRDT upgrade causes app startup slowdown)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3501
+
+4. Background
+-------------
+Instance reference datatypes are now automatically created for all classes.  The
+user can choose this datatype to be passed to functions, etc.
+
+This issue covers the work to change the way instance references are created and
+to allow the datatype to be manipulated in action language by extending parser
+support for inst_ref's and inst_ref_set's.  When this work is promoted, [7] 
+should be closed.
+
+5. Analysis
+-----------
+The analysis is covered as part of the analysis for [2].  The original analysis
+presented two options for how we would manage instance references.  Either using
+a publish/unpublish manual approach to inst_ref management, or automatically
+create inst_refs for all classes and only remove them when a class was removed.
+
+The development that has been promoted to HEAD as part of [2] used the automatic
+option.  The in-memory data upgrade cost at BP startup has been much higher than
+anticipated leading to very long start times.  In addition, this route lead to
+a list populated with many inst_ref types in the data type picker.  We have
+decided to re-engineer the solution in favor of the publish/unpublish option.
+This means that the existing upgrade code will be removed.  We will still need
+some data upgrade for OAL instance data subtypes of V_VAR.
+
+By leaving the subtype tree of V_VAR intact and in use, we reduce the data
+upgrade complexity greatly as well as greatly lessen the effects of this work on
+Model Verifier.
+
+6. Design
+---------
+6.1 Metamodel changes
+  6.1.1 Promote R821 to V_VAR as suggested in the analysis. The analysis
+        suggested promoting unique attributes from the subtypes of V_VAR up to
+        V_VAR itself, but this is not necessary due to the change in direction.
+    6.1.1.1 Update import code to account for new referential attribute DT_ID
+            on V_VAR.
+  6.1.2 Connect S_DIM to V_VAR, stop using R844 which connects V_TRN to S_DIM.
+    6.1.2.1 S_DIM already has a referential attribute Var_ID.  When formal-
+            izing the new relationship, we will combine the two Var_ID
+            attributes into a single attribute.
+    6.1.2.2 V_TRN.Dimensions will not be promoted to V_VAR.  This is un-
+            necessary cruft that we can do without as this field only exists to
+            allow users to specify array dimensions in the UI.  Since these
+            instances are only ever created by the parser, the field is not
+            needed here.
+    6.1.2.3 All support functions for dimension-related work in V_TRN will be
+            promoted to V_VAR.
+  6.1.3 Remove existing code that automatically creates inst_ref datatypes for
+        new classes in Model Class.initialize().
+  6.1.4 The Model Class relationship to Instance Reference Data Type must be 
+        changed to account for the possibility of classes not having datatypes.
+		It will change to:
+		        O_OBJ(1)---R123---(*)S_IRDT
+
+6.2 Parser changes
+  6.2.1 Grammar changes
+        No action required.
+  6.2.2 Modify the Variable (V_VAR) instantiation patterns for inst_ref and
+        inst_ref_set results of select statements.  When creating V_INT or V_INS
+        instances, hook up the V_VAR supertype to the correct S_DT that is tied
+        to the matching S_IRDT if one exists.
+  6.2.3 Add support for inst_refs as parameters and received events and being
+        accessed as part of a member value chain.
+  6.2.4 Variable.migrate_to_int() and migrate_to_ins() will be modified to set
+        up the V_VAR---S_DT relationship for the corresponding inst_ref datatype
+        (if one exists) as well as migrating the V_TRN instance to V_INT or
+        V_INS.
+		     UPDATE - Instead of doing this work in migrate_to_*, add parser 
+			          validation function "connect_inst_ref_var_to_datatype()"
+					  that is called after the migrate functions.  Two reasons:
+					    1) didn't want to duplicate code like the migrate 
+						   functions do
+						2) Wanted parser function in the Function package 
+						   instead of as an operation on Variable like migrate 
+						   functions are.
+  6.2.5 Extend utility function data_types_compatible. The OAL parser should 
+        allow set operations according to Table 5-9 in [6].  In nearly all
+		cases, the result of the operation is an inst_ref_set.  In the equality
+		and non-equality cases, the result is a boolean, as one would expect.
+		Mixed type sets are not allowed. Mixing instance references to different
+		classes in the same set will of course be illegal.  Close [4] when this 
+		work is complete.
+    6.2.5.1  The parse error message "Variable <varname> does not match the type
+             of instance reference set <setname>" will be displayed if the user
+             attempts to mix types in a set.
+	6.2.5.2  In binary_operator_validate, at the very end there is a block that 
+	         preforms relates if an argument flag is set.  This is essentially 
+			 settng the datatype of the computed value.  Change it to select the
+			 datatype returned by data_types_compatible() (which is op_dt_id) 
+			 and set the comp_val to that.  In the case of 
+			 "inst_ref<> + inst_ref<>" the computed value is "inst_ref_set<>" 
+			 and this block currently only allows the computed value to either 
+			 be the left hand dt or right hand dt.
+
+6.3 Data upgrade
+  6.3.1 Remove the upgrade code.  ImportHelper.createMissingIRDTsForO_OBJs()
+        will be removed.  This will remove automatic creation of inst_ref
+        datatypes for all classes during model import.
+  6.3.2 V_INT, V_INS, and V_TRN instances will have to be dealt with in imported
+        models.  For V_INT and V_INS we will make sure that the corresponding
+        V_VAR is connected to the appropriate S_IRDT through S_DT if inst_refs
+        for that class exist.  For V_TRN, we will move the attached S_DIM and
+        S_DT to be attached to V_VAR.
+
+6.4 UI
+  6.4.1 The system will be changed so new classes default to _not_ having IRDTs.
+        When a user adds a class, it will not get an instance reference and
+        reference set until the user asks for one.  This implies additional
+        clicking to get the IRDTs but reduces the instance data in the model and
+        provides a smoother (more gradual) upgrade for this feature.  It also
+        reduces clutter in our existing data type picker and gives the user over
+        control of visibilty of classes.
+  6.4.2 Publish References, Unpublish References
+        Two menu items will be added.  'Publish References' will be on the class
+        context menu for classes that do not have IRDTs.  'Unpublish References'
+        will be on classes that do have IRDTs.  This will mean additional code
+        in the model class action filter.
+  6.4.3 Publishing a class will cause non-graphical inst_ref<[classname]> and
+        inst_ref_set<[classname]> datatypes to be added to the domain datatypes
+        package, or component's default data type package.  If a domain or
+        component has no data type package named "Datatypes", one will be
+        created.  This code will be similar to what is currently being done in
+        Model Class.initialize().
+  6.4.4 Unpublishing a class will cause existing uses of inst_ref datatypes to
+        that class to be migrated to integers. Any DT package created to
+        accomodate IRDTs will be left for the user to delete manually if all
+        IRDTs are gone.
+  6.4.5 Publishing and unpublishing a class should be robust in the face of only
+        one of the inst_ref types (single or set) already existing.  Meaning,
+        for example, that publish should still be available on a class if the
+        class has am associated inst_ref<>, but not an inst_ref_set<>, type.
+		This will require extending the O_OBJ.actionFilter() using the 
+		corresponding Menu Entry Filter (MEF) instance in context_menu.pei.sql.
+  6.4.6 In the future we may 'Publish All References' from a package context or
+        against a selection of classes, but this feature will not be part of
+        this initial development.
+  6.4.7 Make sure O_OBJ.rename() is robust in the face of missing irdt or 
+        irdt_set for that O_OBJ.
+  6.4.8 Explorer is setup to show the subtypes of S_DT.  Will need to add an 
+        entry in explorer/sql/UITree.pei.sql.  Use one of the other subtypes as
+		an example.  Will also need to give it an icon.
+  
+6.5 Persistence
+  6.5.1 Right now, S_IRDTs are stored in the model class.  We are changing this
+        paradigm to store them in the domain/component datatypes package.
+        The persistence chain for S_IRDTs must be changed to account for this.
+  6.5.2 S_DT and S_DIM are now associated with V_VAR instead of V_TRN.  The
+        persistence chain does not persist the classes across R821 and R844, so
+		no change is required for these classes.
+
+6.6 Fix [3]
+  6.6.1 Currently, assigning "self" to a transient does not set up the
+        V_VAL---R820---S_DT link.  Modify self_validate to set up R820 to the
+        S_DT that corresponds to the S_IRDT for inst_ref<[self classname]> if
+        it exists and inst_ref<Object> otherwise.
+  6.6.2 inst_ref compatibility is currently done in Assignment_expr_end.
+        6.2.2 changes the data type hookup for the inst_refs and inst_ref_sets
+        produced by select statements. Once this is done, Assignment_expr_end
+        can be somewhat simplified, because data_types compatible can be called
+        for inst_ref assignments too.
+
+7. Design Comments
+------------------
+The design presented here is a major change from the direction originally laid
+out in i1666.ant and i1666.dnt.  It undoes a portion of the original development
+that was performed and promoted that creates inst_refs for all classes.
+
+8. Work Required
+----------------
+8.1 Add new assoc. in Value SS between V_VAR and S_DT                         2h
+  8.1.1 Update gen_import_java.inc and import_functions.inc to handle
+        new V_VAR class attribute DT_ID.
+  8.1.2 TEST: Run als.oal JUnit tests
+
+8.2 Temporarily remove R821.  Parse all to find all uses of R821 and          4h
+    switch to use the new association between V_VAR and S_DT.
+  8.2.1 Restore model to put R821 back.
+  8.2.2 TEST: Run als.oal JUnit tests
+
+8.3 Add new association in Value SS between V_VAR and S_DIM.                  2h
+  8.3.1 TEST: Run als.oal JUnit tests
+
+8.4 Temporarily remove R844.  Parse all to find all uses of R844 and          4h
+    switch to use the new association between V_VAR and S_DIM.
+  8.4.1 Restore model to put R844 back.
+  8.4.2 TEST: Run als.oal JUnit tests
+
+8.5 Remove existing data upgrade code as specified in 6.3.1.                  1h
+  8.5.1 TEST: Run als.oal JUnit tests
+
+8.6 Publish support                                                           8h
+  8.6.1 Remove automatic creation of inst_refs
+  8.6.2 TEST: Run als.oal JUnit tests
+  8.6.3 Add CME to publish a class.
+  8.6.4 Add functionality to create IRDTs when class is published.
+  8.6.5 TEST: Run als.oal JUnit tests
+  8.6.6 TEST: Manually check that publishing makes inst_ref available.
+
+8.7 Persistence support                                                       4h
+  8.7.1 Update persistence chains according to 6.5.
+  8.7.2 TEST: Run als.oal JUnit tests
+  8.7.3 TEST: Manually restart BP, check that new inst refs were
+        persisted.  Export and import a model with inst_refs.
+
+8.8 Parser updates                                                           16h
+  8.8.1 Update parser as specified in 6.2.
+  8.8.2 Fix issue in 6.6.1 with 'self' and transients.
+  8.8.3 TEST: Run als.oal JUnit tests
+
+8.9 Data upgrade                                                              4h
+  8.9.3 "Upgrade" V_INT, V_INS, and V_TRN instances during import
+        as specified in 6.3.2.
+  8.9.4 TEST: Run als.oal JUnit tests
+
+8.10 Extend binary operator validate as specified in 6.2.5.                   8h
+  8.10.1 TEST: Run als.oal JUnit tests
+
+8.11 Refactor parser function Assignment_expr_end                             4h
+  8.11.1 TEST: Run als.oal JUnit tests
+
+8.12 Unpublish support                                                        4h
+  8.12.1 Add CME to unpublish a class
+  8.12.2 Add functionality to migrate uses of that class to integers
+  8.12.3 TEST: Run als.oal JUnit tests
+
+8.13 Other UI changes
+  8.13.1 Support showing IRDTs in model explorer as specified in 6.4.8        4h
+  
+8.14 Unit tests                                                              60h
+  8.14.1 Fix existing unit tests
+  8.14.2 Add new unit tests, create test models, test matrix, etc
+
+9. Unit Test
+------------
+- Fix existing unit tests.
+
+- Reverify the manual tests specified in [5]
+
+- Add new tests
+  - Check that attributes, including structured data type and inst_ref attributes
+    of inst_ref type instances can be accessed as expected.*
+  - Check that Mathematically Derived Attributes may be of type inst_ref and
+    inst_ref_set.
+  - Check that inst_refs can be used in relates and unrelates
+  - Check that inst_ref_set types may be used in for each loops.
+  - Check that inst_ref types may be used as a loop variable in for each loops.
+  - Build a test matrix that covers all instance reference and set behavior.
+  - Build a model based on this matrix.
+  - Check that it parses correctly.
+  - Check that element data types that have been set to an instance reference
+    data type are still set to the same instance reference data type after a tool
+    restart.
+  - Build model that tests operations of inst_refs according to Table 5-9 in [6]
+* Repeat for parameters, event data items, arrays, structure member access
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:19  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.7  2008/05/16 15:41:26  kbrown
+Job:3492
+Checkin DNT.  It is still a work in progress.
+
+Revision 1.6  2008/04/30 15:22:41  kbrown
+Job:3492
+Rewrote the design note to reflect change in strategy from automatic to manual class publication for inst_refs.
+
+Revision 1.5  2008/04/29 19:49:42  kbrown
+Job:3492
+We are changing direction from automatic publishing to on-demand publishing of inst_ref classes.
+
+Checking in the current state of the design note before stepping back and rewriting much of it.
+
+Revision 1.4  2008/04/22 13:44:31  kbrown
+Job:3492
+Added more info to the note.
+
+Revision 1.3  2008/04/21 22:24:03  kbrown
+Job:3492
+Expanding design details.
+
+Revision 1.2  2008/04/21 18:01:19  kbrown
+Job:3492
+Updated design note.
+
+Revision 1.1  2008/04/17 14:54:35  kbrown
+Job:3492
+First draft.
+

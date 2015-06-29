@@ -1,0 +1,273 @@
+========================================================================
+
+File:      $RCSfile: undo_redo_revert-i473.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:23:21 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Provide Undo, Redo and Revert functionality
+
+Abstract
+--------
+This note specifies the requirements for the undo facility to be provided
+in the Nucleus BrigePoint Builder replacement codenamed Tiger.
+
+History
+-------
+
+Document References
+-------------------
+[1] doc/internal/technical/Object_Contribution/object_contribution.dnt
+[2] com.projtech.bp.ui.core/src/com/projtech/bp/ui/core/ModelChangedEvent.java
+[3] com.projtech.bp.ui.core/src/com/projtech/bp/ui/core/ModelDelta.java
+[4] jface.text/IUndomanager
+
+Analysis
+--------
+Requirements
+Undo, Redo and Revert are already available in the activity and description
+editors. This goal of this work is to extend the same behavior to canvases.
+
+In Eclipse, Undo and Redo are retargetable actions. Tiger shall hook into all
+places where the Undo and Redo retargetable action in an analogous way to the
+existing delete behavior[1].
+
+Selecting Undo shall reverse whatever the user last did. Once the first Undo
+operation is done, Redo shall be available to reverse the effect of the
+immediately preceding Undo operation. At any time, if the user does something
+new (as opposed to performing repeated Undo/Redo operations), the current
+history lying between the current Undo position and the top of the history shall
+be lost and replaced with the just executed user transaction.
+
+The user shall be able to select how large the Undo history shall be. If more
+user actions are recorded than can be stored according to this preference, the
+oldest user action shall be discarded.
+
+If there is nothing to Undo, then the Undo user interface widgets (menu entries,
+buttons and keyboard shortcuts) shall be disabled. A similar requirement shall
+apply to Redo or to both if neither Undo or Redo are possible.
+
+All user interface elements (canvases, trees etc.) shall update themselves to
+stay consistent with the state of the model after any Undo or Redo operation.
+
+The Undo/Redo history shall continue to be available after saving a model. The
+Undo/Redo history is not persistent. It is not reloaded when a model is opened
+or imported but is cleared instead.
+
+Actions, such as model save, that commit changes to the file system are outside
+the scope of Undo/ Redo and cannot be undone or redone.
+
+Design Alternatives
+-------------------
+
+Conventional Command Pattern based design
+
+Define a mirror set of OAL to provide the mirror image functionality to that
+already developed to allow the tool to work as currently designed. Store each
+command in a stack as the user performs actions, together with enough instance
+information to identify the affected instances. When undo is performed, the
+mirror OAL is triggered to restore the previous model state. To redo, use the
+cached data to drive the already existing OAL to reperform the action.
+
+Advantage: uses a recognized command pattern. Disadvantages: must identify the
+data that needs to be cached for each action, must write as many functions as
+we just completed, each subject to the same possibility of error. Must add
+mirror OAL for the graphics domain too.
+
+
+Leverage Generated Model Change Events
+
+Listen for and store each model change event as it is sent by the existing
+architecture generated core code. When Undo is requested, restore each instance
+to the state it was in before the user action being undone. Redo can be achieved
+in the same way by caching the appropriate instance values.
+
+Advantage: Does not require any new OAL functions to be written, guaranteed to
+work for all user actions implemented in OAL. New functionality added later is
+supported immediately without additional work. Strategy will work for the
+graphics domain too.
+
+Suggested Design
+----------------
+The undo and redo functionality shall leverage the existing architectural model
+change infrastructure. Undo and Redo shall be managed by a new dedicated model
+created for the purpose. This model shall generate a manager class that shall
+register itself as a change listener on both the utUML (ooaofooa) domain and the
+graphics domain. MC-Java shall be modified so that change messages can be
+separately listened for from the ooa and graphics domains. Each time a model
+change event[2] is detected, the event shall be placed on a stack history data
+structure. These stacked events shall be traversed to provide the previous state
+information required to perform the Undo/Redo functionality. In case we need to
+integrate more closely with Eclipse in the future, the manager class shall
+implement the IUndoManager interface[4], except for the connect and disconnect
+protocol (because the Tiger undo manager is model wide and not attached to one
+particular viewer).
+
+Some user actions (such as a rename) result in a single point change to the
+ooaofooa domain instance population. Other actions (such as formalizing an
+association or deleting a subsystem) may result in many changes to both graphics
+and ooa domains. For this reason, the concept of a 'User Transaction' must be
+introduced. A user transaction consists of one or more model change events, and
+it shall be these user transactions that shall be added to the stack. When an
+Undo action is executed, the 'next'(see below) user transaction shall be found
+and the set of model change events shall be traversed.
+
+For each model change event found, all member data of the cloned instance stored
+in the ModelDelta.before member shall be copied to the member data of the
+ModelDelta.after[3] member. The effect of this is to return the after member
+(the one still in the instance population) to the state it was in when the
+ModelDelta.before clone was made. In order to support redo, a clone of the
+affected instance is taken before the above operation is performed and is
+written to the 'before' member. If the model change event is a deletion, then
+the instance in the before member shall be restored to the instance population.
+If the model change is a creation, then the instance in the 'after' member shall
+be removed from the instance population. Before and after members are not
+currently populated by create and delete actions in MC-Java, so the model
+compiler shall be modified to additionally support this requirement.
+
+When a Redo command is executed, the opposite behavior to that specified above
+for create and delete shall be carried out (since the before clone is updated as
+described above, the same behavior for model changes works for both Undo and
+Redo).
+
+The only other difference between Undo and Redo is the direction in which the
+history data structures are traversed. The 'next' position is found backwards
+for Undo and forwards for Redo. Both the transactions in the history and the
+model change events in each transaction are traversed in the direction specified
+to ensure that the model is always changed in a consistent order.
+
+When the Undo/Redo action is complete, a generic model change event is sent to
+all listeners. Model listeners are modified so that they always perform the
+required refresh behavior when this generic undo/redo change event is received.
+The undo redo manager ignores the generic change event.
+
+If a new user transaction is received by the undo/redo manager, the history
+data structure shall be cleared from the current 'next' position forwards and
+the new user transaction added at the top of the history.
+
+If the 'next' position reaches the top of the history, the Redo user interface
+elements shall be disabled. Similarly, if the 'next' position reaches the bottom
+of the history, the Undo user interface elements shall be disabled. Both
+elements shall be re-enabled whenever the above specified situation changes.
+
+The size of the history structure shall be determined by a user preference. The
+preference shall define how many user transactions shall be held in the history.
+When the preferred size of the history is reached, the oldest user transaction
+shall be discarded.
+
+User transaction begin and end notification shall be built into the user action
+handlers. However his notification must also be available by bridge call from
+the graphics domain. This is because we want to reagrd a complete drag action
+(for example) as a separate undoable action as opposed to each individual mouse
+move. Alternatively we might consider sending model change messages explicitly
+from the graphics domain state models as opposed to enabling the general
+purpose model change mechanism. This would give more control about when and how
+many change events are sent by the graphics domain. If an attempt is made to
+open a new transaction while one is open, a prominent error wil be logged, the
+current transaction closed and a new one opened.
+
+Each transaction shall have a boolean data member, 'saved' that shall be set on
+the transaction at the top of the history when the user saves the model. When
+the revert command is used, the undo function shall be executed until the last
+transaction with a 'saved' attribute value of true is reached.
+
+Work Required
+-------------
+1          Create a model describing user transactions and model changes and
+           the Undo/Redo History Manager behavior.
+2          Add hand written impedance matching code to allow the generated
+           Undo/Redo History manager to interface with Eclipse as required (for
+           example enabling and disabling of Undo and Redo user interface
+           elements).
+3          Modify MC-Java to populate before and after ModelDelta members when
+           implementing model change propagation for create and delete
+           statements.
+4          Modify MC-Java to generate a method that will copy all member data
+           from a clone argument.
+5          Add an new Undo/Redo generic model change type.
+6          Modify MC-Java to allow change messages to be selectively received
+           from different plugins.
+7          Modify ooaofgraphics to turn on model change messages.
+8          Modify ooaofgraphics to signal user transaction begin and end to the
+           Undo manager. Explicitly send change events as an alternative to Job
+           7 above.
+9          Modify all model change listeners to service the generic change
+           event.
+10         Modify the revert command to traverse the transaction history and
+           undo back to the last save.
+
+Acceptance Tests
+----------------
+1          Test that all retargetable undo and redo actions are available and
+           work as expected.
+
+2.1        Undo must reverse whatever the user last did. Check that every
+           possible user action can be reversed by Undo.
+2.2        Redo must reverse the effect of the immediately preceding Undo. Check
+           that every undo operation can be reversed by Redo.
+           Once the first Undo
+2.3        When something new is done, check that the undo redo history is
+           correctly cleared when the next position is at the top, bottom and
+           middle of the history (at the top of the history, no actual clearing
+           takes place, but the test must be performed to ensure that no null
+           pointer or other exceptions occur).
+
+3.1        Check that the Undo/Redo functionality behaves correctly when the
+           history is set to its default value, is set to a very large value
+           (5000 transactions) and is set to zero (Undo/Redo is disabled).
+3.2        Use a memory monitor to confirm that oldest user action is discarded
+           when the history becomes full.
+
+4.1        Check that Undo and Redo user interface elements are disabled when
+           there is nothing to do.
+4.2        Check that Undo and Redo user interface elements are re-enabled when
+           a user action causes there to be something available to do.
+4.3        Check that the above tests pass both when the situation changes due
+           to an Undo operation, a Redo operation, a User action, a load
+           operation and an import operation.
+
+5          Check that all canvases, trees, property views etc. update themselves
+           correctly after all possible Undo and Redo operations.
+
+6.1        Check that the Undo/Redo history is available after saving a model.
+6.2        Chack that a save operation has no effect on the Undo/Redo history.
+6.3        Check that a newly saved model has the '*' marker turned on when both
+           an undo and a redo operation is performed after a save.
+
+7          Check that revert works as required.
+7.1        Check that revert always returns the model to the state immediately
+           after the last save.
+7.2        Check that revert does nothing if used immediately after a save.
+
+End
+---
+
+$Log: undo_redo_revert-i473.ant,v $
+Revision 1.1  2009/09/03 18:23:21  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:14:04  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.74.1  2008/12/31 16:11:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/12/13 18:05:25  campbell
+Job: 473
+Specifed revert behavior.
+
+Revision 1.1  2004/11/29 16:45:19  campbell
+Job: 473
+Introduced.
+

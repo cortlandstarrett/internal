@@ -1,0 +1,458 @@
+========================================================================
+
+File:      $RCSfile: dts0100621356.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support inter-component instance reference passing
+
+1. Abstract
+-----------
+This note covers the work to enable instance reference passing semantics to be
+executed in Verifier.
+
+2. History
+----------
+  final - dts0100621356.rvm
+
+3. Document References
+----------------------
+In this section, list all the documents that the reader may need to refer to.
+Give the full path to reference a file.
+[1] ClearQuest DEI dts0100621356 - Support Instance Reference passing.
+[2] ClearQuest DEI dts0100622572 - Incorrect evaluation of "empty" test of
+                    instance handle in recursive operation executed in verifier. 
+[3] Clearquest DEI dts0100622819 - Timers run very slightly slow.
+[4] Clearquest DEI dts0100623034 - Support model to text interface.
+[5] Clearquest DEI dts0100623062 - Support inter-component instance reference
+                                                                        passing.
+[6] Clearquest DEI dts0100623417 - Instance set comparison does not work
+                                                                      correctly.
+4. Background
+-------------
+Support for instance reference passing has been enabled 'under the hood' in
+BridgePoint since release 3.0.0. This note covers the work to enable such
+instance reference passing semantics to be executed in Verifier.
+
+5. Analysis
+-----------
+Enabling this behavior turns out to be a bigger job than might be expected. This
+is because instance references and sets are not handled by Verifier the same as
+other values. This is because historically, the BridgePoint OAL parser treats
+simple values and instance references (and sets) differently, so during its
+design, Verifier followed suit.
+
+5.1 The current design
+The core of the differences lie in the Local subsystem. Here, Instance
+References are modeled by Local Reference (L_LCR), a subtype of Local (L_LCL).
+Other types of value are modeled by Local Value (L_LVL) a different subtype of
+Local. Local Reference, is associated with one (for a reference) or many (for a
+set) instances across association R3002. By contrast, Local Value holds its
+value as an instance of Runtime Value, found by traversing R3306 (see the
+Runtime Value subsystem). Note further that all the parameter subtypes; Bridge
+Parameter (S_BPARM), Function Parameter (S_SPARM), Operation Parameter (O_TPARM)
+and Property Parameter (C_PP) are all directly related to Local Value. This
+further couples parameter values to non instance values only.
+
+5.2 Changes needed
+All attempts to pass instance references by working around the incompatibilities
+described above result in lots of ugly, repeated OAL. Consequently, the best way
+forward is to rework and harmonize the handling of instance and non-instance
+runtime values. All changes will keep the same association numbers where
+possible.
+
+5.2.1 Move parameter subtype associations
+First, we will move all parameter subtype references to be with the Local class
+as opposed to the Local Value class. This will allow both simple (e.g. numeric)
+and instance (reference and set) values to be handled in the same way.
+
+5.2.2 Change the mechanism for resolving instances
+Secondly, we will remove the direct association between Local Reference and
+instances and instead manage this by adding a new subtype of Simple Value
+(RV_SMV), which we will call Instance Reference Value. This will hold its
+'value' across a new association with Instance In Reference (L_IIR).
+
+Instance In Reference will continue to refer to an Instance (I_INS) across
+R3013, thereby completing the ability for the runtime memory model to access the
+referred to instances.
+
+5.2.3 Move the association between Local Value and Runtime Value
+Finally, we will move the Runtime Value association (R3306) from Local Value
+to Local. This will allow the same assignment mechanism to be followed
+regardless of the Local subtype. Association R3002 is removed and instances are
+resolved instead by navigating through the Local supertype to the Runtime Value
+and then down the hierarchy to the new Instance Reference Value instance.
+
+While relatively straightforward to describe, the above changes cause 
+significant cascade changes which will be fully set out in the design section
+below. The refactoring could have gone much deeper, eliminating the distinctions
+between different kinds of value entirely. However, this would have caused
+ramified changes to selection and for-each iteration implementations and also
+would possibly even have extended into requiring parser changes.
+
+By contrast, the proposed refactoring strikes a balance between extending
+functionality while providing moderate simplification, versus a much bigger
+change that would not support any additional functionality (i.e. in addition to
+the required instance reference behavior).
+
+Given that this behavior is not yet customer visible, this balanced approach is
+the recommended strategy.
+
+5.2.4 Future work
+The Property Parameter class is not migrated to point to Local at this time.
+This is because inter-component instance reference passing needs additional work
+so that the remote component can accept, cache and return an instance reference
+or set, without having visibility of its type. The use of existing anonymous 
+inst_ref<Mapping> or inst_ref<Object> data types suggests itself here. Also,
+should it be legal to iterate over a set of anonymous instances? Clearly, the
+only thing the remote component could usefully do would be to send a message
+with the reference. These requirements need to be clarified before message
+parameter instance reference passing can be enabled. An issue[5] is raised to
+track the resolution of these questions.
+
+6. Design
+---------
+6.1 Body subsystem
+6.1.1 Body
+The create_stack_frame() operation is modified to select the local supertype
+rather than the local value. An additional selection is added to obtain the
+local value instance which is still needed here. This change is made to the
+'sender' keyword handling logic which seems to contradict section 5.2.4. This
+change is still needed to satisfy the general changes made.
+
+6.1.2 For Statement
+The execute() operation is changed to obtain its instance set using the changed
+traversal described above[5.2.3]. A similar change is made to set up the loop
+variable instance. Code which was repeated in several places to clear the
+instance set variable before assigning the new set is refactored into its own
+new operation (clear()) in Local Reference and this code is replaced with a call
+to it here.
+
+6.2 Domain subsystem
+6.2.1 Bridge Parameter
+The dispose() operation is modified to dispose the associated Local instances as
+opposed to the previous Local Value instances. get and setValue() operations
+are modified to use the new Local based traversals.
+
+6.2.2 Data Type
+The getCoreDataTypeName() operation must be modified to handle instance
+reference data types correctly.
+
+6.2.3 Function Parameter
+The analogous changes are made as for Bridge Parameter[6.2.1].
+
+6.3 Event subsystem
+6.3.1 Create Event Statement
+Modify hookUpEventInstToHandle() to traverse through Local.
+
+6.3.2 Create Event to Instance
+Modify execute() to obtain the target instance using the new traversal[5.2.3].
+
+6.3.3 Event Specification Statement
+Change relateToOriginatingInstance() is modified to traverse to Local.
+
+6.3.4 Generate
+Modify execute() to obtain the target instance using the new traversal[5.2.3].
+
+6.4 Instance subsystem
+6.4.1 Instance
+The takeEvent() operation is modified to use a refactored addInstance()
+operation created on Local Reference which removes duplicated code found in
+multiple places.
+
+6.4.2 Stack Frame
+The operation resetIfRequired() is modified to use the addInstance() operation
+described above[6.4.1].
+
+6.5 Instance Access
+6.5.1 Assign to Member
+The execute() operation is very significantly reworked to leverage the
+simplifications set out in the analysis section. Specifically, a whole separate
+logic block that handles instance references is removed. The remaining logic
+block is reworked to check for an instance reference value or set before using
+the setValue() variant (meant for truly simple core type assignments only).
+Otherwise, the copyValue() logic now works for all value types.
+
+6.5.2  Create
+The Create.execute() operation is modified to leverage the new convenience
+operations, clear() and addInstance() added to Local Reference.
+
+6.5.3 Delete
+The execute() operation is changed to follow the new traversal[5.2.3].
+
+6.6 Invocation
+6.6.1 Bridge Invocation
+The setupParameterValues() operation is modified to select the local supertype
+rather than the local value. An additional selection is added to obtain the
+local value instance which is still needed here.
+
+6.6.2 Function Invocation
+The analogous changes are made as for Bridge Invocation[6.6.1].
+
+6.6.3 Interface Operation Invocation
+The analogous changes are made as for Bridge Invocation[6.6.1].
+
+6.6.4 Operation Invocation
+The analogous changes are made as for Bridge Invocation[6.6.1]. In addition, the
+target instance for instance based operations is selected using the new
+traversal[5.2.3].
+
+6.6.5 Function Invocation
+The analogous changes are made as for Bridge Invocation[6.6.1].
+
+6.6.6 Signal Invocation
+The analogous changes are made as for Bridge Invocation[6.6.1].
+
+6.7 Local
+Three associations, R3007, R3008 and R3009 are moved from Local Value to the
+supertype, Local. The association R3002 is deleted.
+
+6.7.1 Local
+The dispose() operation is reworked to reflect the changed association
+configuration. The operations, getRuntimeValue(), getValue(), setBoolean(),
+setInteger(), setReal(), setString(), setUnique_ID(), setValue() and
+createRuntimeValue() are all introduced to this class.
+6.7.1.1 createRuntimeValue()
+This convenience operation is added to create a runtime value and relate it to
+the Local instance on which the call is made.
+
+6.7.1.2 Other new operations
+All other new operations listed above are added to allow Local to delegate its
+behavior accordingly. The runtime execution logic ensures that inappropriate
+calls to the simple value operations are never made by checking the subtype
+before calling. The others simply delegate their implementation to the subtype.
+
+6.7.2 Local Reference
+The dispose() operation is reworked to reflect the changed association
+configuration. Convenience and delegation implementation functions are added to
+improve maintainability.
+
+6.7.2.1 The operations, getRuntimeValue(), getValue(), and setValue()
+are added to allow the Local supertype to delegate these calls as described
+above[6.7.1.2].
+
+6.7.2.2 addInstance()
+Adds the instance identified by inst_id to the set found through the associated
+runtime value.
+
+6.7.2.3 clear()
+Removes all instances associated through the runtime value.
+
+6.7.2.4 purge()
+Removes all references to the specific instance identified by the passed inst_id
+value.
+
+6.7.3 Local Value
+The dispose(), setBoolean(), setInteger(), setString(), setReal(),
+setUnique_ID(), getValue(), setValue() and getRuntimeValue() operations are
+reworked to reflect the changed association configuration.  
+
+6.8 Relate and Unrelate
+6.8.1 Relate and Unrelate
+The execute() operations of these classes are reworked to obtain source and
+destination instances using the new traversal[5.2.3].
+
+6.8.2 Relate Using and Unrelate Using
+The execute() operations of these classes are reworked to obtain source,
+destination and link instances using the new traversal[5.2.3].
+
+6.9 Runtime Value
+The new subtype of Simple value, Instance Reference Value (RV_IRV) is added. A
+new association, R3311 is added between Instance Reference Value and
+Instance in Reference. R3306 is moved from Local Value to the supertype, Local.
+
+6.9.1 Runtime Value
+copyValue() is modified to handle copying Instance Reference Values. A new
+convenience operation, createReferenceValue() is added.
+
+6.9.2 Simple Value
+The disposeSubtype() operation is extended to handle the Instance Reference
+Value subtype.
+
+6.9.3 Instance Reference Value
+This new subtype is added and has a simple dispose() operation.
+
+6.10 Selection
+6.10.1 Select
+The execute() operation is reworked to use the new traversal[5.2.3] to find the
+starting instance set. It was also noticed when reworking this operation that
+the starting instance set was being selected without regard to the current stack
+frame. This was fixed, but in the meantime, a field issue[2] has been reported
+for this. This job therefore fixes this field issue (see also [6.12.5] for
+another part of this fix). This operation is also refactored to use the clear()
+[6.7.2.3] and addInstance()[6.7.2.2] operations where appropriate.
+
+6.10.2 Select from Instances
+The execute() operation is modified to leverage the addInstance()[6.7.2.2] and
+purge()[6.7.2.4] operations. It is also changed to use the new traversal[5.2.3].
+
+6.10.3 Select form Instances Where
+Analogous changes to execute() made[6.10.2].
+
+6.10.4 Select Related where
+Analogous changes to execute() made[6.10.1].
+
+6.11 Subsystem
+Changes are made to Operation Parameter operations dispose(), getValue() and
+setValue() to use the new traversal to Local instead of Local Value.
+
+6.12 Value
+6.12.1 Attribute Value Reference
+getValue(), setValue(), setUpSelf() and getRuntimeValue() are modified to use
+the new traversal[5.2.3]. Additionally, setUpSelf() leverages the new operation,
+addInstance()[6.7.2.2].
+
+6.12.2 Binary Operation
+getBoolean() is changed to use the new traversal[5.2.3] in two places, where
+instance handles and set handles are compared for equivalence (i.e. in the
+'==' operator implementation). An issue is raised[6] to cover an observation
+that set equivalence is not implemented correctly in Verifier (or possibly MC-
+Java). This is left as an issue because it needs further discussion as to what
+the requirement is.
+
+6.12.3 Bridge Value
+The setupParameterValues() operation is modified to use the shorter traversal to
+the required Local instance. A new short traversal is added to the Local Value
+instance which is still required later in the body of this activity.
+
+6.12.4 Function Value
+Analogous changes as for [6.12.3].
+
+6.12.5 Instance Handle
+isEmpty() is changed to use the new traversal[5.2.3]. Additionally, an
+identifier for the current stack frame, stack_frame_id is added as an argument
+to this operation. This id is used to locate the correct Local instance before
+traversing to the runtime value. This is required because otherwise an analogous
+problem to[2] would exist for not_empty functionality. The analogous change to
+Instance Set.isEmpty() is _not_ required since at some point this issue has been
+fixed in the set case without considering the single reference case. Finally,
+getCardinality() is changed to use the new traversal[5.2.3].
+
+6.12.6 Instance Reference
+This has the getValue() operation removed and replaced with a getRuntimeValue()
+equivalent. The difference between these operations is that the former returns
+a value of type 'instance', whereas the replacement returns a UUID (which of
+course identifies an instance of Runtime Value). The replacement behavior is
+consistent with other value computation behavior in the Value subsystem and
+removes the need for special casing for instance handling. As might be expected,
+the body of the operation is modeled on existing code for the analogous
+operation in other Value subtypes.
+
+6.12.7 Instance Set
+isEmpty() is modified to use the new traversal[5.2.3]. getCardinality() is
+similarly modified, and some error messages are changed to direct the engineer
+to this operation rather than incorrectly to the Value class.
+
+6.12.8 Instance Set Reference
+The analogous change as for instance handles[6.12.5] is made here.
+
+6.12.9 Message Value
+The getValue() and setupParameterValues() operations are changed to use the
+shorter traversal to the required Local instance[5.2.1]. A new short traversal
+is added in each case to the Local Value instance which is still required later
+in the bodies of these activities.
+
+6.12.10 Operation Value
+The operation setupParameterValues() is changed to use the new traversal[5.2.3]
+and to leverage the addInstance() convenience operation[6.7.2.2]. The new
+shorter traversal[5.2.1] is also required in this operation, including a new
+short traversal to Local Value.
+
+6.12.11 Parameter Value
+getRuntimeValue() is changed to use the new shorter traversal[5.2.1].
+
+6.12.12
+The getRuntimeValue() operation is changed to use the new shorter traversal
+[5.2.1]. A new selection for the Local Value subtype is also needed here.
+
+6.12.13 Unary Operation
+The getBoolean() operation is changed to jive with the changes to Instance
+Handle.isEmpty()[6.12.5].
+
+6.12.14 Value
+The operation computeValue() is changed to handle Runtime Value instances when
+referring to instance references instead of 'instance' types. A few misleading
+runtime error messages were corrected. The getRuntimeValue() operation is
+extended to delegate to InstRef and InstSet subtypes. This completes the
+harmonization of the execution mechanism to using Runtime Value instances for
+all values.
+
+6.13 Debug UI changes
+A small number of cascade changes are made to the debug ui plugin so that the
+Variables view continues to correctly show the stack state.
+
+6.13.1 BPValue
+6.13.1.1 The getValueString() method is changed in three places to perform the
+slightly longer traversal now required from the local value instance. It is now
+possible for an Runtime Value instance refer to an instance or instance set.
+Accordingly, the new Instance Reference Value subtype is checked for in this
+method and its value string computed. Finally, the new traversal[5.2.3] is
+needed in one place in this method.
+
+6.13.1.2 In getVariables() code to handle an Instance Reference Value subtype is
+added.
+
+6.13.2 BPVariable
+The getName() method is changed in three places to perform the slightly longer
+traversal now required from the local value instance.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully covered in the Design section above.
+
+9. Unit Test
+------------
+A new test model, InstRefsInVerifier, is checked into svn:/trunk/Models/Test.
+Note that all tests that check whether the same set of instances is passed will
+fail until the set equivalence issue raised in this work[6] is addressed.
+
+_- Execute InstRefsInVerifier::Tests::test
+_R Three pass results and three failures are reported
+
+All other unit tests must pass, with particular attention to the existing
+Verifier unit tests.
+
+End
+---
+
+$Log: dts0100621356.dnt,v $
+Revision 1.7  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.6  2009/10/08 09:19:49  campbell
+Job: dts0100621356
+Address review issues.
+
+Revision 1.5  2009/10/07 13:05:29  campbell
+Job: dts0100621356
+Removed unneeded TBD.
+
+Revision 1.4  2009/10/05 13:47:11  campbell
+Job: dts0100621356
+Removed default text.
+
+Revision 1.3  2009/10/05 13:17:10  campbell
+Job: dts0100621356
+Provided Abstract previously omitted in error.
+
+Revision 1.2  2009/10/05 09:56:06  campbell
+Job: dts0100621356
+Checked in pending authors review before scheduled formal review.
+
+Revision 1.1  2009/10/02 13:37:12  campbell
+Job: dts0100621356
+Introduced.
+

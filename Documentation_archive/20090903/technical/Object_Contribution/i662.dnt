@@ -1,0 +1,199 @@
+========================================================================
+
+File:      $RCSfile: i662.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:47 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Assign Event menu item incorrectly displayed when no events left
+
+Abstract
+--------
+When all events have been assigned to transitions from a given state, the 
+Assign Event menu item is not supposed to be present in the context menu when
+a transition is right-clicked.  Currently, however, it is present.  This note 
+documents the changes needed to prevent the Assign Event menu item from 
+displaying incorrectly.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 662
+
+Background
+----------
+Currently, right-clicking on an outgoing transition from a given state brings
+up a context menu with the "Assign Event..." menu item present, even when there
+are no events left to be assigned.  
+
+Analysis
+--------
+If the number of events defined exceed the number of outgoing assigned 
+transitions from a given state, then right-clicking on a transition with an 
+unassigned event or right-clicking on a transition with an event assigned 
+(to allow the user to change the event) should bring up the context menu with 
+the "Assign Event..." menu item.  If the number of events defined does not 
+exceed the number of assigned transitions, then the "Assign Event..." 
+menu item should not appear in the context menu.
+
+Design
+------
+i662.1	Modify Transition.actionFilter
+If param.name=="event" and param.value=="exists", first find the number of 
+events that are defined.  There are then three cases to consider: No Event 
+Transition, New State Transition, Creation Transition. Find out which of these 
+three types of transitions was clicked.  For each of these cases, find the state 
+from which the transition originates. Then, the number of outgoing transitions 
+from that state that have events assigned to them can be found. If the number of 
+assigned transitions is less than the number of events defined, return true. 
+Otherwise, return false.  The action language is given below:
+
+if (param.name == "event" )
+  if (param.value == "exists" )
+    // might want to enforce data set consistency here
+    // i.e. events only exist if they match the state's data set
+    select one net related by self->SM_NETXN[R507];
+    select one nst related by self->SM_NSTXN[R507];
+    select one ct related by self->SM_CRTXN[R507];
+    select many eventsExist related by self->SM_SM[R505]->SM_EVT[R502]; 
+    
+    if (not_empty net)
+      select one state related by self->SM_NETXN[R507]->SM_STATE[R508];
+      select many newStateTransitions related by state->SM_SEME[R503]
+                                                               ->SM_NSTXN[R504];
+      return cardinality eventsExist > cardinality newStateTransitions; 
+    elif (not_empty nst)
+      select one state related by self->SM_NSTXN[R507]->SM_SEME[R504]
+                                                               ->SM_STATE[R503];    
+      select many newStateTransitions related by state->SM_SEME[R503]
+                                                               ->SM_NSTXN[R504];
+      return cardinality eventsExist > cardinality newStateTransitions;
+    elif (not_empty ct)
+      select one state related by self->SM_STATE[R506];          
+      select many creationTransitionsAssigned related by eventsExist
+                                 ->SM_SEVT[R525]->SM_LEVT[R526]->SM_CRTXN[R509];
+      return cardinality eventsExist > cardinality creationTransitionsAssigned;
+    end if;  
+
+
+Work Required
+-------------
+i662.1	Modify Transition.actionFilter
+The change is made to ooaofooa.mdl and ooaofooa.bak as specified in the design.
+
+Unit Test
+---------
+- Select a No Event Transition outgoing from a state that has only 1 transition.
+  Statechart has 1 event defined.
+R Assign Event menu item is present
+
+- Select a No Event Transition outgoing from a state that has 2 transitions, 
+  where one transition is a New State Transition and one is a No Event 
+  Transition.  Statechart has 1 event defined.
+R Assign Event menu item is not present
+
+- Select a New State Transition outgoing from a state that has 2 transitions,
+  where one transition is a New State Transition and one is a No Event 
+  Transition.  Statechart has 1 event defined.
+R Assign Event menu item is not present
+
+- Select a No Event Transition outgoing from a state that has 2 transitions,
+  where one transition is a New State Transition and one is a No Event 
+  Transition.  Statechart has 2 events defined.
+R Assign Event menu item is present 
+
+- Select a New State Transition outgoing from a state that has 2 transitions,
+  where one transition is a New State Transition and one is a No Event 
+  Transition.  Statechart has 2 events defined.
+R Assign Event menu item is present 
+
+- Select a Creation Transition incoming to a state that has 1 transition, where
+  the creation transition is not assigned to a local event. Statechart has 1 
+  event defined.
+R Assign Event menu item is present
+
+- Select a Creation Transition incoming to a state that has 1 transition, where
+  the creation transition is assigned to a local event. Statechart has 1 
+  event defined.
+R Assign Event menu item is not present
+
+- Select a Creation Transition (not assigned to a local event) incoming to a 
+  state that has 2 creation transitions, where one creation transition is 
+  assigned to a local event, and one is not. Statechart has 1 event defined.
+R Assign Event menu item is not present
+
+- Select a Creation Transition (assigned to a local event) incoming to a 
+  state that has 2 creation transitions, where one creation transition is 
+  assigned to a local event, and one is not. Statechart has 2 events defined.
+R Assign Event menu item is present
+
+- Select a Creation Transition (not assigned to a local event) incoming to a 
+  state that has 2 creation transitions, where one creation transition is 
+  assigned to a local event, and one is not.  Statechart has 2 events defined.
+R Assign Event menu item is present
+
+- Create 4 states with a creation transition incoming into each of them. 
+  Statechart has 4 events defined. Three creation transitions have local events
+  assigned to them.  Select the fourth creation transition.
+R Assign Event menu item is present
+
+- Create 4 states with a creation transition incoming into each of them. 
+  Statechart has 3 events defined. Three creation transitions have local events
+  assigned to them.  Select the fourth creation transition.
+R Assign Event menu item is not present
+
+- Create 2 states with 1 transition outgoing from 1 state to the other and 
+  vice versa.  Out of the 2 transitions, 1 is a New State Transition and 1 is
+  a No Event Transition.  Select the No Event Transition.  Statechart has
+  1 event defined.
+R Assign Event menu item is present
+
+
+
+
+End
+---
+
+$Log: i662.dnt,v $
+Revision 1.1  2009/09/03 18:21:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:18  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.50.1  2008/12/31 16:10:26  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/02/02 20:23:56  svenkat
+Job: 662
+Addressed Review comments
+
+Revision 1.4  2005/02/02 17:37:04  svenkat
+Job: 662
+Modified Analysis Section
+
+Revision 1.3  2005/02/01 22:53:22  svenkat
+Job: 662
+Fixed grammatical error in Unit Test section
+
+Revision 1.2  2005/02/01 21:44:20  svenkat
+Job: 662
+Modified Unit Test section
+
+Revision 1.1  2005/02/01 21:12:06  svenkat
+Job: 662
+Introduced.
+

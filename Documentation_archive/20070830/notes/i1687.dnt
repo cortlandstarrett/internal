@@ -1,0 +1,434 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support formal modeling of component diagrams
+
+1. Abstract
+-----------
+This note describes changes that are required to support formal modeling of
+component diagrams.
+
+2. History
+----------
+update /Documentation/internal/review_minutes/R1_5_0/i1687-040307-01.rvm
+final  /Documentation/internal/review_minutes/R1_5_0/i1687-040407-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 1687
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1687
+[2] Bugzilla item 2669
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2669
+[3] Documentation/internal/notes/i1687.ant
+[4] Bugzilla item 2843
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2843
+    
+4. Background
+-------------
+Currently the tool supports modeling component packages and interface packages.
+It shall support formal modeling of component packages as well as nested
+components.
+
+5. Analysis
+-----------
+5.1 Formal component modeling
+
+To model formal components, components shall be formalized against existing
+domains.  The one limitation for component formalization is that a component may
+only formalize to a domain if that component has no other internal structure
+defined i.e, the component has no nested components.  Similarly, once formalized
+to a domain, no component structure may be added without first unformalizing
+from the domain.
+
+The following shall occur when a component is formalized to a domain:
+
+1. The domain contents shall form the contents of the component or at least
+   appear to.  If a description was defined for the domain it shall be
+   appended to the formal component's description.  When opening the component
+   diagram the domain diagram contents shall be displayed.
+
+2. All existing domain level core data types shall be removed and the necessary
+   associations shall be setup so that the domain children can access the same
+   core data types from the system.
+
+3. The domain shall be removed from the system level.  The component shall have
+   the same child nodes that the domain had.
+
+A formalized component shall have an unformalize option which shall revert the
+changes stated above.
+
+Activity editors shall be configured for provided and required interface
+references that are shown under a component.  The parser shall be adjusted to
+work with signals and interface operations.
+
+The syntax for calling interface operations and signals shall be as follows:
+
+Component::Nested Component::...::Interface::Operation(param:value, param2:value);
+
+Action language may exist at every level of delegation from the delegator down
+to the delegate.  
+
+An attribute of type StateEnum, which has values ENABLED and DISABLED, is 
+present in Requirements and Provisions. In a Requirement, the attribute is named 
+Use_OAL_Stub.  This attribute is used to determine if OAL should be executed or 
+not. When this attribute is ENABLED, the OAL acts as a stub and the call is not 
+passed to the provided interface reference.  This allows the interface to be 
+tested in situations where the provided interface reference is not yet 
+implemented.  When this is DISABLED, the call is made to the provided interface 
+reference.  
+
+In a Provision, the attribute is named impedance_matching.  When there are 
+delegations, this is used to determine if OAL should be executed or not.  When 
+there are not delegations, OAL must always be executed, so this attribute has no 
+effect.   When there are delegations and this value is set to ENABLED, the OAL 
+will act as a stub and the call is not delegated.  This allows the interface to 
+be tested without having the provided interface reference implemented.  When 
+there are delegations and this value is DISABLED, the call is delegated. 
+
+Once the action of the provision or requirement is executed, execution is 
+complete.  It is up to the analyst to further call out other interfaces to be 
+executed within this action.
+
+Default behavior will be that if any action language statements are present, 
+they will be executued (treating it like a stub).  If no action language 
+statments are present, the call to the provided interface (or delegation) will
+be made.
+
+5.2 Nested component modeling
+
+An informal component may have it's internal structure defined by nesting
+components within it.  Communication to and from a component is provided through
+interfaces.  Communication to the internal structure of a component is provided
+through delegations.  A delegation exists when a parent component does not want
+to handle the communication directly, but instead wants to delegate that
+communication to a child.  Both provided and required interface references may
+be delegated through all nesting levels.  At each level of nesting where
+communication is delegated there shall be a provided or required interface
+reference in the tree.  Each of these shall have an activity editor.
+
+For this design every component will have a component diagram, which will be
+used for internal structure.  A component may be wired to another at any level
+of nesting.  If communication is to be made to an internal part of a component,
+that component must have the necessary interface reference defined at the top
+level.  Then at each nesting level a delegation must exist.
+
+Each component diagram shall have an outer, 'container', symbol that represents
+the component being modeled by the currently viewed diagram.  Inside this
+container symbol is where the child nested components shall live.  For each 
+interface reference drawn on the nested component symbol (i.e. not the container
+symbol), an unconnected interface reference connector shall be shown along the
+edge of the container symbol in the child component diagram. Delegation
+connectors (a simple connector bearing one or two arrowheads indicating
+invocation direction) may be connected to the inner end of these unconnected
+interface reference symbols.  The order of creation for interface references and
+delegations shall not matter.  If a user draws a delegation from the internal
+structure of a component to the edge of the container, an interface reference
+(provided or required as necessary) shall be created as a floating interface
+reference on the container symbol as well as on the parent component's symbol.
+The created interface reference will follow the "auto-formalization" rules as 
+other interfaces do.
+
+For this design, Used Components shall not be created in component diagrams.
+Used Components shall be left in place in the metamodel for future use.
+
+5.3 Graphics infrastructure
+
+5.3.1 Support for container symbols
+
+See [3].
+
+5.3.2 Support terminations on drag and drop
+
+Currently the tool only allows a connection to be made during creation of a
+connector.  The tool shall be modified to allow for connections during a drag
+and drop of a connector.  Each individual element that is represented by a
+connector shall determine whether or not it is legal.  For this design, only
+interface references shall allow this behavior.
+
+5.4 Nested Interface Diagrams
+
+Interface Packages shall be supported on a Component Diagram as well as at the
+system level (as is currently supported). Interface scoping shall be implemented
+so that the list of declared interfaces offered for formalizing a required or
+provided interface reference includes those interfaces defined in any Interface
+Package declared on the current Component Diagram, plus any interface defined
+in an Interface Package on any parent Component Diagram up to and including the
+system level Interface Package. The offered interface list shall not include
+interfaces defined on any part of a sibling nested component tree.
+
+6. Design
+---------
+6.1 Support formal modeling
+
+The tool currently has support for formalizing components.  This support is only
+enabled when the environment variable, SLE_DEVELOPMENT, is set to true.  The
+check for the environment variable shall be removed.
+
+The formalize operation shall be modified to work according to section 5.1 of
+the analysis.
+
+The action filter for the formalize operation shall be modified to account for
+the limitation stated in section 5.1 of the analysis.
+
+When a component becomes formal the domain class shall act as a link between the
+component and what used to be the domain children.  The pei data for explorer
+shall be modified to show all domain children as the component's, traversing
+to the children through the domain.  A domain shall not be configured as a child
+of the component.  The same configuration shall be made to the hierarchy pei
+data for properties and compare.
+
+The file i/o pei data shall be modified such that the domain children may also
+be children of the component.  This will allow for the contents of the previous
+domain file to be written to the contents of a component file.
+
+When a component is formalized, the ComponentTransactionListener shall remove 
+all persistable component's that are migrated from a root element due to a 
+relationship change delta.  The domain will no longer be a root element of a 
+PersistableModelComponent, but will instead have the formal component as the 
+root element.  When this occurs the oldPersistableModelComponent shall be 
+removed.
+
+Again the changes stated above shall be reverted when a component is
+unformalized.
+
+The Body subsystem of ooaofooa shall be modified to include both the Required
+Executable Property and Provided Executable Property classes as subtypes of the
+Block class.  The OAL Validation functions shall be modified to include checking 
+for the new subtypes of Block.  The tool already has the necessary attributes 
+captured to allow for activity editors to be created for both required and 
+provided operations and signals.  The OAL will be reviewed for self 
+validation (OAL Validation Functions.xtuml::self_validation).
+
+6.2 Nested component modeling
+
+The model has been modified to support nested components in the branch
+R1_4_3-TRL-i1687. The Components model found in the branch above shall also be
+modified to capture the fact that a Used Component may exist in a component
+package.  This was the way it was designed before the changes in the branch.
+
+The model shall be changed so that every provided or required interface
+reference will be decorated with a port.  The model already contains port
+support, but the get_style operation of the provided and required interface
+reference classes must change to indicate that they are decorated with a port.
+Those operations must also change to show the multiplicity of the port, which is
+also already captured in the model.
+
+The model shall change so that a component's compartment text shows the
+component's multiplicity.  This shall be similar to that of a used component's
+compartment text.
+
+The necessary operations shall be added to allow graphics for delegations.  This
+includes adding a newDelegation operation to the Component class as well as the
+various get_* operations.  See other graphically represented elements for
+details on the required operations.
+
+A newComponent operation shall be added to the Component class to allow for
+creating nested components.
+
+The necessary trees shall be modified to capture the parent child association
+between component's and the available nested children.
+
+6.3 Graphics infrastructure
+
+6.3.1 Support for container symbols
+
+See [3].
+
+The following are additional requirements to connector creation and deletion
+behavior:
+
+1) Delegations may not be drawn unless a provision or a requirement is the
+   starting or ending termination point.
+2) When a delegation is deleted a floating interface reference shall be created
+   in it's place on the delegate side.  This interface shall be of the same type
+   as the interface reference that was delegated.
+3) A delegation may be drawn to or from an interface reference at the delegate
+   side, at which point the floating interface reference shall be removed and
+   the delegation shall terminate at the original end point of the floating
+   interface reference.
+4) When a delegation is drawn from an outer floating interface reference the
+   delegate shall be checked for an existing floating interface reference of the
+   same type and name.  The first one found shall be used in this case.  The
+   floating interface reference in the parent diagram of the delegate shall be
+   removed in this case.
+
+6.3.2 Support terminations on drag and drop
+
+The Selection Tool instance state machine shall be modified to check for valid
+connections during a drag and drop.  If it finds one that can be made it shall
+call a new operation on the representing ooaofooa element.  This operation will
+determine if the connection can be made.  If it can the state machine shall
+associate the two element's that now have a connection.  This shall only work
+when one side of the connector is terminated on whitespace, meaning that
+connectors which already have a connection may not be disconnected without
+deleting one side of the connection.  
+
+Consideration was given to adding a general context menu entry which would 
+show when a connector that had a connection was selected.  The action for this 
+entry would disconnect the connection.  A seperate issue [4] has been raised to 
+investigate this further.
+
+6.4 Nested Interface Packages
+The R1_4_3-TRL-i1687 branch of the metamodel shall be changed so that an
+interface diagram, which shall be renamed to Interface Package, shall be
+associated with a Component.  This shall capture the fact that an Interface
+Package may be nested within a component's internal structure.  The rules for
+formalizing a provided or required interface reference shall change so that
+interfaces that are defined in a nested component shall only be available to
+provided or required interface references that are drawn in that same component,
+or to those that are nested below that component.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+The design section covers the work required.
+
+9. Unit Test
+------------
+_- Formalize a component to a domain
+_R The name of the component shows the domain name
+_R The domain is not under the system anymore
+_R The domain's children are listed under the component
+_R The domain file is gone
+_R The contents of the domain file exist in the component file
+_- Double click the component
+_R The domain diagram's contents are shown
+_- Open the description for the component
+_R Both the component description and the domain description contents are shown
+
+_- Formalize a component
+_- Compare the component with local history
+_R All domain children are shown as children in compare view
+
+_- Formalize a component
+_R All system core datatypes are available to the component's children
+
+_- Unformalize a component
+_R A progress dialog is displayed if this unformalize operation takes 
+   significant time.
+_R The original domain is shown under the system
+_R The domain is restored correctly
+_R The component has no domain related children
+
+The ui.text tests shall be modified to operate on the following:
+
+- Required Signals
+- Provided Signals
+- Required Operations
+- Provided Operations
+
+_- Create a component in a component package
+_- Double click the component
+_R A component diagram is opened
+_R An outline exists
+_R The name and mini component symbol are present in the upper right corner of
+   the outline
+_- Draw a required interface reference on the component's shape
+_- Open the component diagram
+_R The required interface reference is floating outside of the outline
+_- Draw a component within the outline
+_R The component is created
+_- Draw a delegation to the outline with the arrow towards the outline
+_R The delegation is created
+_R A floating required interface reference is created outside the outline
+_R A floating requierd interface reference is created on the shape in the parent
+   diagram
+_- Draw a delegation to the outline with the arrow towards the component
+_R The delegation is created
+_R A floating provided interface reference is created outside the outline
+_R A floating provided interface reference is created on the shape in the parent
+   diagram
+
+_- Create a floating provided interface reference on the outside of the outline
+   of a nested diagram
+_R The interface reference is created
+_R A floating interface reference is created on the parent diagram 
+
+_- Draw a floating provided interface reference
+_R A small square (representing a port) is shown at the component end
+_- Draw a floating required interface reference
+_- Drag the floating provided interface reference over the end of the floating
+   required interface
+_R The two interfaces references are connected
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.12  2007/05/21 18:02:54  rmulvey
+Job:1052
+Updated for the weeks of 2007/05/07 and 2007/05/14
+
+Revision 1.11  2007/04/05 16:23:46  rmulvey
+Job:1687
+Clarify the review for "self" validation.
+
+Revision 1.10  2007/04/05 16:16:59  rmulvey
+Job:1687
+Addressed final review observations.
+
+Revision 1.9  2007/04/04 14:13:10  rmulvey
+Job:1687
+Updated history
+
+Revision 1.8  2007/04/04 14:09:26  rmulvey
+Job:1687
+Addressed remaining observations from the review.
+
+Revision 1.7  2007/04/03 23:05:51  tlondon
+Job: 1687
+
+Add more documentation from review of delegation behavior.
+
+Revision 1.6  2007/01/31 22:03:26  tlondon
+Job: 1687
+
+Point at ant for graphics infrastructure changes.
+
+Revision 1.5  2007/01/31 00:19:13  campbell
+Job:2375
+Clarified container symbols are used. Clarified that the container symbol is created just in time.
+
+Revision 1.4  2007/01/30 20:11:26  tlondon
+Job: 1687
+
+Update note to spec container symbols.
+
+Revision 1.3  2007/01/30 18:35:11  campbell
+Job:1687
+Break out Nested Interface Diagrams as a separate design section.
+
+Revision 1.2  2007/01/30 18:25:19  campbell
+Job:1687
+Minor enhancements.
+
+Revision 1.1  2007/01/30 17:16:47  tlondon
+Job: 1687
+
+Introduce

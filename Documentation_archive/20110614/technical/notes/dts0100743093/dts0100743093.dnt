@@ -1,0 +1,215 @@
+========================================================================
+
+File:      $RCSfile: dts0100743093.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Complete transition to Generic Packages
+
+1. Abstract
+-----------
+By introducing Generic Package functionality, it brought a new data structure to 
+support nested packages/components feature using Packageable Element class.
+Until now, the Generic Package still uses the old data structure of Specialized 
+Package using Package In Package and Component In Component  in some parts.
+This issue is to clean this up and rely only on the new data structure for GP.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100743093 - Complete transition to Generic Packages
+
+
+4. Background
+-------------
+In Specialized Package , the nesting packages feature is supported by the 
+following data structure : 
+Each Specialized Package (like Function or External Entity Packages) is a subType
+of Package. A Package is associated with a PackageInPackage class to represent
+the nesting mechanism. For Nested Components, another class called 
+ComponentInComponent is related with Component to support the nesting.
+
+With Generic Package functionality, all of the Specialized Packages are not used. Each model 
+Element becomes a subType of Packageable Element. Packageable Element can be
+contained by either Component or Package, note that Component and Package 
+are Packageable Element.
+
+Summary :  
+- The nested packages data structure in  Specialized Packages :
+  EP_PKG -> EP_PIP[R1404] -> EP_PKG[R1403]
+- The nested component data structure in  Specialized Packages :
+  C_C -> CN_CIC[R4203] -> C_C[R4202]
+
+- The nested packages data structure in  Generic Packages :
+  EP_PKG -> PE_PE[R8001] -> EP_PKG[R8000]
+- The nested component data structure in  Generic Packages :
+  C_C -> PE_PE[R8001] -> C_C[R8003]
+  
+note that there are other nested structure for Generic Package when Component inside
+Package or vice versa. However, these cases can not represent CN_CIC or EP_PIP. 
+ 
+5. Analysis
+-----------
+5.1	Although the current Generic Package build might work properly, because the 
+	the nested structure associations for Specialized Package are being set up 
+	next to the one Generic Package instance, but this behavior
+	is undesired. In this situatation, duplicated data structures are created and will cause
+	reliability and maintenance problems later. So it is required to remove 
+	these extra associations that are being setup setup.
+
+	 In the Generic Package context, each setup for nested packages/components, 
+	traversal to get the nested packages/components or traversal to get the 
+	parent package/component is required to use the new PE_PE data structure
+    instead of the old EP_PIP and CN_CIC.
+    
+    
+     By searching, these locations are : 
+	Note : search was using the following Regular Expression : 
+	- PackageInPackage_c[\n\s]*.get(Many|One)EP_PIP[s]?OnR140(3|4)
+	- ComponentInComponent_c[\n\s]*.get(Many|One)CN_CIC[s]?OnR420(3|2)
+	- new PackageInPackage
+	- new ComponentInComponent 
+	
+	each location hit was examined, Can it run in Generic Package ? If no, skip 
+	it If yes, does it support the Generic Packages nested structure 
+	implementation ? If yes skip it, if No then add it.
+	
+	- component.newComponent
+	- Component.newProvision
+	- Component.newDelegation
+	- Component.newRequirement
+	- Component.isExecutingOrIsChildExecuting
+	- Component.getComponentCount
+	- Component.getComponentId
+	- Requirement.get_connector_text    
+	- Package.getPath
+	- Package.associatePackageWithSystem  
+	- Package.deassociateFromParent 
+	- Package.Associatewithpackage
+	- ComponentsC_CPropertySource.getPropertyDescriptors()
+	- PackagesEP_PKGPropertySource.getPropertyDescriptors()
+	
+	  These are the left methods that use Specialized Package nested structure
+	 implementation and can be executed in Generic Package context as well.
+	
+	 It is required to use the Generic Package nested structure mechanism in
+	Generic Package context only, and Specialized Package nested structure 
+	implementation on Specialized Package context only as well.      
+  
+
+6. Design
+---------
+6.1  In all locations specified in 5.1, use Component::isInGenericPackage() 
+	operation to get the current context, and use it as if-condition to decide
+	which nested structure mechanism to use. For Package, it does not need to 
+	check because it is only usable in Generic Package Context.
+	So the specialized nested structure implementation is going to be removed and 
+	replaced with the generic one in Package case.
+	
+	Example 1 :	Component.newProvision()
+	  
+Before : 	  
+	select any component related by self->CN_CIC[R4202]->C_C[R4203] where (selected.Id == param.from);
+    select any provision related by self->CN_CIC[R4202]->C_C[R4203]->C_PO[R4010]->C_IR[R4016]->C_P[R4009] where (selected.Provision_Id == param.to);
+    select any importedRef from instances of CL_IIR where (selected.Id == param.to);
+    if(empty component)
+      if(param.from == self.Id)
+       component = self;
+      end if;
+    end if;
+	...
+	...
+
+After : 
+	isInGenericPackage = self.isInGenericPackage();
+    // Create empty variable of type inst_ref<Component>
+    select any component from instances of C_C where selected.Id==GD::NULL_UNIQUE_ID();
+    
+    // id is actually this component's as we are
+    // if the component is empty, see if the given
+    // creating an outer interface reference
+    if isInGenericPackage
+    	select any component related by self->PE_PE[R8003]->C_C[R8001] where (selected.Id == param.from);
+    else 
+    	select any component related by self->CN_CIC[R4202]->C_C[R4203] where (selected.Id == param.from);
+    end if;
+    
+    if(empty component)
+    	if(param.from == self.Id)
+	    	component = self;
+	    end if;
+    end if;
+    ...
+    ...
+
+
+	Example 2 : Package.Associatewithpackage 
+
+Before :
+	 ...
+	 ...
+     create object instance pip of EP_PIP;
+     relate pip to package across R1403;
+     relate pip to self across R1404;
+	 ...
+	 ...
+                             
+After :
+	...
+	...
+	create object instance pe of PE_PE;
+    relate pe to package across R8000;
+	relate pe to self across R8001;
+	pe.type = ElementTypeConstants::PACKAGE;
+    pe.initialize();                             
+	...
+	...
+	
+
+	 For ComponentsC_CPropertySource.getPropertyDescriptors()  and 
+	PackagesEP_PKGPropertySource.getPropertyDescriptors() it needs to change 
+	BuildPropertySource.arc file that generate both classes.
+	
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully outlined in the design section.
+
+9. Unit Test
+------------
+_- Run JUnit tests
+
+End
+---
+
+$Log: dts0100743093.dnt,v $
+Revision 1.4  2011/04/20 17:21:16  nmohamad
+job:dts0100743093
+Addressing review minutes
+
+Revision 1.3  2011/04/19 14:09:18  nmohamad
+job:dts0100743093
+Address Campbell's feedback
+
+Revision 1.2  2011/04/18 21:34:27  nmohamad
+job:dts0100743093
+Refine
+
+Revision 1.1  2011/04/18 21:14:41  nmohamad
+job:dts0100743093
+Create
+

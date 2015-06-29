@@ -1,0 +1,670 @@
+========================================================================
+
+File:      $RCSfile: i1588.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Define sequence symbols for canvas
+
+Abstract
+--------
+This note describes the changes required for displaying sequence diagrams in
+the canvas.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 1588
+[2] Documentation/internal/technical/Canvas/i1587.dnt
+[3] Documentation/internal/technical/Canvas/i475-sequence_diagram.ant
+[4] The Unified Modeling Language Reference Manual ISBN 0-321-24562-8
+
+Background
+----------
+Currently there is no support for drawing sequence diagrams.
+
+Analysis
+--------
+The current infrastructure shall be used for supporting sequence diagrams.
+
+Design
+------
+
+1. Support renaming elements which are displayed with a label
+
+The current rename action defines an in-place text editor for renaming elements
+in Model Explorer.  It calls getText from the TreeViewer to populate the
+in-place text editor with the current name.  This does not work in the case of
+elements which are displayed with a label as it populates the in-place editor
+with the label value instead of the element's actual name.
+
+The UITree model in ui.explorer is modified so that the class
+Tree_Node_Specification has another string attribute used for the non-label
+naming attribute.  It also has a naming attribute relationship chain attribute
+added.  The same code used for the existing relationship chain attribute is
+used for navigating to the specified parent.
+
+The pre-existing instances file, UITree.pei.sql, is modified to set the
+non-label naming attribute for all sequence elements which are displayed with
+a label.
+
+The in-place editor code is moved from the rename action into the class
+ExplorerTreeViewer.  This class is changed to be generated so that a new method
+can be derived from the instances in UITree.pei.sql.  The in-place editor code
+is changed to use this new method for populating itself with an element's
+existing name.  This class is added to the list of files that CVS ignores.
+
+In order to prevent core from being dependent on explorer the method,
+editElement from the TreeViewer class, is overridden.  The overridden method in
+ExplorerTreeViewer is written so that it creates the in-place editor and handles
+the renaming of the element.
+
+The run method of RenameAction is changed to call this overridden method.
+
+The various tests which originally called the RenameAction to get the text
+editor are changed to get the text editor from the ExplorerTreeViewer class.
+
+2. Provide model-root for wizard functions
+
+A few of the wizard functions for the newly created sequence classes require a
+model-root to work properly.  This is due to the fact that create statements are
+used, which are generated in such a way that they expect a model-root variable
+to exist. The file, wizard.inc, is changed to assign the current model-root to a
+local variable in the performFinish method.
+
+
+The list of wizards which require a model-root are:
+
+SQ_CIP_InstanceFormalize
+MSG_SM_InstanceOperationFormalize
+MSG_AM_ClassEventFormalize
+SQ_CP_ClassFormalize
+MSG_SM_BridgeOperationFormalize
+MSG_SM_FunctionFormalize
+MSG_SM_ClassOperationFormalize
+MSG_AM_InstanceEventFormalize
+MSG_AM_InstanceClassEventFormalize
+
+3. Add icons for new Sequence elements
+
+The following icons are added to support the newly created sequence elements:
+
+For the tools in the canvas toolbars:
+
+newactor.gif, newasyncmessage.gif, newsyncmessage.gif, newinst.gif,
+newlifeline.gif, newreturn.gif, newseqpackage.gif, timer.gif, timespan.gif.
+
+For Model Explorer and Compare:
+
+Actor.gif, AsynchronousMessage.gif, ImportedExternalEntity.gif,
+ImportedFunctionPackage.gif, Instance.gif, Lifespan.gif, ReturnMessage.gif,
+SequencePackage.gif, SynchronousMessage.gif.
+
+4. Support multiple symbol definitions with the same name
+
+The sequence diagram includes imported classes.  It also requires these to be
+known by the name of Imported Class.  With the current infrastructure this is
+impossible as the code uses this name as an identifier, causing the first symbol
+with a shared name to be used.
+
+In order to support this the BridgePoint editor schema is changed so that a
+validSymbol entry may be appended with a class name.  This allows for the class
+name of a symbol to be the identifier.
+
+The validSymbol definition for an Imported Class under a sequence diagram is
+written to use the class participant class name.  Any terminator specification
+which defines termination at either Imported Class symbols is changed to use the
+new attribute.
+
+The CanvasPlugin class is modified to test for the new class name attribute and
+associate the appropriate symbol with the appropriate diagram.
+
+5. Define symbols for canvas
+
+The following symbols have an entry added in the ui.canvas project's plugin.xml
+file:
+
+- Sequence (Defined as diagram), configured so that it can be shown under
+	domains, subsystems, and sequences.
+- Lifespan, configured so that it can terminate on class instance participants,
+	actors, and whitespace
+- Class Instance Participant
+- Imported Function Packages
+- Imported External Entities
+- Imported Classes
+- Timing Mark, configured to terminate at lifespan and whitespace
+- Time Span, configured to terminate at timing marks
+- Synchronous Messages, configured to terminate at instances, imported classes,
+  imported function packages, imported EEs, lifespans, and whitespace.
+- Asynchronous Messages, configured to terminate at instances,
+	imported classes, lifespans, and whitespace.
+- Return Messages, configured to terminate at instances, imported classes,
+	imported function packages, imported EEs, lifespans.
+- Actors, configured to be fixed aspect.
+
+For each of the elements defined the methods, Getinstancefromooaid and
+Getooaid_frominstance, are updated to return the correct instance/ooaid of each
+element.
+
+The method, Getname, in Cl_c.java is changed to call a new method hasMethod
+which checks if the method Get_name exists for a given object. If not it tries
+to execute the standard getName method.  This prevents an unnwanted No Such
+Method exception.
+
+Lifespans may have a cross adornment at the end.  To support this a new method
+is created, drawCross, which creates an X at the end of the lifespan if set to
+destroyed.
+
+6. Add new actions for renaming/deleting sequence elements
+
+Any element added for the sequence diagrams that can be selected by a user has
+a rename and delete action added for it, except for lifespans which have no
+name.
+
+The delete and rename actions will be disabled for attributes that belong to a
+formal instance.
+
+The same is true for message arguments which are formal.
+
+7. Add formalize/unformalize actions for sequence elements
+
+The following elements have both a formalize and unformalize action added for
+them:
+
+Class Instance Participant (Instance)
+Class Participant (Imported Class)
+Function Package Participant (Imported Function Package)
+External Entity Participant (Imported External Entity)
+Synchronous Message
+Asynchronous Message
+
+The formalize actions are written so that they will unformalize an element if
+currently formalized.
+
+Each of them setup the necessary associations between the sequence element and
+the element for which the user chose to formalize with, or tear down the
+necessary associations (in the case of unformalize).
+
+The Synchronous Message actions are different in the fact that a separate wizard
+is needed for the various formal message types, i.e, a separate wizard is
+required when formalizing a synchronous message with a bridge operation than is
+needed when formalizing with a class operation.  Each of these wizards also
+create the necessary message arguments from the formal element's parameters.
+
+In order to allow events assigned to creation transitions in the class-based
+asynchronous message formalize wizard a new operation is added to the Model
+Class class.  This method checks an event to see if the event is class-based
+or not.  Returning true for the case of events assigned to creation
+transistions.  This method is required as there is a bug in MC-Java which
+prevents calling operations on the selected element in a where clause, otherwise
+this operation would be added at the event class level.
+
+Each formalize action added has a corresponding filter which disables the item
+if there are no formal elements that can be formalized against.  The formalize
+menu item shall remain available to allow a user to change the formalization.
+
+Each unformalize action added has a corresponding filter which disables the item
+if the currently selected element is not already formal.
+
+8. Add new attribute and argument actions
+
+For the case of informal imported classes, and informal instances, the user
+shall be allowed to add informal attributes.  To support this new actions are
+added which allow adding informal attributes to informal imported classes and
+adding informal attribute values to informal instances.  These actions are
+disabled when the respective element is formal.
+
+New actions are added for the three types of messages, synchronous, asynchronous
+and return.  These actions allow adding arguments to informal messages.  These
+actions are disabled when the respective element is formal.
+
+9. Extend ooaofooa_hierarchy for sequence diagrams
+
+The ooaofooa hierarchy is extended to include all of the new elements added
+which are shown in properties or used in compare.
+
+In order to exclude informal attribute values when an instance is formal the
+navigation to the instances attribute value children is done through the
+Instance Attribute Value subtype Formal Attribute Value and back up to the
+Instance Attribute Value class.  And visa-versa in the case of an informal
+instance.  The same is true for message arguments and informal imported classes.
+
+Messages are to be shown only under the element for which they're destined. The
+hierarchy has the necessary entries added to traverse from a sequence
+participant to its incoming messages.
+
+10. Add lifespan destruction action
+
+A new action is added which toggles whether or not a lifespan is to be marked as
+destroyed.
+
+11. Add new wizards and actions to cvsignore
+
+All newly created wizard classes and action classes are added to the cvsignore
+file found in the ui package of core.
+
+12. Add persistence support for child variables with the same name
+
+The sequence elements, Instance Attribute Value and Message Argument, must be
+exported across two associations to export both formal and informal instances.
+
+Currently, the code generated has problems with this as the child variables to
+export have the same name.  The archetype, gen_export_java.inc, is modified to
+append the export child element's number to the variable name so that uniqueness
+is guaranteed.
+
+13. Support connectors as start and end anchors
+
+Sequence diagrams require support for connectors ending on connectors.  The DIM
+subsytem has the necessary classes to support this and the current goal is to
+move towards using the DIM.  Therefore, the current implementation for
+associative link support is retired in favor of a DIM implementation.
+
+13.1 Associate connectors with anchor segments
+
+There were two possible approaches looked at for associating a connector with
+one to which it anchors.  These two are 1) an association between a
+connector and a line segment for which it anchors to, or 2) the current
+association between a bridgepoint connector and another through the DIM Graph
+Connector class.
+
+The second approach was not taken at this time as the current infrastructure is
+based around line segments being the anchors.  If it was choosen multiple tests
+for segment ends being over another segment would be needed for determining the
+connection.  By choosing the first approach we limit these tests to initial
+segment creation and waypoint movement finalization.
+
+To support the chosen approach a new link class is added between the Graph
+Connector class and the Line Segment class.  This association is initialized
+during the initial connector creation and modified during waypoint movement
+finalization.
+
+The getIntersect method for a connector is modified to get the intersect that is
+closest to the end point of the line segment being tested.  This allows for
+waypoint movement finalization and connector creation to use the segment that
+was last intersected.
+
+The connector creation code is changed to get the closest intersection to the
+end of a segment being created.  The code checks for the closest intersection
+with any connector's segments.
+
+The waypoint movement finalization code is changed to get the closest
+intersection to the drop location of the waypoint being moved.
+
+A new operation is added, Connector.cropTo(), which is called during the
+finalization of a connector's creation.  This method will crop the connector to
+the determined intersect point as well as setup the necessary associations with
+the link class added above.
+
+A new method is added in ImportHelper.java.  This method finds all instances of
+the original R5 association and converts them to use the new DIM instances for
+supporting connectors on connectors.
+
+14. Support nested EE packages and Function packages
+
+Currently there is no association between a nested EE package or a nested
+function package and the domain for which they reside.  In order for the
+generated wizard classes to correctly populate the list of these packages there
+must be one association that all instances of these packages are associated with
+nested or not.  In order to prevent re-working the whole Domain subsystem just
+to provide these associations a new nested subsytem, Package Linking, is added
+to the Domain subsystem.  This subsystem imports the Domain class and provide
+the necessary link associations for the purpose stated above.
+
+A new import helper method is added which finds all EE packages and sets up the
+newly added associations.  A new import helper method is also added for the
+function package associations.
+
+15. Extend io.mdl tree
+
+All elements added for sequence diagrams are added as pre-existing instance's
+to the import/export pei data file.  The correct diagram entries are added as
+well, so that the new Sequence Diagram has its graphics exported.
+
+The pre-existing instances are also modified to include the new link classes
+added in sections 13.1 and 14.
+
+16. Mark canvas editor as default
+
+The archetype, create_util.inc, is modified to include the Sequence Diagram to
+those elements which have a canvas editor as the default when both a description
+editor and a canvas editor exist for the same element.
+
+17. Modify properties to allow display marking
+
+The archetype, BuildPropertySource.arc, is modified to check for a description
+marking of In Properties.  If it finds such a marking and finds that it is set
+to false it will not generate code for that element, otherwise it generates the
+code normally.  This is required as certain elements in the sequence diagram
+have label attributes which are derived and should not be shown in the
+properties view.
+
+Currently categories are shown without spaces in their names.  This looks bad
+and the above archetype is changed to display them with spaces.
+
+18. Extend explorer tree
+
+The following elements are added to the pre-existing instances data file of
+Model Explorer:
+
+Sequence
+Instance
+Instance Attribute Value
+Message Argument
+Imported Class
+Imported Function Package
+Imported External Entity Package
+Informal Imported Class Attributes
+Actor
+Synchronous Message
+Asynchronous Message
+
+The same prevention mechanisms are used as in section 8 above (informal vs.
+formal).
+
+The explorer archetype for generating an object's adapter has the same issue as
+the import code generation has, that is when multiple children of the same class
+exist the code is generated incorrectly.  To fix this a count variable is added
+which is incremented for each child processed.  There was no easy way to
+determine if the current object being processed had multiple children so the
+count variable value is appended to every child processed.
+
+19. Support actor symbol
+
+The sequence diagram requires an actor symbol.  The actor symbol must be drawn
+and resized with a fixed aspect.
+
+A new method is added, drawActor, in Gr_c.java.  This method draws an actor
+symbol similar to the symbol used in [4].
+
+Logic for drawing symbols at a fixed aspect was partially implemented prior to
+this work.  That logic is completed so that the draw rectangle will remain at
+a fixed aspect ratio if a symbol is defined as fixed aspect.
+
+If a symbol that is fixed aspect is selected for resize it shall be resized in
+increments that leave the shape in the same fixed aspect.
+
+To support defining symbols as fixed aspect the editor schema is modified to
+allow a symbol definition to include a fixed aspect attribute.  The canvas
+plugin code is modified to set an attribute in the ElementSpecification class
+which captures this fact.
+
+When the text extent of an actor's name is greater than one quarter of the
+symbol size it shall not be shown.  This prevents the actor symbol from looking
+bad at very small sizes.
+
+20. Show path for imported objects
+
+The UML 2.0 specification calls for imported object's names to be displayed as
+the path to the object being imported.
+
+The following objects are able to be imported and have an operation added to get
+the path:
+
+External Entities
+Function Packages
+Model Classes
+
+Each imported object is changed to display this path in the name compartment.
+
+For Imported Classes the imported stereotype is no longer shown.
+
+21. Derive operations from incoming messages
+
+The analysis note [3] calls for operations to be derived from incoming messages
+when the operation container, Imported External Entity and Imported Class, is
+informal.
+
+To support this all incoming messages are checked, with duplicates removed, and
+their names are displayed in the operation compartments.  To remove duplicate
+entries a bridge operation is added, Utilities::removeDuplicateStrings.  This
+operation takes a string separated by the given separator and returns a string
+with any duplicates removed.  The returned string is separated by the given
+separator.
+
+22. Support updating sequence element when formal elements are changed
+
+In order to support updating a sequence element when its formal counterpart is
+changed, the various operations (dispose and new) are changed to delete/create
+the necessary sequence elements.
+
+Design Comments
+---------------
+An existing bug was found where right clicking on a half completed connector
+was causing a NPE.  This fixed by changing the selection code to not process
+selections which are on a null element.
+
+An existing bug was found where changing the font for UML diagrams was not
+working.  This was fixed by calling getString from the preference store instead
+of getDefaultString which returned the same font at all times.
+
+Due to the fact that models created after this work will not be compatible with
+older versions of the import code, the persistence version is increased.  All
+existing models are updated to become compatible with this change.
+
+Work Required
+-------------
+
+Unit Test
+---------
+
+(Test import, drawing capability, compartment text, and message labels)
+
+_- Import a pre-drawn model which contains all elements in all possible
+   situations (this model shall be in a state which will allow testing wizard
+   functionality)
+
+(Test formalize wizards)
+
+_- Formalize each of the following with existing model elements:
+   - Class Instance
+   - Class Instance from nested SS
+   - Imported Class
+   - Imported Class from nested SS
+   - Imported Function Package
+   - Nested Imported Function Package
+   - Imported EE
+   - Nested Imported EE
+   - Synchronous Message into class symbol (formalize with CB operation)
+   - Synchronous Message into instance lifeline (formalize with IB operation)
+   - Synchronous Message into Nested Function Package (formalize with function)
+   - Synchronous Message into Nested EE (formalize with bridge)
+   - Asynchronous Message into class symbol (formalize with CB event)
+   - Asynchronous Message into instance symbol (formalize with creation event)
+   - Asynchronous Message into instance lifeline (formalize with IB event)
+   - Already formalized Class Instance
+   - Already formalized Imported Class
+   - Already formalized Imported Function Package
+   - Already formalized Imported EE
+	 - Already formalized Synchronous Message
+	 - Already formalized Asynchronous Message
+_R Each element is formalized and drawn correctly
+
+(Test unformalize action)
+
+_- Unformalize one of each element above (For Class Instance Participants and
+	 Class Participants use an element which had informal attributes/attribute
+	 values to test that they are restored)
+
+(Test updating when formal counterpart is changed)
+
+_- Delete an attribute of a class that is used to formalize an instance
+_R An attribute value for the deleted attribute is deleted
+
+_- Create an attribute in a class that is used to formalize an instance
+_R An attribute value is created
+
+- Repeat the two tests below for the following: Bridge Operation, Class
+  Operation, and Function
+  
+_- Delete an operation which is used to formalize a message
+_R The message is unformalized
+
+_- Add a parameter to an operation which is used to formalize a message
+_R A message argument is created
+
+_- Add a data item to an event which is used to formalize a message
+_R A message argument is created
+
+_- Remove a data item from an event which is used to formalize a message
+_R The corresponding message argument is deleted
+
+(Test action filters for unformalize wizards)
+
+- For each element listed below
+_- Right click on the non-formalized element
+_R The unformalize menu item is not shown
+  - Class Instance
+  - Imported Class
+  - Imported Function Package
+  - Imported EE
+  - Synchronous Message
+  - Asynchronous Message
+
+(Test action filter for rename and delete)
+
+_- Right click on a formal message argument
+_R The delete and rename actions do not show
+
+_- Right click on a formal instance attribute value
+_R The delete and rename actions do not show
+
+(Test rename and explorer changes)
+
+_- Rename an element in Model Explorer which is represented by a label
+_R The text editor is populated with the element's name not the label
+
+(Test R5 import code)
+
+_- import a 6.1 model which contains an associative link
+_- Bend the association line
+_R The associative link line remains connected
+
+Repeat the above test with a 7.x model created by a version of BP without this
+work.
+
+(Test package linking import code)
+
+_- Import a model with nested EE packages and Function packages that does not
+   contain the package linking associations
+_- Select one of each across the new associations
+_R The associations are setup correctly
+
+(Test graphics changes)
+
+_- Test bending a line which has connectors starting at it
+_R Each connector starting at the bent connector remains connected
+
+_- Test moving a line which has connectors starting and ending at it, with
+   one side selected.  The connectors should have a waypoint in the middle.
+_R The first/last segment of each connector is moved with the anchor line.
+
+_- Repeat the test above with both sides of the connectors selected
+_R The whole connectors are moved
+
+_- Draw a new connector starting on WS and intersecting more than one connector
+_R The connector is finalized on the last segment intersected.
+
+_- Move a lines end waypoint so that it intersects multiple segments
+_R The line is connected to the last segment intersected
+
+_- Draw an actor
+_R The actor symbol has a fixed aspect
+
+_- Resize an actor symbol
+_R The new size is a fixed aspect
+
+_- Draw an actor such that the text extent of the name is greater than one
+   quarter of the symbol size
+   
+_R The name is not shown
+
+(Test UI explorer)
+
+The model created in the first test shall have the required data in model
+explorer, the test shall verify the following:
+
+- Messages are displayed only under the element that they are drawn to
+- Informal message arguments are not shown when message is formal
+- Informal attributes and attribute values are not shown when owning class is
+  formal
+- Formal attribute values are displayed
+- Formal message arguments are displayed
+
+(Test In Properties description coloring)
+
+_- Select a message
+_R The message's label is not shown in properties
+
+_- Run existing tests
+_R All tests pass
+
+End
+---
+
+$Log: i1588.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.24.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2006/04/07 22:43:42  tlondon
+Job: 475
+
+Add note about changing persistence version
+
+Revision 1.7  2006/04/04 20:22:33  tlondon
+Job: 1588
+
+Fixed according to review minutes.
+
+Revision 1.6  2006/03/31 16:44:43  tlondon
+Job: 1588
+
+Add derive operation from messages.
+Add imported path changes.
+
+Revision 1.5  2006/03/30 20:57:10  tlondon
+Job: 1588
+
+Fix test spec for impossible model, nested EE packages and Function packages
+
+Revision 1.4  2006/03/30 20:34:09  tlondon
+Job: 1588
+
+Add symbol definitions in plugin.xml.
+Add explorer adapter fix for multiple children of the same name.
+
+Revision 1.3  2006/03/30 18:31:30  tlondon
+Job: 1588
+
+Add actor size with text extent specification.
+
+Revision 1.2  2006/03/30 18:19:16  tlondon
+Job: 1588
+
+Include execution of existing tests
+
+Revision 1.1  2006/03/30 18:11:54  tlondon
+Job: 1588
+
+Initial
+

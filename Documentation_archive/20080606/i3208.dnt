@@ -1,0 +1,377 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2008-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Relax same data rule
+
+1. Abstract
+-----------
+This note specifies the design required to allow events and signals with mixed
+data signatures to be assigned to transitions into the same state.
+
+2. History
+----------
+    final - i3208-022608-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 3208
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3208
+[2] CVS:/Documentation/internal/technical/notes/i3208.ant 1.3
+[3] Bugzilla item 2755
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2755
+[4] Bugzilla item 80
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=80
+
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Metamodel and core changes
+6.1.1 State Machine subsystem
+As suggested in [2] the associations R520, R521 and R522 are marked as
+deprecated in the metamodel. A new association R532 is added between State
+Machine Event Data Item and State Machine Event. Action language in all sub-
+systems that previously traversed R520 et al. is modified to make the simplified
+traversal across R532. The classes SM_SUPDT and SM_SDI are similarly deprecated.
+SM_SUPDT.Non_Local is marked as invisible to the user which prevents the
+properties code generators from generating anything for this class.
+
+6.1.1.1 Polymorphic Event (SM_PEVT)
+This class is simplified to not create a dummy instance of SM_SUPDT, since
+instances of this class are no longer required.
+
+6.1.1.2 State Machine (SM_SM)
+Since event data is from now on organized under individual events, the State
+Machine class no longer requires a newDataItem operation. The operation,
+findMatchingEvent is simplified to look only for an event whose name matches;
+a matching set of event parameters is no longer required. This is because mis-
+matched event data will now be added to the target event rather than a duplicate
+event being pasted. This changed policy fits better with individual data items
+for each event.
+
+6.1.1.3 State Machine Event (SM_EVT)
+State Machine Event is simplified to obtain its parameters across R532. The
+operation, get_event_text() is simplified since it is no longer required to
+deal with event supplemental data sets. The dispose() operation no longer needs
+to dispose of supplemental data sets, instead it just disposes of its (now
+wholly owned) parameters. The initialize() operation is considerably simplified
+to remove OAL to locate and manipulate an SM_SUPDT instance. The actionFilter()
+operation is simplified to remove the no longer required 'data item' case.
+hasDataItem() now navigates across the new simple association, R532, while
+changeDataItemSet() and updateCopiedSupplementalData() are both no longer needed
+and are removed. Since parameters are now wholly owned by the event a
+newParameter() operation is added, which creates and initializes a new event
+parameter and adjusts any Sequence chart and collaboration diagram Message
+instances that refered to this event.
+
+6.1.1.4 State Machine Event Data Item (SM_EVTDI)
+This has relatively few changes beyond the addition of the new association R532.
+The dispose() operation is simplified to no longer traverse the existing event
+data sets looking for an opportunity to reduce and combine sets when a data item
+is removed.
+
+6.1.1.5 State Machine State (SM_STATE)
+This is also relatively unchanged. Its dispose operation no longer needs to
+dispose the associated SM_SUPDT instance, and two operations are removed that
+previously managed supplemental data sets; updateSuppData() and
+isEventCompatibleWithOthersReceived().
+
+6.1.1.6 Transition (SM_TXN)
+The Transition class no longer needs to manage supplemental data sets in its
+addEvent() and removeEvent() operations. The OAL to do this is removed. The
+updateAssignedEvent() operation is simplified to not manage the SM_SUPDT
+instances during a paste, see 6.7.1 for more details.
+
+6.1.1.7 Deprecated classes
+The Supplemental Data Items (SM_SDI) and Event Supplemental Data (SM_SUPDT)
+classes are marked as deprecated, but are otherwise unchanged.
+
+6.1.2 Value subsystem
+Because there are now potentially multiple event parameter instances available
+to a state action, the previously existing association R834 must now be
+multiplicity 1..* - 1..*. A new link class; Event Parameter Reference V_EPR) is
+added to manage this extra complexity.
+
+6.1.2.1 Event Datum Value (V_EDV)
+The dispose(), getValue() and getRuntimeValue() operations are modified to
+handle the changed multiplicity across R834.
+
+6.1.2.2 Value (V_VAL)
+The setEndPosition() and getDimensions() operations are modified to handle the
+changed multiplicity across R834. In both of these cases, selecting the first
+event parameter found is sufficient.
+
+6.1.3 Event subsystem
+6.1.3.1 Event Specification Statement (E_ESS)
+Modified to use simplified traversal to event parameter instances.
+
+6.1.4 Instance subsystem
+6.1.4.1 Pending Event (I_EVI)
+Modified to use simplified traversal to event parameter instances.
+
+6.1.5 Message subsystem
+6.1.5.1 Asynchronous Message (MSG_AM)
+Modified to use simplified traversal to event parameter instances.
+
+6.1.6 Functions
+6.1.6.1 Context Menu Entry functions
+The following functions are removed because they are no longer needed;
+SM_SM_NewDataItem, SM_EVT_Add_DataItem, SM_EVT_RemoveDataItem. A new function
+is added to support adding a parameter directly to an event;
+SM_EVT_NewParameter. Note that this opportunity has been taken to move towards a
+more UML compatible nomenclature, i.e. parameter as opposed to data item. The
+class names have not been changed to avoid database corruption issues. The
+functions; SM_TXN.AssignEvent and SM_CRTXN.AssignEvent are both simplified by
+removing isEventCompatibleWithOthersReceived() calls (which removal is specified
+above in 6.1.1.5).
+
+6.1.6.2 OAL Validation functions
+The function ::is_valid_sm_event_data() is rewritten to provide complete feed-
+back to the user when an argument is referred to which is not carried on one of
+the events on an incoming transition to a state. ::event_root_value_validate is
+rewritten to consider each event once. Previously, iteration occurred over the
+supplemental data set. Previously, the event data set was defined from the
+perspective of both the event (via R520) and the state (via R521). After this
+work, parameters are defined from the perspective of the event only (via R532).
+This means that all events defined on incoming transitions must be examined to
+determine if a reference to a particular data item is valid. It also means that
+a new class of error is now also possible; where one or more transitions do not
+have an event assigned at all. Since a no event transition of this kind carries
+no parameters at all, this model state is by definition erroneous. The function
+::is_valid_sm_event_data() therefore now also detects and reports the condition
+when a parameter reference is found when incoming no event transitions exist.
+
+6.1.7 OOA hierarchy
+The SM_SUPDT and SM_SDI classes are removed from the hierarchy and the SM_EVTDI
+class is reached via the new association R532. The State Machine class
+previously appeared in the hierarchy because it needed to be in the Model
+Explorer as a home for event data (see 6.3 below). It is removed.
+
+6.1.8 Context Menu PEI changes
+The new data item on State Machine is removed to be a new parameter on an event.
+Add and Remove data item menu entries are removed from the event.
+
+6.1.9 General
+The new generated action java class; NewEventParameterOnSM_EVTAction.java is
+added to the .cvsignore file.
+
+6.2 Persistence changes
+6.2.1 ImportHelper
+The core utility class ImportHelper is enhanced with a new method,
+upgradeEventData(). This method is called at the same tiime as other data
+upgrades are done, immediately after load completion. This upgrade code finds
+all the event instances in the just loaded component. For each event, if a
+supplemental data set instance (SM_SUPDT) is found and it is marked as being
+local, then there may be data items to upgrade (an already upgraded event will
+not have an associated supplemental data set instance associated at all). All
+the supplemental data items (SM_SDI) associated with the SM_SUPDT instance are
+now traversed across R522 to locate the event data item (SM_EVTDI). This data
+item instance is then cloned (unless the event being iterated is the last one
+that refers to the current data item, in which case it is reused to reduce
+instance population turnover). The cloning process preserves the name, data
+type and dimension information as well as fixes up all action language subsystem
+references. The clone is then associated with the event being processed across
+the new association R532.
+
+Once all events are processed, all the SM_SUPDT and SM_SDI instances are
+disposed since they are no longer needed.
+
+6.2.2 import function archetypes
+A new referential attribute is added to SM_EVTDI to formalize R532. The
+archetypes that generate the load code are modified to handle the possibility
+that old data will not contain this attribute.
+
+6.2.3 file io hierarchy changes
+The file.io.pei.sql and stream.pei.sql files are modified to no longer output
+the event supplemental data instances.
+
+6.3 Explorer UI changes
+Since event data sets previously allowed the same event data item to be
+associated with multiple different events, it followed that events had to be
+added and removed at the level of the state machine itself. In the Model
+Explorer, this was implemented by having an entry that represented the state
+machine. The context menu entry to add a new data item was enabled here. This
+node in the Model Explorer tree was labeled 'Event Data Items', but the keen
+eyed user would have seen that the Properties view unexpectedly showed data for
+the state machine itself.
+
+This arrangement was far from intuitive, see [3, 4]. This work allows event
+parameters to be managed by the user the same way that bridge and operation
+parameters are manipulated; by adding, removing and renaming them directly under
+the event itself.
+
+6.4 OAL Test changes
+The TestEvent JUnit class was modified in the following ways:
+
+6.4.1 The tests testNoSuchEvent* (6 tests total) are all modified to use a new
+event label. This change is necessary because the changes to preserve unassigned
+event data (see 6.5) now create a new event that is assigned the label
+previously used in these tests. Since the tests expect not to find an event,
+they fail without this change.
+
+6.4.2 testSMEventOneParmWithoutParm, testReadNoSuchEvtData and
+testReadNoSuchPolyEvtData are all modified to expect a new, more user friendly
+error message.
+
+6.5 Unassigned event data item handling
+A number of our test models contain redundant event data items; items which have
+for whatever reason been created in a state model, but not used on any event.
+It was realized during late testing that event data in this state was being
+discarded by the upgrade code, because there is nowhere to put it in the new
+data schema (all data needs to live under an event to be visible). It was
+decided to create a new, dummy event called 'Unassigned Data Placeholder' and
+put unassigned data under it where the user can find it. This behavior needs to
+be documented in the release notes.
+
+6.6 Core test changes
+The following tests are modified as a result of the functional changes:
+
+6.6.1 DerivedAttributeTest
+This contained several tests that expected to find or manipulate an SM_SUPDT
+instance. Since these metamodel instances are deprecated by this work, the tests
+are removed.
+
+6.6.2 GetNameTest
+This test has 'testSupplementalDataItemsGetName', that is also dedicated to the
+SM_SUPDT metamodel element. It is similarly removed. A test utility mthod,
+'validateSuppData' is changed to navigate R532 rather than via R522.
+
+6.6.3 PolymorphicEventAssignmentTest
+This test includes 'testPolymorphicEventAssignmentNotAllowedWhenDataItemsDiffer'
+and 'testNonLocalEventSupDataNotConsideredDuringNewEventCreation'. Since these
+tests focus only on Same Data Rule enforcement, they are removed.
+
+6.6.4 SequenceTests
+The 'testFormalizedInstanceElementChangesAreReflected' is modified to use the
+new protocol for adding event parameters.
+
+6.7 Copy Paste changes
+6.7.1 Transition.updateAssignedEvent()
+The pasting policy is modified to jive with the relaxed same data rule.
+Previously, the paste behavior attempted to integrate new pasted data into the
+data sets of the target state machine. Now, the data need only be pasted with
+the event. Data integration is an issue only if the event is already present in
+the target state machine.
+
+The 'Transition.updateAssignedEvent()' model operation handles pasting of a
+transition into a state machine. It is possible that the event may already exist
+in the target state machine, in which case the target event's parameter set is
+examined to see if it already owns all the parameters carried by the event being
+pasted and adds any that are not already present. For the parameters to match
+and not be added, they they must bear the same name, type and array dimensions.
+If the name differs, then the user is informed that the parameter was added. If
+the type and or dimensions differ, then the user is informed that a duplicate
+parameter was added and requires further action to produce a well formed model.
+
+7. Design Comments
+------------------
+7.1 ImportModel.java
+It was noticed that the upgradeTransitions method was forceloading too much
+data. It was changed to disable force loading data outside the component
+currently being loaded.
+
+7.2 Properties
+A small change is made to BuildPropertySource.arc to check that the Properties
+array is not empty before attempting to assign a validator to the first element
+of the array. This cured an unexpected Array Out of Bounds found running the
+IO Mdl test.
+
+8. Work Required
+----------------
+All required work is detailed in the design section.
+
+9. Unit Test
+------------
+9.1 File upgrade testing
+
+From the issue[1], the following test cases were suggested:
+_- Import pre-RSD xtuml; export post-RSD xtuml; verify equivalence.
+_- Import SQL; export post-RSD xtUML; verify equivalence.
+_- Import post-RSD xtuml; export post-RSD xtuml; verify equivalence.
+
+The first two cases are fully covered by io.mdl and io.sql tests respectively.
+The equivalence requirement is met by inspecting the difference between the
+old and new expected results to verify that only the expected differences
+exist. The third case is covered by importing and exporting a new test model;
+'Relaxed Same Data'. Equivalence in this case can be established by comparing
+the input test model with the exported one. The two shall be identical.
+
+9.2 Parser test
+The following cases shall be tested:
+_- No event parameters
+  _- OAL does not refer to any parameters.
+  _- OAL refers to non existent parameters.
+_- Matching event parameters (i.e. all events on transitions into the test state
+   carry the same parameters).
+  _- OAL does not refer to any parameters.
+  _- OAL refers to existing parameters.
+  _- OAL refers to non existent parameters.
+_- Non matching event parameters, a subset exists on all events
+  _- OAL does not refer to any parameters.
+  _- OAL exclusively refers to parameters in subset.
+  _- OAL refers to parameters not in subset.
+  _- OAL refers to non existent parameters.
+_- Non matching event parameters, no common subset exists
+  _- OAL does not refer to any parameters.
+  _- OAL refers to existing parameters.
+  _- OAL refers to non existent parameters.
+_- No event transition exists into the test state.
+  _- OAL does not refer to any parameters.
+  _- OAL refers to existing parameters.
+  _- OAL refers to non existent parameters.
+_- All transitons into the test state are no event transitions.
+  _- OAL does not refer to any parameters.
+  _- OAL refers to existing parameters.
+  _- OAL refers to non existent parameters.
+
+9.3 UI test
+_- Verify that parameters can be added to any event in a state model, regardless
+   of current assignments.
+_- Verify that parameters can be removed from any event in a state model.
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:19  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.3  2008/02/26 23:09:12  campbell
+Job:3208
+Address review issues.
+
+Revision 1.2  2008/02/25 22:35:22  campbell
+Job: 3208
+Minor typo edits.
+
+Revision 1.1  2008/02/19 21:48:06  campbell
+Job: 3208
+Updated with progress.
+

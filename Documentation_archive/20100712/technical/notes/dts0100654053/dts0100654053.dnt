@@ -1,0 +1,213 @@
+========================================================================
+
+File:      $RCSfile: dts0100654053.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Select policy must always produce a set
+
+
+1. Abstract
+-----------
+This note describes a change in selection behavior so that a set is always
+produced.
+
+2. History
+----------
+    final - dts0100654053.rvm
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100654053 - Selecting many instances (via two relations)
+    first one to many and many to many relationship chain will cause an
+    incorrect instance set.
+[2] ClearQuest DEI dts0100621356 - Support Instance Reference passing 
+
+4. Background
+-------------
+Our selection policy currently produces a bag. That is, the same instance can
+appear more than once.
+
+5. Analysis
+-----------
+This topic has been visited before more than once. I believe that Verifier was
+behaving according to the results of those discussions. However, customer
+expectation is clearly at odds with whatever we decided. The change to handle
+instance ref passing[2] caused the cardinality behavior to change. The fact that
+the results from the collection iteration and the cardinality operator are
+inconsistent is clearly a defect.
+
+We could change what is produced into the collection so that it is a true set or
+we could change the cardinality operator to work the way it did before. I
+believe changing the select behavior is more in line with customer expectations.
+In addition, the MC-3020 selection policy implements strictly set behavior.
+Making the change proposed below to the selection policy therefore brings
+Verifier into line with MC-3020.
+
+6. Design
+---------
+The proposed solution is therefore to extend Body.Select.execute, so that it
+filters duplicate instances before it completes its work.
+
+At the end of this operation, is some code that reduces the resulting set to a
+single instance if the selection cardinality is 'any' or 'one'. This logic will
+be extended to filter duplicates if the cardinality is 'many'.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+The following OAL at the end of the execute() operation will be changed thus:
+
+if (empty inst_in_where and
+                       (self.cardinality == "any" or self.cardinality == "one"))
+  // This has to be done after the where clause has completed processing
+  // (i.e. inst in where is empty) . . . 
+  // Leave only the first instance found in the set . . .
+  select any selection_local_reference related by self->
+                                         V_VAR[R638]->V_INT[R814]->L_LCR[R3004];
+  select many iirs related by selection_local_reference->L_LCL[R3001]->
+                      RV_RVL[R3306]->RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311];
+  foundResult = false;
+  for each iir in iirs
+    if (not foundResult)
+      foundResult = true;
+    else
+      iir.dispose();
+    end if;
+  end for;
+end if;
+
+Changes to:
+
+if (empty inst_in_where)
+  // This has to be done after the where clause has completed processing
+  // (i.e. inst in where is empty) . . . 
+  if (self.cardinality == "any" or self.cardinality == "one")
+    // Leave only the first instance found in the set . . .
+    select any selection_local_reference related by self->
+                                         V_VAR[R638]->V_INT[R814]->L_LCR[R3004];
+    select many iirs related by selection_local_reference->L_LCL[R3001]->
+                      RV_RVL[R3306]->RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311];
+    foundResult = false;
+    for each iir in iirs
+      if (not foundResult)
+        foundResult = true;
+      else
+        iir.dispose();
+      end if;
+    end for;
+  else // self.cardinality == "many"
+    // remove all duplicates from the set
+    select many iirs related by selection_local_reference->L_LCL[R3001]->
+                      RV_RVL[R3306]->RV_SMV[R3300]->RV_IRV[R3308]->L_IIR[R3311];
+    for each iir in iirs
+      select one inst related by iir->I_INS[R3013];
+      if not_empty inst
+        // select the full set of which this reference is a member
+        select many potentialDuplicates related by iir->
+                                                    RV_IRV[R3311]->L_IIR[R3311];
+        originalFound = false;
+        for each potentialDuplicate in potentialDuplicates
+          select one potentialDuplicateInst related by
+                                               potentialDuplicate->I_INS[R3013];
+          if potentialDuplicateInst == inst
+            if originalFound
+              potentialDuplicate.dispose(); // remove the reference from set
+            else
+              originalFound = true; // keep first reference to this instance
+            end if;
+          end if; // we found a matching instance reference
+        end for; // each potentialDuplicate
+      end if; // inst is empty (iir was already disposed when visited)
+    end for; // each instanceInReference
+  end if;
+end if;
+
+Notes:
+1) The else clause is the extended behavior. The other half of the logic behaves
+   exactly as it did before.
+2) The Select statement supertype handles execution of all selection subtypes,
+   including select . . where. There are therefore no other places that require
+   action.
+3) It is possible to perform the set trimming for each step in the traversal.
+   While this would provide some performance benefits for large populations, the
+   solution proposed above avoids further complicating the existing traversal
+   mechanism. We may revisit this at a later date under a performance themed
+   development cycle.
+4) Note that the nested for loops proposed above are iterating over essentially
+   the same set. Since the inner loop disposes instances held in the outer set,
+   consideration was given to the reliability of such a mechanism. Two features
+   are included in the solution to assure reliability: a) the 'not_empty inst'
+   test is present to ensure that references disposed during the inner loop are
+   not subsequently considered by the outer loop and b) the inner set is
+   reselected for each inner loop to ensure that an always-valid inner set is
+   used.
+
+9. Unit Test
+------------
+9.1 Run the model attached to the issue.
+
+_- execute setup()
+_- execute print()
+_R Output is:
+
+User invoked function: print
+Loginfo:  Name of 'loop' class Last :
+Loginfo:  Last1
+Loginfo:  Last2
+Loginfo:  Last3
+Loginfo:  Cardinality :
+Loginteger:  3
+Loginfo:  Loop count :
+LogInteger:  3
+
+Previous incorrect behavior was:
+
+User invoked function: print
+Loginfo:  Name of 'loop' class Last :
+Loginfo:  Last1
+Loginfo:  Last2
+Loginfo:  Last2
+Loginfo:  Last3
+Loginfo:  Cardinality :
+Loginteger:  3
+Loginfo:  Loop count :
+LogInteger:  4
+
+This test to be performed manually.
+
+9.2 All existing JUnits must pass
+
+End
+---
+
+$Log: dts0100654053.dnt,v $
+Revision 1.5  2010/02/08 16:23:46  campbell
+Job: dts0100654053
+Address review issues.
+
+Revision 1.4  2010/02/05 13:12:18  campbell
+Job: dts0100654053
+Added MC-3020 reference as justification for adopting set behavior.
+
+Revision 1.3  2010/02/03 13:45:33  campbell
+Job: dts0100654053
+Correct sample OAL for latest revision.
+
+Revision 1.2  2010/02/03 13:28:37  campbell
+Job: dts0100654053
+Added some notes to the Work Required.
+
+Revision 1.1  2010/02/03 13:22:45  campbell
+Job: dts0100654053
+Introduced.

@@ -1,0 +1,505 @@
+========================================================================
+
+File:      $RCSfile: i246.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Add model change event filter to canvas listener
+
+Abstract
+--------
+This note describes a change to add a model change event filter 
+to the canvas listener.
+
+History
+-------
+
+final i246-070704-01.rvm
+final i246-071204-01.rvm
+
+Document References
+-------------------
+
+Bugzilla issue 246
+
+Background
+----------
+
+The canvas editors redraw each time a model change message is received.
+If there are several canvas editors open, this can slow down activity
+parsing significantly.
+
+Design
+------
+
+i264.1  Identify dependencies
+
+The dependencies between metamodel classes and symbols drawn on 
+the canvas are captured in the plugin.xml file.
+
+i264.1.1  Add new data to schema
+
+The schema for bp canvas editors (com.projtech.bp.core.editors.exsd)
+contains an element named 'symbol'. The schema for the symbol element 
+is modified to add a sequence of 'dependsOn' elements.  The definition 
+of the dependsOn element is added to the schema as well.  The 
+dependsOn element has one attribute 'class', which is the name of 
+the metamodel class the symbol depends on.
+
+i264.1.2  Add new data to graphics metamodel
+
+The graphics model ooaofgraphics is changed to capture the dependency
+data.  The following class and association are added:
+
+Client Class Dependency (GD_CCD)
+
+Identifier:  OOA_Type + represents
+
+Attribute:  OOA_Type  Type: integer  (R17)
+Attribute:  represents  Type: class
+
+This is a client class that the Element Specification is 
+dependent on.  The depedency is that a change in the
+client class will cause a change in the appearance of the
+Element Specification.
+
+Association R17  (1-*)
+
+Between Element Specification and Client Class Dependency, formalized
+by Client Class Dependency.
+
+Element Specification 'has' Client Class Dependency
+Client Class Dependency 'is for' Element Specification
+
+i264.1.3  Read dependency data in on startup
+
+The function CanvasPlugin.initializeCanvases() is changed to use the
+'dependsOn' elements from the plugin file to initialize the instances
+of Client Class Dependency.  Each 'symbol' element
+has a class attribute that is always used to create a Client Class
+Dependency.  Additional dependencies are created if there are dependsOn
+elements associated with the symbol element.
+
+i264.1.4  Create dependency data
+
+The file plugin.xml is modified to add the dependsOn elements to the
+symbol elements as needed.  The dependencies are determined by examining
+the get_* operations in the client domain for the class named by the 
+symbol element.  For example, for the following symbol,
+
+<symbol class="com.projtech.bp.core.Subsystem_c"  ...
+
+The operation Subsystem.get_compartment_text() references the O_OBJ
+class, which is named ModelClass.  We therefore need to add a dependsOn
+element to this symbol element:
+
+         <symbol
+               class="com.projtech.bp.core.Subsystem_c"
+               name="Subsystem"
+               elemType="11"
+               isConnector="false"
+               createMethod="Newsubsystem"
+               icon="newsubsystem.gif">
+            <color r="255" g="255" b="255"/>
+            <dependsOn class="com.projtech.bp.core.ModelClass_c"/>
+         </symbol>
+
+Here are the other elements that must be changed:
+
+         <symbol
+               class="com.projtech.bp.core.ModelClass_c"
+               name="Class"
+               elemType="21"
+               isConnector="false"
+               createMethod="Newclass"
+               icon="newclass.gif">
+            <color r="255" g="255" b="255"/>
+			<dependsOn class="com.projtech.bp.core.DataType_c"/>
+			<dependsOn class="com.projtech.bp.core.Association_c"/>
+			<dependsOn class="com.projtech.bp.core.ClassInAssociation_c"/>
+			<dependsOn class="com.projtech.bp.core.Operation_c"/>
+			<dependsOn class="com.projtech.bp.core.OperationParameter_c"/>
+			<dependsOn class="com.projtech.bp.core.Attribute_c"/>
+			<dependsOn class="com.projtech.bp.core.BaseAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.ReferentialAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.DerivedBaseAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.NewBaseAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.AttributeReferenceInClass_c"/>
+			<dependsOn class="com.projtech.bp.core.ClassIdentifier_c"/>
+			<dependsOn class="com.projtech.bp.core.ClassIdentifierAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.ReferredToIdentifierAttribute_c"/>
+         </symbol>
+         <symbol
+               class="com.projtech.bp.core.ImportedClass_c"
+               name="Imported Class"
+               elemType="23"
+               isConnector="false"
+               createMethod="Newiclass"
+               icon="newiclass.gif">
+            <color r="192" g="192" b="192"/>
+			<dependsOn class="com.projtech.bp.core.ModelClass_c"/>
+			<dependsOn class="com.projtech.bp.core.DataType_c"/>
+			<dependsOn class="com.projtech.bp.core.Association_c"/>
+			<dependsOn class="com.projtech.bp.core.ClassInAssociation_c"/>
+			<dependsOn class="com.projtech.bp.core.Operation_c"/>
+			<dependsOn class="com.projtech.bp.core.OperationParameter_c"/>
+			<dependsOn class="com.projtech.bp.core.Attribute_c"/>
+			<dependsOn class="com.projtech.bp.core.BaseAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.ReferentialAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.DerivedBaseAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.NewBaseAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.AttributeReferenceInClass_c"/>
+			<dependsOn class="com.projtech.bp.core.ClassIdentifier_c"/>
+			<dependsOn class="com.projtech.bp.core.ClassIdentifierAttribute_c"/>
+			<dependsOn class="com.projtech.bp.core.ReferredToIdentifierAttribute_c"/>
+         </symbol>
+         <symbol
+               class="com.projtech.bp.core.StateMachineState_c"
+               name="State"
+               elemType="41"
+               isConnector="false"
+               createMethod="Newstate"
+               icon="newstate.gif">
+            <color r="255" g="255" b="255"/>
+			<dependsOn class="com.projtech.bp.core.Action_c"/>
+         </symbol>
+
+i264.2  Change listener to use dependency data
+
+The CanvasEditorListener class is changed to read the dependency data
+to determine if the model change event applies to this canvas.  The new
+code is contained in the function classInView(). The function returns
+true if the model change applies to the diagram in question. If
+pt_canvas represents the instance of Model that is this canvas, then
+the OAL to determine if it is dependent on source is:
+
+select one ms related by pt_canvas->GD_MS[R9];
+select many ems_set related by ms->GD_EMS[R11];
+select many es_set related by ems_set->GD_ES[R11];
+select any ccd related by es_set->GD_CCD[R17]
+  where selected.represents == source; 
+
+return not_empty ccd;
+
+The CanvasEditorListener.modelChanged() function does nothing if
+classInView() returns false.
+
+Implementation Notes
+--------------------
+
+- All element and attribute names in com.projtech.bp.core.editors.exsd
+are changed to comply with Eclipse conventions.  We use this convention
+so that the naming convention in the plugin files is consistent.
+All places where XML convention names are used are changed to use 
+the Eclipse convention:
+
+CanvasPlugin.java
+plugin.xml
+
+- In order to properly test the plugin.xml population, the unit test
+must be run as an Eclipse application. That way, the canvas plugin
+code that loads the instance population from the plugin.xml will
+be used by the test code.  To accomplish this, we first must change
+ui.canvas.test project to be a plugin.
+
+  - The class CanvasTestPlugin.java is created with the standard
+  Eclipse contents for a plugin class file.
+
+  - The class CanvasTestSuite.java, which extends TestSuite, is created.
+  The class constructor adds all tests for the project to the test suite.
+
+  - The build.properties file is created.
+  
+  - The files .classpath, .project, and .cvsignore are updated.
+  
+  - The files plugin.xml, test.xml and .template are created.
+  
+  - The targets for generating the sql files are moved from build.xml to 
+  generate.xml.  The build.xml file is deleted (it is generated from the
+  plugin.xml file now).  The generate.xml file is added to the External
+  Builders list.
+  
+This also causes some changes to other tests that created instances on the fly.
+
+  - The CanvasTest.setUp() function created instances of ModelSpecification.
+  These statements are removed, as they are no longer needed.
+
+  - ToolSCTest.java created an ElementSpecification instance.  This code
+  is changed to get an instance from the class extent, in four places.
+  The instance in still created on the fly if generateResults is true.
+  
+We can now use the Eclipse Test Framework to execute the unit test.
+The Test_Readme.txt file is updated with a description of the new
+procedure.
+
+- The code for loading sql files is convoluted.  It is simplified.
+First we decouple the test name from the result name and model name.
+The CanvasTest class is changed to be abstract, and the method getResultName()
+is changed to be abstract as well.  The function is implemented with the 
+appropriate code in each derived class. The setResultName() function is
+deleted. The testName attribute (and its getter and setter) is changed to 
+modelName.  The getSQLFilename function is deleted.  The doLoadSql function
+is changed to take the model name, then construct the path to
+model data file.  It also checks that the import completed without error.
+All doLoadSql invocations are then changed to pass getModelName() as
+the parameter.  Any doLoadSql() implementations in derived classes
+are removed.  Since CanvasTest is now abstract, the class CanvasTestHarness
+no longer compiles.  Its functionality can be supplied by the Eclipse workbench,
+so the class is deleted.
+
+- The definition of the ProgressMonitor inner class in CanvasTest is
+removed.  An instance of NullProgressMonitor is created as needed.
+
+- The code for CanvasTest.writeResults() was changed to output 
+a message if the file being written was read-only, and continue
+generating results.  This allows the developer to only write 
+enable the files they wish to change.
+
+- The throws clause was removed from the CanvasTest constructor,
+and all derived class's constructors.  It was not needed.
+
+- The CanvasTest.testHardCopy data member and setHardCopy() setter
+were removed.  They were never used.
+
+- The function CanvasTest.createExpectedResults() that takes two
+arguments is deleted, and all invocations have the third parameter,
+true, added to it.  This is for clarity.
+
+- The function CanvasTest.doTestDiagram() that takes four
+arguments is deleted, and all invocations have the fifth parameter,
+true, added to it.  This is for clarity.
+
+- The function testODMSDomainChartDisplayWithSelection is
+renamed to testODMSClassDiagramDisplayWithSelection, and the test 
+changed to test the selections on the class diagram.
+
+- The function testODMSDomainChartDisplayZoomedToSelection is
+renamed to testODMSClassDiagramDisplayZoomedToSelection, and the test 
+changed to test the selections on the class diagram.
+
+- The function ODMSTest.setGenerateResults() is created, so that
+only the expected results that are needed are generated.  The 
+tests testODMSClassDiagramDisplayWithSelection and 
+testODMSClassDiagramDisplayZoomedToSelection are modified to 
+generate their results if the generateResults data member is true.
+
+- CanvasTestResultCreator.java is modified to use the 
+ODMSTest.setGenerateResults() function.
+
+
+Unit Test
+---------
+
+The following tests in ToolSCTest.java were updated:
+
+  - test_113aCT_STL3InDraggingShapeVariableAspectRatio() 
+     The mouse move was changed to have unequal x and y values.
+     The Model.SelRectW and Model.SelRectH attributes were checked
+     to verify they were updated with the correct values.
+
+  - test_113bCT_STL3InDraggingShapeFixedAspectRatio() 
+     The ElementSpecification.DefaultHeight and DefaultWidth were changed
+     to be 50, implying a square is always drawn.
+     The mouse move was changed to have unequal x and y values.
+     The Model.SelRectW and Model.SelRectH attributes were checked
+     to verify they were updated with the correct values.
+
+  - The changes to these tests caused the expected results for tests
+     114 - 126 to change.  They were updated.
+     
+The class ListenerTest derived from CanvasTest is created.
+The test uses the odms model as a test base.
+It has the following tests:
+
+testDPDListener - tests the listener code for a Domain Package Diagram
+  This test validates that classInView returns true for the classes
+  that the DPD is dependent on, and false for classes that the other
+  diagrams are dependent on.  It also checks that classInView() returns
+  false for classes from the Activity subsystem.
+  
+testCDListener  - tests the listener code for a Class Diagram
+  This test validates that classInView returns true for the classes
+  that the CD is dependent on, and false for classes that the other
+  diagrams are dependent on.  It also checks that classInView() returns
+  false for classes from the Activity subsystem.
+
+testISDListener - tests the listener code for an Instance SC Diagram
+  This test validates that classInView returns true for the classes
+  that the ISD is dependent on, and false for classes that the other
+  diagrams are dependent on.  It also checks that classInView() returns
+  false for classes from the Activity subsystem.
+
+testCSDListener - tests the listener code for a Class SC Diagram
+  This test validates that classInView returns true for the classes
+  that the CSD is dependent on, and false for classes that the other
+  diagrams are dependent on.  It also checks that classInView() returns
+  false for classes from the Activity subsystem.
+
+- Run Canvas Test
+R All tests pass
+
+Code Changes
+------------
+
+com.projtech.bp.core/schema/com.projtech.bp.core.editors.exsd
+Initial:  1.4        Final: 1.5
+
+com.projtech.bp.ui.canvas/mdl/ooaofgraphics.bak
+Initial:  1.33       Final: 1.34
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasEditorListener.java
+Initial:   1.2       Final: 1.5
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasPlugin.java
+Initial:   1.8       Final: 1.10
+
+com.projtech.bp.ui.canvas/plugin.xml
+Initial:   1.14      Final: 1.15
+
+com.projtech.bp.ui.canvas.test/src/CanvasTestSuite.java
+Introduced: 1.1
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/CanvasSCTest.java
+Initial:    1.16     Final: 1.18
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/CanvasTest.java
+Initial:    1.11     Final: 1.14
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/CanvasTestHarness.java
+Deleted: 1.1
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/CanvasTestPlugin.java
+Introduced:  1.1
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/ConnectorTest.java
+Initial:     1.1    Final: 1.2
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/ListenerTest.java
+Introduced:  1.1
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/ODMSTest.java
+Initial:     1.4     Final: 1.6
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/OOAofOOATest.java
+Initial:     1.2     Final: 1.4
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/SymbolTest.java
+Initial:     1.5     Final: 1.7
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/ToolSCTest.java
+Initial:     1.5     Final: 1.6
+
+com.projtech.bp.ui.canvas.test/.classpath
+Initial:     1.3     Final: 1.4
+
+com.projtech.bp.ui.canvas.test/.cvsignore
+Initial:     1.2     Final: 1.4
+
+com.projtech.bp.ui.canvas.test/.externalToolBuilders/CanvasTestBuilder.launch
+Introduced:  1.1
+
+com.projtech.bp.ui.canvas.test/.project
+Initial:     1.1     Final: 1.2
+
+com.projtech.bp.ui.canvas.test/.template
+Introduced:  1.1
+
+com.projtech.bp.ui.canvas.test/build.properties
+Introduced:  1.1
+
+com.projtech.bp.ui.canvas.test/build.xml
+Deleted:  1.3
+
+com.projtech.bp.ui.canvas.test/expected_results/ODMSDisplaySelected/1048578-5.jpg
+Initial:   1.4      Final: 1.5
+
+com.projtech.bp.ui.canvas.test/expected_results/ODMSDisplaySelected/not 1048578-5*
+Deleted: various
+
+com.projtech.bp.ui.canvas.test/expected_results/ODMSDisplayZoomedToSelection/1048578-5.jpg
+Initial:   1.4      Final: 1.5
+
+com.projtech.bp.ui.canvas.test/expected_results/ODMSDisplayZoomedToSelection/not 1048578-5*
+Deleted: various
+
+
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_114*/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_115/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_117/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_118/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_119/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_120/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_121/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_122/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_123/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_124/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_125/*
+com.projtech.bp.ui.canvas.test/expected_results/ODMStest_126/*
+Initial:   1.2      Final: 1.3
+
+com.projtech.bp.ui.canvas.test/generate.xml
+Initial:    1.2     Final: 1.3
+
+com.projtech.bp.ui.canvas.test/plugin.xml
+Introduced:  1.1
+
+com.projtech.bp.ui.canvas.test/test.xml
+Introduced:  1.1
+
+com.projtech.bp.ui.canvas.test/Test_Readme.txt
+Initial:     1.2    Final: 1.5
+
+
+End
+---
+
+$Log: i246.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.160.1  2008/12/31 16:10:07  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2004/07/13 23:02:37  greg
+Job: 246
+Update Test_Readme.txt version
+
+Revision 1.6  2004/07/13 16:54:47  greg
+Job: 246
+Update after implementation review
+
+Revision 1.5  2004/07/08 18:52:04  greg
+Job: 246
+Update history
+
+Revision 1.4  2004/07/08 18:49:29  greg
+Job: 246
+Updated after review
+
+Revision 1.3  2004/07/06 22:32:52  greg
+Job: 246
+Ready for review
+
+Revision 1.2  2004/07/02 23:02:28  greg
+Job: 246
+More updates
+
+Revision 1.1  2004/07/02 14:13:00  greg
+Job: 246
+Initial introduction
+

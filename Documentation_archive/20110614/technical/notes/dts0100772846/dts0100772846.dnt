@@ -1,0 +1,126 @@
+========================================================================
+
+File:      $RCSfile: dts0100772846.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Problems with elements nested under a component within generic packages
+
+1. Abstract
+-----------
+A lot of OAL in ooaofooa that is used to navigate from nested components into 
+the component's containing package is incorrect.  This issue is raised to 
+describe and resolve these problems.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100772846
+[2] ClearQuest DEI dts0100631941
+    Migrate away from specialized packages
+[3] dts0100631941.dnt
+    There are several design notes written for this particular issue.  The one
+    referenced here was the first, and it is the one that contains some sections
+    that are useful for this issue.
+
+4. Background
+-------------
+The OAL that contains the problem called out by this issue was introduced when
+generic package functionality was added [2].  This OAL was added in way that 
+makes it easy to find all locations where generic-package specific OAL was
+written [2 - 6.3.4.1].  We shall take advantage of this to locate the places 
+that need to be examined for this issue.
+
+5. Analysis
+-----------
+5.1 Component nesting is not properly handled in the OAL that was introduced 
+    for generic packages [2].  The problem is that when navigating "up" from a
+    component into the EP_PKG that contains it, the OAL must account for 
+    nested components, and many places in the ooaofooa do not.  In fact, most 
+    places that have a need for this navigation do it incorrectly.  
+5.2 The incorrect OAL has slightly different forms.  However, in general, it
+    looks like this:
+      component->PE_PE[R8001]->EP_PKG[R8000]
+      
+    Note that the above will fail to find the EP_PKG when the component is 
+    nested.
+5.3 The correct OAL must consider component nesting when navigating to the 
+    EP_PKG.  The correct OAL will look like this:
+      
+      rootCompIdInPkg = component.getRootComponentId();
+      select any rootComponent from instances of C_C where (selected.Id == rootCompIdInPkg);
+      select one package related by rootComponent->PE_PE[R8001]->EP_PKG[R8000];
+
+6. Design
+---------
+6.1 Find the places that MAY have problem called-out by the analysis.
+6.1.1 Take advantage of the fact that as generic package OAL was introduced we 
+      followed a pattern that would allow us to easily find all places where
+      generic package OAL was introduced.  Examine each of the places for
+      the problem described in the analysis section.  
+6.1.2 The pattern we shall search for is: "if.*(isInGenericPackage)"  
+      [2 - 6.3.4.1].
+6.1.2.1 We shall also search for R8003 navigation just to be sure nothing is 
+      missed.
+6.1.3 For every match found, examine the OAL for places where it navigates
+      from a component to a package.  When such a place is found, it must be
+      modified as described in the analysis [5.3].
+            
+
+
+7. Design Comments
+------------------
+7.1 During the review of the generic package OAL, several places under the
+    interaction subsystem were seen that were confusing because of the fact 
+    that old, commented-out, OAL was left in place with no explanation of why 
+    it was left in place.  It the policy of our team that we do not leave such 
+    code in place.  After checking with the team to verify that there was no 
+    good reason for this commented-out OAL to be left, it was removed.
+
+7.2 During the review of the generic package OAL a problem was observed in 
+    Component Instance.reset().   The test to determine "isInGenericPackage"
+    was incorrect.  It was using a variable that it should not have been.
+    This resulted in the "isInGenericPackage" boolean being set to true in 
+    situations where it should not have.  This, in turn, caused this routine 
+    to not properly dispose execution instances when under a SP context.   This 
+    was resolved by using the correct variable when determining 
+    "isInGenericPackage".
+    
+    Additionally, this OAL did have the nesting problems described in the 
+    analysis section, these were resolved as described in the design section.   
+
+8. Work Required
+----------------
+Specified in the design section.
+
+9. Unit Test
+------------
+9.1 Manual tests
+    The CQ issue calls out a couple of specific places where problems were 
+    seen that were tracked to incorrectly handled nesting.  These shall be
+    tested.
+    
+9.2 All existing unit tests must pass.
+
+End
+---
+
+$Log: dts0100772846.dnt,v $
+Revision 1.2  2011/05/25 02:20:38  rmulvey
+job:dts0100772846
+Addressed review observations
+
+Revision 1.1  2011/05/24 20:19:16  rmulvey
+job:dts0100772846
+Introduced
+

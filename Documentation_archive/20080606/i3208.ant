@@ -1,0 +1,217 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Relax same data rule
+
+1. Abstract
+-----------
+This note provides an analysis of what needs to be done to allow events and
+signals with mixed data signatures to be assigned to transitions into the same
+state.
+
+2. History
+----------
+
+  final - i3208-110607-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 3208
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3208
+[2] Bugzilla item 491
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=491
+[3] Bugzilla item 3247
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3247
+
+4. Background
+-------------
+When actions on transitions[2] were enabled, it opened up the possibility that
+processing in a state machine might be specified partially or entirely outside
+the state action. A natural extension to this is the requirement that events
+with different data signatures be allowed on transitions into the same state.
+Since the processing may now be specified in the transition itself where there
+is only one data set, enforcing a common data set no longer makes sense.
+
+5. Analysis
+-----------
+We will remove the requirement that all events into a state action must bear the
+same data. Instead, the burden for ensuring executability shall be placed on the
+parser. For each event or signal parameter access, the parser shall now check
+that the data is available on all incoming transitions to the state action.
+
+In other words, the parameter data available to a state action OAL is the inter-
+section of the set of parameters on all elements (signals and events) on all
+incoming transitions to a state.
+
+The parameter data available to a transition action is as before, the set of
+parameters on the element (signal or event) associated with the transition.
+
+Note that the proposed changes represent a significant rework of the State
+Machine subsystem. These changes will affect our off the shelf and internal
+model compilers and will affect customers proprietary model compilers.
+
+It is further important to note that data 'downgrade' for output to standard
+BridgePoint 6.1 SQL is not planned. Once model data is upgraded to relax the
+same data rule, no event data for the upgraded state machine will be emitted
+in 6.1 sql output. 
+
+Appropriate rollout management for these significant changes is needed and is
+not covered further here. 
+
+An issue is raised[3] to create a "migration guide" document to help users know
+how to respond to this change.
+
+
+5.1 Proposed State Machine subsystem traversal detailed changes
+The valid data set for a given state was previously found by traversing R521 and
+R522.
+
+Now, assuming the proposed new association has the number R531, the required
+traversal is initially to SM_TXN across R506 and then:
+
+  ->SM_NSTXN[R507]->SM_SEME[R504]->SM_SEVT[R503]->SM_EVT[R525]->SM_EVTDI[R531]
+
+or, for creation transitions:
+
+  ->SM_CRTXN[R507]->SM_LEVT[R509]->SM_SEVT[R526]->SM_EVT[R525]->SM_EVTDI[R531]
+
+provided signal parameters shall be found as before across:
+
+  ->SM_NSTXN[R507]->SM_SEME[R504]->SM_SEVT[R503]->SM_SGEVT[R526]->
+                         SPR_PS[R528]->SPR_PEP[R4503]->C_EP[R4501]->C_PP[R4006]
+
+or across the analogous path for required signals:
+
+  ->SM_NSTXN[R507]->SM_SEME[R504]->SM_SEVT[R503]->SM_SGEVT[R526]->
+                         SPR_RS[R529]->SPR_REP[R4502]->C_EP[R4500]->C_PP[R4006]
+
+6. Work Required
+----------------
+6.1 Bring event data into line with other parameters
+We will remove all the complexity in the tool associated with event data sets so
+that each event has its own private set of parameters.
+
+The following associations and metamodel entities will be deprecated; R521,
+R520, R522 and R523, 'Event Supplemental Data' and 'Supplemental Data Items'.
+By deprecated, we mean that these will be removed from the documentation and
+from generator schemas, and will be retained in memory only to facilitate data
+upgrade.
+
+All these associations will be replaced by a new association between
+'State Machine Event' and 'State Machine Event Data Item'. The latter class will
+be renamed 'State Machine Event Parameter' to reflect its being brought into
+line with other parts of the metamodel.
+
+
+6.2 Parser changes
+The parser validation utility function ::is_valid_sm_event is modified to
+iterate over all incoming transitions found across R506 and look for an event
+parameter (or signal parameter with a matching name) for every transition.
+Currently, the rest of the UI prevents any event being added to a transition
+that does not conform to the expected data set of its target state, so this
+function just locates the event data set and looks for a match in that set.
+
+Search for all references to 'event data' in the parser error messages and
+replace with 'event parameter(s)'.
+
+6.2.1 Exact type match
+Note that the type of every parameter must match as well as the name.  The error
+message emitted when this constraint is not met must be user friendly and list
+the events and/or signals that either failed to provide a correctly named
+parameter or which provided one with incorrect type. Exact match means exactly
+that, no data type conversion (such as int to float) shall be performed while
+looking for available parameters.
+
+In many cases (for example, where an argument to an operation is being assigned)
+the expected data type is known and will be used to validate all event and
+signal parameter types. However in other cases (an implicitly defined variable
+assignment, for example) the type will be taken to be that of the first matching
+event or signal parameter found. In this latter case, the specified error will
+be reported against the first event or signal parameter with a non matching
+type.
+
+
+6.3 Model compiler changes
+'Just in time' data upgrade is proposed below in section 6.4. Hence, model
+compilers must be prepared to generate code stored in both old and new formats.
+Formats will not be mixed within the same state model. Thus the old traversals
+across R521 and R522 must be augmented with a secondary traversal as specified
+in 5.1 above. Similarly, traversals across R520 and R522 must be augmented with
+traversals across the new association specified in section 5 (currently expected
+to be R531).
+
+At a minimum, MC-Java must be reworked before code can be generated from the
+ooaofgraphics model (once it has been edited by plugins with the behavior
+specified here).
+
+
+6.4 Persistence
+The persistence infrastructure hierachy data shall be modified to persist event
+parameters across the new association proposed in 6.1. Just in time file upgrade
+shall be performed. This means that the new instance populations shall not be
+written to disk unless the state model is modified by the user.
+
+
+6.5 Copy/Paste changes
+The copy/Paste infrastructure shall be modified to copy and paste event
+parameters across the new association proposed in 6.1.
+
+7. Acceptance Test
+------------------
+- Test that a single state can have events and signals with different parameter
+  signatures assigned to different transitions into it.
+- Test that the parser accepts references to event parameters when all events
+  bear the named parameter.
+- Test that the parser does not accept references to event parameters when some
+  events do not bear the named parameter.
+- Test that the parser does not accept references to event parameters when no
+  events bear the named parameter.
+- Test that the parser does not accept references to event parameters when some
+  events bear the named parameter with an incompatible type.
+- Test that the parser does not accept references to event parameters when all
+  events bear the named parameter with an incompatible type.
+- Test that the parser accepts OAL with no references to event parameters when
+  there are no events bearing parameters.
+- Test that the parser accepts OAL with no references to event parameters when
+  there are some events bearing parameters.
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:18  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.3  2007/11/13 19:07:55  campbell
+Job: 3208
+Add final stamp.
+
+Revision 1.2  2007/11/06 20:12:57  campbell
+Job: 3208
+Address review observations.
+
+Revision 1.1  2007/11/01 23:48:43  campbell
+Job: 3028
+Introduced.
+

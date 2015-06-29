@@ -1,0 +1,325 @@
+========================================================================
+
+File:      $RCSfile: dts0100531817-dts0100604481-dts0100601844.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+- Document Generation (DocGen)
+- MC-3020 launch file resource out of synch with filesystem
+
+1. Abstract
+-----------
+In this section, give a summary of the implementation that this note aims to
+describe.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100531817 - Possibility to generate documentation
+[2] ClearQuest DEI dts0100604481 - MC-3020 launch file resource out of synch
+    with filesystem
+[3] ClearQuest DEI dts0100601844 - Update OSS and Third Party info for DocBook
+    related tools
+
+4. Background
+-------------
+See design note.
+
+5. Design
+---------
+5.1 Architecture
+5.1.1 The general architecture was implemented as called out in the design note.
+
+5.2  DocBook
+5.2.1  DocBook tools and support files are used as designed.
+5.2.2  The OSS requirements are fulfilled.
+
+5.3  Templates
+5.3.1  DocBook templates were created and converted as designed.
+
+5.4  Metamodel updates
+5.4.1  DocGen Function Package
+5.4.1.1  Document generation will follow a flow of "query and populate"
+         followed by "render".  The DocGen Function Package contains functions
+         docgen, docgen_system, docgen_domain and docgen_subsystem.  These
+         perform the query/populate steps of the model to model transformation.
+         Document model is now independent of the xtUML metamodel.
+
+5.4.2  Document Subsystem
+5.4.2.1  The Document subsystem contains a model of Document that is fully
+         inter-related and serves as an abstract syntax tree for the model
+         being documented.
+         The Document model and its operations interact with Document
+         model instance data only.  The model supplies operations to populate
+         itself and operations to render the resulting output document.
+         The population queries were factored out into the above mentioned
+         domain functions.
+5.4.2.4  The DocBook XML header that is output contains a path to the DTD to
+         use.  This DTD is stored under the BridgePoint directory the user chose
+         during the installation process.  We chose to self-discover the launch
+         location using ARGV[0] and locate the path to the DTD as a known path
+         traversal from the EXE location (in this case it is in the same dir).
+
+5.5  Image Handling
+5.5.1  The image grabber tool prepends images that may have naming conflicts
+       with the "model path" they are in.  As we traverse the canvases, we get
+       the corresponding ooaofooa metamodel owner of the canvas and do a bottom-
+       up traversal walking all the containers up to the domain/component.  The
+       names of each are prepended, dash separated, to the canvas name.  This
+       feature is provided by a new function in the ui.canvas GraphicsUtil
+       class.
+
+5.6  Installation Concerns
+5.6.1  The BridgePoint Launcher, pre-uninstall, and post-install scripts are all
+       modified as designed to accomodate required path specifications.
+
+5.7  Stylesheets
+5.7.1  The mentor techpub.css is used as specified in the DNT.
+
+5.8  User Interface
+5.8.1  Implemented a context menu entry on System elements in Model Explorer
+       named "Create documentation"
+5.8.2  Disabled CME "Create all images" that was exposed by the image grabber
+       plugin
+
+5.9  Build server
+5.9.1  Added com.mentor.nucleus.bp.io.image and com.mentor.nucleus.bp.docgen
+       plugins to the bp.bld.pkg-feature/feature.xml
+5.9.2  Add both new plugins to the tagging scripts.
+5.9.3  Updated build server nightly build scripts to accomodate new plugins and
+       to maintain synchronicity with the latest scripts on the server.
+
+
+6. Implementation Comments
+--------------------------
+6.1  Since I was in the area of the MC-3020 plugin I looked into an issue found
+     by Bill Chown [2].  The fix was as simple as adding a call to refresh the
+     project after we modify the launch config file during the project creation
+     process.
+
+6.2  The image grabber plugin is only showing white boxes on elements in the
+     System Model Package Diagram when the user creates documentation
+     immediately after starting BP.  Expanding the system in ME first doesn't
+     solve the issue.  However, if the user opens the SMPD canvas, then creates
+     documentation the canvas screenshot contains the proper data.
+6.2.1  We do not plan to include this diagram in the generated documentation, so
+       further investigation was abandoned.
+6.2.2  Travis says, "It's likely to do with the fact that the graphics are
+       loaded prior to the elements which they represent.  You could try custom
+       load code which loads all children before the system. Unless you tell me
+       that the children are loaded first, then it's a matter of stepping
+       through the load code that set's up the represents attribute."
+
+6.3  Java Process.waitFor() hang
+6.3.1  Java's Process.waitFor() hangs on some calls to subprocesses.  The
+       document generator includes a workaround.
+6.3.2  DocGen makes 2 calls to xtumlmc_build.  Those both use the normal Java
+       Process.waitFor() which just watches and exits on call completion.  The
+       calls to docgen and xsltproc use the workaround which runs the subprocesses
+       and checks their exit value every 500ms using a busy-wait loop.  The loop
+       returns as soon as it sees a good exit value or if it runs up against a
+       max processing timeout which is set to 20 seconds.
+
+6.4  MC-3020 plugin
+6.4.1  The MC-3020 plugin was modified to allow the export builder to be called
+       from the docgen plugin.
+
+6.5  Added about.html which was missing from the ui.canvas plugin.
+
+7. Unit Test
+------------
+7.1  To test [2]:
+    _- Create a new xtUML Project "test"
+    _- Create a new xtUML Model "a" in test
+    _- Right-click on "test", select Export > General > Archive File
+    _- Export to a file on disk
+    _R The export succeeds
+
+8. Code Changes
+---------------
+There are two branches of bp.core.
+
+****
+Branch of bp.core to be applied against branch MC3020-HEAD is MC-3020-SKB531817
+
+com.mentor.nucleus.bp.core/src/.cvsignore
+com.mentor.nucleus.bp.core/src/xtumlmc_schema.sql
+com.mentor.nucleus.bp.core/gen/docbook/t.documentbegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.documentend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.figure.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.figureend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.image.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.link.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.listbegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.listend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.listitembegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.listitemend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.paragraph_begin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.paragraph_end.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.paragraph.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.plaintext.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.section_begin_no_abstract.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.section_begin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.section_end.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tablebegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tablebodybegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tablebodyend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tableend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tableentrybegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tableentryend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tableheadbegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tableheadend.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tablerowbegin.xml
+com.mentor.nucleus.bp.core/gen/docbook/t.tablerowend.xml
+com.mentor.nucleus.bp.core/gen/domain.mark
+com.mentor.nucleus.bp.core/gen/schema_gen.arc
+com.mentor.nucleus.bp.core/gen/sys_user_co.c
+com.mentor.nucleus.bp.core/gen/sys_user_co.h
+com.mentor.nucleus.bp.core/gen/system.mark
+com.mentor.nucleus.bp.core/gen/T_bridge.c
+com.mentor.nucleus.bp.core/gen/t.documentbegin.h
+com.mentor.nucleus.bp.core/gen/t.documentend.h
+com.mentor.nucleus.bp.core/gen/t.figure.h
+com.mentor.nucleus.bp.core/gen/t.figureend.h
+com.mentor.nucleus.bp.core/gen/t.image.h
+com.mentor.nucleus.bp.core/gen/t.link.h
+com.mentor.nucleus.bp.core/gen/t.listbegin.h
+com.mentor.nucleus.bp.core/gen/t.listend.h
+com.mentor.nucleus.bp.core/gen/t.listitembegin.h
+com.mentor.nucleus.bp.core/gen/t.listitemend.h
+com.mentor.nucleus.bp.core/gen/t.paragraph_begin.h
+com.mentor.nucleus.bp.core/gen/t.paragraph_end.h
+com.mentor.nucleus.bp.core/gen/t.paragraph.h
+com.mentor.nucleus.bp.core/gen/t.plaintext.h
+com.mentor.nucleus.bp.core/gen/t.section_begin_no_abstract.h
+com.mentor.nucleus.bp.core/gen/t.section_begin.h
+com.mentor.nucleus.bp.core/gen/t.section_end.h
+com.mentor.nucleus.bp.core/gen/t.tablebegin.h
+com.mentor.nucleus.bp.core/gen/t.tablebodybegin.h
+com.mentor.nucleus.bp.core/gen/t.tablebodyend.h
+com.mentor.nucleus.bp.core/gen/t.tableend.h
+com.mentor.nucleus.bp.core/gen/t.tableentrybegin.h
+com.mentor.nucleus.bp.core/gen/t.tableentryend.h
+com.mentor.nucleus.bp.core/gen/t.tableheadbegin.h
+com.mentor.nucleus.bp.core/gen/t.tableheadend.h
+com.mentor.nucleus.bp.core/gen/t.tablerowbegin.h
+com.mentor.nucleus.bp.core/gen/t.tablerowend.h
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/DocGen/
+    DocGen.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    address/address.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    cell/cell.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    date/date.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    document/document.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    figure/figure.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    footer/footer.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    header/header.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    image/image.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    link/link.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    paragraph/paragraph.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    row/row.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    section/section.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    table/table.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Document/
+    Document.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/MC/
+    MC.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    ooaofooa.xtuml
+
+****
+
+The rest of the changes are in branch R2_2_3-SKB-dts0100531817
+
+Installer_MIP_MIMIC/post_install_script.bat
+Installer_MIP_MIMIC/pre_uninstall_script.bat
+
+com.mentor.nucleus.bp.bld.pkg-feature/feature.xml
+
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/tools/configure_external_dependencies.sh
+com.mentor.nucleus.bp.core/tools/create_nightly_build.sh
+com.mentor.nucleus.bp.core/tools/tag_bp_nb.sh
+com.mentor.nucleus.bp.core/tools/tag_bp.sh
+
+com.mentor.nucleus.bp.doc/legal/gnu_library_gpl_2.0.pdf
+com.mentor.nucleus.bp.doc/license/oss.htm
+
+com.mentor.nucleus.bp.docgen (Added to repository, already in HEAD)
+
+com.mentor.nucleus.bp.io.image/src/com.mentor.nucleus.bp.io.image.actions/
+    makeImagesAction.java
+com.mentor.nucleus.bp.io.image/src/com.mentor.nucleus.bp.io.image.generator/
+    Generator.java
+com.mentor.nucleus.bp.io.image/META-INF/MANIFEST.MF
+com.mentor.nucleus.bp.io.image/about.html
+com.mentor.nucleus.bp.io.image/build.properties
+com.mentor.nucleus.bp.io.image/generate.xml
+com.mentor.nucleus.bp.io.image/plugin.xml
+
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ExportBuilder.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020Nature.java
+
+com.mentor.nucleus.bp.ui.canvas/src/com.mentor.nucleus.bp.ui.canvas.util/
+    GraphicsUtil.java
+com.mentor.nucleus.bp.ui.canvas/build.properties
+
+
+
+
+
+End
+---
+
+$Log: dts0100531817-dts0100604481-dts0100601844.int,v $
+Revision 1.6  2010/01/05 04:29:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.5  2009/08/17 14:02:56  kbrown
+job:dts0100531817  dts0100604481 dts0100601844
+Update INT file list.
+
+Revision 1.4  2009/08/15 01:54:59  kbrown
+job:dts0100531817 dts0100604481 dts0100601844
+Added code changes for bp.core branch for the docgen compiler.
+
+Revision 1.3  2009/08/14 20:55:27  cstarret
+job:dts0100531817
+updated with details on the Document model and the query/populate
+domain functions
+
+Revision 1.2  2009/08/14 18:37:01  kbrown
+job:dts0100531817  dts0100604481 dts0100601844
+INT Updates.
+
+Revision 1.1  2009/08/14 17:16:36  kbrown
+job:dts0100531817  dts0100604481 dts0100601844
+Committing INT so far.

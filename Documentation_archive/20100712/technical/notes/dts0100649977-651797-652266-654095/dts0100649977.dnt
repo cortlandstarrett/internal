@@ -1,0 +1,252 @@
+========================================================================
+
+File:      $RCSfile: dts0100649977.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+undetected AOOB error for array parameter in parser
+
+
+1. Abstract
+-----------
+The array validation process has some wrong technique and does not validate
+some part of code. This note is about to fix the mutli-dimensional array index
+validation, and add index/depth validation for parameter array. 
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100649977 - undetected  AOOB error for array parameter 
+	in parser
+[2] ClearQuest DEI dts0100651797 - Parser does not check for array depth 
+	properly inside operation body
+[3] ClearQuest DEI dts0100652266 - Parser validates array dimensions for 
+	Operation Return value backward
+[4] ClearQuest DEI dts0100654095 - array length is not calculated for property 
+	parameter arrays
+[5] dts0100583660.dnt - Dimension "columns" are being evaluated backwards 
+	by parser
+  <cvs>://Documentation/internal/technical/notes/dts0100583660/dts0100583660.dnt
+[6] dts0100583660.int - Dimension "columns" are being evaluated backwards 
+	by parser
+  <cvs>://Documentation/internal/technical/notes/dts0100583660/dts0100583660.int
+[7] ArrayDimensionsTest.xtuml - This model is used as a unit test.
+   <cvs>://Model_SF/ArrayTest.xtuml
+   
+
+4. Background
+-------------
+Arrays are defined in OAL in different ways:
+1- Class attribute "O_ATTR".
+2- Variable "V_VAR".
+3- Operation parameter "O_TPARM".
+4- Function parameter "S_SPARM".
+5- Property parameter "C_PP".
+6- Bridge parameter "S_BPARM".
+7- Event parameter "SM_EVTDI".
+8- Operation return value "V_TRV".
+9- Function return value "V_FNV".
+10- Bridge return value "V_BRV".
+11- Structure member "S_MBR".
+
+For each one of them, "Dimension" instances are created and related with it, and
+the number of the "Dimension" instances need to be created equals the dimensions 
+count for the array.
+E.g. fla[x][y], two "Dimension" instances will be created for it. First instance
+represents dimension "[x]" with 'dimensionCount' =0 and 'elementCount' = x. 
+Second instance represents dimension [y] with 'dimensionCount' = 1 and 
+'elementCount' = y.
+
+
+So each "Dimension" instance represents one of array dimensions, and the 
+'dimensionCount' in "Dimension" stands for dimensions order.
+
+The fix produced in [5] for the backward allocation in Dimension.'dimensionCount'
+is breaking all previous kinds of array validation except for 'Variable' "V_VAR" 
+array.
+
+This happened cause 'Variable' "V_VAR" arrays are the only kind of array that 
+has back allocation in Dimension.'dimensionCount'. So changing the validation 
+technique to validate array dimensions backwards broke other kinds of array 
+validation.
+
+Therefore the work done to implement the approach [5 §5.5.1] needs to be 
+undone, and implement the approach [5 §5.5.2] instead.
+
+5. Analysis
+-----------
+5.1 "SetRank" operation in bp.core::ooaofooa::Value::Value::SetRank() is the
+one who creates "Dimension" instances for 'Variable' "V_VAR" arrays, initializes 
+and relates them with the array.
+
+5.2 When a fixed array is passed by reference in Operation/Function/Property
+/Bridge parameter, there is no validation on the index bounds when writing
+in one of the passed array elements.
+Due to this, the OAL Editor does not show any error notation when the index
+value is out-of-bounds.
+
+5.3 When a fixed array is passed by reference in Operation/Function/Property
+/Bridge parameter, there is no validation for array depth when writing
+in one of the passed array elements.
+
+5.4 The 'dimensionCount' is backward allocated for 'Variable' "V_VAR" array. 
+When 'Variable' "V_VAR" array is assigned to Operation/Function/Bridge return 
+value, the validation is done wrongly. E.g if the fixed array  fla[x][y], and 
+return value has dimension [w][z], the parser gets the "Dimension" instances 
+with 'dimensionCount' equals zero for both arrays, and compares their 
+'elementCount' value. So it compares  "[x]"  with "[z]" instead of "[w]", then 
+the parser gets the "Dimension" instances with 'dimensionCount' equals one. 
+So it compares "[y]" with "[w]" instead of "[z]"
+
+5.5 The "getArrayLength" operation in bp.core::ooaofooa::Value::Value does not
+calculate the array length in the case where the array is defined as a "Property
+parameter". Therefore the parser can not validate index values for any "Property 
+parameter".
+
+6. Design
+--------- 
+6.1 Undo the work done in [6 §5].
+
+6.2 Implementing the approach [5 §5.5.2]
+6.2.1 "SetRank()" operation in bp.core::ooaofooa::Value::Value::SetRank()
+
+Before :
+
+<snipped code>
+varID = rootVal.setRank(dimension:param.dimension+1, rval_id:param.rval_id);
+<snipped code>
+create object instance dim of S_DIM;  
+dim.dimensionCount = param.dimension;
+dim.elementCount = elementCount;
+relate vvar to dim across R849;
+  end if;
+end if;
+return varID;
+
+After :
+
+param.dimension is used as recursion counter, therefore it can not be used
+to setup 'dimensionCount'. Instead the 'dimensionCount' should equal the number
+of the "Dimension" instances related to the 'Variable' "V_VAR" array.
+
+
+6.3 "Assigment_expr_end()" in bp.core::ooaofooa::Functions::OAL Validation 
+ Functions::Assigment_expr_end()
+
+a validation for 'lval' indexes value and array depth should be added. 
+This should be done by using ooaofooa::Value::Value::Iselementcountvalid() 
+and Getdimensions().
+
+<snipped code>
+  if ( dt == GD::NULL_UNIQUE_ID() )
+    err_msg = "Data types are not assignable or " +
+                                       "compatible across assignment statement";
+    lval.dispose();
+    rval.dispose();
+    ::clear_value_data();
+    ERR::reportParseError( msg: err_msg, token: param.a1_rule_token );
+  else
+// The required code should be add here 
+    create object instance atm of ACT_AI;
+    select any stmt from instances of ACT_SMT where
+                                selected.Statement_ID == param.a2_upper_rule_id;
+    relate atm to stmt across R603;
+    relate lval to atm across R689;
+    relate rval to atm across R609;
+  end if;
+end if;
+return param.a2_upper_rule_id;
+
+
+6.4 "getArrayLength" operation in bp.core::ooaofooa::Value::Value
+
+Before :
+
+<snipped code>
+select one parmVal related by self->V_PVL[R801];
+<snipped code>
+elif not_empty parmVal
+  select one fnParm related by parmVal->S_SPARM[R832];
+  select one opParm related by parmVal->O_TPARM[R833];
+  select one brParm related by parmVal->S_BPARM[R831];
+  if not_empty fnParm 
+<snipped code>
+  elif not_empty opParm
+<snipped code>
+  elif not_empty brParm
+<snipped code>
+  else
+    // Cannot happen - required to satisfy parser
+  end if;
+<snipped code>
+
+After:
+
+A query should be added for "Property parameter", and return the dimension
+instance related to it in case "Parameter Value" is a "Property Parameter".
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+8.1 The work required is spelled out in the Design section above.
+
+9. Unit Test
+------------
+9.1 Manual test, Parse All Activities for [7] should only report expected errors. 
+_- Create new xtUML project.
+_- Right Click on the project name, select import->other->BridgePoint model,
+ and choose the model [7].
+_- Expand the project tree.
+_- Right click on the ValidationTest, select "Parse All Activities".
+_R All detected problems should be expected (each wrong statement has comment 
+ with expected error phrase).
+ 
+9.2 JUnit tests should run successfully. 
+
+
+End
+---
+
+$Log: dts0100649977.dnt,v $
+Revision 1.7  2010/02/07 14:38:47  nmohamad
+job:dts0100649977
+fix the snipped code in 6.3
+
+Revision 1.6  2010/02/04 16:59:06  nmohamad
+job:dts0100649977
+addressing review notes..
+
+Revision 1.5  2010/02/04 14:09:10  nmohamad
+job:dts0100649977
+header fix..
+
+Revision 1.4  2010/02/04 14:08:13  nmohamad
+job:dts0100649977
+header fix..
+
+Revision 1.3  2010/02/04 13:58:09  nmohamad
+job:dts0100649977
+Refining..
+
+Revision 1.2  2010/02/03 21:04:21  nmohamad
+job:dts0100649977
+Note is completed..
+
+Revision 1.1  2010/02/03 15:39:25  nmohamad
+job:dts0100649977
+Creating...
+

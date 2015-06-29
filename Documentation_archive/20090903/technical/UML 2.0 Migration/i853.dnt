@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile: i853.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:30:35 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Migrating to UML 2.0
+
+Abstract
+--------
+This note documents and evaluates the alternative design approaches available
+for migrating Tiger to the UML 2.0 metamodel.
+
+History
+-------
+
+Document References
+-------------------
+[1] UML Diagram Interchange Standard www.omg.org/cgi-bin/doc?ptc/2003-09-01
+
+Background
+----------
+
+Design
+------
+1. Bridging Data
+It is anticipated that significant work will be done by configuring data tables.
+This will allow us to be nimble with respect to multiple metamodels. Significant
+data work means we need data entry tools. To do this, we will create the schema
+below using Nucleus BridgePoint 7.0 and use a schema generation tool to emit
+xml schema definition (XSD). EMF can accept this data as input and generate
+memory models for the data, persistence as xml and editing tools.
+
+1.1 Diagrams
+
+1.1.1. Schema
+In the case of EMF UML2 we can't add operations to the metamodel since it is
+owned and maintained by a third party. Instead, we will implement a
+'LabelProviderFactory'. This will implement a createLabelProviderFor method
+that takes a Class as an argument. Each LabelProvider shall offer pretty much
+the same prototcol as the canvas currently expects from the metamodel instance;
+getCompartments, getEntries, getCompartmentText etc. Where different, the
+protocol will be enhanced to support needed new features getUnderlineStart,
+getUnderlineEnd and getIcon are new protocol members that suggest themselves.
+
+Rather than hand write a LabelProvider class for each possible metamodel
+class, we will instead adopt a data driven approach. We could expose this data
+to the user if a marketing advantage was perceived in allowing the user to
+specify their own diagram forms.
+
+Below is a suggested model for capturing diagram label details in data:
+
+Symbol 1 -- * Presentation 1 -- * Compartment Specification
+@ Symbol_ID   @ Symbol_ID          @ Symbol_ID
+              @ Presentation_ID    @ Presentation_ID
+                                   @ Compartment_ID
+                                              | 1
+                                              |
+                                              |*
+                                      Label Specification
+                                   @ Symbol_ID
+                                   @ Presentation_ID
+                                   @ Compartment_ID
+                                   @ Justification
+                                   * Layout : string
+
+Notes: - All Classes above have names.
+       - The first association (Symbol <-> Presentation) above allows alternate
+         presentations of a given Symbol (as frequently specified in the UML
+         reference manual). The current canvas does not support this, but
+         Graphical Element could be extended with a Presentation_ID attribute
+         and the UI extended to present the alternate names under a 'Show As >'
+         menu.
+
+1.1.2. Label Specification.Layout : string format definition (BNF)
+
+Layout ::= *(Navigation | Context | Literal)
+
+Navigation ::= '$' ?('u') ( '*{' Substitution Literal '}' |
+                                   '{' Substitution '}' ) 
+
+Substitution ::= *(Reference'.') Value
+
+Context ::=  '@' Reference ( '*{' Layout Literal '}' | '{' Layout '}' )
+
+Conditional ::= '?' Boolean '{' Layout '}'
+
+Value ::= "The value of an EMF property of the contextual reference. In this
+           rule, context is either defined by the preceding Reference (in a
+           Substitution), or (if none) the enclosing Context's Reference, or (if
+           none), 'self'. A property is an attribute value or operation result."
+           
+Boolean ::= "A Value constrained to be true or false."
+
+Reference ::= "See the EMF definition, or 'self'."
+
+Literal ::= ?(\') *(Character) ?(\')
+
+Character ::= "Usual ASCII definition."
+
+Notes: - Substitution extends the BP substitution variable definition by
+         allowing reference chains.
+       - The first forms of Navigation and Context specify a repeating pattern
+         as used in, for example, a parameter list. In both cases, the included
+         Literal specifies the separator.
+       - A 'u' after the dollar means underline the substitution value.
+       - All other substitution format commands as for archetype language.
+       - Tick marks can surround a Literal value if it is to be treated as a
+         unit.
+       - A '\' denotes an otherwise reserved character.
+================================================================================
+
+Label Specification.Layout : string format examples
+
+@operations*{${Name}(@arguments*{${Name}:${type.Name}', '}): ${returnType.Name}}
+
+if specified on a presentation of a class instance would provide a list of
+operations, each specified in the form:
+
+opName(arg1:arg1Type, arg2:arg2Type): opReturnType
+
+@attributes*{?derived{/}${Name}: ${type.Name}}
+
+if specified on a presentation of a class instance would provide a list of
+attributes, each specified in the form:
+
+attrName: attrType
+
+or
+
+/attrName: attrType
+
+if the attribute was derived.
+
+Notes: - Spaces in a Layout are significant.
+       - There is an implied newline in the outer Context.
+       - The examples do not necessarily map exactly onto UML 2.0, they will be
+         amended to be accurate before this work is progressed.
+
+1.1.3. Symbols
+Symbols also need to be specified in data, not captured in code as currently.
+This will require a schema and must relate to the DIS[1] or an extension to the
+DIS.
+
+1.2. Model Explorer
+
+1.2.1. Schema
+
+1.3. Compare
+
+1.3.1. Schema
+
+1.4. Outline
+
+1.5. Search
+
+1.6. Problems
+
+1.7. Properties
+
+1.7.1. Schema
+
+1.8. Data Viewers
+
+1.8.1. Schema
+
+Work Required
+-------------
+
+Unit Test
+---------
+
+End
+---
+
+$Log: i853.dnt,v $
+Revision 1.1  2009/09/03 18:30:35  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:43  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.30.1  2008/12/31 16:10:58  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/08/04 17:21:27  campbell
+Job: 853
+Incremental check in.
+
+Revision 1.1  2005/07/28 19:38:16  campbell
+Job: 853
+Introduced.

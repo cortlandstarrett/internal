@@ -1,0 +1,192 @@
+========================================================================
+
+File:      $RCSfile: i491.ant,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Actions on Transitions
+
+1. Abstract
+-----------
+This note describes the changes required to add the ability to specify
+actions on transitions.
+
+2. History
+----------
+    final - i491-091407-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 491
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=491
+[2] Bugzilla item 3123
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3123
+[3] cvs://Documentation/internal/technical/Method/
+                                              MTN-001 Actions on Transitions.doc
+
+4. Background
+-------------
+BridgePoint has had Mealy model actions on transitions in its metamodel from the
+very early days, but the user interface has never supported it. This note covers
+the changes needed to enable this feature.
+
+5. Analysis
+-----------
+Change the State Machine Subsystem. Although the metamodel supports the Mealy
+State Transition model, it enforces separation of action types into separate
+models. In the current metamodel, a state machine may be either Moore or Mealy
+type, but Action Homes cannot be mixed. This restriction will be removed. We
+will do this carefully in such a way that backwards compatibility is maintained.
+Appropriate operations are added to the Transition class so that the OAL the
+user types for the transition action is appended to the Event Label, separated
+by a forward slash ('/'). An issue is raised[2] to cover several possible
+presentation preferences the user might expect in the future.
+
+The parser is changed so that it understands a transition as a valid context for
+action language and that it correctly allows references to event data in the
+body of a Transition action.
+
+The activity editor is changed so that it can correctly open Transition actions,
+through Open With >, Open and Double Click actions. The description editor is
+extended to allow transitions to have descriptions (surprisingly, transitions
+did not previously have descriptions).
+
+Verifier is updated to execute transition actions. Since the same event can
+trigger both a transition action and a state entry action, the event is not
+disposed until the state action is executed. A technical note is available
+which fully documents the required execution semantics[3,section 2]. Verifier
+shall perform its execution according to this document. When stepping through
+a Transition Activity, Verifier shall behave as if the Transition Activity is
+an invisible invocation called before the state Entry Activity is executed. In
+other words, stepping over the end (or out) of the Transition Activity shall
+cause source code location to the Entry Activity OAL. The execution cursor shall
+be placed on the first line of the state Entry Activity.
+
+Verifier currently updates the state of the state machine immediately before the
+Entry Activity is entered. When executing Transition Activities, Verifier shall
+show the current state of the state machine as that of the originating
+(previous) state until the first line of the Entry Activity is reached.
+
+6. Work Required
+----------------
+6.1 Metamodel changes
+6.1.1 State Machine Subsystem
+To ensure backwards compatibility, the existing association between Mealy Action
+Home and Transition is left in place. A new subtype of Action Home;
+'Transition Action Home' is added across R513. A new association between
+Transition and Transition Action Home is added. The new subtype, action home and
+action cluster are created in a new Transition operation called initialize().
+This operation is called from State Machine.newTransition(). The operation,
+Transition.dispose() is modified to dispose the created instances. Transition
+has a new operation, 'get_name()' added to provide a good tab title for the
+activity and description editors.
+
+6.1.2 Body Subsystem
+The Body subsystem shall have a new Body subtype added, Transition Action Body,
+with an association to the State Machine Action instance (SM_ACT).
+
+6.2 Persistence changes
+The io plugin build data is modified to persist the new class. Data is also
+added to ensure that Transition OAL instances are persisted. Analogous changes
+are made to stream.pei.sql to ensure that Transition Action data is supported in
+cut, copy, paste features. The io helper code is extended to silently upgrade
+users models. All transitions that do not have actions associated with them
+shall have an instance of Action, Action Home and Transition Action Home created
+and associated with the transition. Alternatively, an on demand data upgrade
+may be superior in that the users model will be smaller if Transition Activities
+are not used.
+
+6.3 Parser changes
+The parser needs to know about a new action home location. This allows it to
+navigate to the metamodel elements that it needs from the new action home. A new
+enumeration shall therefore be added to Oalconstants; TRANSITION_TYPE. This will
+be used to set the Action attribute; Type to either "transition" or
+"class transition". These values are used for error reporting.
+
+6.4 Activity Editor changes
+The ActivityEditorInputFactory has com.mentor.nucleus.bp.core.Transition_c added
+to its list of supported model elements, and the getEditableModelElement() and
+getRequiredModelElement() methods of the same class are modified to traverse to
+and from the model element that actually contains the Action Semantics
+attribute. Add an entry for Transition_c to the plugin extension for the
+activity editor.
+
+6.5 Verifier changes
+Modify Instance.takeEvent() and Class.takeEvent() to traverse the new class and
+associations and check for OAL in the transition action. If there is, associate
+the instance with the transition across a new association added to the Instance
+subsystem and set up a stack frame to get the action executed. Before doing the
+above, OAL is added to check for the existence of the association added above
+and if it is already asserted then the transition action was executed, so don't
+repeat the check, instead unrelate the association and advance to test for new
+state entry OAL and launch that as before. Event deletion is taken care of as
+part of state entry action completion. The checks above will be inserted
+_before_ the OAL that causes the instance to change state. Changing state is to
+be done in the existing State entry action processing leg of the new logic.
+Alternatively, creating two stack frames (Transition Activity stack frame above
+Entry Activity stack frame) immediately the event is processed should be
+considered. One drawback of this alternative is that, without some more
+extensive redesign of the event dispatcher, the state change would happen before
+both activities were executed.
+
+7. Acceptance Test
+------------------
+_- Create a new test model that adds a transition action.
+_- Confirm that the OAL can be edited.
+_- Confirm that an error is highlighted in the margin and in the Problems list.
+_- Confirm that a problem can be double clicked to open the correct Transition
+   Activity Editor.
+_- Confirm that a Transition Activity Editor is reopened correctly after a
+   restart.
+_- Confirm that bookmarks and TODO items work as expected.
+_- Confirm that the persisted model contains the new transition action data.
+_- Confirm that Verifier executes the OAL and that event data is still available
+   to a following State Entry Action.
+_- Confirm that breakpoints work in Transition actions.
+_- Confirm that stepping works in Transition actions.
+_- Repeat for a transition in a Class State Machine.
+
+End
+---
+
+$Log: i491.ant,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.5  2007/09/17 21:29:05  campbell
+Job: 491
+Address review observations.
+
+Revision 1.4  2007/09/14 20:41:52  campbell
+Job: 491
+Address review observations.
+
+Revision 1.3  2007/09/13 21:54:42  campbell
+Job: 491
+Corrected backslash to forward slash.
+
+Revision 1.2  2007/09/13 20:19:16  campbell
+Job: 491
+Ready for review.
+
+Revision 1.1  2007/01/30 03:53:12  campbell
+Job: 491
+Introduced.

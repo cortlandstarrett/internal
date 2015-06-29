@@ -1,0 +1,195 @@
+========================================================================
+
+File:      $RCSfile: dts0100782761.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+System-C modules are not reusable in multiple projects
+
+
+1. Abstract
+-----------
+An application model created in BridgePoint and generated to target SystemC code
+can be compiled and simulated in the Mentor Graphics Vista tool.  This works
+well for a single standalone application.  However, if the Vista user puts the 
+components into a Vista library and tries to intermix components from various
+BridgePoint projects, things start to fall down.  Most notably, the "system 
+services" that all BridgePoint projects have collide and cause link errors.
+
+This note describes changes to the generated code to remedy this problem and 
+support reusable modules.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100782761
+
+4. Background
+-------------
+See [1]
+
+5. Analysis
+-----------
+5.1 There are a number of "system services" in BridgePoint:
+      sys_events
+      sys_factory
+      sys_sets
+      sys_thread
+      sys_trace
+      sys_types
+      sys_user_co
+    These provide system-wide functionality that is used by the various
+    application components.  Some of these services contain project-specific 
+    information which will conflict among application models while other 
+    services do not.
+5.1.1 sys_events
+        Conflicts.  This service is not encapsulated inside of a class.  It is a
+        loose collection of global static functions and defines.
+5.1.2 sys_factory
+        This service is already encapsulated in a class.  It contains static
+        functions that provide the functionality used by model components. No 
+        conflicts other than SYS_MAX_CONTAINERS (from sys_types) which it uses 
+        to define an array size and bound an iteration over that array.
+5.1.3 sys_thread
+        No conflicts.  Not really used in SystemC generated code right now.
+5.1.4 sys_trace
+        No conflicts.
+5.1.5 sys_types
+        Conflicts on extents, domain info (counts, IDs, includes)
+5.1.6 sys_user_co
+        No conflicts.
+
+5.2 There also exist some other system-level elements that do not provide
+    reusable services:
+      sysc_interfaces
+      sys_main
+      system_sys 
+5.2.1 sysc_interfaces
+         Potential conflicts.  This file contains globally visible classes that
+         specify messages associated with the interfaces defined in the system.
+         If the interfaces are identical for separate applications, there will
+         be no conflicts.
+5.2.2 sys_main
+         Conflicts only in the top module that is initialized and used to run
+         the application.
+5.2.3 system_sys
+         This is the SystemC "top" module.
+         
+6. Design
+---------
+6.1 Design goals:
+
+6.2 Strategies
+    There are a number of "rules" or "strategies" we will use to isolate the 
+    system service components to improve their re-usability and remove their 
+    conflicts between application models.
+6.2.1 Strategy: Make system services into inheritable classes.  System services 
+      are then inherited by components, but not contained classes. Classes get 
+      the system service functionality they need from their parent component.  
+6.2.1.1  Note that classes are allowed to live directly under a generic package
+         in the model.  However, these classes have no meaning to the model 
+         compiler and are ignored by the code generation process.
+6.2.2 Rule: Static functions in system service classes are bad
+
+6.3 Accessing system services "provided" by the component
+6.3.1  Components will inherit system service functionality such as set manage-
+       ment, event generation, etc.
+6.3.2  In order for code written at the component level or the contained class
+       level to take the same form in generated code, a pointer named 
+       "thismodule" is always used when accessing the functionality, as in:
+        
+           thismodule->Escher_strcpy( e->p_cat_name, cat_to_chase->name );
+           
+       This way there is no special casing in the archeytpes to determine what
+       level the code is for.
+6.3.3  In component level action bodies, thismodule is equal to the standard
+       "this" pointer.
+6.3.4  In application class level action bodies (state machine bodies, modeled
+       class operations, etc) the "thismodule" will point to the appropriate 
+       target code instance of the component.  The generated code will either
+       get thismodule from the event data structure, or when that is not avail-
+       able, an additional parameter will be added to the implementation func-
+       tion body signature.  
+       
+6.4 Domain Class Information structure
+6.4.1  This data structure cannot be left as a global in the application.
+6.4.2  The contained data needs to be broken apart and pushed down into 
+       each domain as appropriate instead of being maintained as one big block
+       at the system level.
+
+6.5  sysc_main::ApplicationLevelInitialization() currently calls 
+     sys_factory::Escher_ClassFactoryInit( <domain count>, <class count> );
+     Since the factory initialization function will no longer be a static, it 
+     needs to be moved inside the module constructor so the inherited factory
+     functionality is initialized properly by the component.
+
+         
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+
+9. Unit Test
+------------
+9.1  Test Case
+  - Set up two test projects that use components that can communicate over a 
+    simple interface.
+  - Build the projects with TLM turned on
+  - Create a new Vista workspace
+  - Pull in the entire generated code set from project 1
+  - Pull in only the component and it's contained classes from project 2
+  - Inspect that the components inherit from sys_factory and sys_events
+  - Modify the <project1>_sys.h file to "wire"/bind the shared interface between
+    the components from project 1 and project 2
+  - Compile the project in Vista
+  R No errors
+  - Run the project in Vista
+  R No errors
+  - Use Vista Model Builder to create a wiring diagram for the same components
+  - Modify the code to use the Vista wired system instead of the BridgePoint
+    wired system
+  - Compile the project in Vista
+  R No errors
+  - Run the project in Vista
+  R No errors
+    
+End
+---
+
+$Log: dts0100782761.dnt,v $
+Revision 1.6  2012/02/10 02:57:51  kbrown
+job:dts0100782761
+Committing work in progress updates for DNT and INT.
+
+Revision 1.5  2012/02/09 21:41:39  kbrown
+job:dts0100782761
+Committing work in progress updates for DNT and INT.
+
+Revision 1.4  2011/12/28 19:38:04  kbrown
+job:dts0100782761
+Commit work in progress DNT. Update scratchpad TODO items list.
+
+Revision 1.3  2011/12/23 05:25:13  kbrown
+job:dts0100782761
+Commit work in progress DNT.  This note is just a scratch pad of ideas right now.  It does contain a list of valid TODO items.
+
+Revision 1.2  2011/11/01 21:32:22  kbrown
+job:dts0100782761
+work in progress dnt updates.
+
+Revision 1.1  2011/07/13 21:49:54  kbrown
+job:dts0100782761
+Started DNT for this issue.
+

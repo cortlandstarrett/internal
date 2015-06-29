@@ -1,0 +1,160 @@
+========================================================================
+
+File:      $RCSfile: action_semantics.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Analysis Note 
+Generate Action Language Processing from BNF
+
+Abstract
+--------
+
+This note describes the process for converting a BNF specification
+of an action language to code that processes the language.
+
+History
+-------
+
+final - IDT_4-060603-01.rvm
+
+Document References
+-------------------
+
+[1] bp.core/doc/internal/technical/internal_development_tool.ant
+[2] Antlr documentation (http://www.antlr.org/doc)
+
+Background
+----------
+
+Tiger initially will support only OAL as defined by BridgePoint.
+At a future date it will support other action languages.  This
+analysis describes how we intend to make the action language
+syntax and semantics code generated as much as possible from
+the BNF specification of the language.
+
+Analysis
+--------
+
+The language tool Antlr (www.antlr.org) is used to specify
+the syntax of the action language.  Its predecessor, PCCTS,
+was used to specify the action language syntax in BridgePoint 6.1.
+The language is specified in an extended BNF (EBNF) that 
+is stored in a .g file.  Using the .g file from BridgePoint
+as a starting point allows us to implement the OAL with all
+the same syntax that is currently supported.
+
+In order to generate code that parses the actions, we need 
+a model for generator to work from.  So we create a model 
+of the syntax captured by the .g file, and populate that 
+model with data from the .g file.  This model will have 
+classes such as:
+
+Node
+Rule
+Rule Reference
+Terminal
+
+which are all concepts from the subject matter of 
+capturing a language specification in an abstract syntax tree.
+
+The model additionally specifies that rules can have
+functions associated with them.  These functions will validate
+the data for the rule, and provide the information to notify
+the user if there are problems.
+
+So we need a modified Antlr processor that produces the 
+SQL insert statements to populate the language model with 
+the equivalent of the language specified in the .g file.
+
+To specify which rules have validation functions, we will
+only generate validation functions for nodes that aren't 
+followed by a !.  In standard Antlr, the ! character is called 
+the AST exclude operator. The Antlr documentation states: 
+
+   When generating abstract syntax trees, token references suffixed with 
+   the "!" exclude operator are not included in the AST constructed for 
+   that rule. Rule references can also be suffixed with the exclude 
+   operator, which implies that, while the tree for the referenced 
+   rule is constructed, it is not linked into the tree for the 
+   referencing rule. This symbol is only effective when the buildAST option is set.  
+
+We don't want validation functions for constant tokens (i.e., 
+"select" ), rules that are for making the grammar regular,
+or don't need any sematic validation.
+
+We use the model populated with the SQL generated
+from the BNF to generate the following things:
+
+- A grammar that is the same as the input grammar, but
+with actions that invoke the validation functions.
+
+- A specification of the validation functions.
+
+We then load the validation function specifications
+(output as a set of SQL inserts) into a tool (BP or Tiger)
+and write the validation code in OAL.
+
+After the validation functions are completed, we use
+a model compiler to generate the actual validation code
+invoked from the generated grammar.
+
+Thus the only work for supporting a new language
+is the language's syntax specification in a .g file,
+and the action specifications for any verification functions.
+
+Work Required
+-------------
+
+AS1.4.1 - Create a model for capturing the syntax of 
+an action language.
+
+AS1.4.2 - Create a modified antlr to generate the sql inserts
+that populate the model of AS1.4.1 from a BNF specification
+of a language.
+
+AS1.4.3 - Create the archetypes to translate the populated
+language model into:
+
+AS1.4.3.1 A BNF specification (.g file) that has validation
+actions for each node.
+
+AS1.4.3.2 A set of SQL inserts of the functions
+that validate the action language (that are called 
+from each node in the BNF from AS1.4.3.1).
+
+AS1.4.4 - Modify the generated functions to add the validation
+action language.
+
+AS1.4.5 - Create an archetype to generate the validation
+code from the functions created in AS1.4.4
+
+End
+---
+$Log: action_semantics.ant,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.170.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2003/06/12 00:26:26  greg
+Job: 15
+Copied from D1_4.ant
+
+
+

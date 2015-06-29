@@ -1,0 +1,225 @@
+========================================================================
+
+File:      $RCSfile: i3494.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Provide tree based chooser for data types
+
+1. Abstract
+-----------
+This note analyzes the requirement to provide a tree based solution for picking
+types.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3494
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3494
+
+4. Background
+-------------
+Currently a user chooses a type from a list, in properties, containing many data
+types.  With the introduction of instance reference types, the list will grow.
+Additionally, the currently list approach does not distinguish two data types
+which share the same name.  To ease the process of choosing a type, and to
+guarantee the correct one is chosen, we shall provide an improved solution.
+
+5. Analysis
+-----------
+The whole subject of element picking (DT being an instance of an element) is
+important because we need the user to pick something quickly and easily from a
+very large population.
+
+The current solution is to drop down a combo list box within the properties box.
+For a very large instance population, this becomes very unwieldy (though not as
+unwieldy as the BP6.1 ever expanding popup menu of data types). The only
+alternative to this approach is to open a wizard. It is important to note that
+the very appearance of the wizard is likely to be perceived as extra clicks by
+the user, even if it is not, because it requires a shift in eye position and
+focus. So, if a wizard is to be created the rest of the process must be much
+better than what we do today.
+
+There are two alternate views that could enhance the user experience when
+selecting a data type; a flat view and a tree based view. If you know the exact
+name of the element you are looking for, then a flat, alpha sorted list is best.
+On the other hand, if you have a less clear idea of the name but some idea of
+where the item is declared, then a tree based solution is better to help the
+user navigate to the place where she believes the type to be declared.
+
+Since both scenarios are possible, we must provide both methods. A button on
+the wizard shall toggle between flat and tree based views. The wizard shall
+cache the state of this button between openings and between runs of the tool.
+
+5.1 Generic tree
+
+As the background suggests we will require a tree based solution for choosing
+data types.  The tree itself should be no different than our current Model
+Explorer tree, with the exception of what elements actually show.  Due to the
+amount of time available for this issue we will provide a content provider which
+only navigates to data types.
+
+Note that all existing data type rules will be applied.  For example, void is
+not a valid type for a parameter.
+
+5.1.1 Tree categories
+
+The use of categories will extend the usability of the tree, especially when
+dealing with a data type chooser tree.
+
+In order to allow even easier navigation we shall provide the following default
+categories.  These categories for now shall be Core Types, Local Types, Instance
+References and All Types.  When a user expands the Core Types category they
+shall be presented with all core types, when a user expands the Local Types
+category they shall be presented with types that are defined locally to the
+element's current context, when a user expands the Instance References category
+they shall be presented with all instance reference data types and finally the
+All Types category shall show the entire tree.  The package containing the core
+types shall not show when expanding the Core Types category.  The entire path
+shall show when expanding all other categories.  The Local Types category shall
+show all data types and their parents that are defined up to the containing root
+package.  For instance, if you are trying to locate a type for a class operation
+the local types would be all those defined within the current component as well
+as all those defined up to the root package.  Each category shall be hidden if
+no elements fall under them.
+
+In the future we will allow for users to create custom categories.  We will also
+provide some additional default categories, but given that it is out of the
+scope of this issue the required work will not be specified.
+
+5.2 Flat View
+
+The flat view shall be a simple scrolling list with two columns. The leftmost
+column shall show the model element name in alpha sorted order. The rightmost
+column shall show the path to the model element so that duplicate entries may
+be disambiguated by the user.
+
+5.3 Cache selection
+
+The previous selection in the display shall be cached (display means either the
+tree or the flat view as selected by the button proposed at the beginning of
+this section).  Upon opening the tree after a cached selection, the cached type
+shall be selected.  This shall also cause the tree to be expanded to the type.
+The All Types category shall not be expanded unless the type does not exist in
+any other category, otherwise the owning category shall be expanded.  If the
+cached type is selected successfully the wizard shall be able to complete.  The
+cache shall be session based, therefore the cache does not require persistence.
+If eclipse gives us persistence for free then it is acceptable that the cache
+survives a restart.
+
+5.4 Search capabilities
+
+The tree shall also provide a search area.  The search field shall allow any
+text that is allowed in an element name to be entered.  The text that is present
+in the search field shall be used to filter all elements in the wizard display
+by name. Entries which do not match the text in the field are removed from the
+display. '?' and '*' shall be available as wild card entries. Literal '?' and 
+'*' characters may be escaped with a preceding '\'. There is always an implied 
+'*' at the end of the search string to implement the incremental left-to-right
+filtering behavior as the user types more letters.
+
+In the case of the tree display, branches which become empty are recursively
+'pruned' from the display, so the tree becomes 'thinner' as the filter becomes
+more specific. Once the search has limited the number of elements showing to
+less than ten, each element remaining shall be fully expanded.  Note that the
+implementation shall not be specific to data types, it shall work in a generic
+way such that other elements may be searched against as well.  One way to
+accomplish this would be to filter the returned children based on the tree
+element's label.
+
+5.5 Use new wizard for properties
+
+Currently in properties the data type chooser is a simple list.  The cell editor
+for types shall be changed to a dialog box cell editor.  The run method of this
+cell editor shall open the new selector wizard, and set the type to that chosen
+by the user.
+
+5.6 Update properties test
+
+It is likely that some piece of test code relies on types being selected from a
+list.  If this is so update the tests to use the new selector wizard.
+
+6. Work Required
+----------------
+6.1 Generic tree
+  6.1.1 Create tree implementation
+    6.1.1.1 Create class which extends SWT tree
+    6.1.1.2 Add search field to tree
+    6.1.1.3 Add filtering method for search field text
+    6.1.1.4 Expand to filtered elements if less than ten
+    6.1.1.5 Cache id of selected element
+    6.1.1.6 Use cached id to see if any element present in tree has same id
+    6.1.1.7 Expand to cached selection if found
+  6.1.2 Create tree for properties
+    6.1.2.1 Create data type content provider
+      6.1.2.1.1 Create hand written content provider
+        6.1.2.1.2 Add four category tree elements
+          6.1.2.1.2.1 Add necessary if clause to traverse to data type for each
+                       category as a parent
+          6.1.2.1.2.1 Filter selection of data types in same way properties
+                      currently filters data types
+    6.1.2.2 Create and use new dialog to house tree
+      6.1.2.2.1 Create new dialog
+      6.1.2.2.2 Change cell editor for types to show new dialog
+      6.1.2.2.3 Use result from selection in tree, to set properties type
+6.2 Update tests
+  6.2.1 Build all test projects
+  6.2.2 Fix any errors, replacing the code with code which will use the new tree
+  6.2.1 Run existing tests
+  6.2.2 Update any tests which fail due to expectations of a list and not a tree
+  
+7. Acceptance Test
+------------------
+
+7.1 All types can be set using the new tree
+7.2 Elements are filtered as text is typed in the search field
+7.3 All expected data types are available for selection
+7.4 Selection is cached and used on restart of tree dialog
+7.5 Auto expansion works when cached selection used
+7.6 Auto expansion works when less than ten elements left after search filtering
+
+End
+---
+
+$Log: i3494.ant,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.4.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2008/04/26 14:42:36  jrwolfe
+Job:3494
+Fixed a few typos.
+
+Revision 1.3  2008/04/23 18:50:11  campbell
+Job: 3494
+Add description of flat view.
+
+Revision 1.2  2008/04/22 18:52:04  tlondon
+Job: 3494
+
+Remove limitation of search only filtering selectable elements.
+
+Revision 1.1  2008/04/22 18:47:00  tlondon
+Job: 3494
+
+Introduce
+

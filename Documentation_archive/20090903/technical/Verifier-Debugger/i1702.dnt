@@ -1,0 +1,292 @@
+========================================================================
+
+File:      $RCSfile: i1702.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:48 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Model Verifier:  Timer Support
+
+Abstract
+--------
+The purpose of this document is to:
+
+  1) Explain how the hand written timer class is implemented.
+  2) Explain how timer support is modeled.
+
+History
+-------
+  final - i1702-051006-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 1702. Timer Support
+[2] Bugzilla issue 1786. BridgePoint Class Loader
+[3] Object Action Language(TM) Manual:	bpalref.pdf 
+       Ch. 11 "Date and Time" & Ch. 12 "Timers".
+[4] Bugzilla issue 2079
+
+Background
+----------
+To provide full support for model execution, Verifier needs to support a Time
+External Entity. The end user shall be able to override the supplied Timer
+implementation with his or her own Timer class or OAL. For details, of how this
+feature is provided, see[02].
+
+Analysis
+--------
+1. As far as the user is concerned, the timer implementation shall work exactly
+  as described in OAL manual[03]:
+
+  1) start
+  2) start recurring timer
+  3) cancel
+  4) add more time
+  5) retrieve remaining time
+  6) restart after paused
+  7) Within the time operations we should be able to create and add "date" 
+     and "time" as it is understood to the "external world". These functions 
+     should work exactly as the ones described in the OAL manual[03], such as 
+     create_date, get_minute(Date), get_month(Date), get_year(Date) and so on.
+
+2. The bridge name, argument types and number of arguments shall be used for run
+   time binding as described in [2].
+
+3. A modeled "Timer" class is added under the "Instance" subsystem that
+   interacts with the realized hand written Time class. This modeled class uses
+   tick, fire, and dispose operations as described below. 
+
+Design
+------
+1. A new realized class, TIM.java is added.
+
+This class is bound to the standard TIM external entity using the binding
+mechanism introduced in [2].
+
+The realized TIM class takes care of timer instance creation, execution, 
+deletion, status reporting, and disposal.
+
+The following is a list of the implemented methods:
+
+  - initialize(ModelRoot modelRoot)
+    This method is called from timer_start and timer_start_recurring, as needed.
+    It creates a thread that polls a list of modelRoots for all existing timer
+    instances (see 2. below for the details of the modeled Timer class). The
+    thread shall spend most of its time asleep, but shall periodically wake and
+    shall poll the list of timers found in the system. The thread shall call the
+    tick() operation of each instance of the modeled timer. The name of the
+    thread is 'Timer Clock' so that it may easily be identified when debugging.
+
+  - Object timer_start(int microseconds, Object event_inst). 
+    Returns an instance of the modeled timer class, Timer_c, though in line with
+    inst_ref<Timer> handling policy, it is returned as an Object. The delay for
+    the timer is set to the passed microseconds value and the passed event is
+    related to the timer so that it can be delivered to the target on expiry.
+
+  - Object timer_start_recurring(int microseconds, Object event_inst)
+    Behavior is the same as for timer_start, except that the 'recurring'
+    attribute is set to TRUE in the returned timer (see 2. below for
+    documentation on the effect of the state of the recurring attribute of a
+    timer).
+
+  - boolean timer_cancel(Object timer_inst)
+    Cancels and disposes a timer.
+    Returns TRUE if the received timer instance is successfully disposed; FALSE 
+    otherwise.
+
+  - int timer_remaining_time(Object timer_inst)
+    Returns the time left for the particular timer instance received as an
+    argument.
+
+  - boolean timer_reset_time(Object timer_inst, int microseconds)
+    Returns TRUE if timer was succesfully updated to the new "expiration time"
+    in microseconds and the timer has not expired. If the timer instance has
+    fired and is not a recurring timer, then FALSE is returned.
+
+  - boolean timer_add_time(Object timer_inst, int microseconds)
+    Returns TRUE if the timer has not expired and time was succesfully added.
+    It increments the value of time left by the passed value in microseconds 
+    received in the timer instance.
+
+  - int get_second(Object date)
+    Returns the seconds in date.
+
+  - int get_minute(Object date)
+    Returns the minutes in date.
+
+  - int get_day(Object date). 
+    Returns the day of the month, i.e. 1, 2, ..., 31, in date.
+
+  - int get_hour(Object date)
+    Returns the hour in date.
+
+  - int get_month(Object date)
+    Returns the numeric month, ie. 1, 2, ..., 12, in date.
+
+  - int get_year(Object date)
+    Returns the year in date.
+
+  - Object current_date()
+    Returns the internal system's calendar date, including hour, minutes, and 
+    seconds.
+
+  - Object current_clock()
+    Returns the internal system's clock as a timestamp.
+
+  - Object create_date(int sec, int min, int hour, int day, int month, int year)
+    Returns a date instance based on the "date" parameter values passed.
+
+All of the methods that take or return an Object above shall use the class,
+java.util.Calendar for implementation.
+
+2. A new Timer class is modeled under the Instance subsystem.
+
+   The Timer class has the following three operations:
+   
+   1) tick(interval)
+      The 'interval' argument represents the numeric amount of time between
+      ticks or interruptions after a thread has exited sleep mode. 
+   
+      The tick operation first verifies that the execution engine is running
+      before decrementing the time remaining. This is so that timers do not fire
+      during single stepping or when Verifier is paused. If the associated
+      Execution Engine is running, the timer's 'time_left' attribute value is
+      reduced by the amount passed in the 'interval' argument. If 'time_left' is
+      zero or less, the timer has expired. In this case, tick() calls the same
+      instance's fire() operation.
+   
+   2) fire()
+      Selects the pending event related to the timer and enqueques it with its
+      target. It does this by calling the Pending Event.fire() operation. If
+      this timer instance is not "recurring" then it disposes itself, else, it
+      restarts the timer by resetting the time remaining and creating a clone of
+      the related event to be triggered upon the next expiration of this, the
+      same instance of timer. 
+
+   NOTE: In order to allow the final user more flexibility in the implementation
+   of his or her own realized timer class, the modeled timer's fire() and tick()
+   behavior are written as separate operations.
+
+   3) dispose()
+      Deletes the timer. Unrelates and disposes any event linked to the current
+      instance of timer (unless the event has already been delivered). Finally,
+      this method deletes the self instance. 
+   
+3. Minor additional modeling changes
+
+   Execution Engine.reset() is modified to delete all current timer instances.
+
+Design Comments
+---------------
+During the work for this issue poor timing accuracy was observed. This is
+traceable to two Windows specific problems:
+
+- Poor sleep time accuracy. Thread.sleep() times can vary in duration from the
+  required time by up to 100 mS. A value of 30mS sleep duration was found by
+  research and experiment to yield the least variance, combined with the least
+  effect on percived UI responsiveness. The effect of the variance was
+  eliminated by reading the value of System.currentTimeMillis() before and after
+  the sleep and passing the difference in the tick duration argument.
+  
+- Poor System.currentTimeMillis() accurracy. This method is itself accurate to
+  only 10mS.
+
+An alternative solution, providing more than 3 orders of magnitude improved
+accuracy[4], was discarded for the moment because it was more complex, non-
+portable and requires the distribution of a Windows specific dll to support it.
+An issue is raised to document this alternative for later consideration.
+
+Work Required
+-------------
+Work details are as described above in the Design section.
+
+Unit Test
+---------
+1. Create a timer instance able to trigger a pending event.
+R  Event is delivered.
+
+2. Create a timer instance, add more time, retrieve time remaining, reset time 
+   to a higher millisecond value, and let it fire an event.
+R  Event is delivered after the appropriate extended time
+
+3. Create a timer instance, add more time, retrieve time remaining, reset time 
+   to higher milliseconds, and cancel before it fires an event.
+R  Event is never delivered.
+
+4. Create a recurring timer able to trigger the same pending event for at least
+   three times. Cancel timer.
+R  Three events are delivered.
+R  Event delivery stops.
+
+5. Execute the standard model compiler test 'ring_timers'.
+R  Test passes.
+
+6. Read current date using realized timer implementation. Extract components of 
+   that date, such as second, minute, hour, day, month, year.  Read back all 
+   date subfields to validate they are correct.
+R  All subfields are correct.
+
+7. Create a date object passing the parameters second, minute, hour, day, month,
+   and year.   Read back all date subfields to validate they are correct.
+R  All subfields are correct.
+
+8. Create 2 timestamp instances by calling current_clock twice with a delay
+   between. Subtract one result from the other.
+R  The result is a positive integer that reflects the time between the calls.
+   Note that due to inaccuracies documented above an exact value cannot be
+   expected for this test.
+
+All tests except 6. above are performed automatically.
+
+End
+---
+
+$Log: i1702.dnt,v $
+Revision 1.1  2009/09/03 18:20:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2006/05/20 12:36:40  campbell
+Job: 1702
+Finalized.
+
+Revision 1.6  2006/05/11 17:35:55  campbell
+Job: 1702
+Addressed review observations.
+
+Revision 1.5  2006/05/10 01:31:37  campbell
+Job: 1702
+Filled Work Required section.
+
+Revision 1.4  2006/05/10 01:30:11  campbell
+Job: 1702
+Reworked ready for re-review.
+
+Revision 1.3  2006/04/10 03:13:06  acampos
+Job: 1702
+Followed suggestions from the review minutes.
+
+Revision 1.2  2006/04/07 18:05:19  acampos
+Job: 1702
+Design note with Pre-review updates.  ANT was merged here. This design note contains the most updated analysis notes.
+
+Revision 1.1  2006/04/07 01:08:06  acampos
+Job: 1702
+Design note draft for review.
+

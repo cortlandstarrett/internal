@@ -1,0 +1,223 @@
+========================================================================
+
+File:      $RCSfile: i3133.ant,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+How to let Ericsson have its Component cake and eat it too.
+
+1. Abstract
+-----------
+Though the BridgePoint Components model made vast strides forward with R1.5.0,
+early feedback shows that we have not yet hit the customer's ideal behavior.
+This note describes a proposal that gives them almost complete freedom to assign
+and replace component behavior at will.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3133
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3133
+[2] Bugzilla item 2870
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2870
+[3] Bugzilla item 3128
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3128
+
+4. Background
+-------------
+The problem stated in the early 1.4.5 beta feedback is that Ericsson saw using
+the formalize and unformalize menu entries a very clumsy way to substitute
+component behavior. This no surprise, since the design was not intended to
+provide this facility. Underlying this feedback is the real issue. Ericsson
+wants the benefits of free component reassignment without having to map out
+library trees or decide in advance which components will be reassignable (i.e.
+currently imported components) and which will be modeled or realized.
+
+IMPORTANT NOTE: There remains one area of functionality left unspecified by this
+(or any other) note. That is, how we are to handle formal realized components.
+
+5. Analysis
+-----------
+At first, this seems like an unfulfillable requirement, especially with a thin
+resource layer policy. However, there is a way that provides what they want
+without compromising the thin resource policy. This is a discussion document
+intended to pave the way for more detailed analysis notes for the different
+parts of the work. It is anticipated that each of the sections below represents
+a separately managed feature request.
+
+5.1 Overridden Component
+At the heart of this proposal is the notion of Component Overriding. This
+concept is similar to Imported Component. The main difference between an
+imported component and an overridden component is that an imported component
+must be declared as such when it is first drawn, whereas any existing component
+may be overridden by the user at any time.
+
+An overridden component behaves almost exactly as an imported component does in
+1.5.0:
+
+- Opening an overridden component opens the top level diagram of the component
+  it refers to.
+- Permissions are dictated by the users access rights to the resources of the
+  component referred to.
+- When assigning, the list of components offered is filtered to show as override
+  candidates only those components which have a compatible interface signature.
+- When execution support is implemented, Verifier will execute the behavior
+  specified in the referred to component.
+- When support is implemented, the model compilers generate code for the
+  component based on the referred to component not the locally defined behavior.
+
+There are some differences:
+
+- As stated in the introduction to this section, the Assign function is enabled
+  for all components.
+- Unassigning an overridden component 'restores' whatever model was originally
+  locally defined under the component. In fact nothing was deleted, the Assign
+  operation just rendered the original model invisible to the user, Verifier and
+  Model Compiler (if needed, traversal to the original model data will in fact
+  still be possible).
+
+The component symbol will require some kind of visual indication that it is
+over-ridden. This will take the form of a glyph or perhaps simpler and better,
+the component will take on the appearance of an assigned imported component. In
+other words, the component will display the <<imported>> stereotype and show the
+full path to its referred to component.
+
+5.1.1 Component chooser
+It is anticipated that users will quickly create vast trees of poorly organized
+components modeled 'in place'. As a result, it is likely we will need to enhance
+the component chooser wizard to provide a tree widget to facilitate navigating
+this. In addition, education and advice will likley be needed to encourage the
+user towards the creation of well organized libraries of reusable components.
+
+The current wizard provided for imported component resolution does filtering
+based on a partial match, i.e. the candidate component can have more interfaces
+than the one being assigned. This is well and good, but does not support all use
+cases. These are:
+
+1 User is in 'free development mode'. In this scenario, the user knows they need
+  to do work on the assigned component to meet the interface signature required
+  by the assigned to component. When working like this, it is impossible to help
+  the user find which component they want based on the interface, filtering
+  should be disabled.
+2 User is in 'decomposition development mode'. Here, the sought after component
+  has been crafted to fit with the component interface being assigned. Thus, the
+  user is looking for an exact match on the interface signature.
+3 The user is in 'reuse mode'. In this use case, the user is looking for a
+  component that already exists, the component may even do more than is
+  required. In this case, the user is looking for a component that offers a
+  superset of the assigned to components interface signature.
+
+These use cases can be satisfied by a two level set of check boxes on the
+chooser wizard; 'Show only components with compatible interface signatures' and
+'Show only components with an exact match'.
+
+5.2 Imported Component
+In this proposal, any component may be assigned to another. We may therefore
+choose to retire the imported component as far as the UI is concerned (the
+existing underlying imported component behavior is so close to what is needed
+that it is unlikely that would be removed). This has the advantage that we
+simplify the UI by removing a button. On the other hand, it may useful for a
+user to be able to enforce that a component cannot be decomposed or modeled i.e.
+it must be imported. In that case, the Imported Component symbol still has a
+function.
+
+
+5.3 Domain Formalization
+The confusion referred to in section 4 should be prevented if possible. This
+will be done as follows:
+
+5.3.1 New Component
+There are two options here, the first is simpler to implement. The second
+requires more extensive changes to the metamodel, but requires less advanced
+planning on the part of the user. An analysis of communications from Ericsson
+suggests that the customer expects the simpler of the two solutions below.
+However the second suggestion is more consistent with the rest of this proposal
+in that it is more flexible. Both options could be delivered sequentially, since
+there is little incremental effort.
+
+5.3.1.1 Two tools
+All new components are created ready to be either a Component Diagram or a
+Modeled component. There are two tool buttons. Once created, a Modeled
+Component cannot have any structure and a Structured Component cannot be
+converted to a Modeled Component.
+
+5.3.1.2 Hybrid diagram
+Allow Domain level (Subsystem, Function, Datatype and EE) packages to be drawn
+on a Component Diagram and retire the Domain Package Diagram. This work is best
+co-ordinated with the work that integrates Use Case and Sequence Diagrams with
+Components[2,3].
+
+5.3.1.3 Template model
+Currently, when a new domain is created, a wizard guides the user through the
+option of creating a model based on an existing template. If either of the above
+proposals is adopted, this behavior switched to being triggered from a canvas
+state model from being triggered by a menu action. This change raises the
+need for new infrastructure, so we should decide whether this functionality is
+still needed and if so, whether it still needs to be presented in the form of a
+wizard or whether it can be captured statically in the preferences.
+
+5.3.2 Formalize and Unformalize
+The 'Formalize' and 'Unformalize' menu entries shall be removed from the
+standard distribution. The code which supports the behavior shall be left in
+place. Enabling the 'Formalize' menu shall be described in a white paper
+available through supportnet. 'Unformalize' shall be made available through a
+support engineer, only to those customers who absolutely need to restore a
+modeled domain that was formalized in error (how many customers will not be able
+to restore this from a backup?).
+
+6. Work Required and Acceptance Test
+------------------------------------
+This is a discussion document. The work required and acceptance test sections
+are deferred to the detailed analysis notes for the individual jobs.
+
+End
+---
+
+$Log: i3133.ant,v $
+Revision 1.8  2010/01/05 04:29:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.7  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.4.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2007/09/17 21:26:11  campbell
+Job: 3133
+Added cross references to Use Case and Sequence Diagram enhancement work.
+
+Revision 1.5  2007/09/17 20:45:20  campbell
+Job: 3133
+Cosmetic changes.
+
+Revision 1.4  2007/09/17 20:37:49  campbell
+Job: 3133
+Fix typo's.
+
+Revision 1.3  2007/09/17 19:57:48  campbell
+Job: 3133
+Added note on realized components.
+
+Revision 1.2  2007/09/17 19:49:39  campbell
+Job: 3133
+Added analysis of customer expectations.
+
+Revision 1.1  2007/09/17 19:41:07  campbell
+Job: 3133
+Introduced.
+

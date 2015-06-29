@@ -1,0 +1,331 @@
+========================================================================
+
+File:      $RCSfile: dts0100564585-dts0100584008.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Modify export builder to output the entire system.
+Support Multi-Component Licensing in MC Build.
+A parse-all must occur prior to the export performed by the MC prebuilder.
+
+1. Abstract
+-----------
+The MC-3020 model compiler is changing to support components (formalized
+domains).  The files that is used to perform code generation must change as well
+for this support [1].
+
+Multi-component code generation is just like multi-component Verifier in terms 
+of licensing.  The MC must be modified to support this [3].
+
+BridgePoint was recently modified to no longer store persisted OAL in the model 
+files [4].  The model compiler pre-builder must be modified to always perform 
+the parse-all prior to export [9].
+
+
+
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100564585 
+    Modify export builder to output the entire system
+[2] ClearQuest DEI dts0100564015
+    Add component support to MC-3020.
+[3] ClearQuest DEI dts0100584008 
+    Support Multi-Component Licensing in MC Build
+[4] ClearQuest DEI dts0100572189
+    Remove persisted OAL instances from the model files
+[5] Bugzilla issue 1281
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1281
+    Modify the model compilers to allow inlining C code
+    in actions using a special multi-line comment delimeter.
+[6] <cvs>model_compilers/mccommon/bin/xtumlmc_build
+    This is the perl script front-end for the model compilers.  This script
+    also includes utility functions used to pre-process model files for
+    MC-Java (for BridgePoint development).
+[7] Bugzilla issue 3405 - Inter-component verification
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3405    
+[8] ClearQuest DEI dts0100573340  
+    Prevent export of a model with errors when OAL Export is selected
+[9] ClearQuest DEI dts0100586863
+    A parse-all must occur prior to the export performed by the MC prebuilder
+[10] <cvs>/Documentation/internal/technical/notes/dts0100564015.int
+     Implementation note for adding component support to MC-3020
+    
+4. Background
+-------------
+4.1 Component support in MC-3020 [2] has been a long time in the works.  After
+    components were introduced, MC-3020 has gone some time without being able to
+    generate code for this feature.  We are nearing the end of the work to
+    finally support component code generation.  In order for MC-3020 to support
+    this feature, the data the MC works on must be updated.
+
+4.2 Currently, our "pre-builder" creates individual files for each domain,
+    formalized or unformalized.  These files contain system level data types,
+    but do not contain full component information for formalized domains.
+
+5. Design
+---------
+5.1 The current export pre-builder first exports all unformalized domains, then
+    it performs another chain traversal to export formalized domains.
+  5.1.1 This process uses the ExportModelStream to perform the actual work of
+        data export.
+  5.1.2 We configure the ExportModelStream to export OAL, but not graphics.
+
+5.2 The new code simply passes the System_c element to the ExportModelStream
+    instead of specifically exporting formalized and unformalized domains.  The
+    exported system is output to a single file in "gen/code_generation" named
+    "<system name>.sql".
+  5.2.1 The old chain functions for domain export are all removed as they are
+        no longer necessary.
+5.3 Muti-component licensing is enforced in the Verifier when a model is
+    executed.  Similar enforcement will take place when model translation
+    is requested.  This enforcement will happen in the model compiler 
+    pre-builder.  When the user request that a model be built, the pre-builder
+    will enforce the "sysbuilder" license in the same way the Verifier
+    enforces the "sysverifier" license.
+    
+    
+5.4 When OAL instance data was removed from the model files [4] it became
+    necessary to perform a parse-all prior to model export.  The prebuilder
+    is not currently properly performing this parse-all [9].  With the change
+    to export the entire system [1] the parse-all done by the prebuilder
+    must have to ability to parse the entire model from the SystemModel_c node.  
+    To do this, the code used by ModelExport shall be modified so that is can
+    be used by the prebuilder, and it shall be enhanced to have the ability
+    to parse the model given a SystemModel_c element.
+    
+6. Implementation Comments
+--------------------------
+6.1 Campbell has a large work space and indicated he thinks he has seen the pre-
+    builder going into closed projects when it shouldn't.  He thinks he saw it
+    reporting that it was visiting a project he know to be closed.
+  6.1.1 I investigated this by watching behavior in a work space with closed
+        projects.  I did not see the behavior he mentions.  As far as I saw, it
+        never indicated it was working on a closed project.  I also saw that no
+        pre-builder output SQL file was ever put into the gen/code_generation
+        folder of a closed project.
+  6.1.2 The eclipse documentation for the "build(...)" function states: "Invokes
+  		the build method of the specified builder for this project. Does nothing
+  		if this project is closed."
+  6.1.3 Based on this information, no further action was taken regarding this
+        reported issue.
+6.2 Support Multi-Component Licensing in Model Compiler Builds [3]
+    Support for multi-component licensing was added to Verifier [7] and similar
+    support must now be added to check for the presence of a system-level 
+    license before allowing model compilers to translate multi-component models.
+6.2.1 Support multi-component licensing in BridgePoint model compilers.
+    The model compiler prebuilder is responsible for creating a single-file 
+    model with persisted OAL instances.  This single-file model is then 
+    processed by the model compiler.  The multi-component license check happens 
+    in the pre-builder before the single-file model is exported.
+    In the pre-build stage, before the export is done we look to see if there 
+    are multiple components/domains and if there are, an attempt is made to 
+    acquire a system license (xtumlsysbld).  If there are not, we still try to 
+    obtain a system license (xtumlsysbld), but in this case, if one is not 
+    available it is not a failure.  Instead we obtain  a non-system license 
+    (xtumlbld). The following pseudo-code explains the process:
+    
+    if (the model has multiple components)
+	    if (has a valid system license)
+    	   allow pre-builder to export the model;
+    	else
+    	   display and error
+    	   log an error
+    	   Do NOT export the file
+    	end if
+    else
+	    if (has_regular_model_builder_license OR has_a_valid_system_license)
+    	   allow pre-builder to export the model;
+    	else
+    	   display and error
+    	   log an error
+    	   Do NOT export the file
+    	end if
+    end
+    
+6.2.2 Support multi-component licensing in 3rd party model compilers.
+
+      Customers who have created their own model compilers may not use the 
+      model compiler pre-builder, but they do need to be able to export their
+      models with OAL instances in order to translate them.  There are options
+      that allow us to control the customers ability to do this, and these 
+      options follow.  Note that none of these have been implemented at this 
+      time.  
+      
+6.2.2.1 We could prevent the model export of multi-component models when
+      the user has selected the "Export OAL" preference AND they do not have
+      have a system-level license. 
+6.2.2.2 We could prevent the (normal) export of OAL when a  source model 
+      compiler license is not present.
+6.2.2.3 We could modify gen_erate.exe and check for a system-level license
+      when multiple components are present in a model.
+ 
+6.2.3 This work leveraged work already done in the ModelExportWizard to
+      perform a parse-all prior to export.  The code in that location was
+      moved into bp.io.core/CoreExport.java and was refactored to allow it to
+      be shared between the export performed in the MC pre-builder and the
+      export in the Model Export Wizard.  Additionally, some UI routines were
+      found that were duplicated and they were moved "up" into 
+      bp.core.util/UIUtil.java so they could be shared.  The duplicate code
+      was removed.
+
+6.3 Modify the model compiler prebuilder to perform a parse-all prior to
+    export.
+    
+    The parse-all code in the ModelExportWizard was moved into 
+    bp.core.util/BridgePointLicenseManager.java so it can be used by the
+    prebuilder as well as the ModelExportWizard.  BridgePointLicenseManager
+    was modified to be able to accept a SystemModel_c element and parse the 
+    entire model from this element.
+
+6.3.1 When a parse error is encountered the parse-all done by the Model Export
+    Wizard was presenting a dialog to the user to report the parse error and
+    was preventing the export.  This is not the desired behavior.  When a 
+    parse error is encountered during export we now report the error in the
+    error log, but we continue with the export [8].
+          
+6.4 Remove "SNIPPET" code (#inline) support
+    Support for "#inline" C code is no longer supported at this time.  Support
+    for this was added in BP 7.0.5 [5].  Support for this feature was 
+    implemented in xtumlmc_build [6] and it is now removed.    
+    
+6.5 Make sure that the "UUID to integer" conversion value of 0 means 
+    NotParticipating.
+    
+    Investigation shows that the only place we perform the UUID to Integer 
+    conversion is in the xtumlmc_build [6] perl script.   It is done in
+    the ReplaceUUIDWithLong function.  The empty uuid (all 0's) is always
+    handled first to assure it is always assigned a value of 0 and only 0.
+
+6.6 Removed the line in the mc3020 default-manifest.xml file that was causing 
+    registry.mark to be copied.  This will mean that no registry.mark file 
+    will be copied into a new project.
+    This is documented in [3].  The markings are not longer applicable.
+
+
+7. Unit Test
+------------
+7.1 Create a new xtUML model named "test"
+  _- Add a single domain "a", add a subsystem and a class
+  _- Build the project
+  _R Verify gen/code_generation/test.sql contains S_DOM for "a"
+
+  _- Add another domain "b", add a subsystem and a class
+  _- Build the project
+  _R Verify gen/code_generation/test.sql contains S_DOMs for "a" and "b"
+
+  _- Add a component package to the system, add a component and formalize domain
+     "a" to it, add a subsystem and a class
+  _- Build the project
+  _R Verify gen/code_generation/test.sql contains S_DOMs for "a" and "b"
+
+  _- Add a component package to the system, add a component and formalize domain
+     "b" to it, add a subsystem and a class
+  _- Build the project
+  _R Verify gen/code_generation/test.sql contains S_DOMs for "a" and "b"
+
+  _- Add a new datatype named "testDT" to the system level datatypes.
+  _- Build the project
+  _R Verify gen/code_generation/test.sql contains S_DOMs for "a" and "b" and
+     contains S_DT "testDT"
+
+
+8. Code Changes
+---------------
+Changes are in branch R2_1_3-RWM-dts0100564585-dts0100584008.  However, for
+promotion the worked is merged into the following branch: 
+Review-dts0100564015
+
+The reason for the merge is that these issue are codependant and need to be
+promoted together.  There are many issues being resolved with this promotion.
+They are:
+[1] ClearQuest DEI dts0100564585 
+    Modify export builder to output the entire system
+[2] ClearQuest DEI dts0100564015
+    Add component support to MC-3020.
+[3] ClearQuest DEI dts0100584008 
+    Support Multi-Component Licensing in MC Build
+[4] ClearQuest DEI dts0100572189
+    Remove persisted OAL instances from the model files
+[8] ClearQuest DEI dts0100573340  
+    Prevent export of a model with errors when OAL Export is selected
+[9] ClearQuest DEI dts0100586863
+    A parse-all must occur prior to the export performed by the MC prebuilder
+Additionally, the dts0100564015 implementation note [10] points out many other
+issues that are addressed by this work.  The dts0100564015 work is really
+the driving force (and primary issue) being promoted here.
+
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.util/
+    BridgePointLicenseManager.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.util/UIUtil.java
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.launch/
+    BPLaunchDelegate.java
+
+com.mentor.nucleus.bp.io.core/src/com.mentor.nucleus.bp.io.core/CoreExport.java
+
+com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl.wizards/
+    ModelExportWizard.java
+
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ExportBuilder.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020ResourceListener.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ModelCompiler.java
+com.mentor.nucleus.bp.mc.mc3020/manifest/default-manifest.xml
+
+End
+---
+
+$Log: dts0100564585-dts0100584008.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/05/11 14:45:27  rmulvey
+job:dts0100564015 dts0100564585 dts0100584008
+Updated this note to make it clear what issues are included in the review branch.
+
+Revision 1.5  2009/05/10 01:34:46  rmulvey
+job:dts0100584008 dts0100564585
+Addressed review observations
+
+Revision 1.4  2009/05/08 19:57:04  rmulvey
+job:dts0100564585 dts0100584008
+Fixed typos
+
+Revision 1.3  2009/05/08 19:50:55  rmulvey
+job:dts0100564585 dts0100584008
+Updated the note
+
+Revision 1.2  2009/05/08 19:44:37  rmulvey
+job:dts0100564585 dts0100584008
+Updated the note
+
+Revision 1.1  2009/04/30 18:37:10  rmulvey
+job:dts0100564585 dts0100584008
+Updated the note to add the additional task we will perform in this branch.  The
+note was renamed to make it clear that both issues will be addressed at the
+same time (in the same branch).
+
+Revision 1.2  2009/02/12 16:07:19  kbrown
+Job:dts0100564585
+Updated INT.
+
+Revision 1.1  2009/02/11 22:04:32  kbrown
+Job:dts0100564585
+Initial draft.

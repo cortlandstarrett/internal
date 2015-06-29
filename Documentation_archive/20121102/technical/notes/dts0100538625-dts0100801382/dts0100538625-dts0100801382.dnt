@@ -1,0 +1,647 @@
+========================================================================
+
+File:      $RCSfile: dts0100538625-dts0100801382.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support coloring and user defined layers
+
+1. Abstract
+-----------
+This note describes the changes required to support individual element coloring
+and to support user defined graphical layers.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100538625 - Request for ability to color/shade/highlight
+                                   model elements
+[2] ClearQuest DEI dts0100801382 - Hide model elements ("stealth mode")
+[3] Documentation/internal/technical/notes/
+      dts0100538625-dts0100801382/ModelViewManagement.ant
+
+4. Background
+-------------
+See [3].
+
+5. Analysis
+-----------
+See [3].
+
+6. Design
+---------
+6.1 Coloring
+
+As stated in [3] each individual elements shall be color configurable.  For both
+shapes and connectors this will be configured as fill color and line color.
+With shapes the fill color is the color used to paint the body of the symbol,
+and line color is the color that paints the outline and the text of the symbol.
+For connectors the fill color is used to paint the body of any polygon
+decorations, and the line color is used to paint the outline of the connector as
+well as any floating text.
+
+6.1.1 Graphical Model
+
+To support coloring styles the graphical model is extended to include a new
+subsystem, Styles (STY).  Under this subsystem there are four classes added:
+
+ElementStyle
+FillColorStyle
+LineColorStyle
+FontStyle (unused at the moment)
+
+The ElementStyle class is a new supertype class to the FillColorStyle,
+LineColorStyle and FontStyle classes.  Styling is supported for Graphical
+Element classes through a new association between ElementStyle and Graphical
+Element, R401.  A Graphical Element can have multiple ElementStyle instances
+associated.
+
+The FillColorStyle is used to capture the red, green, and blue values of the
+configured color.
+
+The LineColorStyle is used to capture the red, green, and blue values of the
+configured color.
+
+The FontStyle class is currently a place holder for later use when configuring
+the text for individual elements makes sense.  It was not a direct requirement
+for this work.
+
+Diagram colors are now configured through a new association between Model and
+ElementStyle, R402.
+
+The ElementStyle class has a dispose operation added that tears down all
+associations and removes the style instances.  The Graphical Element and Model
+classes have their dispose operations modified to tear down any style
+associations.  
+
+Elements with the new STY key letter prefix will be stripped from model data
+during code generation with MC-Java.  The other model compilers selectively grab
+what they need so no filtering is required there.
+
+The io.mdl pei data is extended so that all style elements are persisted.  This
+includes extension of the stream pei data so that copy/paste import/export is
+supported.
+
+6.1.2 Menus
+
+For this work color settings are set via a context menu.  The menu structure is
+as follows:
+
+Format >
+ 	     Fill Color > <a list of 16 system colors>
+ 	                  ------
+ 	                  Restore Default
+ 	                  Custom Color...
+         Line Color > <a list of 16 system colors>
+                      ------
+                      Restore Default
+                      Custom Color...
+                      
+The list of system colors is derived from the SWT class.  Where they maintain a
+list of what they consider system colors (currently 16).  There was no real
+motivation for using these 16, we just needed some quick access entries.  In the
+future this list will likely be customizable.  One action class,
+SetSystemColorAction, is created to support the functionality when one of these
+colors is chosen.  New extensions to the org.eclipse.ui.popupMenus point are
+added for each color and for each type, fill and line.  The single action will
+inspect the id of the action (as defined in the plugin.xml) and perform the
+necessary action.
+
+In The case of fill color, the entire selection will have the necessary style
+elements added.  That is an ElementStyle instance and FillColorStyle instance.
+If these instances exist already the FillColorStyle class will have its red,
+green, and blue attributes updated accordingly.
+
+In the case of line color, the exact steps are followed only the LineColorStyle
+subtype is used.
+
+If the selection is the DiagramEditPart, than the R402 association is used.  In
+all other cases the R401 association is used.
+
+The Restore Default entry for the Fill Color sub-menu is tied to a new action,
+RestoreDefaultFillColorAction.  This action simply disposes the style elements,
+thereby returning the symbol into a default state.
+
+The Restore Default entry for the Line Color sub-menu is implemented as above,
+except that it disposes the LineColorStyle subtype.
+
+The Custom Color... entry for the Fill Color sub-menu is tied to a new action,
+SetCustomFillColorAction.  This action is similar to the action for system
+colors only a color chooser dialog is given to the user to retrieve the desired
+color.  The color dialog provides for storing custom colors for easy access at
+later times.
+
+As with the other menu entries, the Custom Color... entry from the Line Color
+sub-menu is near identical to the Fill Color variant.  The only difference being
+the use of the LineColorStyle subtype.
+
+All menu entry actions are performed within a transaction to allow for undo/redo
+support, as well as persistence support.
+
+6.1.3 Color Management
+
+With the ability to create more custom colors, and more easily create them, we
+need to be careful with the graphical resources that are being consumed.  JFace
+provides a system-wide management class for this.  The class handles disposing
+the colors when necessary.  To assure that all colors are placed in this
+registry a new method is added to the ui.graphics Activator class,
+getColor(int red, int green, int blue);  The method will first attempt to
+retrieve the color from the registry by name (string value of red, green, blue),
+if the color does not exist in the registry it is created and added to the
+registry.  The color is then returned.
+
+6.1.4 Shapes
+
+To use the configured styles the ShapeImageFigure class is modified such that
+the following occurs:
+
+In fillShape():
+
+An associated FillColorStyle class is searched for, if found the color defined
+in that class is used.  If nothing has been set then the default color is used.
+
+In outlineShape(): 
+
+An associated LineColorStyle class is searched for, if found the color defined
+in that class is used.  If nothing has been set then the default color is used.
+
+6.1.5 Connectors
+
+To use the configured LineColorStyle the following classes have the
+outlineShape() method extended such that a set LineColorStyle's values are used.
+If the style has not been set the default color is used.
+
+DecoratedPolylineConnection
+ConnectorEllipseDecoration
+ConnectorPolygonDecoration
+ConnectorPolylineDecoration
+ConnectorSemiCircleDecoration
+
+To use the configured FillColorStyle the following classes have the fillShape()
+method extended such that a set FillColorStyle's values are used.  If the style
+has not been set the default color is used.
+
+ConnectorPolygonDecoration
+
+6.1.6 Floating Text
+
+To support configured LineColorStyle settings for floating text the TextEditPart
+class' TextFlow figure is extended to use such settings if present.  The
+settings are applied to the text color.
+
+6.1.7 Inheritance
+
+As stated in [3] one requirement is that symbols inherit settings from referred
+to elements.  This is not all referred to elements, the following list gives the
+elements that inherit and those that they inherit from:
+
+Communication Link : Association
+Component Reference : Component
+Imported Provision : Provision
+Imported Requirement : Requirement
+Provision : Interface
+Requirement : Interface
+User Data Type : Core Data Type
+Class Instance Participant : Class
+Class Participant : Class
+Component Participant : Component
+External Entity Participant : External Entity
+Function Package Participant : Function Package
+Package participant : Package
+Imported Class : Class
+
+New operations are added to all elements that inherit from others.  These
+operations are all named: getConfigurationInheritanceElementId() and each return
+the element id for the element that is inherited from.  The graphical domain
+uses this to locate the Graphical Element instance associated with that id.
+This Graphical Element is then used to determine if there are styles set that
+should be inherited.  Further detail is listed below.
+
+Note that inherited color values are not locally created, simply retrieved
+before each paint request.  With no model data changing inheritors will not
+require persistence and therefore only the root element's file will be marked
+dirty when changed.
+
+A utility class is written that provides methods for getting the inheritance
+elements.  The class will return a list of inherit from elements, as the
+inheritance can be multileveled.  An example of this is an imported provision
+can inherit from a provision, which can inherit from an interface.  For both
+shapes and connectors the list of inherit from elements are ordered by inherit
+level, where the first in the list are the direct elements to inherit from.  In
+both cases the first is checked and if a non-default color is set that one is
+used, otherwise the hierarchy is climbed.
+
+6.1.7.1 Shape inheritance
+
+The methods mentioned in 6.1.4 are further extended to use inherited colors if
+there is not a non-default color set on the selected element.
+
+6.1.7.2 Connector inheritance
+
+The methods mentioned in 6.1.5 are further extended to use inherited colors if
+there is not a non-default color set on the selected element.
+
+6.1.8 Default colors
+
+All default colors, with the exception of imported class which has been
+converted to white, are the same as they were before.
+
+6.1.9 Preference changes
+
+The Color setting preference page has been removed.  The Diagram Editors
+preference section has been refactored to a single page which contains two
+groups:
+
+Grid Options
+Appearance
+
+The Grid options are the same as what the old Grid page used to show, the
+Appearance group shows what the old Enhancement page used to show.
+
+6.2 Layer support
+
+As stated in [3] one requirement is that we support custom layering and that
+those layers may have configurable visibility.  Shapes and connectors can be
+added to such layers.  A shape or connector may exist in multiple layers.  If
+either exist in at least one visible layer then they shall show.
+
+6.2.1 Graphical Model
+
+To support layers the Graphical Data subsystem is extended to include two new
+classes:
+
+Layer
+GraphicalElementInLayer
+
+The Layer class captures user defined layers.  It has two user configurable
+attributes, Layer_Name and Visible.  The Layer_Name attribute allows a user to
+define a unique string to identify the layer with.  The Visible attribute is
+used to toggle visibility of the layer.
+
+The Model class can have multiple layers associated across a new association,
+R34.
+
+The GraphicalElementInLayer class is a linked class that supports a Layer
+containing multiple Graphical Element instances.  The R35 association supports
+this as well as supports a Graphical Element instance existing in multiple
+layers.
+
+The necessary dispose operations are added to handle instance clean up when
+either the Layer, Graphical Element, or Model elements are disposed.
+
+The io.mdl pei data is extended so that layer data is persisted. This includes
+extension of the stream pei data so that copy/paste import/export is supported.
+
+6.2.2 Layer manipulation
+
+To allow introduction to the field quicker layer it was decided that layer
+manipulation will occur through menu items alone.  [3] describes a view that
+could be used for Layer maintenance.  Consideration was taken to automatically
+add connectors into layers depending on their attached elements.  This was
+pulled as there are complications when dealing with certain connector types.
+For now it is up to the user to maintain the elements with in each layer.
+
+6.2.2.1 Layer menus
+
+Considering that menus are to be strictly used, the following describes the
+added menu items:
+
+Layers > Add to layer > New Layer...
+                        <list of existing layers not present in>
+         Remove from layer > <list of existing layers present in>
+         Hide layer > <list of existing layers>
+         Show layer > <list of existing hidden layers>
+         Edit hidden layer > <list of existing hidden layers not being editted>
+         Rename layer > <list of existing layers>
+         Delete layer > <list of existing layers>
+         
+All menus and their items are added dynamically, using the eclipse menus
+extension point dynamic element.  The class DynamicLayersContributionItem
+handles adding the menus and items when necessary.
+
+6.2.2.1.1 Add to layer
+ 
+The Add to layer menu always contains at least one item, unless only the diagram
+is selected, this item is the New layer... menu item.  This item is handled by
+the NewLayerAction class.  The action performed is to display a rename dialog,
+with one check box that determines if the layer should be created invisible.
+The entered name value is validated so that all layers have unique names.  All
+selected elements are immediately added to the new layer once created.
+
+The other menu items are dynamically determined by the existing Layer instances
+that the current selection does not belong to.  They are listed by the value set
+in Layer.Layer_Name.  If the selection contains at least one element that does
+not belong to a Layer it is listed in the menu.  When processing, elements that
+already exist in the layer are skipped.
+
+6.2.2.1.2 Remove from layer
+
+The Remove from layer menu is shown only when at least one element is selected
+that belongs to at least one layer.  The list of menu items is determined by all
+of the layers that the selection collectively belongs to.  Each action is
+supported by the RemoveFromLayer class.  The action performed is to remove the
+selected elements from the chosen layer.
+
+6.2.2.1.3 Hide layer
+
+The Hide layer menu is shown only when at least one layer exists that is
+configured as visible.  The list of menu items is populated with all layers that
+have the Layer.Visible attribute set to true.  The actions are supported by the
+HideLayerAction class, which simply toggles the Visible attribute.
+
+6.2.2.1.4 Show layer
+
+The Show layer menu is shown only when at least one layer exists that is
+configured as invisible.  The list of menu items is populated with all layers
+that have the Layer.Visible attribute set to false.  The actions are supported
+by the ShowLayerAction class, which simply toggles the Visible attribute.
+
+6.2.2.1.5 Edit hidden layer
+
+The Edit hidden layer menu is only shown when at least one layer exists that is
+configured as invisible.  The list of menu items is populated with all layers
+that have the Layer.Visible attribute set to false.  The menu items are check
+box entries, that are checked when an invisible layer is being edited.  When a
+menu entry is checked, the represented layer will be visible with a reduction of
+opacity so that elements which exist in it may be removed.  These action have no
+effect on the model element state, only the GEF related layer which contains the
+GEF graphical figures.
+
+6.2.2.1.6 Rename layer
+
+The Rename layer menu is shown only when at least one layer exists.  The list of
+menu items is populated with all configured layers.  The actions are supported
+by the RenameLayerAction class, which gives the user a rename dialog and sets
+the value of the Layer.Layer_Name attribute accordingly.  The entered value is
+validated against existing layers so that duplicate named layers may not exist.   
+
+6.2.2.1.7 Delete layer
+
+The Delete layer menu is shown only when at least one layer exists.  The list of
+menu items is populated with all layers.  The actions are supported by the
+DeleteLayerAction class, which calls the necessary dispose() operation on the
+selected layer.  The dispose operation removes all Graphical Elements from the
+layer and dissociates the layer from the Model class.
+
+6.2.2.1.8 Transactions
+
+All of the above mentioned menu actions are processed in a Transaction with the
+exception of the Edit hidden layer menu items.  This allows for model related
+changes to be persisted as well as allows for undo/redo support.  The editing
+value of a layer is not modeled or persisted.
+
+6.2.3 Diagram
+
+The DiagramEditPart class has its refreshVisuals() method extended to maintain a
+GEF representation of each modeled Layer.  The list of configured Layer
+instances across R34 is inspected and for each that does not already have a GEF
+layer, creates a new GEF layer instance.  Similarly if there is a GEF layer that
+no longer has a modeled backing it is removed, and all figures in it restored to
+the default layer.  User defined layers are supported in GEF through the new
+class UserDefinedLayer.  GEF holds connections in a separate layer than shapes,
+to maintain this with custom layers each UserDefinedLayer has a corresponding
+UserDefinedConnectionLayer class.  Both of these classes extend the default GEF
+behavior to support hiding and editing (where opacity is reduced).
+
+6.2.4 Shapes
+
+The ShapeEditPart class has its refreshVisuals() method extended to gather all
+the modeled layers that it belongs to and visually adds/removes them from the
+respective GEF layer.  The act of adding or removing a ShapeEditPart from a
+layer requires that its GEF figure be moved from a child of the default layer to
+the user configured layer or visa-versa.  
+
+6.2.5 Connectors
+
+The ConnectorEditPart class has its refreshVisuals() method extended to gather
+all the modeled layers that it belongs to and visually adds/removes them from
+the respective GEF layer.  The act of adding or removing a ConnectorEditPart
+from a layer requires that its GEF figure be moved from a child of the default
+layer to the user configured layer or visa-versa.  In the case of connectors
+this will be the UserDefinedConnectionLayer.  Considering that the behavior is
+very similar to that of the ShapeEditPart class, this functionality is factored
+into the DiagramEditPart class and used by both classes.
+  
+6.2.6 Inheritance
+
+Layer inheritance is determined in almost the exact same manner as it is with
+colors.  The only difference is that an element must inherit all layers from all
+inheritance levels, where with colors we stop with the first found in the
+hierarchy.
+
+Inherited layers are not modeled directly.  The graphical layering in GEF is
+handled by creating a UserDefinedLayer instance for each inherited layer that
+a local symbol should exist in.  These layers cannot be manipulated from a
+non-local diagram.  They never show up in the menus listed in section 6.2.2.1.
+
+The requirement to show a symbol when in multiple layers where at least one
+layer is visible is also honored in inheritance situations.  If an element
+inherits layer participation into a non-visible layer, but exists in a local
+visible layer it will be shown.
+
+6.2.6.1 Shape inheritance
+
+The ShapeEditPart class provides a new method, getInheritedLayers().  This
+method uses the same utility class that color inheritance support uses to gather
+the list of all inherit from elements.  It returns all layers that all inherit
+from elements belong to.
+
+6.2.6.2 Connector inheritance
+
+The ConnectorEditPart class provides a new method, getInheritedLayers().  This
+method uses the same utility class that color inheritance support uses to gather
+the list of all inherit from elements.  It returns all layers that all inherit
+from elements belong to.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+Work required is fully covered in the design section.
+
+9. Unit Test
+------------
+Note: These are manual tests.  Issue dts0100838479 is raised to handle
+automation.
+
+9.1 Colors
+9.1.1 Local
+9.1.1.1 Shapes
+  _- Right click on a shape
+  _R The Format > Fill Color menu is shown
+  _R The Fill Color menu has the required entries
+  _R The Format > Line Color menu is shown
+  _R The Line Color menu has the required entries
+  _- Choose each system color under the fill color
+  _R The shape is filled with each color
+  _- Choose Custom Color... under the Fill Color menu
+  _R A color chooser dialog is shown
+  _- Choose a custom color and click OK
+  _R The shape is filled with the custom color
+  _- Undo the custom color change
+  _R The color is restored to the last system color used
+  _- Redo the custom color change
+  _R The color is restored to the custom color
+  _- Close the tool and restart
+  _- Find the same shape
+  _R The shape is still filled with the custom color
+  _- Repeat the above for Line color, for each result the shape will be outlined
+     with the color rather than filled with it
+     
+9.1.1.2 Connectors
+  _- Right click on a interface reference connector
+  _R The Format > Fill Color menu is shown
+  _R The Fill Color menu has the required entries
+  _R The Format > Line Color menu is shown
+  _R The Line Color menu has the required entries
+  _- Choose each system color under the fill color
+  _R The port shape is filled with each color
+  _- Choose Custom Color... under the Fill Color menu
+  _R A color chooser dialog is shown
+  _- Choose a custom color and click OK
+  _R The port shape is filled with the custom color
+  _- Undo the custom color change
+  _R The color is restored to the last system color used
+  _- Redo the custom color change
+  _R The color is restored to the custom color
+  _- Close the tool and restart
+  _- Find the same connector
+  _R The port shape is still filled with the custom color
+  _- Repeat the above for Line color, for each result the connector line and
+     text will change color
+     
+9.1.2 Inherited
+  _- For shapes and connectors do the following for both fill and line color
+  _- For each inheritance chain listed in 6.1.7 set the color of the top inherit
+     parent
+  _R All inheritors are colored the same
+  _- Go down the hierarchy changing the next element in line to a different
+     color
+  _R All children below that level are changed to that color
+  _- Create a model with an Interface, Interface Reference formalized to the
+     interface, and an imported interface reference that imports the interface
+     reference
+  _- Change the fill color of the Interface
+  _R The Interface reference and Imported Interface reference have their line
+     color changed to the same
+  _- Change the line color of the Interface
+  _R The Interface reference and Imported Interface reference have their fill
+     color changed to the same
+     
+9.2 Layers
+9.2.1 Local
+  _- In a diagram with no configured layers right click the background of the
+     diagram
+  _R The Layers menu is not present
+  _- Select a shape and right click
+  _R The Layers > Add to layer > New layer... menu item is available
+  _- Select the New layer.. menu item
+  _R A rename dialog is shown with a check box that allows for visibility
+     configuration
+  _- Hit cancel
+  _- Right click the diagram background
+  _R The Layers menu is not present
+  _- Reopen the dialog and enter a unique name then hit OK
+  _- Right click the diagram background
+  _R The Layers menu is present
+  _- Select undo
+  _- Right click the diagram background
+  _R The Layers menu is not present
+  _- Select redo
+  _- Right click the diagram background
+  _R The Layers menu is present
+  _R The Layers menu contains the Hide layer, Rename layer and Delete layer
+     sub menus
+  _R Each sub menu lists the created layer
+  _- Select the Hide layer > <unique layer name> menu item
+  _R The originally selected symbol is now hidden
+  _- Right click the diagram background
+  _R The Layers > Show layer > <unique layer name> menu item is present
+  _R The Layers > Edit hidden layer > <unique layer name> menu item is present
+  _- Select undo
+  _R The originally selected symbol is not hidden
+  _- Select redo
+  _R The originally selected symbol is hidden
+  _- Select the Show layer > <unique layer name> menu item
+  _R The hidden symbol is shown
+  _- Select undo
+  _R The symbol is hidden
+  _- Select the Edit hidden layer > <unique layer name> menu item
+  _R The symbol is shown with less opacity
+  _- Right click on the symbol
+  _R The Layers > Remove from layer > <unique layer name> menu item is present
+  _- Select the Remove from layer > <unique layer name> menu item
+  _R The symbol is drawn with full opacity
+  _- Select undo
+  _R The symbol is drawn with partial opacity
+  _- Right click and select the Delete layer > <unique layer name> menu item
+  _R The symbol is drawn with full opacity
+  _- Select undo
+  _R The symbol is hidden
+  _- Select redo
+  _R The symbol is shown
+  _- Select undo
+  _- Select the Layers > Rename layer > <unique layer name> menu item
+  _R A rename dialog is shown
+  _R The dialog explains that a layer with the same name already exists
+  _R The OK button is not available
+  _- Enter a new unique name and hit OK
+  _- Right click the background and look under Layers > Rename layer
+  _R The layer is listed with the new name
+  _- Repeat the above for connectors  
+
+9.2.2 Inherited
+  _- For shapes and connectors do the following
+  _- For each inheritance chain listed in 6.1.7 add the top inherit from element
+     to a new layer checking the create as hidden checkbox
+  _R All inheritors are hidden at all levels of the hierarchy
+  _- Mark the new layer as being edited
+  _R All inheritors are shown with less opacity
+  _- Go down the hierarchy and add the next element to a new layer
+  _R That element and all children below that level are show with full opacity
+  _- Create a model with an Interface, Interface Reference formalized to the
+     interface, and an imported interface reference that imports the interface
+     reference
+  _- Add the Interface to a new hidden layer
+  _R The Interface reference and Imported Interface reference are hidden as well
+  _- Mark the layer as being edited (using the Edit hidden layers menu)
+  _R The Interface reference and Imported Interface reference are shown with
+     less opacity
+  _- Add the Interface reference to a new non-hidden layer
+  _R The Interface reference and Imported Interface reference are shown with
+     full opacity
+  _- Right click the Imported interface reference
+  _R The only menu item available is Layers > Add to layer > New layer...
+
+9.2.3 Layer Persistence
+
+  _- Create a new layer adding one symbol to it
+  _- Mark the layer as non-visible
+  _- Restart the tool and open the diagram containing the layer
+  _R The symbol added is still not visible
+  
+End
+---
+
+$Log: dts0100538625-dts0100801382.dnt,v $
+Revision 1.2  2011/12/07 23:44:28  tlondon
+Job: dts0100538625 dts0100801382
+
+Address review minutes
+
+Revision 1.1  2011/12/02 21:57:20  tlondon
+Job: dts0100538625 dts0100801382
+
+Introduce design note
+

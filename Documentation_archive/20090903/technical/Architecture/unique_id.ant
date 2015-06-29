@@ -1,0 +1,244 @@
+========================================================================
+
+File:      $RCSfile: unique_id.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Multi-file id assigner
+
+Abstract
+--------
+This note describes changes to the id assignment process when multiple files
+contain the data for one domain.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 845
+[2] Bugzilla issue 1190
+[3] Documentation/internal/technical/Persistence/i845.ant,i845.tnt,i845-1.dnt
+[4] http://127.0.0.1:61813/help/topic/org.eclipse.platform.doc.isv/guide/team_synchronize.htm
+
+Background
+----------
+The work to break model storage into separate files[1] opens up a loophole where
+id ranges in different components can become overlapped unless something is done
+to prevent it.
+
+Analysis
+--------
+The work for [1] introduces the situation that there are multiple components of
+the same type (e.g. subsystems) in a domain. Each component is stored in a
+separate file.
+
+This analysis focuses on modifications to the architecture required to guarantee
+that the referential integrity between and within components is never corrupted,
+no matter what combination of revision changes are made to the model file
+resources.
+
+The solution must be transparent to the user. In other words, no explicit check
+in of any files shall be required.
+
+The solution must be configuration management system agnostic. So for example,
+the solution cannot rely on the CVS specific Watch/Edit feature.
+
+The solution must work offline and must be fast enough for the user to not
+notice the overhead.
+
+The solution must also address the known domain id allocation issue[2].
+
+Alternate Designs Considered
+----------------------------
+1. Do (almost) nothing
+
+Rather than trying to guarantee that id ranges are kept unique, accept that they
+will not be and instead ensure that they are unique internally to each component
+only. Existing proposed methods for resolving intercomponent references[3] will
+disambiguate overlapping ids. Potential problems here lie with Model Debugger
+(a known issue exists for this[2]), and with the Model Compilers, as these
+entities are not currently equipped to deal with overlapping ID ranges. Another 
+drawback is that the model integrity relies on intercomponent references which
+won't be completely implemented until M4, so the tool usage would be restricted
+for M2 and M3. Finally, this approach leaves open the probability that strange
+behavior is possible when revision control changes leave inter-component
+references unsatisfied and the user then works on and inadvertently satisfies
+those references with some unrelated model element.
+
+
+1a. Do (almost) nothing, but maintain a workspace high water mark (HWM) file
+
+In proposal 1, id range duplication can occur if the user replaces a component
+variant with an earlier revision. This action does not on its own lower the
+HWM, because it is not reset when a file is loaded. However, if the tool is shut
+down and restarted the HWM is erroneously lowered. Proposal 1a closes this loop-
+hole by proposing that the HWM id values be cached to disk at the project level.
+The correct value shall then always be read from the HWM file, regardless of
+which set of component revisions is in the workspace.
+
+As is the case today, HWM id values only increment, they are not updated if the
+values seen are less than the current HWM. The only difference with proposal 1a
+is that the id HWM cache shall be updated each time a model is loaded, reloaded
+or whenever a model is persisted. The cached HWM values thus always represent
+the highest id value ever loaded into the workspace. It follows that if any
+higher id values exist in the repository, then some replace would have to happen
+for this project to see them (what happens/should happen on an update still
+needs discusssion - McC).
+
+Overlapping ID ranges between components changed in a workspace and variants of
+that component stored in the repository are prevented by the manual merge
+procedure of redrawing the added instances from the workspace version. Later,
+this safeguard shall be provided by the intelligence of the automated merge
+process, once one is written.
+
+
+2. Relocate id's as needed
+
+When a component is brought into memory from disk, check to see if its id ranges
+overlap with any already loaded components. If any ranges overlap, remap one of
+the models so that they do not. If an existing component has already been
+modified by the user (not currently clear how we find this out, but Team must
+have a CM agnostic interface for this) modify the range in this changed model.
+Otherwise, the choice of which component to remap is arbitrary. If the component
+has been changed, harden the renumbering to disk. If not, renumber in memory
+only, but write the new ids the first time the component is changed by the user.
+Intercomponent references remain a potential minefield with this approach, due
+to the ripple effect caused by the renumbering.
+
+
+3. Keep a global HWM file 
+
+Keep an HWM file for the project in the repository and always use its values 
+when allocating new values. This has the advantage of being a provably simple 
+way of guaranteeing unique id ranges across all repository users, as long as 
+those users do all their work while online.  This solution does not support
+offline work.  It also sports all the disadvantages inherent in relying on 
+values from a distributed file with multiple readers and writers.  
+
+The Eclipse Synchronization API [4] appears to support the needed functionality
+for maintaining the HWM file in the repository.  The SyncInfo class described 
+in [4] provides a means (getRemote()) whereby we appear to be able to obtain 
+an IStorage instance for the remote file.  Whether the right file is returned 
+would need to be verified.
+
+
+3a. Keep a global HWM file, but allow for offline work
+
+This solution also maintains an HWM file in the repository, but would only
+update (and redistribute) that file when a component is committed.  The second 
+user making concurrent changes to the same component would have to merge their 
+changes with those checked in by the first user, as in design option 1a.
+
+This solution allows for offline work, but still suffers from the 
+multiple readers/writers complexities of design option 3, while not adding
+much value over design option 1a.
+
+
+Suggested Design
+----------------
+Design 1a is chosen due to its overall simplicity, its prevention of 
+overlapping ID ranges, and the fact that it does not require the HWM file to be 
+distributed over the network of repository users.
+
+It was considered whether to allocate ids on a project by project basis or for 
+the whole workspace.  The latter has the advantage that we could then support 
+inter-system references.  We know that there are requirements for this waiting 
+in the wings (such as projects containing library models).  However, the 
+same option also has the disadvantage that projects brought into the 
+workspace might have a much higher HWM than those already present, causing 
+a large gap in the numbering of their instances that might be confusing from
+a debugging standpoint.  Therefore, the former option is chosen, and 
+inter-system references will hopefully be achieved in the future by some form 
+of addressing that includes the system's name.
+
+It was also considered whether to allocate ids separately for each model element
+type, or to have all element types share the same id space.  The latter 
+would simplify the development of the id assigning code, and shrink the amount
+of data that would have to stored in the HWM file.  However, it would also
+cause gaps in numbering between successively created elements of the same type,
+which destroys sequence information that may be helpful during debugging,
+or perhaps for some yet-to-be-thought-of metrics analyzation involving the 
+numbers of different types of elements created for a given project.
+
+One more consideration is whether to write the HWM values as Eclipse metadeta,
+rather than to a file.  The former may be simpler and less open to 
+destructive modification by the user.  This decision is left open to the 
+designer.
+
+
+Work Required
+-------------
+Devise a means of guaranteeing that identifier values are always unique in the
+following places (in order of desirability):
+
+  - within a version or branch in the repository (mandatory)
+  - in the workspace resources (highly desirable)
+  - in memory (preferable)
+
+Acceptance Test
+---------------
+Since there are very many possible use cases, the solution reached during the
+design phase must have the property of being provably correct.
+
+End
+---
+
+$Log: unique_id.ant,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.9.30.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.9  2005/09/15 19:15:05  jmather
+Job: 845
+Fixed a typo.
+
+Revision 1.8  2005/09/10 00:49:34  jmather
+Job: 845
+Addressed design questions posed by previous revision.
+
+Revision 1.7  2005/09/09 23:21:08  campbell
+Job: 845
+Updated with braindump on singleton id assigner ideas and workspace wide id's.
+
+Revision 1.6  2005/09/09 22:09:12  campbell
+Job: 845
+Updated with comments about Proposal 1a.
+
+Revision 1.5  2005/09/09 20:18:53  jmather
+Job: 845
+Rewrote design alternatives section to align with conclusions reached during a meeting with Campbell and Greg.
+
+Revision 1.4  2005/09/07 22:39:25  campbell
+Job: 845
+Updated with comments about SyncInfo.
+
+Revision 1.3  2005/09/07 20:19:56  greg
+Job: 845
+Add further discussion to alt designs 1 and 3
+
+Revision 1.2  2005/09/07 17:35:37  campbell
+Job: 845
+Updated with alternate designs.
+
+Revision 1.1  2005/09/07 00:50:57  campbell
+Job: 845
+Introduced.
+

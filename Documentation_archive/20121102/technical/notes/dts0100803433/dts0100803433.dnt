@@ -1,0 +1,487 @@
+========================================================================
+
+File:      $RCSfile: dts0100803433.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support tree based compare
+
+1. Abstract
+-----------
+This note describes the changes required to provided tree based comparisons
+which shall replace the current compare implementation.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100803433
+[2] Documentation_archive/20111020/technical/notes/dts0100580448/
+    dts0100580448.ant
+[3] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/
+                                  Documentation/external/SRS/SRS-ModelMerge.docx
+
+4. Background
+-------------
+See [2].
+
+5. Requirements
+---------------
+See [3].
+
+6. Analysis
+-----------
+See [2].
+
+7. Design
+---------
+7.1 Tree based compare
+7.1.1 Tree
+
+The tree used must display all configurable attributes for an object.  These
+include all attributes that are not marked as User_Visible: false in their
+descriptions.
+
+To support displaying the trees a new class is created SynchronizedTreeViewer.
+This class takes a content and label provider that are defined by two new
+classes: ModelCompareContentProvider and ModelCompareLabelProvider.  The
+ModelCompareContentProvider implements a tree content provider and uses the
+hierarchy data defined (explained below) to determine the parent and child
+associations.  Parent and child associations include attribute values and
+referential elements.  The ModelCompareLabelProvider class implements a tree
+label provider and uses the standard label retrieval methods used in other trees
+for NonRootModelElements.  For ObjectElement instances it uses the generated
+data in ComparePluginMessages.properties for display.  This is the same approach
+that was used in the older compare support.
+
+The trees can grow rather large depending on the root element.  In order to aid
+in better production an action is created.  This action will enable tree
+filtering such that only elements with differences are shown in the tree.  In
+addition to this action two other actions are added, one to expand the entire
+tree and one to collapse the entire tree.
+
+7.1.1.1 Semantical data
+
+For semantical data the tree data is already defined in the
+ooaofooa_hierarchy.pei.sql file.  This data is however expanded to include
+satisfactions and the interface references associated with them.  To support
+displaying satisfaction instances a new derived attribute is added to the
+Satisfaction class.  The attribute is named Label and returns the following
+string:
+
+Component::Port::Provision -o)- Component::Port::Requirement
+
+In order to properly display referenced data that is not local, a group of model
+classes have new attributes added.  A common pattern is used for all of the
+following elements.  The pattern is to add a new attribute for caching remote
+data, and add two operations one for getting the cached value and one for
+setting that value.  In both cases these operations are called in the
+pre-existing operations that retrieve the display values during normal tool
+operation.  The getter methods are called if the remote element is not present
+and the setter methods are called when a proper display value has been
+determined.  These attributes unless already present and used for retrieving
+display data are marked as User_Visible: false, which prevents them from ever
+showing in the UI.
+
+In order to support these new attributes io.core, io.mdl, and io.sql are
+modified to provide the necessary upgrade steps during load.  This is simply
+calling the constructor properly to account for the new attributes.
+
+The elements modified are as follows:
+
+Executable Property.Name - Existed already but marked as User_Visible:false
+Executable Property.Descrip - Used for showing Provided and Required
+                              signal/operation descriptions
+Provision.Name - Used when showing the provision associated with a Satisfaction
+Provision.pathFromComponent - Used for showing the provision path associated
+                              with a Satisfaction
+Requirement.Name - Used when showing the requirement associated with a
+                   Satisfaction
+Requirement.pathFromComponent - Used for showing the requirement path associated
+                              with a Satisfaction
+Provided Operation.Name - Calling C_EP.getCachedName()
+Provided Operation.Descrip - Calling C_EP.getCachedDescription()
+Provided Signal.Name - Calling C_EP.getCachedName()
+Provided Signal.Descrip - Calling C_EP.getCachedDescription()
+Required Operation.Name - Calling C_EP.getCachedName()
+Required Operation.Descrip - Calling C_EP.getCachedDescription()
+Required Signal.Name - Calling C_EP.getCachedName()
+Required Signal.Descrip - Calling C_EP.getCachedDescription()
+Component Participant.Label - Required as the label equals a path to the
+                              component which extends pass the local C_C_Proxy
+Polymorphic Event.localClassName - Used for displaying polymorphic events
+Polymorphic Event.localClassKL - Used for displaying polymorphic events, called
+                                 in State Machine Event.Drv_Lbl and State
+                                 Machine Event.get_name()
+
+7.1.1.2 Graphical
+
+Graphical data has previously been excluded from the comparison data.  This data
+must be included otherwise we force the user to switch to the textual based
+compare of the xtuml files.
+
+To support graphical data in the trees a new pei data file is created,
+ooaofgraphics.pei.sql.  This file is maintained in
+com.mentor.nucleus.bp.ui.canvas.  The data structure is as follows:
+
+Model
+  FillColorStyle
+  LineColorStyle
+  Graphical Element
+    Represented Element : ooaofooa element name
+    Shape
+      FillColorStyle
+      LineColorStyle
+      GraphElement [positional data]
+      GraphNode [size data]
+  Graphical Element
+    Represented Element : ooaofooa element name
+    Connector
+      Graphical Element [source element]
+      Graphical Element [target element]
+      FillColorStyle
+      LineColorStyle
+      Waypoint [bendpoint values]
+      
+This file will need to be maintained any time something user modifiable is added
+or modified in the ooaofgraphics model.
+
+The archetypes that generate the ooaofooa hierarchy classes are modified to be
+generic and are then called by a new target in ui.canvas/generate.xml.  The
+classes generated from this target are created at ui.canvas.inspector to match
+the package structure created in bp.core.
+
+The above elements that are part of the structure are modified to provide an
+operation, get_name.  This operation is used to display the appropriate text in
+the UI.  The operations return the following text:
+
+Model - Graphical Data
+FillColorStyle - Fill Color
+LineColorStyle - Line Color
+Graphical Element - Graphical Element
+Shape - Shape
+Connector - Connector
+GraphElement - Positional Data
+GraphNode - Size Data
+Waypoint - Bendpoint
+
+In addition to the above, data is necessary to display a graphical element's
+represents value.  To do this a proxy must be added to the local file containing
+the graphical data.  This proxy is excluded from export when the represented
+element exists in the same file.
+
+New icons are added to support these elements in the tree.  In order to gain
+access to these elements new getter methods are added to CorePlugin which allow
+a path to be specified.  The paths are configured in the
+ooaofgraphics_hierarchy.pei.sql file.
+
+7.1.2 Differencing
+
+Differencing is handled by walking the trees both left and right.  Each element
+is compared, and one of the following differences are applied (if different):
+
+LOCATION_DIFFERENCE - Determines that an element at one location does not match
+                      the other, currently used for missing elements and
+                      elements that have been moved in order
+VALUE_DIFFERENCE - An attribute value difference
+NAME_DIFFERENCE - A name difference between two elements with matching
+                  identification
+                  
+These differences are assigned a type, either incoming, outgoing or conflicting.
+If there is a three way compare, an ancestor will be present.  Incoming changes
+are determined when the common ancestor does not have a matching value with the
+right side.  Outgoing changes are determined when the ancestor matches the right
+side but not the left.  Conflicting changes are determined when the left and
+right do not match the common ancestor.  If the compare is two way then changes
+are only determined to be outgoing.
+
+After a model has been loaded for comparing the differencer is called.  All
+differences are stored within a map and accessed later by the tree's to handle
+highlighting.
+
+When comparing elements to see if they are matches we use the equals methods for
+each element on either side.  This compares the elements identification.  For a
+good amount of elements these values will be null as the remote referential will
+not be present.  To handle this situation a new method is generated for all
+ooaofooa classes, cachedIdentityEquals.  This method will use the cached
+identification values rather than attempt to retrieve them from the referred to
+element.
+
+The tree differencer is abstract in that it does not know about what elements it
+is comparing.  In this way it could be used for any tree as long as the tree
+objects are wrapped within a new abstract class, ComparableTreeObject.  This
+abstract class requires the following methods to provide differencing support:
+
+treeItemEquals
+treeItemTypeEquals
+treeItemNameMatches
+treeItemValueEquals
+getRealObject
+
+For the current use we create two classes that extend this class:
+
+ObjectElementComparable - Used to handle comparing of the ObjectElement class
+                          which itself provides attribute values for a
+                          NonRootModelElement
+NonRootModelElementComparable - Used to handle comparing of the
+                                NonRootModelElement class which includes
+                                ooaofooa and ooaofgraphics elements
+
+ObjectElementComarable details:
+
+treeItemEquals - calls equals methods on the real object
+treeItemTypeEquals - compares the return value from each real object's getType
+                     method
+treeItemNameMatches - compares the return value from the real object's getName
+                      method
+treeItemValueEquals - compares the return value from the real object's getValue
+                      method, unless the value is a NonRootModelElement then
+                      that value is wrapped in a ComparableTreeObject and is
+                      compared
+getRealObject - return's the wrapped ObjectElement
+
+NonRootModelElementComparable details:
+
+treeItemEquals - compares the real object's identifying attributes using equals
+                 then cachedIdentityEquals
+treeItemTypeEquals - compares the class type of each real object
+treeItemNameMatches - compares the value returned from the label provider for
+                      each real object
+treeItemValueEquals - returns true only as there is no value comparison for
+                      these (value comparison is handled in the
+                      ObjectElementComparable class)
+getRealObject - returns the NonRootModelElement associated
+
+7.1.3 Highlighting
+
+The SynchronizedTreeViewer class is extended to provide custom paint behavior.
+This allows drawing boxes around differences and drawing lines from those boxes
+to the center of the compare pane.  During the paint call the differencer used
+for the view is asked for all differences, and for each paints the following:
+
+Name or Value difference : Draws a box around the tree element and a line to the
+                           center view
+Missing element : Draws a line from the center view to where the missing element
+                  should be
+Parent of difference element : Draws a box around the tree element with a dashed
+                               line as well as draws a dashed line to the center
+                               This box is only present when the parent is not
+                               expanded
+                               
+The class, ModelContentMergeViewer is extended to create the
+SynchronizedTreeViewer instances for the left view, right view and ancestor view
+if present.  In addition, the class is extended to process all differences in
+order to connect the differences in the middle pane.
+
+7.2 OAL/Description merge
+
+Comparing OAL and Description data in a tree is far from practical, therefore it
+was decided that they would be compared in the tree but a detailed comparison
+would occur in a default text compare window.  The tree shows the difference on
+the attribute containing the OAL or description.  When that difference is opened
+a new compare window is shown, this window uses the default eclipse text compare
+framework.  This allows the text to be merged in the same manner as other text
+files are merged.
+
+Three classes are added to support this compare window:
+
+ActionLanguageMergeViewerCreator
+TextualAttributeCompareEditorInput
+TextualAttributeCompareElementType
+
+The former one is used to allow syntax highlighting for the OAL data.  It
+initializes the viewer with the highlighting preferences determined by the
+ui.text plugin.
+
+The other two classes adapt the values from the attributes (Descrip and
+Action_Semantics) into the expected eclipse compare data.
+
+7.3 Merge transactions
+
+The data viewed during the main compare is local data but reloaded into the
+compare model root.  This approach was taken to allow saveable changes.  Data
+that is merged within the OAL or Text based comparison windows is collected as
+model deltas (but made against the ObjectElement instances), then applied to the
+real elements in the tree.  This causes the main compare window to become marked
+dirty.  This data must then be transferred to the local copy.  The approach
+taken to handle this transfer of data is to provide a compare transaction
+manager.  This transaction manager wraps an instance of the default transaction
+manager and collects the various deltas created during the merge operation.  At
+the point of saving the deltas are then applied to the local copy by calling a
+new method in TransactionManager (the default class), processTransaction.  This
+method walks the collected delta's and applies the indicated changes to the
+target instances.  This approach is similar to the approach taken for undo and
+redo.  In order to support this approach the model delta classes are modified to
+add a new method setModelElement().  This method allows the compare transaction
+manager to adjust the delta's elements with the matching local data elements.
+
+In order to prepare the workspace for a merge, all xtUML projects are loaded.
+Common code is factored out of the bp.search plugin and into a core utility
+class.  This code is then called by both the search and compare plugins.  The
+code is used to determine the amount of children required for loading in order
+to provide good progress monitoring.  Loading the entire workspace is necessary
+as the code that adjusts the deltas calls the hashmap lookup infrastructure
+which does not perform lazy loading.
+
+The document provider class for both OAL and descriptions is modified to respond
+to attribute value changes, at which point the editor's content is refreshed.
+
+These modifications go through the normal transaction processing and are thus
+persisted in a normal manner.  This means that if a save will trigger
+persistence against a locked resource the normal eclipse mechanisms will allow
+checkout or cancel.
+
+7.3 Extend model compare support
+
+During this work additional support for comparing single file models was added.
+This includes single file models exported with the tool and older domain files.
+
+The class ModelCacheManager is modified to support this and return all root
+elements that were loaded.
+
+In addition the stream import framework is modified to support any generic
+input stream, where before only ByteArrayInputStream instances were excepted.
+
+At this point merging is disabled for single files.
+
+8. Design Comments
+------------------
+
+9. Work Required
+----------------
+See Design section.
+
+10. Unit Test
+------------
+10.1 Tree based compare
+
+10.1.1 Structure
+- All semantic elements that are modifiable show in the tree
+- All modifiable graphical elements show in the tree
+
+10.1.2 Expand All/Collapse All
+_- Compare any two xtuml files
+_- In either tree right click and select Expand All
+_R All tree items are expanded
+_- In either tree right click and select Collapse All
+_R All tree items are collapsed
+
+10.1.3 Filter differences
+_- Compare two versions of an xtuml file where model changes are present
+_- In either tree right click and select Expand All
+_- Press the Toggle Difference filtering button
+_R Only those elements (and their parents up to the root) are shown
+
+10.1.4 Comparison
+_- For all element types listed in the ooaofooa_hierarchy and all those listed
+   in the ooaofgraphics_hierarchy change each possible attribute value
+_- Compare the original with the new contents (local history is fine)
+_R Each attribute value change is marked as different
+_- Replace the file with the original contents
+_- Change each referential that is listed in the element's generated inspector
+   class (type and return type for example)
+_- Compare the original with the new contents
+_R Each referential is marked is different
+_- Replace the file with the original contents
+_- Change the name (if nameable) for the element
+_- Compare the original with the new contents
+_R Each element is marked as different
+
+10.1.5 Highlighting
+
+_- Check out a project from a test repository
+_- Modify the model
+_- Compare with the latest
+_R The left root element is "boxed" with a black dashed line
+_R A black dashed line is drawn from the root element box to the edge of the
+   tree window
+_R The right root element is "boxed" in the same manner
+_- Expand to the actual differences
+_R The box is drawn similar for both the left and right only it is no longer a
+   dashed line
+_- Branch the changes and commit
+_- Replace local copy with the HEAD version
+_- Perform a merge making sure to preview changes and not auto merge
+_- Open a file that has changed
+_R The box is drawn similar to above in both cases yet the color used is blue
+_- Make a change to the HEAD version that is in the same area and commit
+_- Perform the merge again
+_R The box is drawn similar to above in both cases yet the color used is red
+
+10.2 Merge OAL/Description
+
+_- Compare two versions of a model where there are oal and description changes
+_R The element owning the description or oal is marked as different
+_- Expand to the description/oal entry and double click
+_R A compare window is shown containing the text from each version of the
+   oal/description
+_- Right click and choose Ignore whitespace
+_R Whitespace is ignored
+_- Right click and uncheck Ignore whitespace
+_R Whitespace is not ignored
+_R For the oal difference the text is syntax highlighted
+_- Enter text into the local side's text window
+_R Modifications are allowed
+_- Merge the differences and click Apply
+_R The tree difference is removed
+_R The compare editor is marked dirty
+_- Right click and select undo
+_R The tree difference is added back
+_- Right click and select redo
+_R The tree difference is removed again
+_- Save the editor
+_R The oal and descriptions are modified in the real model elements
+
+10.3 Single file compare
+
+_- Export a model to single file
+_- Make a change to the model and export to another single file
+_- Import those two files into a project in your workspace
+_- Compare the two files
+_R The compare editor is opened
+_R All changes are shown in the compare trees
+
+_- Check out Models_SF
+_- Select any of the xtuml files
+_- Using the team history compare with an older version
+_R The compare editor is opened
+_R All changes are shown in the compare trees
+
+10.4 Pessimistic locking
+
+_- Check out a project that is under a pessimistic repository
+_- Make some OAL and Description changes
+_- Lock the resources
+_- Compare the modified files with the repository
+_- Open the OAL and Descrip compare windows for the changes
+_- Merge the differences
+_- Hit Apply
+_R The compare window is marked dirty
+_- Save the changes 
+_R A dialog is displayed that asks if you want to check out the files modified
+
+End
+---
+
+$Log: dts0100803433.dnt,v $
+Revision 1.3  2012/06/14 15:22:17  tlondon
+Job: dts0100803433
+Address review minutes
+
+Revision 1.2  2012/05/30 16:20:22  tlondon
+Job: dts0100803433
+Add testing section
+
+Revision 1.1  2012/05/25 21:53:42  tlondon
+Job: dts0100803433
+Initial draft of design note
+

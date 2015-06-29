@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile: ModelViewManagement.ant,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Model View Management
+
+1. Abstract
+-----------
+This note analyzes a solution to the model view management strategy.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100538625 Request for ability to color/shade/highlight
+    model elements
+[2] ClearQuest DEI dts0100801382 Hide model elements ("stealth mode")
+
+4. Background
+-------------
+The current filtering and coloring ability in BridgePoint is far from ideal.
+
+Coloring is currently handled by an eclipse preference, and is applied to types
+of graphical elements (all or nothing).  Additionally, these color settings are
+not applied to the model.  Instead they are applied to the workspace in use and
+are private.  
+
+There is no way currently to filter elements in graphical editors.
+
+5. Analysis
+-----------
+5.1 Use Cases
+5.1.1.  Class Ownership
+5.1.1.1  Right-click > Format > Fill Color > blue for all classes owned by Pat.
+5.1.1.2  Right-click > Format > Fill Color > red for all classes owned by Chris.
+(Note:  On class diagrams where the above classes are imported, the imported
+classes will default to the color given to the class definition.)
+
+5.1.2.  Element Completion Status
+5.1.2.1  Right-click > Format > Fill Color > green for all model elements that
+         are "done".
+
+5.1.3.  "Differential Engineering"
+5.1.3.1  Select an element that will be affected by a particular new requirement
+         or feature to be added to the system.
+5.1.3.2  ctl-click to select additional elements on the diagram that will
+         be affected by the new requirement or feature.
+5.1.3.3  Right-click > Format > Fill Color > orange to make this graphically
+         visible.
+
+5.1.4.  Component Type Differentiation
+5.1.4.1  Right-click > Format > Fill Color > blue for all components that are 
+         digital.
+5.1.4.2  Right-click > Format > Fill Color > yellow for all components that are
+         analog.
+5.1.4.3  Right-click > Format > Fill Color > purple for all components that are
+         channels.
+
+5.1.5.  Element Hiding
+5.1.5.1  Select an element that you want to hide and that you wish all
+         references to it (on other diagrams) will be hidden as well.
+5.1.5.2  ctl-click to select additional elements on the diagram that you wish
+         to render invisible.
+5.1.5.3  Right-click > Layer > Add to hidden layer.
+
+The above use cases show that the coloring capability will be used for widely
+differing purposes.  Thus, it is a requirement that the ability to colorize
+model elements be of a general nature divorced from any particular semantic.
+
+
+5.2 Filtering
+
+The tool needs to support filtering in a way that allows both hiding single
+elements as well as groups of elements.  For groups of elements the tool shall
+have a management view, that allows custom filtering layers.  These filtering
+layers shall allow any graphical element to be added through a context menu.  A
+default filter layer shall always exist, which shall be the hidden layer.  When
+right clicking on a graphical element there shall be a Layers menu, with the
+following sub menus:
+
+Layers > Manage layers...
+         Add to hidden layer
+         Add to <custom user label> layer
+         Remove from layer > Hidden layer
+                             <list of custom user layers that element is
+                              participating in>
+
+The add to menu items shall simply register a graphical element in an existing
+layer.  Graphical elements shall be allowed in multiple layers.
+
+The Manage layers... menu item shall open a view or dialog that allows the user
+to manage the existing layers and add additional layers.  The list of layers
+shall be check box entries, that when checked are shown on the diagram.  If an
+element belongs to more than one layer, it shall show on the diagram if any of
+its parent layers are selected.  If an element belongs to a visible custom layer
+and belongs to the default hidden layer, then element shall remain invisible.
+
+The Remove from layer sub-menu shall allow removal from the default hidden layer
+if the selection is participating in it.  If the selection is not participating
+in the default hidden layer the menu item should not be present.
+
+Layers shall be configured on a diagram level, and shall be persisted along with
+the Diagram or Model element.  This will allow configured layers to be passed
+along to all developers of the model.
+
+5.3 Coloring
+
+Individual graphical elements shall have color support added.  When right
+clicking on a graphical element a new root context menu shall exist named
+Format.  Under this menu there shall be the following sub menus:
+
+Format > Font...
+         Fill color > <A list of default colors>
+                      Default Color
+                      Custom Color...
+         Line color > <A list of default colors>
+                      Default Color
+                      Custom Color...
+                      
+The Font... menu item shall open a font configuration dialog, that allows
+configuring the font type and font color for the entire symbol.  In the future a
+symbol will be hierarchical, where each piece can have the font configured
+separately.  For example a Class symbol is currently a box, with the internals
+drawn as a whole.  In the future the same symbol will have individually
+selectable compartments and labels.  In the future these shall each have their
+own font support.
+
+The list of default colors shall be the most common colors used.  The Default
+Color option shall return the element to the pre-defined color, which in most
+cases is white for fill and black for line.  The Custom Color... option shall
+open a color chooser and apply the color that is chosen.
+
+Connectors shall have fill color disabled and or hidden from the menu, as the
+line color is all that applies.
+
+Color settings shall be persisted in the model so that they are shared among all
+developers.  The color settings shall be persisted along with the individual
+graphical element that was configured.
+
+5.4 Inheritance
+
+Referencing elements shall inherit their layer and color properties from the
+element that they refer to.  An example of a referencing element is the
+Component Reference.  In this case the following will occur once the element is
+configured to refer to its referenced element:
+
+1. It will show if the referenced element is configured to show on its diagram
+2. It will not show if the referenced element is hidden on its diagram
+3. It will be drawn with the referenced element's font and color settings
+
+Layers that are configured for the referenced element's diagram shall be
+re-created in the referencing element's diagram.  The layer visibility settings
+shall propagate to the referencing elements' diagrams, but shall not propagate
+up to the referenced element's diagram.
+
+With the above rules there are some cases where an element, once configured to
+reference another element, will disappear.  In some cases this will prevent
+necessary configuration before the user configures either the referenced element
+or the referencing element to be visible on the diagram.  An example is with
+Component Reference, where they cannot be wired until they are configured to
+reference a Component.  If the Component to reference is hidden, the Component
+Reference will disappear as soon as it is configured to reference the Component.
+Wiring for such a Component Reference will be impossible until the extra step of
+showing it on the diagram is taken.
+
+6. Work Required
+----------------
+In this section, break out the consequential work (as a numbered list) needed
+to meet the requirements specified in the Analysis section.
+
+7. Acceptance Test
+------------------
+In this section, list the tests that need to be performed in order to
+verify that all the requirements are satisfied.
+
+End
+---
+
+$Log: ModelViewManagement.ant,v $
+Revision 1.3  2011/11/07 20:05:10  tlondon
+Job: dts0100538625 dts0100801382
+
+Update with layer removal
+
+Revision 1.2  2011/11/07 19:38:48  cstarret
+job:dts0100538625 dts0100801382
+Added use cases to the analysis note.
+
+Revision 1.1  2011/11/07 15:42:24  tlondon
+Job: dts0100538625 dts0100801382
+
+Introduce work in progress for filtering/coloring analysis
+

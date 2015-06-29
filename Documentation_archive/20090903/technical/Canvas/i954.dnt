@@ -1,0 +1,207 @@
+========================================================================
+
+File:      $RCSfile: i954.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Fixing a Connector Text Movement Bug
+
+Abstract
+--------
+This note describes the design for fixing a bug that affects the movement of 
+connector texts which are part of a group of diagram elements that are being
+dragged slowly.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 954
+
+Background
+----------
+When a connector is being moved as a result of the movement of both of the 
+diagram elements it connects, the code that moves the starting and ending 
+line segments of the connector are each responsible for half of the movement 
+of the connector's middle text.  Since the position data for connector texts
+are currently stored as integers, movement values of small, odd numbers of 
+pixels lose precision when divided by two and the decimal part is dropped to
+make an integer.  Thus, when the connected diagram elements are dragged very 
+slowly using the mouse, the middle connector text moves more slowly than the 
+other components, or not at all. 
+
+Analysis
+--------
+One solution would be to have the code for moving the starting and ending line
+segments calculate the position of the middle text using trigonometry, taking
+into account the where the text was in relation to the connector before 
+the connector's movement, and maintaining the relevant proportions after the 
+move.  
+
+However, there is a lot of code in the graphics model which contains repetitive
+if-then blocks due to Connector Text storing all three texts of a connector
+in a single object, with "Start_", "Middle_", and "End_" prefixes to 
+attributes.  By making each Connector Text store the values for only one text,
+along with an attribute signifying the end of the connector to which the 
+text belongs, these repetitive blocks can mostly be replaced with single
+blocks that sometimes employ a for loop to iterate over the connector ends.
+At the same time, we can change the positional data in Connector Text to be 
+stored as reals, which solves the loss of precision problem described above.
+This latter solution is therefore chosen.
+
+Design
+------
+1.
+In ooaofgraphics, Connector Text is refactored to represent just one of a 
+connector's text blocks, rather than all three.  An attribute is added for 
+storing to which end of the connector the text belongs.  Connector Text is 
+also made to extend from GraphNode, so that the text's positional data are 
+stored as reals, rather than integers.  
+
+1.1
+The deltaX and deltaY parameters to Connector Text.move() are changed from
+integers to reals.
+
+2.
+The above Connector Text modifications cause changes to the model file format.
+The persistence code is updated to reflect these changes.  Most notably, a 
+persistence version number is added to the header for model files.  
+When present, it is used instead of the product version number to determine
+the format of the model file.  This way, the persistence version number may 
+vary independently of the product version number, this allowing multiple 
+interim persistence versions during the development of an external release
+of the product.  The persistence version number assigned to the format
+resulting from this issue's work is 7.1.1, while the product version number
+remains as 7.1.
+
+2.1
+In io.core's ImportHelper.java, a parsePreBP7_1_1ConnectorText method is added
+for importing Connector Text instances from legacy model files.  Code
+is added to gen_import_java.inc to call this method during the import of 
+such files.  The connector-texts are not actually created until the end of the 
+import process. This is because they now have element-ID's of their own, so 
+creating instances of them as they are read from the model file would mess 
+up the model's element-ID sequence.
+
+2.2
+In io.core's gen_export_java.inc, code is added in the SQL-export case 
+for exporting the three texts of a connector in a 7.1.1-version model to a 
+single, 6.1-version Connector Text.
+
+2.3
+In io.mdl's file_io.pei.sql, the export metamodel traversal graph is changed
+to traverse the Diagram Interchange Metamodel (DIM) hierarchy of instances 
+separately from the Graphical Data hierarchy.  This is because, with the 
+new implementation of Connector Text's as GraphNode's, it is no longer
+true that all DIM GraphElement's are also Graphical Element's.  
+In the run() method of ExportModel, explicit calls are added to write out the 
+DIM hierarchy of instances rooted at DiagramElement.
+
+3.
+In MC-Java's fragment.inc, function stmt_assign_transient_var is changed 
+to set the type of the transient variable only if that variable is being 
+declared.  It was previously always setting the type.
+
+4.
+The usual modifications that accompany a graphics metamodel schema change 
+are performed.
+
+4.1
+The graphics portion of MC-Java's ooa_schema.sql is updated with the schema 
+for the new 7.1.1 version graphics metamodel.
+
+4.2
+The expected results models in io.mdl.test are resaved in the new 7.1.1 format.
+
+4.3 
+The following models, which are all employed during the build process 
+for Tiger's plug-ins, are re-saved in 7.1.1 format:
+
+als: grammar
+core: context_menu, default, ooaofooa, ooaofooa_hierarchy
+core.test: [all]
+io.core: file_io 
+ui.canvas: ooaofgraphics
+ui.explorer: UITree
+ui.properties.test: testProp
+
+4.4
+The graphics portion of bp.pkg's metamodel_schema.sql is updated with the 
+schema for the new 7.1.1 version graphics metamodel.
+
+4.5 
+The sample models in bp.pkg that are provided to the end user are also 
+resaved in the latest format.
+
+5.
+io.mdl.test's ConvertModels utility program is changed so that the 
+converted models are written to a subfolder of the one in which the input 
+models reside.  Before, they would be written to the same folder, sometimes 
+overwriting the input models, which would cause confusion.
+
+6.
+In io.mdl.test's ImportVersion7_0ModelsTest.java, a small error was fixed 
+where the variable holding the system-model used for the import was not 
+getting set.
+
+7.
+Some minor cleanup work was performed on io.core's ImportHelper.java and 
+io.sql's ImportBPSqlHelper.java.
+
+8.
+A utility method getTextFileContents() was added to bp.test's TestUtil.  
+This method returns the entire contents of a text file as a string.  Paul
+needed such a routine for work he was doing on a separate issue.  I decided to
+include it as part of this issue because it's something I sometimes find myself
+wishing I had when writing tests.  
+
+Unit Test
+---------
+_- Open MicrowaveOven.Door ISM
+_- Select all on the diagram
+_- Move the group very slowly
+_R The whole group moves at the same velocity, including the middle texts on 
+	the connectors 
+
+End
+---
+
+$Log: i954.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.30.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/07/29 00:16:41  jmather
+Job: 954
+Made a small correction.
+
+Revision 1.3  2005/07/25 21:11:04  jmather
+Job: 954
+Addressed review comments.
+
+Revision 1.2  2005/07/22 18:48:44  jmather
+Job: 954
+Ready for review.
+
+Revision 1.1  2005/07/22 18:17:24  jmather
+Job: 954
+Rough draft.
+

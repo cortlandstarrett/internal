@@ -1,0 +1,173 @@
+========================================================================
+
+File:      $RCSfile: dts0100702615.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Expose the "Load and Persist" CME to customers
+
+1. Abstract
+-----------
+This issue shall introduce a new CME requested by customers.  This
+CME can be used to force model updates to be persisted.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100702615
+    Expose the "Load and Persist" CME to customers
+[2] ClearQuest DEI dts0100650381
+    Support GEF based graphical editor
+    
+4. Background
+-------------
+The "Load and Persist" CME was introduced as an internal tool inside 
+com.mentor.nucleus.bp.internal.tools to facilitate model migration without 
+having to go through the model update code each time a model is loaded.  
+This can speed up model load time.
+
+  
+5. Analysis
+-----------
+5.1 The "Load and Persist" CME menu option will exist under the current
+    BridgePoint Utilities menu.  This menu currently holds the 
+    "Fix Missing State Matrix Entries..." menu option.
+5.1.1 The "Fix Missing State Matrix Entries..." menu option shall be filtered
+    out by commenting it out of plugin.xml.  It is likely no longer needed,
+    but we do not want to completely delete the available functionality just
+    in case a situation arises where it is needed.
+5.2 The "Load and Persist" menu will be present any time one or more
+    model elements are selected.
+5.2.1 Multi-select will be allowed and supported.
+5.3 When the "Load and Persist" option is selected, it will expand all elements
+    under the selection(s) and load the associated model elements.  When the
+    load is complete it shall force a persist of the loaded model causing all
+    changes made by model update code to be persisted.
+5.3.1 As a result of this persistence, all changed xtuml files will be marked 
+    dirty.    
+
+6. Design
+---------
+6.1 The current "Load and Persist" CME is implemented inside 
+    com.mentor.nucleus.bp.internal.tools.  This will be moved into 
+    com.mentor.nucleus.bp.utilities where it can be used by customers.
+6.2 The current "Load and Persist" functionality only works on file resources.
+    This means the CME does NOT always appear.  It only appears when an actual
+    xtuml file is selected.  This is not acceptable for customers.  Therefore,
+    the implementation shall be enhanced to allow any tree element in ME to be 
+    selected.
+6.2.1 There is an internal CME named "Load System By Tree Expansion" that was
+    created during the GMF work [2] to test tree expansion.  This shall be used 
+    as a guide in the expand-all portion of "Load and Persist" to allow the 
+    user functionality to work from any selection made by the user.
+
+7. Design Comments
+------------------
+none
+
+8. Work Required
+----------------
+8.1 Modify bp.utilities/plugin.xml and add the new "Load and Persist" menu item
+    as an object contribution to the org.eclipse.ui.popupMenus extension point.
+8.1.1 The menu bar path will be specified to assure the "Load and Persist" 
+    option appears under the "BridgePoint Utilities" menu.    
+8.1.2 The object contribution's objectClass shall be
+      "com.mentor.nucleus.bp.core.common.NonRootModelElement" to assure that 
+      any selected model element can be selected.
+8.2 Rename bp/utilities/load/LoadByExpansionAction.java to  
+    bp/utilities/load/LoadAndPerist.java 
+8.3 Modify bp/utilities/load/LoadAndPerist.java to use its tree selection as it
+    currently does, but in addition, use the code the is currently in 
+    bp/internal/tools/process/LoadAndPersist.java to cause the desired 
+    "Load and Persist" of the selected model element(s).
+8.4 Remove bp/internal/tools/process/LoadAndPersist.java
+8.5 The com.mentor.nucleus.bp.utilities plugin is being introduced into the 
+    standard release for the first time.  Therefore it's version shall be 
+    updated to match the rest of the tool, and the build server shall be updated to
+    include it in the release build.
+
+
+9. Unit Test
+------------
+9.1 Test load and persist from the system level
+    _- Check out a model from CVS that is known to need updates
+    _- Open ME
+    _- Select the system model file
+    _- Right click
+    _R "BridgePoint Utilities" is present
+    _- Select "BridgePoint Utilities"
+    _R "Load and Persist" is present
+    _- Select "Load and Persist"
+    _R The xtuml files are marked dirty
+
+9.2 Assure that "Load and Persist" of a model that needs no updates is not 
+    modified.    
+    _- Check out a model from CVS that is known to NOT need updates
+    _- Open ME
+    _- Select the system model file
+    _- Right click
+    _R "BridgePoint Utilities" is present
+    _- Select "BridgePoint Utilities"
+    _R "Load and Persist" is present
+    _- Select "Load and Persist"
+    _R The xtuml files are marked dirty.  However, there are no differences
+       (other then possibly white space) shown.  Whitespace differences
+       will be do to the unix vs dos text file format issue (<lf> vs <cr><lf>)
+    
+9.3 Test load and persist from under the system level
+    _- Check out a model from CVS that is known to need updates
+    _- Open ME
+    _- Select a model element that has several levels of other elements 
+       nested under it.
+    _- Right click
+    _R "BridgePoint Utilities" is present
+    _- Select "BridgePoint Utilities"
+    _R "Load and Persist" is present
+    _- Select "Load and Persist"
+    _R The xtuml files under the selection are marked dirty
+    _R The xtuml files that were not part of the selection are NOT marked 
+       dirty
+    
+9.4 Test load and persist using multi-select
+    _- Check out a model from CVS that is known to need updates
+    _- Open ME
+    _- Select multiple model elements that have several levels of other 
+       elements nested under them.
+    _- Right click
+    _R "BridgePoint Utilities" is present
+    _- Select "BridgePoint Utilities"
+    _R "Load and Persist" is present
+    _- Select "Load and Persist"
+    _R The xtuml files under the selection are marked dirty
+    _R The xtuml files that were not part of the selection are NOT marked 
+       dirty
+
+End
+---
+
+$Log: dts0100702615.dnt,v $
+Revision 1.3  2010/08/05 23:02:31  rmulvey
+job:dts0100702615
+Updated the expected result in test 9.2 to account for the fact that files will be marked dirty but there will be do diffs.  The reason is unix vs dos storage format.
+    _R The xtuml files are marked dirty.  However, there are no differences
+       (other then possibly white space) shown.  Whitespace differences
+       will be do to the unix vs dos text file format issue (<lf> vs <cr><lf>)
+
+Revision 1.2  2010/07/15 20:47:06  rmulvey
+job:dts0100702615
+Addressed the review observations.
+
+Revision 1.1  2010/07/15 19:27:17  rmulvey
+job:dts0100702615
+Introduced the design note.
+

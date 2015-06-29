@@ -1,0 +1,393 @@
+========================================================================
+
+File:      $RCSfile: dts0100632985.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Update docgen to work with generic packages
+
+
+1. Abstract
+-----------
+The BridgePoint documentation creation tool does not currently work with models 
+that contain generic packages.  This note describes the work done to enhance the
+tool to work with these models.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100632985
+[2] ClearQuest DEI dts0100615359 - DocGen for Linux
+[3] ClearQuest DEI dts0100843820 - Output Interface Operation/Signal parameter 
+    names with docgen XML, not just image
+[4] ClearQuest DEI dts0100645645 - Docgen generated html has Unicode chars
+[5] <SVN>/trunk/AE/skjellbe/T_and_Pop_src
+[6] <SVN>/trunk/Models/Test/DocGenTest
+
+4. Background
+-------------
+The documentation tool consists of several parts:
+  - "Create Documentation" context menu action : this task is housed in the 
+      bp.docgen plugin.  It calls the other tools used in the flow.
+      
+  - image creation : this task is in the bp.io.image plugin.  It creates pngs
+      for the various canvases in the model
+      
+  - export builder : The pre-builder is used to gather the model into a single
+      file that is used in the rest of the flow
+      
+  - xtumlmc_build : used to process the model to remove unnecessary instance
+      data and convert UUIDs to short ints
+
+  - docgen.exe : a model-based model compiler that is built from a special 
+      model compiler branch of bp.core (in this case branch MC-C).
+
+  - xsltproc : open-source software that is used to convert the XML output from
+      docgen into HTML.  We are using version 1.1.24 of libxslt.  The official 
+      distribution is 1.1.26, but the changes are very minor so an update to
+      what we currently ship does not appear worthwhile.
+
+The docgen.exe is currently built in a Windows environment and the restriction
+remains that BridgePoint Document Generation only works on Windows-based 
+BridgePoint installs.  We have an open issue to expand support to Linux [2].
+That issue is not addressed by this work and remains open.
+
+Issue [3] is not fixed with this work, but the refactoring done by this 
+work will aid in making a clean fix for this in the future.
+
+Issue [4] is not fixed with this work.
+
+5. Requirements
+---------------
+5.1  Process models that contain generic packages only. Display appropriate HTML
+     output.
+     
+5.2  Process models that contain specific packages only. Display appropriate 
+     HTML output.
+     
+5.3  Process models that contain a mixture of generic and specific packages.
+     Display appropriate HTML output.
+
+ 
+6. Work Performed
+-----------------
+6.1  bp.docgen plug-in
+6.1.1  Removed the hook that looks for and disallows models that contain generic 
+       packages.
+6.1.2  Updated the code that finds the location of xtumlmc_build.exe by looking
+       at the model compiler launch file.  The new code accounts for both the
+       old-style and new-style model compiler launch file.  
+       
+6.2  bp.mc plug-in
+6.2.1  Updated the bp.mc::AbstractNature.getLaunchAttribute() function to be 
+       static.
+  
+6.3  bp.core plug-in
+6.3.1  This work exposed the fact that the generated "<Element>Inspector" 
+       getParentElement() functions were not handling component parent/child
+       relationships through Packageable Element.
+6.3.2  Updated ooaofooa_hierarchy.pei.sql to include traversals from Component
+       to the following children through PE_PE:
+         - Package
+         - Component
+         - Imported Component
+         - Interface
+         - User Data Type
+
+6.4  bp.ui.properties plug-in
+6.4.1  Due to the changes in 6.3.2, some special casing code in 
+       BuildPropertySource.arc that handled the Component-to-Component relation-
+       ship was able to be removed.  A small special case to modify the name 
+       shown in the properties view is added.  This can be removed when specific
+       packages are removed from the tool.
+
+6.5  bp.core plug-in, MC-C model compiler branch
+6.5.1  Updated instructions for creating a model compiler branch (like this MC-C
+       branch).
+6.5.2  Renamed README.txt to "HOWTO Create docgen exe.txt", added more detail
+       to instructions.
+6.5.3  External entities
+6.5.3.1  The C model compiler was changed to increase "modularization" around
+         the same time the work in this note was done.  The end result of the
+         MC work was that the EEs are generated differently.  For example, the
+         Template (T) EE is now generated to functions named ooaofooa_T_* 
+         instead of T_*.
+6.5.3.2  Added ooaofooa_LOG_bridge.c and ooaofooa_T_bridge.c TODO
+
+6.5.4  Populate (POP) EE
+6.5.4.1  The POP EE is used to load model data from a xtUML file into the proper
+         in-memory instance data of an application running in Verifier.
+6.5.4.2  Added POP EE to the model in the "MC" EE package.
+6.5.4.3  Added POP.java to libsrc/ alongside T.java.  Note that POP (EE and 
+         .java) only exists in the MC-C branch.  This is key intellectual 
+         property that we do not want to make generally available to our
+         customers.
+6.5.4.4  POP was originally created by a former AE and stored at [5].  However,
+         the version of POP in that project did not handle generic packages.
+         Since POP.java is now stored in the model compiler branch of bp.core,
+         the former project ([5]) is deprecated.  A README is added to the
+         project to explain this.  The code in the project is removed to re-
+         enforce the fact that it is deprecated.
+6.5.4.5  Added support to POP.java to process the data contained in generic
+         packages.  As part of the work, internal debug logging was enhanced 
+         that provides lots of useful information to BridgePoint developers who
+         want to work with POP.  The debug logging is turned off by default, but
+         can be turned on with a single flag switch in the debugLog() function.
+                  
+6.5.5  DocGen updates
+6.5.5.1  docgen
+         - Added a call to clear the template buffer when the docgen process
+         starts.  When running in verifier, this assures the buffer starts empty 
+         even if docgen is run several times in a row.
+6.5.5.2  docgen_system
+         - Updated copyright
+         - When selecting the generic packages to process, use R1401 instead of
+         R1405.  R1401 returns only the top-level packages directly under the
+         system.  The other packages are found via the normal recursive tra-
+         versal that finds all the child information.
+6.5.5.3  docgen_components
+         - Created this new function to factor out a large block of function-
+         ality into its own area.  Call this function from 
+         docgen_component_packages.
+         - TODO - note new GP traversal
+6.5.5.4  docgen_interfaces
+         - Created this new function to factor out a large block of function-
+         ality into its own area.  Call this function from
+         docgen_interface_packages.
+6.5.5.5  docgen_datatypes
+         - Created this new function to factor out a large block of function-
+         ality into its own area. Call this function from 
+         docgen_datatype_packages.
+6.5.5.6  docgen_packages
+         - Major overhaul of this function.  Prior to this work, the function
+         only looked for children packages and listed them.
+         - Now, when docgen is processing a package, it (in order):
+           o lists contained types
+           o lists contained functions
+           o lists contained EEs and their bridges
+           o create a subsection for contained classes and recursively traverse 
+             down the class' information, displaying it
+           o create a subsection for contained components and recursively 
+             traverse down each component's information, displaying it
+           o create a subsection for contained interfaces and recursively 
+             traverse down each interface's information, displaying it
+           o create a subsection for contained packages and recursively traverse 
+             down the package's information, displaying it
+6.5.5.7  docgen_load_project
+         - Calls the POP EE to load the model data into the execution instance
+         data that is running in verifier.               
+6.5.5.8  getContainerListForC_C
+         - Added support for finding a component parent who is a generic package
+         or another component (via PE_PE)
+6.5.5.9  getContainerListForEP_PKG
+         - Added support for finding a package parent who is a generic package
+         or component
+     
+6.5.6  Instance Reference Data Types
+6.5.6.1  There is a set of inst_ref types for the elements in the metamodel 
+         itself.  These are used as parameters to the docgen functions and are
+         a key part of the "model-based model compiler" nature of docgen.  These
+         types are now stored in their own data type package.  They are non-
+         standard in that they do not have graphics like datatypes typically do.
+6.5.6.2  When the "Publish References" action is used, inst_ref types are placed
+         at the component (domain) level.
+                                  
+6.5.7  Document generation templates
+6.5.7.1  Clean up XML output around figures.  In t.figurebegin.xml, there was an
+         opening "<para>" tag.  This tag is not needed and causes an unbalanced 
+         paragraph in the XML output when running docgen in verifier.  It does 
+         not appear in the generated t.figurebegin.h, meaning someone already 
+         found the bug running docgen.exe and fixed the generated code.
+6.5.7.2  Hence, the .h versions of the docgen templates are all changed to use 
+         the new bridge naming. 
+     
+6.6  Testing support
+6.6.1  Created a sample model [6] to use for manual testing of docgen inside
+       Verifier as well as for JUnit testing.
+6.6.2  Added JUnit test for this GP only test model.
+       
+                   
+7. Implementation Comments
+--------------------------
+7.1  Other updates
+     Added attributes to TE_* and TM_* to support new MC modularization.  
+7.1.1  Extended External Entity.  Added attributes: Name, Key_Lett, Descrip
+7.1.2  timer.  Added attributes: scope, event_name
+7.1.3  Changed conditionality of R2085 between Extended Component and Extended
+         External Entity to conditional.  The end result is:
+             TE_EE[*] --- R2085 --- [0..1]TE_C
+ 
+
+8. Unit Test
+------------
+8.1  Process models that contain generic packages only. Display appropriate HTML
+     output.
+  _- Create GPS Watch sample model
+  _- Create Microwave Oven sample model
+  _- Run "Create documentation" on GPS Watch
+  _R GPS Watch HTML document pops up with no broken images and valid text
+  _- Run "Create documentation" on Microwave Oven
+  _R Microwave Oven HTML document pops up with no broken images and valid text
+  _- Delete both projects
+  
+8.2  Process models that contain specific packages only. Display appropriate 
+     HTML output. (Manual test)
+  _- Create or import a model with only specialized packages.  One of the models
+     under <CVS>/Models_SF is probably a good place to look.
+  _- Run "Create documentation" on GPS Watch
+  _R HTML document pops up with no broken images and valid text
+     
+8.3  Process models that contain a mixture of generic and specific packages.
+     Display appropriate HTML output. (Manual test)
+  _- Continue this next test using the model from 8.2
+  _- Open it and add a (Generic) Package
+  _- In the package add a component
+  _- Add some data inside the component
+  _- Run "Create documentation" on the model
+  _R HTML document pops up with no broken images and valid text
+      
+9. Code Changes
+---------------
+Branch name: Review-dts0100632985 (To be merged to HEAD)
+
+com.mentor.nucleus.bp.core/sql/ooaofooa_hierarchy.pei.sql
+
+com.mentor.nucleus.bp.core.test/src/(default package)/CoreTestSuite2.java
+com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test.ui/
+    DocGenTest.java
+
+
+com.mentor.nucleus.bp.docgen/src/com.mentor.nucleus.bp.docgen.generator/
+    Generator.java
+com.mentor.nucleus.bp.docgen/plugin.xml
+
+com.mentor.nucleus.bp.mc/src/com.mentor.nucleus.bp.mc/AbstractNature.java
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+
+################################################################################
+Branch name: MC-C (Standalone branch, NOT merged to HEAD.  Record of touched files.)
+com.mentor.nucleus.bp.core/src/docbook/t.documentbegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.documentend.h
+com.mentor.nucleus.bp.core/src/docbook/t.figure.h
+com.mentor.nucleus.bp.core/src/docbook/t.figurebegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.figureend.h
+com.mentor.nucleus.bp.core/src/docbook/t.image.h
+com.mentor.nucleus.bp.core/src/docbook/t.link.h
+com.mentor.nucleus.bp.core/src/docbook/t.listbegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.listend.h
+com.mentor.nucleus.bp.core/src/docbook/t.listitembegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.listitemend.h
+com.mentor.nucleus.bp.core/src/docbook/t.paragraph_begin.h
+com.mentor.nucleus.bp.core/src/docbook/t.paragraph_end.h
+com.mentor.nucleus.bp.core/src/docbook/t.paragraph.h
+com.mentor.nucleus.bp.core/src/docbook/t.plaintext.h
+com.mentor.nucleus.bp.core/src/docbook/t.programlistingbegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.programlistingend.h
+com.mentor.nucleus.bp.core/src/docbook/t.section_begin_no_abstract.h
+com.mentor.nucleus.bp.core/src/docbook/t.section_begin.h
+com.mentor.nucleus.bp.core/src/docbook/t.section_end.h
+com.mentor.nucleus.bp.core/src/docbook/t.tablebegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.tablebodybegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.tablebodyend.h
+com.mentor.nucleus.bp.core/src/docbook/t.tableend.h
+com.mentor.nucleus.bp.core/src/docbook/t.tableentrybegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.tableentryend.h
+com.mentor.nucleus.bp.core/src/docbook/t.tableheadbegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.tableheadend.h
+com.mentor.nucleus.bp.core/src/docbook/t.tablerowbegin.h
+com.mentor.nucleus.bp.core/src/docbook/t.tablerowend.h
+com.mentor.nucleus.bp.core/src/xtumlmc_schema_350.sql
+com.mentor.nucleus.bp.core/src/xtumlmc_schema.sql
+com.mentor.nucleus.bp.core/gen/docbook/t.figurebegin.xml
+com.mentor.nucleus.bp.core/gen/docbook_h/t.documentbegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.documentend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.figure.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.figurebegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.figureend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.image.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.link.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.listbegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.listend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.listitembegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.listitemend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.paragraph_begin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.paragraph_end.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.paragraph.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.plaintext.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.programlistingbegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.programlistingend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.section_begin_no_abstract.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.section_begin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.section_end.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tablebegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tablebodybegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tablebodyend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tableend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tableentrybegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tableentryend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tableheadbegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tableheadend.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tablerowbegin.h
+com.mentor.nucleus.bp.core/gen/docbook_h/t.tablerowend.h
+com.mentor.nucleus.bp.core/gen/HOWTO Create docgen exe.txt
+com.mentor.nucleus.bp.core/gen/LOG_bridge.c
+com.mentor.nucleus.bp.core/gen/ooaofooa_LOG_bridge.c
+com.mentor.nucleus.bp.core/gen/ooaofooa_T_bridge.c
+com.mentor.nucleus.bp.core/gen/README.txt (Removed)
+com.mentor.nucleus.bp.core/gen/sys_user_co.c
+com.mentor.nucleus.bp.core/gen/T_bridge.c
+com.mentor.nucleus.bp.core/libsrc/POP.java
+com.mentor.nucleus.bp.core/libsrc/T.java
+com.mentor.nucleus.bp.core/META-INF/MANIFEST.MF
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/DocGen/
+    DocGen.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Reference Data Types/Instance Reference Data Types.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/MC/
+    MC.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    MCfunctions/MCfunctions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Translation Extensions/Extended External Entity/
+    Extended External Entity.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Translation Extensions/timer/timer.xtuml
+com.mentor.nucleus.bp.core/.classpath
+com.mentor.nucleus.bp.core/generate.xml
+com.mentor.nucleus.bp.core/plugin.properties
+
+End
+---
+
+$Log: dts0100632985.int,v $
+Revision 1.5  2012/06/12 18:00:46  kbrown
+job:dts0100632985
+Updated INT for review minutes.
+
+Revision 1.4  2012/06/11 18:26:07  kbrown
+job:dts0100632985
+updates.
+
+Revision 1.3  2012/06/11 18:22:59  kbrown
+job:dts0100632985
+updates.
+
+Revision 1.2  2012/06/11 16:02:04  kbrown
+job:dts0100632985
+Nearly complete INT.
+
+Revision 1.1  2012/06/07 21:09:48  kbrown
+job:dts0100632985
+Partially complete INT.

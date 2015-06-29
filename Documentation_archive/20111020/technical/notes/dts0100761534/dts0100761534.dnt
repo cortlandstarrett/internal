@@ -1,0 +1,189 @@
+========================================================================
+
+File:      $RCSfile: dts0100761534.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+BridgePoint compare functionality is not available in SVN
+
+
+1. Abstract
+-----------
+Error message shows when comparing xtUML file revisions in SVN. 
+
+
+2. History
+----------
+This design note was reviewed twice.  The first time it was reviewed the 
+structure Difference View issue was not decided how to proceed. section 7
+The Second review the issue is decided to be postponed for later, there are 
+Two workaround for it and will be mentioned in the release notes and there's 
+another issue is raised to address the remaining part of the problem [4].   
+  
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100761534
+[2] ClearQuest DEI dts0100776602
+    Move BridgePoint to EMF
+[3] ClearQuest DEI dts0100566745
+    "ECore Import/Export broken in 2.1.1"
+[4] ClearQuest DEI  dts0100796100    
+    "structural view isnt properly populated In case of SVN compare"
+[5] ClearQuest DEI dts0100796919   
+    "Test BridgePoint compare functionality in SVN (Text and Structure diffrence 
+    views)"
+    
+    
+4. Background
+-------------
+None
+
+
+5. Analysis
+-----------
+5.1 Steps to reproduce the issue 
+_- Right click on a project under Subversion control that has some model
+   differences with the repository
+_- Select Compare With > Latest from Repository
+_R A file compare editor opens showing changed files
+_- Open the models subtree and locate an xtuml file
+_- Double click to open
+_R ERROR: Dialog opens 'There was an error loading the model'. 
+  Details: 'Error while retrieving from repository'
+
+Note that the previous steps work without error in CVS.
+
+
+5.2 Two possible solutions have been considered.  The first is try to migrate 
+    the tool to support EMF.  If this was done, the EMF framework would take 
+    over the compare functionality.  The second is simply fixing the existing 
+    functionality.
+
+5.2.1 Getting EMF compliant functionality:
+      There is a separate issue that has investigated EMF support [2].  
+      Investigation has determined that there are no easy paths to EMF.  It 
+      appears it can not be done without the full migration of the 
+      metamodel.  The EMF compare infrastructure will likely expect a content 
+      provider in the form of a tree visitor.
+      Provided we create such a provider that gives the EMF compare what it 
+      expects we should be able to integrate with it.
+      In fact, that is pretty much the way the existing compare tool works.
+      Another approach for this that could be used is exporting the xtUML 
+      model to ecore, then compare as in "BridgePoint ECoreExport Wizard".  
+      However this will not be ideal plus  this functionality currently 
+      stopped working [3]. 
+
+5.2.2 Fixing the existing behavior:
+       The failure is found to occur at the ModelCacheManager$ModelMapEntry
+       when it fails to get a StreamContentAccessor from the passed input.
+       org.eclipse.team.svn.ui.compare.ResourceCompareInput$
+       ResourceElement.getContent() is the method needed in SVN Case
+       
+5.3 We shall take the approach described in 5.2.2 (fix existing functionality).
+
+
+6. Design
+---------
+6.1 The ResourceElement instance has null for its AbstractGetFileOperation 
+    field.  The op attribute of the ResourceCompareInput is set after an 
+    open event. We are trying to load the model well before the open event.  
+    This works in the sync view because before our code is hit, an open must 
+    occur.  With the SVN compare editor, the open event is created well after 
+    our code.
+   
+6.1.1 When creating model map entry if the object is not loaded it returns 
+      null ,then at the getModel() method only add the entry to the models map 
+      when the entry returned is not null.
+      
+6.1.2 For the ModelMapEntry class a new attribute was added to define 
+      the input object. Instead of depending on the loadModel() method
+      to add the entry it is set directly.  The loadModel() function is 
+      modified to return boolean instead of void.  It returns false in case 
+      input contents were null instead of reporting an error message.
+       
+ 
+7. Design Comments
+------------------
+7.1 The above changes makes the Text Compare portion work, but the StructureDiff
+    view area (top right) still does not work on first open.  
+    
+    This has to do with the way SVN displays the differences (rather than using 
+    the synchronize view, they use a dialog).  We have no good way to listen for 
+    the event that SVN is creating for the structure comparison pane.
+
+    When JDT is checked, the bug is present in JDT as well.
+
+    There are two workarounds and that is as follows:    
+	- If there are more than one model files changed
+	_- Double click a difference
+	_R The structure compare says Cannot Compare Structure
+	_R The text compare works appropriately
+	_- Double click another difference and then double click the previous 
+	   difference
+	_R Everything works appropriately
+	
+	- If there is only one file changed
+	_- Compare the xtuml in navigator instead of a parent folder
+
+    Another work around is:
+     _- use Team > Synchronize with repository rather than  
+        compare with latest.  
+    Of course this does not allow you to compare with different revisions, but 
+    it helps a bit.
+  
+  
+7.2 It is decided that the structural view at this time is not of the highest 
+    priority, there are some workarounds that will be documented in the release 
+    notes.  It is not critical to the bug.  The textual compare is enough.
+    Especially if we have a decent workaround or two.  These workarounds will 
+    be documented in the release notes.
+
+7.3 An issue is raised to capture the investigations related to this 
+    remaining part [4].    
+
+7.4 A new manual test [5] is added to test this issue.
+
+
+8. Work Required
+----------------
+stated in the design section 
+
+
+9. Unit Test
+------------
+9.1 Run Manual Test in [5]
+
+9.2 Run JUnit tests 
+
+End
+---
+
+$Log: dts0100761534.dnt,v $
+Revision 1.5  2011/09/01 16:02:04  hkhaled
+job:dts0100761534
+committing modifications to dnt after the re-review
+
+Revision 1.4  2011/08/29 18:19:00  hkhaled
+job:dts0100761534
+committing implementation note
+
+Revision 1.3  2011/08/16 12:57:08  rmulvey
+job:dts0100761534
+Corrected grammar during pre-review.
+
+Revision 1.2  2011/08/16 09:54:04  hkhaled
+Job:dts0100761534
+Modified Dnt
+
+Revision 1.1  2011/08/16 09:52:34  hkhaled
+Job:dts0100761534
+Dnt
+

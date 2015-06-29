@@ -1,0 +1,226 @@
+========================================================================
+
+File:      $RCSfile: i714.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:29:46 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+EDGE integration Extension Points
+
+Abstract
+--------
+This note describes how integration with installed EDGE components will be
+performed when a new BridgePoint project is created, so that they can install
+their required resources and natures.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 714
+
+Background
+----------
+Installed EDGE components need to create resources in an xtUML project. Rather
+than force the user through a series of complicated setup procedures or disjoint
+wizards, we declare some chained extension points. An EDGE component shall
+extend one of these points if it needs to do its own setup on a newly created
+xtUML project.
+
+It is possible that other arbitrary EDGE (or even non-EDGE) components need to
+be given control during Project creation. This implies that a generic approach
+is required. No attempt is made to address this with this work.
+
+Analysis
+--------
+The proposed solution differs slightly from that proposed in the issue[1].
+
+An extension point shall be declared by the EDGE framework that allows model
+compilers to declare their presence in the tool suite:
+
+   <extension-point 
+         id="model-compilers" 
+         name="xtUML Model Compilers" 
+         schema="schema/com.mentor.nucleus.bp.core.mcs.exsd"/>
+
+The schema shall define required string attributes named "class" and "name". An
+example extension is therefore:
+
+   <extension point="com.mentor.nucleus.bp.core.model-compilers" 
+           class="com.mentor.nucleus.modelcompiler.3020.NewProjectWizard"
+           name="MC-3020 Model Compiler"/>
+
+Where more than one model compiler is declared as an extension, the name
+attribute shall be used to present the user with the choice of model compilers
+found.
+
+The interface expected to be supplied by the specified class shall be:
+
+public WizardPage[] getPages(IProject)
+
+If the method is not found on the specified class, an error shall be logged each
+time the new Project procedure is invoked by the user. No error will be logged
+if no extensions to this point are found.  If the method is found, it shall be
+invoked passing the newly created and fully initialized (as far as BridgePoint
+is concerned) IProject instance. The pages returned from the above call shall be
+added after the BridgePoint Model Builder new project wizard pages, so that as
+the user pushes the 'Next' button, they will be taken seamlessly into the
+configuration for the model compiler(if any). The pages returned shall be added
+to the list of pages to be presented to the user at the time the selected model
+compiler becomes known, i.e. when a model compiler is selected by the user (see
+below) or when it is known that only one model compiler exists.
+
+In all cases, the specified interface shall be invoked just in time using the
+java/Eclipse reflection mechanisms. This shall ensure that class load time
+penalties are only incurred on plugins that are actually selected by the user.
+
+It shall be legal to return an empty array of pages, in which case no additional
+pages shall be shown to the user and the wizard 'Finish' button shall be enabled
+after the necessary user information is supplied to the current component. If
+more than one model compiler extension is found, a wizard page consisting of a
+single list box containing the names of the model compilers found shall be
+shown. The user shall be permitted to make exactly one selection. The getPages()
+call described above shall then be performed on the selected model compiler.
+
+An additional extension point, "code-builders" shall also be provided. This
+shall be identical to the extension point above. An example extension point is:
+
+   <extension point="com.mentor.nucleus.bp.core.code-builders" 
+           class="com.mentor.nucleus.builder.NewProjectWizard"
+           name="Nucleus Code Builder"/>
+
+If more than one code builder is found, a chooser identical in behavior to the
+one described above for model compilers shall be presented. This chooser shall
+have the same behavior for code builders as the behavior described above for
+model compilers. The user selected code builder shall have the
+getPages(IProject) method invoked in exactly the same manner as described above
+for model compilers. 
+
+When all wizard pages have been completed by the user, the performFinish()
+method shall be called on all plugins that have been invited to contribute pages
+to the wizard, even those which returned no pages. This allows for plugins that
+can perform their initialization without interacting with the user.
+
+No alteration of the users workspace shall be performed until the
+performFinish() method is called. In other words all user choices up to that
+point shall be cached and acted on only at the end. This allows the user to
+change their mind about which model compiler they want etc.
+
+Only the components actually selected by the user shall have their
+performFinish() method called, even if pages were previously contributed. For
+example, the user chooses the MC-2020 model compiler and progresses through the
+setup pages(if any). They then back up through the wizard pages and instead
+select the MC-3020 model compiler. When the user finally clicks Finish, only the
+MC-3020 shall perform the finish actions, even though data may have been cached
+by the MC-2020 Model compiler.
+
+Each set of contributed wizard pages shall have the same appearance
+(specifically the top right hand icon, all other look and feel is controlled by
+the Eclipse Wizard supertype) as they would have running natively within their
+own new project wizard. This gives the user useful feedback about their position
+in the toolchain as they move seamlessly through new project pages.
+
+Only one nature can define the appearance of the project in the Resource
+Navigator. Downstream toolchain components shall add their nature as the last in
+the list. This has the effect of making the first member of the toolchain the
+one used to define the appearance of the project in the tree.
+
+Work Required
+-------------
+i714.1   Define required extensions
+         Repeat for the two proposed extensions. This data shall be added to the
+         EDGE framework product plugin.xml file. (Tiger team to modify source
+         modules supplied from Mobile AL.)
+i714.1.1 Declare extension point
+i714.1.2 Declare schema
+
+i714.2   Declare the getPages interfaces
+         Note this work includes refactoring the resource creation functionality
+         so that downstream tools just decorate the resource tree and do not
+         attempt to recreate existing resources.
+i714.2.1 MC-3020
+i714.2.2 Nucleus Code Builder (Code Builder team to make required modifications)
+
+i714.3   Create the Component Chooser pages
+         Repeat for the two wizards that need them; BridgePoint and MC-3020
+
+i714.4   Search for compatible components
+i714.4.1 Search for Model Compilers (BridgePoint)
+i714.4.2 Search for Code Builders (MC-3020)
+
+i714.5   Call performFinish on every component selected by the user
+
+i714.6   Update the workspace on performFinish
+i714.6.1 xtUML (already done under issue i561)
+i714.6.2 MC-3020 (in progress under issue i654)
+i714.6.3 Nucleus Code Builder (Code Builder team to make required modifications)
+
+i714.7   Add nature at the end of the list
+i714.7.1 BridgePoint (Nothing to do)
+i714.7.2 MC-3020 (add to requirements for i614)
+i714.7.3 Nucleus Code Builder (Code Builder team to make required modifications)
+
+Acceptance Test
+---------------
+- All tests must be performed with other components installed and not installed.
+- Test the cases where no pages are contributed.
+- Test the cases where the user backs up through the wizard.
+- Test the cases where more than one suitable component is declared.
+- Test the cases where one suitable component is declared.
+- Test the cases where no suitable components are declared.
+
+End
+---
+
+$Log: i714.ant,v $
+Revision 1.1  2009/09/03 18:29:46  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:26  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.44.1  2008/12/31 16:10:35  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2005/03/01 18:48:12  campbell
+Job: 714
+Renamed containing folder.
+
+Revision 1.3  2005/02/28 17:45:49  campbell
+Job: 714
+Changed projtech ids to mentor standard.
+
+Revision 1.2  2005/02/28 17:43:13  campbell
+Job: 714
+Addressed review issues.
+
+Revision 1.1  2005/02/25 22:02:37  campbell
+Job: 714
+Renamed from DNT.
+
+Revision 1.3  2005/02/22 17:08:45  campbell
+Job: 714
+Added example extension. Miscellaneous other updates.
+
+Revision 1.2  2005/02/18 21:02:35  campbell
+Job: 714
+Change extension to specify from the point of view of the declaring
+plugin. Clarified that multiple model compilers are supported by this
+design.
+
+Revision 1.1  2005/02/18 19:49:31  campbell
+Job: 714
+Introduced.
+

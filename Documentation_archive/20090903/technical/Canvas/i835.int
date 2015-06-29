@@ -1,0 +1,169 @@
+========================================================================
+
+File:      $RCSfile: i835.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Error when opening diagram editor
+
+Abstract
+--------
+
+This document describes the solution to the problem that caused an error when 
+opening diagram editors.
+
+History
+-------
+
+final i835-041305-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 835
+
+Background
+----------
+
+The Class Diagram editor gave an error while opening in the following scenarios:
+_- Load a model in Tiger.
+_- Select Search->File Search from eclipse menu
+_- Make a search such that search results are shown in the Search view.
+_- Open Class Diagram for any subsystem
+_R A dialog pops up stating "An error has occurred.  See error log for details".
+
+The log has the following error message:
+java.lang.IllegalArgumentException: Attempted to beginRule: 
+                        com.mentor.nucleus.bp.ui.canvas.CanvasDummyIFile@c779bc, 
+                        does not match outer scope rule: 
+                        com.mentor.nucleus.bp.ui.canvas.CanvasDummyIFile@c779bc
+	at org.eclipse.core.internal.runtime.Assert.isLegal(Assert.java:58)
+	at org.eclipse.core.internal.jobs.ThreadJob.illegalPush(ThreadJob.java:106)
+	at org.eclipse.core.internal.jobs.ThreadJob.push(ThreadJob.java:200)
+	...
+	...
+	...
+	
+The same problem is caused in the following scenario:	
+_- Load the model 'ooaofooa' in Tiger.
+_- Open Class Diagram for subsystem 'Subsystem'.
+_- Select Search->File Search from eclipse menu.
+_- Search 'Ooaofooa' in the selected Project.
+_R The Search Dialog does not disappear.
+_R The same error is reported.
+
+Eclipse search plugin has a small bug in its code, which executes workspace
+runnable to add markers against search results, even if size of matched result
+array is zero. This results in execution of the EditorInput runnable in case of 
+every open editor. The exception occurs before executing the runnable when
+workspace run method does pre-work involving invocation of IFile methods related
+to scheduling rules.
+
+Design
+------
+
+i385.1  Update CanvasDummyIFile
+
+Since CanvasEditor class extends FileEditorInput, canvas uses instances of 
+CanvasDummyIFile class (that implements IFile) as the file used by 
+FileEditorInput. This file is created for diagrams other than the Domain Package 
+Diagram.
+
+The implementation of 'contains(ISchedulingRule rule)' method in the 
+CanvasDummyIFile class always returned false, which causes the above error 
+message thrown while checking scheduling rule even for the same CanvasDummyIFile 
+instances. This method shall be updated to return true in the case that the 
+'rule' is the same as the current instance (i.e. 'this').
+
+Also update the ‘isConflicting(ISchedulingRule rule)’ method to add the same
+Check.
+
+**Note**
+Implementing IFile interface and providing empty functions in it, does not seem
+to be a permanent solution, as many unknown problems (like this one) may 
+appear later as well. It is, hence, suggested that a separate issue should be 
+raised to take up a different strategy for providing dummy file to 
+FileEditorInput.
+
+Work Required
+-------------
+
+i385.1       Update contains(ISchedulingRule rule) and 
+             isConflicting(ISchedulingRule rule) methods in the 
+             CanvasDummyIFile.java as specified in the design section.
+             
+             Also raise a new issue to provide a different implementation for
+             providing dummy file to FileEditorInput.  
+             
+Implementation Comments
+-----------------------
+
+- com.mentor.nucleus.bp.ui.canvas.test/plugin.xml has been modified to add a
+  dependency to eclipse search plugin used in the automated unit tests.  The
+  compile target classpath is also updated with the search plugin path 
+  in generate.xml.
+    
+Unit Test
+---------
+
+_- Load the model 'ooaofooa' in Tiger.
+_- Open Class Diagram for subsystem 'Subsystem'
+_- Select Search->File Search from eclipse menu
+_- Search 'Ooaofooa' in the selected Project
+_R Search results are shown in the Search view.
+_R Search Dialog disappears.
+_R No error is recorded. 
+
+Code Changes
+------------
+- com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+                                                          CanvasDummyIFile.java
+
+- com.mentor.nucleus.bp.ui.canvas.test/src/CanvasTestSuite.java
+- com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+                                       I835OpenDiagramEditorWithSearchView.java
+- com.mentor.nucleus.bp.ui.canvas.test/generate.xml                                    
+- com.mentor.nucleus.bp.ui.canvas.test/plugin.xml                                    
+                                       
+
+End
+---
+
+$Log: i835.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.38.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/04/13 19:03:34  greg
+Job: 835
+Ready for promotion
+
+Revision 1.3  2005/04/13 16:59:29  siddique
+Job:835
+Added code changes and implementation comments section.
+
+Revision 1.2  2005/04/13 14:31:12  babar
+Job:835
+Added reason of why search manager attempts to
+add annotations
+
+Revision 1.1  2005/04/13 12:59:59  siddique
+Job:835
+Introduced.
+

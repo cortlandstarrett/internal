@@ -1,0 +1,276 @@
+========================================================================
+
+File:      $RCSfile: dts0100639694.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Out of bounds in operation when accessing elements of a variable sized array 
+passed by reference
+
+
+1. Abstract
+-----------
+When an operation has a passed by reference argument of a variable-length array, 
+if this operation tries to assign value to one of the array elements,
+an "out of bound" error occurs even if the index is in the array range.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100639694
+[2] Bugzilla item 3085 - Establish fixed array lengths.
+	http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=3085
+[3] BridgePoint Software Requirements Specification 
+	<cvs>://Documentation/external/requirements/FLA.SRS.txt
+[4] Design note i3085-01.dnt
+	describes how fixed-length arrays will be supported in BridgePoint.
+	<svn>://Documentation_archive/20080109/i3085-01.dnt
+[5] ClearQuest DEI dts0100646047 - AOOB error when resizing variable-length 
+	array
+[6] ClearQuest DEI dts0100649971 - fixed length array can be resized
+
+[7]	ClearQuest DEI dts0100649974 - ".length" operator (in OAL) returns zero 
+		value for the size of variable-length array
+[8]	ClearQuest DEI dts0100649975 - ".length" Operator returns argument array 
+		size instead of  passed array size
+[9]	ClearQuest DEI dts0100649976 - variable view shows extra elements of the 
+		passed array
+[10] ClearQuest DEI dts0100649977 - undetected AOOB error in parser
+[11] ClearQuest DEI dts0100649979 - undetected AOOB for fixed array in verifier
+[12] ClearQuest DEI dts0100650072 - fixed length array can be passed in 
+		different sized fixed-length array operation argument
+
+4. Background
+-------------
+4.1 The Design note that describes how fixed-length arrays will be supported in
+BridgePoint (i3085-01.dnt) stated that [3]6.1.1.5 :
+'Dimensions' class shall carry an integer attribute; 
+'elementCount'.A value of 0 indicates that the array is dynamically 
+sized.  Numeric values of 1 or more indicate that it is a fixed-size array".
+
+i.e identifying whether an array has fixed or dynamic size will be done by 
+checking the elementCount value in the _Dimension_ instance related to it.
+
+
+5. Analysis
+-----------
+5.1 Throughout this analysis, the two options "Enable Fixed-Length Arrays" and
+"Enable Dynamically-Sized Arrays" (at "preferences->BridgePoint) are enabled.
+The functionality of these two options is described in detail in [3]FLA-12 and 
+[3]FLA-13. The raised issue only appears when both options are enabled i.e. 
+no problem happens when only of them is enabled or both are disabled.
+Note: by default these options are enabled).
+ 
+5.2 If an operation has a variable-length array argument and during its call 
+a fixed-length array is passed by reference as that argument,  the verifier 
+triggers an "array out of bounds" error upon trying to write to one of the array 
+elements (index within range of the array size) inside the body of the operation.
+ 
+5.3 Normally, upon the attempt to write to an array element, the verifier does 
+the following:
+- checks if the array is fixed size or dynamic.
+- If it's a fixed-size array, the verifier will check whether the array index 
+is within bounds or not.
+- If it's dynamic and the index is out of its bounds, the Verifier will expand 
+the array size.
+ 
+5.4 The error described in 5.2 appears during the check made for the array type 
+(fixed - Dynamic). During this check and if the argument is a "dynamic" array 
+then the array should be interpreted  as a "dynamic array". This does not happen 
+as the verifier reads the array as fixed size array with zero length 
+(elementCount attribute set to zero).
+
+5.5 The verifier reads a dynamic-length array as fixed, because it checks if 
+'elementCount' value equals -1, which is wrong.
+ 
+
+6. Design
+---------
+6.1 Based on 4.1, the verifier needs to compare the Dimension.'elementCount' 
+value with zero, to check if the array is fixed or dynamically sized.
+
+6.1.1 In bp.core project, ooaofooa::Value::AER::GetRuntimeValue
+operation. line 18
+
+	Before:
+		if ( (index < 0)  or  (fixedSize != -1 and fixedSize <= index) 
+
+	After:
+		if ( (index < 0)  or  (fixedSize != 0 and fixedSize <= index) 
+
+	the condition statement (fixedSize != -1) is replaced by (fixedSize != 0).
+
+6.2 Search the meta-model for other locations that may have a similar problem 
+to 6.1 and fix them in the same way.
+
+7. Design Comments
+------------------
+7.1  The fix for this issue also resolves [5].  Therefore [5] should be tested 
+and marked as resolved with the promotion of this issue.
+
+7.2 As a consequence of fixing [5], a fixed-length array can be resized as 
+ following:
+	- create an operation with variable-length array argument. 
+	- pass by reference the fixed-length array to this operation. 
+	- Write in the argument array element with index equals (m-1). The size of
+	 the fixed-length array equals m now.
+A separate issue has been raised to resolve this problem [6].
+
+7.3 The following problems were discovered during analysis of this issue and 
+separate issues have been raised for them (as noted below):
+
+7.3.1 The ".length" operator (in OAL) returns zero value for the size of 
+variable-length array. A separate issue has been raised to resolve this 
+problem [7].
+
+7.3.2 Inside an operation body with fixed-length array argument sized by n, the 
+".length" operator returns the value of argument array size (which is n), 
+whether the size of the passed array is bigger or smaller than the array 
+argument size, and whether the passed array type (fixed or dynamically sized). 
+A separate issue has been raised to resolve this problem [8].
+
+7.3.3  During model execution, inside an operation body that is passed a 
+fixed-length array argument, the variables view always shows the size of the 
+passed array length (fixed or dynamically sized) even it is bigger than the 
+array argument size. A separate issue has been raised to resolve this 
+problem [9].
+
+7.3.4 Inside an operation body has fixed-length array argument sized by n,
+the parser does not detect an AOOB error when writing in an element of the array
+argument with constant index equals (n+m), where m is positive integer value.
+This violate [3]FLA-11 which states  "The OAL editor in Builder detects 
+out-of-bounds array accesses for fixed-length dimensions for constant index 
+expressions". A separate issue has been raised to resolve this problem [10].
+
+7.3.5 The parser displays an AOOB error when reading one of the fixed-length 
+array elements with constant out-of-bounds index. But when using variable 
+out-of-bounds index, the verifier does not triggers AOOB error. A separate issue 
+has been raised to resolve this problem [11].
+
+7.3.6 Fixed-length array can be passed in different sized fixed-length array
+operation argument. Also as a consequence of fixing [5], if a fixed-length array 
+(with size equals n) is passed by reference in fixed-length array argument (with 
+size equals m) where m > n, writing in the argument array element with
+index equals to (m -1), cause an expansion in the passed fixed-length array 
+size. A separate issue has been raised to resolve this problem [12].
+
+
+8. Work Required
+----------------
+All work is outlined in the design section.
+
+9. Unit Test
+------------
+9.1 The model is referenced by the issue should run without generating errors.
+	_- Create a new xtUML project
+	_- Right Click on the project name, select import->other->BridgePoint 
+	 model, and choose the model referenced by [1] (fft.xtuml).
+	_- Launch Verifier 
+	_- Execute TestCase::run()
+	_R Console view should not display any AOOB errors.
+	
+9.2 Create a model to test resizing variable length array
+	_- Create a new xtUML project
+	_- Right Click on the project name, select import->other->BridgePoint 
+  		model, and choose the model referenced by [5] (vla.xtuml).
+	_- Launch Verifier 
+	_- Execute TestClass::runTest()
+	_R Console view should not display any AOOB errors.
+	
+9.3 JUnit tests should run successfully. 
+
+End
+---
+
+$Log: dts0100639694.dnt,v $
+Revision 1.20  2010/01/18 17:40:24  nmohamad
+job:dts0100639694
+Addressing Review minutes..
+
+Revision 1.19  2010/01/18 14:09:39  nmohamad
+job:dts0100639694
+Add another unit test for resizing variable length array issue..
+
+Revision 1.18  2010/01/17 20:21:02  nmohamad
+job:dts0100639694
+vocabulary and alignment checking..
+
+Revision 1.17  2010/01/17 14:32:47  nmohamad
+job:dts0100639694
+fixing  points  7.2 and 7.3.6
+
+Revision 1.16  2010/01/17 14:16:27  nmohamad
+job:dts0100639694
+vocabulary fixing..
+
+Revision 1.15  2010/01/15 21:52:35  nmohamad
+job:dts0100639694
+vocabulary and alignment fixing..
+
+Revision 1.14  2010/01/15 21:47:17  nmohamad
+job:dts0100639694
+add the Design comments section..
+
+Revision 1.13  2010/01/15 17:26:35  nmohamad
+job:dts0100639694
+remove un-related statements with issue bug..
+
+Revision 1.12  2010/01/14 18:00:08  nmohamad
+job:dts0100639694
+testing version number
+
+Revision 1.11  2010/01/14 17:40:23  nmohamad
+job:dts0100639694
+fixing Documents references
+
+Revision 1.10  2010/01/14 17:37:04  nmohamad
+job:dts0100639694
+fixing Analysis section..
+
+Revision 1.9  2010/01/14 14:50:30  nmohamad
+job:dts0100639694
+update design section
+
+Revision 1.8  2010/01/14 14:18:42  nmohamad
+job:dts0100639694
+update design section
+
+Revision 1.7  2010/01/12 15:21:15  nmohamad
+job:dts0100639694
+Adding Background..
+
+Revision 1.6  2010/01/12 15:10:40  nmohamad
+job:dts0100639694
+More refining..
+
+Revision 1.5  2010/01/12 13:48:53  nmohamad
+job:dts0100639694
+Refining..
+
+Revision 1.4  2010/01/11 20:34:53  nmohamad
+job:dts0100639694
+Add  extra point in Analysis section (Fixed passed / Fixed Argument)
+
+Revision 1.3  2010/01/11 14:38:18  nmohamad
+job:dts0100639694
+Complete the design note (Analysis, Design and test sections)
+
+Revision 1.2  2010/01/05 04:30:13  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.1  2010/01/04 17:08:10  nmohamad
+job:dts0100639694
+Creating.. ( till Analysis section)
+

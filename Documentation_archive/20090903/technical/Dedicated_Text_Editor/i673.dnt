@@ -1,0 +1,522 @@
+========================================================================
+
+File:      $RCSfile: i673.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:29 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+No editor update when Data type renamed
+
+Abstract
+--------
+This document discusses the solution to the problem of renaming editors and 
+placeholder files for those model elements whose names are retrieved by 
+navigating to a different model element.
+
+History
+-------
+ final - i673-031505-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 673
+[2] Documentation/internal/technical/Dedicated_Text_Editor/i372.dnt
+
+Background
+----------
+This issue was raised based on the following observations:
+
+- If one tries to rename any of the sub-types of DataType (when the description 
+editor is open), the name of its placeholder file and its editor's title does 
+not change. 
+  
+- Certain model elements construct (derive) a part of their name from 
+attribute(s) of other model elements. In all such cases, opened editors and 
+placeholder files for such derived model elements do not update when the 
+attribute(s) of the source model element change.
+
+Analysis
+--------
+i673.1  Rename closes the opened editor 
+
+Referring to comment # 09 in Bugzilla, an open editor is closed when it’s 
+associated model element is renamed. This happens because the 
+EditorResourceChangeListener class does not filter out the ResourceDelta.REMOVED 
+event sent when a placeholder file is moved.
+
+i673.2  Rename sub-types of DataTypes
+
+Referring to the main comment in Bugzilla, the problem is caused because the 
+EditorListener class listens for changes of only those model elements which 
+actually have the changed value (e.g. the name attribute). The failure occurs 
+for those model elements that use a navigation chain to navigate to other 
+objects for retrieving their name. The rename fails (i.e. editor title and 
+placeholder file are not renamed) for the following model elements that use 
+attributes of other classes to get their name:
+
+. User Data Type         (S_UDT)   uses       S_DT.Name only
+. Enumeration Data Type  (S_EDT)   uses       S_DT.Name only
+. External Entity Event (S_EEEVT)  uses       S_EE.Name and S_EE.Key_Lett*
+. Event Ignored (SM_EVIGN)         uses       SM_EVT.Drv_Lbl and SM_STATE.Name 
+                                               and O_OBJ.Key_Lett*.                                         
+. Cant Happen (SM_CH)              uses       SM_EVT.Drv_Lbl and SM_STATE.Name
+                                               and O_OBJ.Key_Lett*.
+. State Machine Event (SM_EVT)     uses       O_OBJ.Key_Lett*.
+. Attribute Reference In Class (O_REF)  uses  O_OBJ.Name and O_ATTR.Name and 
+                                              R_REL.Numb.
+. Instance State Machine (SM_ISM)  uses       O_OBJ.Name
+. Class State Machine (SM_ASM)     uses       O_OBJ.Name
+
+(*) indicate that these attributes are required under certain conditions only.
+
+Design
+------
+
+i673.1  Rename closes the opened editor 
+
+After the resolution of the issue 372, a temporary fix to the problem was 
+provided. The fix checked that in case of the IResourceDelta.REMOVED event, the 
+editor should only be closed when IResourceDelta.MOVED_TO flag is not set.
+However, as part of this issue, it is required to update the 
+ResourceChangeListener class in the EditorListener.java to use resource 
+visitors in the ResourceChangeListener as recommended by the eclipse API. 
+
+i673.2  Renaming Editors and PlaceHolder files when model elements are renamed
+
+i673.2.1  Maintain Map of PlaceHolder files
+
+It is required to maintain information of all the created placeholder files in 
+a map. This map shall use ModelElementID as its key, and the following 
+information as its value (This information is made atomic by the 
+PlaceHolderFileProxy class as specified in section i673.2.2):
+
+. Reference of the created placeholder file.
+. The ModelElementID of the model element for which the placeholder file is 
+  created.
+. The ModelElementID of the required model element (See section i372.3.3 of [2]) 
+  of the original model element (if different).
+. The name of the model element.
+
+i673.2.1.1  Create PlaceHolderManager Class
+
+The placeholder files list shall be managed by the class PlaceHolderManager. The 
+class shall provide following methods:
+
+. public static void getDefaultInstance()
+  Return the singleton object of the class.
+
+. public IFile getPlaceHolderFile(ModelElementID modelElementId, String type,
+                                                        Object requester)
+  Returns an instance of IFile, representing a type of placeholder, against a 
+  ModelElementID. This method also registers the requester for reference 
+  counting. The returned file may not actually exist.
+                                                          
+. public void releasePlaceHolderFile(ModelElementID modelElementId, String type,
+                                                        Object requester)
+  This method notifies the manager that the requester has released the 
+  placeholder file so the manager may delete it, if possible (see section 
+  i673.2.2 for details). 
+
+i673.2.2  PlaceHolderFile life cycle
+
+The PlaceHolderManager class now serves as the single interface to provide 
+PlaceHolder files to other classes. A Placeholder file has a certain life 
+cycle based on which it is required to implement the IFile interface (see design 
+section i673.2.2.1). The life cycle is defined as follows:
+
+- Physical Lifecycle
+  (Physical refers to an instance of IFile whose underlying file exists)
+  - A physical file is created when:
+    . A marker is added to a file.
+    . Any other method of IFile is invoked that requires existence of the file.
+
+  - A physical file is deleted when:
+    . There are no more markers in the file.
+    . The associated IFile entry is removed from the placeholder's map.
+
+- Virtual Lifecycle
+  (Virtual refers to an instance of IFile whose underlying file may not exist)    
+  - An instance of PlaceHolderFileProxy is created and added in the map when:
+    . The getPlaceHolderFile() method of the PlaceHolderManager class is 
+      called.
+    . A Domain is added to the workspace that has associated Placeholder 
+      files present in its root folder.
+
+  - An Instance of PlaceHolderFileProxy is removed from the map when:
+    . The respective ModelElement or Model is deleted.
+    . The respective Project is closed and there no markers associate with it.
+    . All requester objects that had a reference to the instance of placeholder 
+      have released it and there are no markers left.
+
+i673.2.2.1  Implementation of IFile Interface, PlaceHolderFileProxy
+
+A wrapper class PlaceHolderFileProxy is created that implements the IFile 
+interface. The purpose of this class is to prevent certain operations such as 
+move, copy, delete to be directly performed on the underlying file.
+ 
+The method deleteMarkers(String type, boolean includeSubtypes, int depth) is 
+implemented to delete the file if there are no markers against the IFile. To 
+handle scenarios where a delete file action may fail due to a locked resource 
+tree, the deletion of the file is done in a separate thread. The thread then 
+schedules the file deletion for the time when the resource tree is unlocked.
+
+i673.2.3  Create PlaceHolderManager.PlaceHolderStateSynchronizer class
+This class implements ModelChangeListener to maintain the state and lifecycle 
+(as described under i673.2.2 ) of placeholder files. This class does not listen 
+to resource changes as the Ooaofooa is already translating them into meaningful 
+model change events.
+
+i673.2.3.1  Handle ModelDelta.NEW event
+
+This event is used to populate the map for pre-existing placeholder files. This 
+shall be done when a NEW event is received for a Domain whose Ooaofooa has 
+a valid resource path.
+This event is handled when a new Domain is added to the workspace having
+existing placeholder files. This can also happen when a closed project is 
+opened.
+
+i673.2.3.2  Handle ModelDelta.CHANGE event
+
+This class traverses through the PlaceHolder’s map, and updates the names of the 
+files (and the cached name) if the current name of a ModelElement doesn’t match 
+the last cached name. 
+Although we can listen to _all_ the change events that may affect the name of a 
+placeholder file, For optimization purposes some events can be filtered out.
+Filtering should be done by allowing only a subset of model elements that 
+affect the name of such model elements that can have a placeholder file. 
+Ideally this should have been generated, but for this issue a simpler approach 
+is considered. It has been verified manually (from the list given in Analysis 
+section i673.2) that all those classes that contribute to the name of a 
+placeholder file or editor, have a ModelElementAdapter.
+
+i673.2.3.3  Handle ModelDelta.DELETE event 
+
+For this event the class traverses through the PlaceHolder's map and removes 
+the entries that match either the primary/editable ModelElementID or 
+required ModelElementID of the source model element of the event.
+
+i673.2.3.4  Handle ModelDelta.DELETE_ALL event
+
+Removes all the entries from the PlaceHolder's map for a given model root.
+
+**Note** Renaming a placeholder file automatically updates the title of any 
+associated opened editors.
+
+i673.2.4  General code cleanup
+
+As per the new strategy to rename placeholder files and the availability of the 
+list of all placeholder files, the following classes are no longer needed and 
+shall be removed: 
+. PlaceHolder.java
+. EditorListenerData.java
+
+Also all classes that previously referenced the PlaceHolder class, shall be 
+modified to adhere to the new strategy.
+
+Work Required
+-------------
+i673.1       Update bp.ui.text/EditorListener.java as specified in the design 
+             section.
+
+i673.2  
+i673.2.1     Create bp.ui.text/PlaceHolderManager.java as discussed in the 
+             design section.    
+             
+i673.2.2
+i673.2.2.1   Create file PlaceHolderFileProxy.java as specified in the design 
+             section
+i673.2.2.2   Add the functionality in PlaceHolderFileProxy.java specified in the 
+             design section.
+
+i673.2.3     Make changes in EditorListener.java as specified in the design 
+             section and add the PlaceHolderStateSynchronizer class in 
+             PlaceHolderManager.java as described in the design section.
+             
+i673.2.4     Remove files:
+             . EditorListenerData.java
+             . IPlaceHolder.java
+             . PlaceHolder.java             
+            
+Unit Test
+---------
+_- Load Tiger and load ui.text.test/mdl/testDescrip1.mdl
+
+i673.UT.1  Rename Editor Tests
+
+i673.UT.1.1  Rename Tests for Description Editors
+(As specified in design section i673.2.3, renaming of editor implies that the 
+underlying placeholder file is also renamed)
+
+i673.UT.1.1.1  Rename Domain
+_-  Open the Domain Description Editor
+_-  Rename domain 'testDescrip1' to 'testDescrip1 New'.
+_R  The editor's title is updated as per new name.
+
+i673.UT.1.1.2  Rename Subsystem
+_- Open description editor for the subsystem named 'Test Subsystem'
+_- Rename 'Test Subsystem' to 'Test Subsystem New'
+_R The editor's title is updated as per new name. 
+
+i673.UT.1.1.3  Rename External Entity
+_- Open description editor for the External Entity named 'Test External Entity'
+_- Open description editor for the External Entity Event.
+_- Rename 'Test External Entity' to 'Test External Entity New'
+_R Titles of both the editors are updated as per new name. 
+_- Rename external entities key letters from 'TEE' to 'TEE New'
+_R Title of the external entity event's editor is updated as per new key letter. 
+
+i673.UT.1.1.4  Rename External Entity Event Data Item
+_- Open description editor for the External Entity Event Data Item named 'item1'
+_- Rename 'item1' to 'item1 New'
+_R The editor's title is updated as per new name. 
+
+i673.UT.1.1.5  Rename External Entity Event 
+_- Open description editor for the External Entity Event 
+_- Change the External Entity Event Number to 100. 
+_R The editor's title is updated as per new value.
+_- Set the value of External Entity Event Unique Label to 'New'
+_- Change the External Entity Event Label Unique Indicator to 'Custom Keyletter'
+_R The editor's title is updated and External entity's key letters are removed 
+   and the External Entity Event Unique Label is added.
+_- Set the value of External Entity Event Unique Label to 'New'
+_R The editor's title is updated as per new name. 
+   
+i673.UT.1.1.6  Rename Bridge
+_- Open description editor for the bridge named 'test_bridge'
+_- Rename 'test_bridge' to 'test_bridge New'
+_R The editor's title is updated as per new name. 
+
+i673.UT.1.1.7  Rename Eunmeration Data Type
+_- Open description editor for the Enumeration Data Type named 'abced'
+_- Rename 'abced' to 'abced New'
+_R The editor's title is updated as per new name. 
+
+i673.UT.1.1.8  Rename Eunmerator
+_- Open description editor for the Enumerator named 'enum1'
+_- Rename 'enum1' to 'enum1 New'
+_R The editor's title is updated as per new name.
+
+i673.UT.1.1.9  Rename Function
+_- Open description editor for the Function named 'test_function'
+_- Rename 'test_function' to 'test_function New'
+_R The editor's title is updated as per new name.
+
+i673.UT.1.1.10  Rename Association
+_- Open description editor for the Association named 'R1'
+_- Open description editor for the Attribute Reference In Class named 'id'
+_- Change Association Number to 100.
+_R Titles of both the editors are updated as per new name. 
+
+i673.UT.1.1.11  Rename User Data Type
+_- Create a new User Data Type with the name 'user1'
+_- Open description editor for the User Data Type named 'user1'
+_- Rename 'user1' to 'user1 New'
+_R The editor's title is updated as per new name.
+
+i673.UT.1.1.12  Rename Operation
+_- Open description editor for the Operation named 'op1'
+_- Rename 'op1' to 'op1 New'
+_R The editor's title is updated as per new name.
+
+i673.UT.1.1.13  Rename Attribute
+_- Open description editor for the Attribute named 'id'
+_- Open description editor for the Attribute Reference In Class named 'id'
+_- Rename Attribute 'id' to 'id New'
+_R Titles of both the editors are updated as per new name. 
+
+i673.UT.1.1.14  Rename Model Class
+_- Open description editor for the Model Class named 'Test Class'
+_- Open description editor for the Attribute Reference In Class named 'id'
+_- Open description editor for the Instance State Machine named 'Test Class'
+_- Open description editor for the Class State Machine named 'Test Class'
+_- Open description editor for the State Machine Event named 'first'
+_- Rename 'Test Class' to 'Test Class New'
+_- Rename Class Key Letters 'T_T' to 'T_T New'
+_R Titles of all the editors are updated as per new name. 
+
+i673.UT.1.1.15  Rename State Machine Event with Event Ignored
+_- Open description editor for the State Machine Event named 'first'
+_- Rename State Machine Event Meaning 'first' to 'first New'. 
+_R The editor's title is updated as per new value.
+_- Change the State Machine Event Number value to 100.
+_R The editor's title is updated as per new value.
+_- Open description editor for Event Ignored named 'T_T1/ISM State'
+_- Set value of State Machine Event Unique Label to 'New'
+_- Change the State Machine Event Label Unique Indicator to 'Custom Keyletter'
+_R Titles of both the editors are updated such that Model Class's key letters 
+   are removed and the State Machine Event Unique Label is added in them.
+_- Set value of State Machine Event Unique Label to 'New'
+_R The editor's title is updated as per new name. 
+
+i673.UT.1.1.16  Rename State Machine Event with Event Cant Happen
+_- Open description editor for the State Machine Event named 'second'
+_- Open description editor for Cant Happen named 'T_T2/ISM State'
+_- Set value of State Machine Event Unique Label to 'New'
+_- Change the State Machine Event Label Unique Indicator to 'Custom Keyletter'
+_R Titles of both the editors are updated such that Model Class's key letters 
+   are removed and the State Machine Event Unique Label is added in them.
+_- Set value of State Machine Event Unique Label to 'New'
+_R The editor's title is updated as per new name. 
+
+i673.UT.1.1.17  Rename State Machine State 
+_- Open description editor for the State Machine State named 'ISM State'
+_- Open description editor for Event Ignored named 'T_T1/ISM State'
+_- Open description editor for Cant Happen named 'T_T2/ISM State'
+_- Rename 'ISM State' to 'ISM State New'
+_R Titles of all the editors are updated as per new name. 
+
+i673.UT.1.1.18  Changing Event Ignored to Cant Happen Test
+_- Open description editor for Event Ignored named 'T_T1/ISM State'
+_- Select 'ISM State' from explorer tree
+_- Select Event Can't Happen entry from context menu.
+_- Select event 'T_T1:first'
+_R The opened description editor is closed.
+
+i673.UT.1.2  Rename Tests for Activity Editors
+
+i673.UT.1.2.1  Rename Bridge
+_- Open activity editor for the bridge named 'test_bridge New'
+_- Rename 'test_bridge New' to 'test_bridge'
+_R The editor's title is updated as per new name. 
+
+i673.UT.1.2.2  Rename Function
+_- Open activity editor for the Function named 'test_function New'
+_- Rename 'test_function New' to 'test_function'
+_R The editor's title is updated as per new name.
+
+i673.UT.1.2.3  Rename Operation
+_- Open activity editor for the Operation named 'op1 New'
+_- Rename 'op1 New' to 'op1'
+
+i673.UT.1.2.4  Rename State Machine State
+_- Open activity editor for the State Machine State named 'ISM State New'
+_- Rename 'ISM State New' to 'ISM State'
+_R The editor's title is updated as per new name.
+
+i673.UT.1.2.5  Rename Derived Base Attribute
+_- Open activity editor for the Derived Base Attribute named 'mda'
+_- Rename 'mda' to 'mda New'
+_R The editor's title is updated as per new name.
+
+i673.UT.2  Placeholder files lifecycle tests
+
+i673.UT.2.1 
+
+_- Open the Description Editor for any model element.
+_- Check PlaceHolderFileProxy map.
+_R The associated PlaceHolderFileProxy instance is created.
+_R No underlying placeholder file is created
+_- Add a bookmark and save the document.
+_R The associated underlying placeholder file is created in the workspace
+_- Close the editor
+_- Check PlaceHolderFileProxy map.
+_R The associated PlaceHolderFileProxy instance exists.
+_R Underlying placeholder file exists.
+_- Open the same description editor again
+_- Remove the bookmark added earlier and save the document.
+_R Underlying placeholder file is deleted as well.
+_- Check PlaceHolderFileProxy map.
+_R The associated PlaceHolderFileProxy instance exists.
+
+_- Repeat the same test with activity editor of any model element.
+_R The same behavior is observed.
+
+i673.UT.2.2 
+
+_- Open description editor of user data type 'user1'
+_- Add a bookmark and save the document 
+_- Check PlaceHolderFileProxy map.
+_R The associated PlaceHolderFileProxy instance exists.
+_R Underlying placeholder file exists.
+_- Close the editor
+_- Delete user data type 'user1'
+_R Underlying placeholder file is deleted as well.
+_- Check PlaceHolderFileProxy map.
+_R The associated PlaceHolderFileProxy instance does not exist.
+
+_- Repeat the same test with activity editor of any model element.
+_R The same behavior is observed.
+
+i673.UT.2.3 
+
+_- Add a new project in the workspace that has the following features:
+   - Loaded model TestDescrip1.
+   - Placeholder file for the description of Domain 'TestDescrip1'
+   - Placeholder file for the description Model Class 'Test Class'
+   - Placeholder file for the activity of Operation 'op1'.
+_- Check placeholder map
+_R The instances of the above specified placeholder files exist.
+_- Open editors for the above model elements.
+_- Add Bookmarks in the opened editors.
+_- Close the project added earlier.
+_R The placeholder map is empty.
+_R Underlying placeholder files exist.
+_- Open the project.
+_R The placeholder map has the entries for the elements listed above.
+_R The underlying placeholder files exist.
+
+End
+---
+
+$Log: i673.dnt,v $
+Revision 1.1  2009/09/03 18:24:29  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.11  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.10.44.1  2008/12/31 16:10:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.10  2005/03/20 13:11:22  siddique
+Job:673
+Review observations addressed.
+
+Revision 1.9  2005/03/15 13:23:31  siddique
+Job:673
+Updated to address pre-review observations by McC.
+
+Revision 1.8  2005/03/14 13:27:53  siddique
+Job:673
+Minor changes. Updated unit tests section.
+
+Revision 1.7  2005/03/14 05:21:05  siddique
+Job:673
+Updated the unit tests section to include lifecycle tests
+
+Revision 1.6  2005/03/11 12:57:32  siddique
+Job:673
+Few typos fixed.
+
+Revision 1.5  2005/03/11 12:54:18  siddique
+Job:673
+Introduced PlaceHolderFile and PlaceHolderStateSynchronizer class.
+Add PlaceHolder life cycle.
+
+Revision 1.4  2005/03/10 05:33:47  siddique
+Job:673
+Further updation on observations from BAA and McC.
+
+Revision 1.3  2005/03/09 12:43:18  siddique
+Job:673
+Minor changes.
+
+Revision 1.2  2005/03/09 07:10:58  siddique
+Job:673
+Update unit tests section.
+
+Revision 1.1  2005/03/08 17:50:44  siddique
+Job:673
+Initial abstract.
+

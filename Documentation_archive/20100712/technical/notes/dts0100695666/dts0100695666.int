@@ -1,0 +1,196 @@
+========================================================================
+
+File:      $RCSfile: dts0100695666.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Remove support for generic package elements
+
+1. Abstract
+-----------
+This note describes the changes required to remove support for generic package
+elements.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100695666
+[2] http://docs.google.com/Doc?
+                             docid=0AeaWt79q0qHXZGZmMnBxdjNfMTNrcHY3ZDRkOA&hl=en
+
+4. Background
+-------------
+For this release we do not intend to deliver full generic package support.  This
+includes removal of non-specialized package element's on the generic package
+diagram.  Additionally it includes removal of classes and data types from the
+component diagram.
+
+5. Design
+---------
+5.1 Remove graphical definitions for generic package elements
+
+In ui.graphics/plugin.xml the validSymbol definitions under the Package diagram
+are removed and replaced with the original specialized package entries.
+
+Additionally, the Model Class and Data Type entries are removed from the
+Component diagram definition.
+
+During the work to add support for generic package functionality, the ability to
+create new specialized packages under EP_PKG was removed.  This was removed by
+modifying the canvas/plugin.xml to remove the option from the UI and removing
+the EP_PKG.new<specialized package> operations.  For the BP 3.1.1 release we
+shall modify the plugin.xml to present the specialized package functionality to
+the user.  Therfore, the EP_PKG operations must be restored.  We shall get these
+implementations from revision 1.8 of Package.xtuml.  They are:
+
+newComponentPackage
+newInterfacePackage
+newActivity
+newUseCasePackage
+newSequence
+newCommunication
+newDatatypePackage
+
+pasteComponentPackage
+pasteActivity
+pasteCommunication
+pasteDataTypePackage
+pasteInterfacePackage
+pasteSequence
+pasteUseCaseDiagram
+
+6. Implementation Comments
+--------------------------
+From [2] there was an issue where creating new elements using the context menu
+on a system diagram caused white boxes.  This was caused by the fact that the
+getInstanceFromOoaId method did not consider a system as the parent.  As with a
+system different traversals are required.  The method is changed to check for a
+system as the parent and if found use the appropriate method to find the
+instance.
+
+With the addition of shape reconciling some performance issues were introduced.
+The reason for this is that the reconciler code did not consider the system that
+the transaction was under and reconciled every diagram in the workspace.  A
+check is added that prevents this from occurring.
+
+A late interaction between fixes for dts0100690286 and the changes to allow
+execution with delegations caused ui.debug test failures. The disabling of
+the timer clock during suspension and removal of the regular notify in the real
+time timer loop means that it becomes possible for component instances to enter
+a wait state at the same time as a suspend or terminate is being processed and
+'stick' there. Additional notifications were added in BPThread.internalResume()
+and ARCH.shutdown() to ensure that Component Instances will be notified to
+properly enter the suspended or terminated state.
+
+In addition, random test failures were observed in the debug.ui tests. It was
+noted that when these failures happened, parse errors were frequently present
+where there should be none. This was traced to a parse thread running at the
+moment of failure. In ActivityEditor.documentChanged() a call is made to
+accessParseThread(). This starts a specialized Thread called TolerantThread
+which runs the parser whenever the document changes. documentChanged() always
+starts the parser, even when the documentChangeEvent does not indicate that the
+actual text changed. In the case above, the change was to the Markers on the
+document, specifically BreakPoint markers. A filter is added to documentChange()
+to only launch the parser if the text of the document changed.
+
+7. Unit Test
+------------
+_- Open a package diagram
+_R Only specialized packages are present
+_- Open a component diagram
+_R There is no Model Class tool
+_R There is no Data Type tool
+
+8. Code Changes
+---------------
+Branch name: Review-695666-668763
+
+>com.mentor.nucleus.bp.compare.test/src/
+    com.mentor.nucleus.bp.compare.test.cases/GenerateComparisonTextTest.java
+>com.mentor.nucleus.bp.compare.test/src/
+    com.mentor.nucleus.bp.compare.test.plcm/InspectorTest.java
+
+>com.mentor.nucleus.bp.core/src/lib/ARCH.java
+>com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Domain/Domain.xtuml
+>com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Package/Package.xtuml
+>com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml
+>com.mentor.nucleus.bp.core/sql/context_menu.pei.sql
+
+>com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    ModifyNonFullyLoadedModelTests.java
+>com.mentor.nucleus.bp.core.test/src/com.mentor.nucleus.bp.core.test/
+    SequenceTests.java
+>com.mentor.nucleus.bp.core.test/arc/create_context_menu_tests.arc
+>com.mentor.nucleus.bp.core.test/expected_results/ModifyNonFullyLoadedModel_1/
+    ModifyNonFullyLoadedModel_1-5
+>com.mentor.nucleus.bp.core.test/expected_results/ModifyNonFullyLoadedModel_1/
+    ModifyNonFullyLoadedModel_1-5.jpg
+>com.mentor.nucleus.bp.core.test/expected_results/ModifyNonFullyLoadedModel_1/
+    ModifyNonFullyLoadedModel_1-shape_deletion_transaction.exp
+>com.mentor.nucleus.bp.core.test/expected_results/SequenceTest_42/
+    SequenceTest_42-1
+>com.mentor.nucleus.bp.core.test/expected_results/SequenceTest_42/
+    SequenceTest_42-1.jpg
+
+>com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl.wizards/
+    ModelImportPage.java
+
+>com.mentor.nucleus.bp.io.mdl.test/src/com.mentor.nucleus.bp.io.mdl.test.pkgcm/
+    PkgCMCreateTest.java
+
+>com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/
+    UITestingUtilities.java
+
+>com.mentor.nucleus.bp.ui.canvas/src/com.mentor.nucleus.bp.ui.canvas/Cl_c.java
+>com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Auto Reconciliation Specification/
+    Auto Reconciliation Specification.xtuml
+
+>com.mentor.nucleus.bp.ui.canvas.test/src/(default package)/CanvasTestSuite.java
+>com.mentor.nucleus.bp.ui.canvas.test/src/com.mentor.nucleus.bp.ui.canvas.test/
+    CanvasEditorInteraction.java
+>com.mentor.nucleus.bp.ui.canvas.test/expected_results/CanvasEditor__test_77/
+    CanvasEditor__test_77-1
+>com.mentor.nucleus.bp.ui.canvas.test/expected_results/CanvasEditor__test_77/
+    CanvasEditor__test_77-1.jpg
+
+>com.mentor.nucleus.bp.ui.graphics/plugin.xml
+
+>com.mentor.nucleus.bp.ui.text/src/com.mentor.nucleus.bp.ui.text.activity/
+    ActivityEditor.java
+
+
+
+End
+---
+
+$Log: dts0100695666.int,v $
+Revision 1.4  2010/06/15 15:17:18  rmulvey
+job:dts0100695666 dts0100668763
+Updated this changed files list to include ui.canvas files.
+
+Revision 1.3  2010/06/15 14:28:02  rmulvey
+job:dts0100695666 dts0100668763
+Updated this note to show the updated branch name and the change list.
+
+Revision 1.2  2010/06/14 19:18:20  campbell
+Job: dts0100695666
+Added details for Verifier fixes.
+
+Revision 1.1  2010/06/14 19:02:04  tlondon
+Job: dts0100695666
+
+Introduce note

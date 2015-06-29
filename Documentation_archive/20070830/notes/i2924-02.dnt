@@ -1,0 +1,175 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support required Implicit Component Addressing preference
+
+1. Abstract
+-----------
+This note specifies the design for restricting the use of Implicit Component
+Addressing.
+
+2. History
+----------
+  final - i2924-073007-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 2924
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2924
+[2] CVS/Documentation/internal/technical/notes/i2924.ant
+[3] CVS/Documentation/internal/technical/notes/i2924-01.dnt
+[4] Bugzilla item 3025
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3025
+[5] Bugzilla item 3032
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3032
+[6] Bugzilla item 2519
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2519
+
+4. Background
+-------------
+This note covers the additional restrictions and preferences associated with
+"implied component addressing" as specified in [2]. The original Component
+grammar changes were covered in [3].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Addition of preference
+A new boolean field, 'allowImplicitComponentAddressing' is added to the java
+class, BridgePointPreferencesModel. Canonical accesses to this field are added
+to the existing methods of the same class, 'synchronizeTo' and 'deepClone'.
+BridgePointPreferences store is modified to jive with these changes by providing
+a new property name for the preference attribute and including it in the
+'saveModel' and 'loadModel' methods. Finally, the 'ActionLanguagePreferences'
+class is modified to add a simple checkbox widget to the appropriate preference
+page.
+
+6.2 Checking the preference and additional validation
+6.2.1 New validation utility
+A new validation utility function 'is_valid_component_addressing' is added to
+the ooaofooa and marked as such. This function uses an existing bridge call;
+'PREFS::getBoolean()' to retrieve the preference setting during the parse
+runtime. If enabled, it returns immediately. If it is not enabled, the function
+finds the body being parsed and verifies that it is either a Provided Interface
+message or else is the body of a class state machine state. If a state is found,
+the function also tests to ensure that all inbound transitions to the state in
+question bear only signals. If a problem is found, it is indicated to the
+calling OAL with a non empty string containing the error message to be given.
+
+6.2.2 modifications to existing design
+The existing 'sender_validate' utility function is modified to call
+'is_valid_component_addressing'. In the 'OAL Validation Functions' package, the
+function 'Message_invocation_end' is also modified to call this new validation
+function in two places; one, in the case where the 'to' variable is named
+'sender' and, two, in the case where no 'to' clause is provided. Finally, the
+'Invocation_validate' function is modified to call the new utility function
+from the part of the logic that has detected that a signal has been referenced.
+
+7. Design Comments
+------------------
+The analysis[2] called for a per-model preference. Eclipse does not support per-
+model settings well and so this setting is made global.
+
+When examining the existing bridge, 'PREF::getBoolean()', its behavior was
+found to be non-generic; being tightly coupled to the work that introduced
+it[6]. This bridge implementation shall be reworked to make the behavior
+generic without breaking backwards compatibility with the existing preference
+work.
+
+Additional Bugzilla issues[4 & 5] shall also be addressed by this work.
+
+8. Work Required
+----------------
+The design section contains a complete specification of the work required.
+
+9. Unit Test
+------------
+The tests and model created for [3] shall be extended to further test this
+preference.
+
+This shall cover the following test matrix:
+
+9.1 Preference Set
+All previously created tests (see [3]) shall pass.
+
+9.2 Preference Reset
+Message reference in body of:                 Result:
+Provided operation                            No error
+Provided signal                               No error
+Class state machine state with signals on
+  all incoming transitions                    No error
+Required operation                            Error
+Required signal                               Error
+Class state machine state with mixed signals
+  and events on incoming transitions          Error
+Instance based state machine state            Error
+Bridge                                        Error
+Function                                      Error
+Class based operation                         Error
+Instance based operation                      Error
+
+9.3 Additional fix to default port name
+_- Create a new Interface Reference on a Component
+_R The associated Port shall be named 'Port1', not 'Port - 1'.
+
+9.4 Verifier fix
+_- Run the odms1 test model
+_- Invoke the initialize function
+_- Invoke the 'start' function
+_R The model executes and mounts a disk
+_R No errors are reported in the error log.
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.6  2007/07/31 16:34:03  campbell
+Job: 2924
+Address review minutes.
+
+Revision 1.5  2007/07/30 16:16:27  campbell
+Job: 2924
+Cosmetic updates.
+
+Revision 1.4  2007/07/29 04:05:09  campbell
+Job: 2924
+Fix sense of preference setting.
+
+Revision 1.3  2007/07/29 03:55:12  campbell
+Job: 2924
+Fix a number of typos.
+
+Revision 1.2  2007/07/29 03:51:07  campbell
+Job: 2924
+Added test details.
+
+Revision 1.1  2007/07/29 03:20:02  campbell
+Job: 2924
+Introduced.

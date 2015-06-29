@@ -1,0 +1,328 @@
+========================================================================
+
+File:      $RCSfile: dts0100598591.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Fix intermittent problems with multi component messages
+
+1. Abstract
+-----------
+See [2].
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100598591 - Intermittent problems with multi component
+    messages.
+[2] cvs:\\Documentation\internal\technical\notes\dts0100598591.ant
+
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Stack corruption
+6.1.1 Add new inter-component messaging queues
+
+6.1.1.1 Body.createStackFrame()
+This is modified to take a boolean argument 'enqueue'. If this parameter is
+true, then the newly created stack frame is added to the remote stacks queue
+using the Stack.enqueue() operation. If this argument is false, the local
+stack.push() operation is called to put it on the local stack as before.
+
+6.1.1.2 Stack.pop()
+This is modified to add a new boolean argument, disposeFrame. If this argument
+is true, the stack frame being popped is true. All places that call this
+operation are modified to pass true, except Return Stmt.execute, which passes
+false. Return Stmt needs to retain the stack frame to enqueue with the remote
+Execution Engine stack (see 6.1.1.8).
+
+6.1.1.3 Stack.run()
+Reworked to call Stack.dequeue() before proceeding further. This places any
+newly arrived inter-component calls and returned data onto the running stack.
+The rest of the operation is modified to drop out of the execution loop if the
+top stack frame becomes blocked.
+6.1.1.x Stack.stepIn()
+Modified to only call execute if the top stack frame is not blocked.
+
+6.1.1.4 Stack.stepOver()
+Modified to only attempt to stepOver the first statement if it is not blocked.
+
+6.1.1.x Stack.enqueue()
+Introduced by this work, enqueue takes two arguments, the unique id of the stack
+frame to enqueue and a boolean 'isActivity' which is used to determine whether
+the stack frame being enqueued is a pending call (true) or contains some
+returned data value (false). This operation obtains the current end of the
+appropriate queue (execution or data) and adds the frame identified by the
+unique id to the end.
+
+6.1.1.5 Stack.dequeue()
+Introduced. Finds the head of the queue of activities if any and places is at
+the top of the running stack. Finds all returned data values and copies them
+into the correct stack frame in the live stack.
+
+6.1.1.6 Stack Frame.readyForInterrupt
+This boolean attribute is added to ensure that a remote Execution Engine does
+not attempt to start working with returned data or an incoming call stack frame
+until the remote process has finished setting it up. It is tested in the
+Stack.dequeue() operation to exclude incompletely set up frames. 
+
+6.1.1.7 Stack Frame.dispose()
+Extended to unlink itself from any pending queues it may be in. This will avoid
+NPE's during shutdown.
+
+6.1.1.8 Return Stmt.execute()
+Refactored to look for a blocked frame associated with the current one. If it
+finds one, it pops the stack (preserving the stack frame), places the popped
+frame onto the calling components value queue and notifies the remote component
+that a result is ready. This is done in two places, where values are found and
+where no values are found. In the latter case, an empty stack frame is placed
+on the calling components queue (see 6.2.2.1 paragraph 1 for an explanation of
+the synchronization mechanism for a void return interface operation).
+
+6.1.2 Ensure thread safe queue access
+Two new operations are added to Stack, enqueue() and dequeue(). Dequeue is used
+by the executing engine to transfer call and return data onto the live execution
+stack. Enqueue will be used by the remote component to put such data into the
+queue.
+
+MC-Java will be modified to read a new marking 'synchronized:true' declared on
+operations on the meta-model. When MC-Java sees this marking, it will emit the
+'synchronized' keyword in the method signature. Both enqueue() and dequeue()
+will be marked 'synchronized:true'. This will prevent the executing thread from
+attempting to dequeue data while it is being written and will also ensure that
+concurrent access to the queues from different remote components is excluded.
+
+6.2 Reentrant blocking
+6.2.1 Remove the Execution Engine.wait() operation
+Removed as proposed in the analysis.
+
+6.2.2 Move R2965
+Traversing R2965.'blocks' now gives the stack frame (if any) that is currently
+blocked on the execution of the current one. Conversely, traversing
+R2965.'blocked by' gives the stack frame which is blocking the current one.
+
+This requires multiple cascade changes in the existing execution infrastructure.
+Probably the most significant is that Return Stmt.execute() can now use R2965 to
+locate the correct stack frame to which return data should be attached. The
+current execution mechanism assumes that data will always be associated with
+the top stack frame. This assumption is safe when the engine itself is blocked,
+but is not always the appropriate place when the engine is made fully reentrant.
+
+6.2.2.1 Block.popUpBlock()
+This operation is modified to provide support for 'return-less' interface
+activities. Synchronization is still required for cases where no data is
+returned by an interface operation call. This is implemented by blocking the
+calling stack frame with a link with the blocking stack frame across association
+R2956 exactly as for the returned data case. The only behavioral difference is
+that the enqueued frame bears no data values. When the dequeue() operation sees
+this case, it steps in the statement pointer to provide the correct stepping
+semantics (operation calls that return data are required by the parser to assign
+them somewhere. In this latter case, the statement pointer is stepped when the
+assignment statement completes and no outstanding pending data value
+computations are found on the stack).
+
+When execution reaches the end of an activity, popUpBlock() enters the logic
+enclosed by the self.isOuter() test. This is extended to traverse R2965 in the
+'blocks' direction and if one is found, the required frame enqueue and inter-
+thread signaling is performed to wake up the invoking component. The stack is
+popped under the control of this logic and the new top stack frame is checked
+across R2965.'blocked by'. If an invoked frame is found over this navigation,
+then stepping on of the statement pointer is suppressed.
+
+6.2.2.2 Stack.dispose()
+This is modified to remove references to R2965 which is no longer associated
+with a stack.
+
+6.2.2.3 Statement.execute()
+This is modified to inhibit statement pointer increment if the stack frame is
+blocked.
+
+6.2.2.4 BPThread.startModel()
+This method starts the execution engine thread. The execution loop is
+significantly reworked to implement additional criteria for entering the wait
+state. Now, in addition to the previous criteria, the engine will wait if the
+top stack frame is blocked, there are no calls queued and no return results are
+available. 
+
+6.3 Move notifications
+This change is required in the following operations; Signal Invocation.execute()
+Interface Operation.execute() and Message Value.execute().
+
+6.3.1 Body.createStackFrameForMessage()
+This is refactored to call an existing operation createStackFrame() and
+additionally call a new operation, startStackFrameForMessage(). This retains
+support for other unmodified parts of the infrastructure but allows
+Signal Invocation.execute() Interface Operation.execute() and
+Message Value.execute() to perform the actions necessary to signal the remote
+Execution Engine at the very last moment.
+
+6.3.2 Pending Event.fire()
+Moved an early notification to be as late as possible.
+
+6.3.3 Interface Operation Invocation.execute()
+Refactored to call Body.startStackFrameForMessage() as the last thing it does.
+This notifies the remote component that the interface operation is ready for
+execution.
+
+6.3.4 Signal Invocation.execute() and setupParameterValues()
+Modified to notify the remote component at the last moment.
+
+6.3.5 Message Value.getValue()
+Refactored to call Body.startStackFrameForMessage() as the last thing it does.
+This notifies the remote component that the interface operation is ready for
+execution.
+
+6.3.6 ExecuteAction.execute()
+This hand written method is changed to jibe with the changes for stack frame
+creation above [6.3.x]. At the same time, this method is slightly simplified by
+using the generated Notify() method on Execution Engine.
+
+6.4 Architectural thread safety change
+Modify referred_to.inc in two places to emit the required new code in the cases
+where 'target_is_one' is false.
+
+6.5 Miscellaneous reliability changes
+6.5.1 Block.popUpBlock()
+This is modified to add error handling for the various message body subtypes
+that were previously missing.
+
+6.5.2 Local Value.setValue()
+This is modified to add handling to find the data type for the various parameter
+types that were previously missing.
+
+6.5.3 Statement.setUp[NextStatement()
+A redundant stack selection statement is removed.
+
+6.5.4 Execution Engine.getName()
+Added to allow easier differentiation between components when debugging.
+
+6.5.5 Body.createStackFrame()
+Augmented to set up the sender component_reference as a local value. Parameter
+'invoking_stack_frame_id' used to identify the senders stack_frame. Cascade
+changes to all other callers to createStackFrame to pass a null id. Only in the
+cases of interface operations, message values and signal invocations is a non-
+null value passed.
+
+6.5.6 Message Value.setupParameterValues()
+Also enhanced to set up the sender component_reference as a local value.
+
+6.5.7 Component Reference Value.setValue()
+Now correctly sets up the sender component_reference in the runtime value.
+
+6.5.8 Runtime Value.copyValue()
+Now correctly sets component reference values.
+
+6.5.9 simple Value.setValue()
+Now correctly delegates calls to set up the sender component_reference or simple
+values.
+
+6.5.10 Attribute Value Reference.setValue()
+Now correctly sets up the data type for the runtime value.
+
+6.5.11 Value.computeValue()
+Now correctly sets up the data type for the result.
+
+6.5.12 Value.getValue()
+Corrected misleading error message.
+
+6.5.13 Block.popUpBlock()
+A large chunk of processing at the end of this operation was taken up with
+computing a default value when an incompletely computed value was detected when
+popping up a stack frame. 1) Before multi-component execution, this situation
+should never have happened*. Attempting to partially repair a broken execution
+data set was always pointless, and 2) with the advent of multi-component
+execution, it is now possible to legally pop back up to a frame that has
+outstanding computation. This outstanding value will now be made available when
+it is ready via the dequeuing mechanism.
+
+This entire block, including the 'if (not_empty intermediate_value)' and its
+enclosing else clause are therefore removed.
+
+*because all value computation was performed synchronously.
+ 
+7. Design Comments
+------------------
+7.1 Nested calls in Interface Operation arguments
+Calls of the form 'anyMessage(a:anyActivity())' were failing because
+MessageValue.getValue() assumed that the required data would always be available
+on the first pass. The value returned from setUpParameterValues() tells whether
+computation of all argument values completed correctly. The correction is to
+test the result of the setUpParameterValues call and only set up the new remote
+stack frame and transfer the argument values when all the arguments are ready.
+
+7.2 Stepping behavior
+Stepping does not work properly when a thread of control re-enters a component.
+This is because the stepping state is currently captured at the execution engine
+level. With the advent of multi-component execution and thread re-entry, the
+engine should be stepping some threads and not others. Therefore, stepping state
+must be moved to be maintained at the stack frame level. This change is
+considered to be outside of the scope of this issue; an issue is raised to track
+satisfaction of this requirement.
+
+7.3 Selected value setup
+While not directly related to the reliability issues, setting up this keyword
+allows progress towards full multi-component execution support.
+
+8. Work Required
+----------------
+Fully laid out in the design section.
+
+9. Unit Test
+------------
+The following multi-component models will be executed to assure that they run
+correctly:
+
+9.1 Ring Around the Rosy
+    - As checked in.
+    - Modified to chain return values together.
+    - Modified to make interface operation calls to obtain parameter values.
+9.2 SC Video application from John Wolfe.
+9.3 Tick simple VSI application.
+    - As checked in
+    - Modified to use simple return keyword in void activity
+9.4 Seat Heater VSI demonstration application.
+9.5 GPS application from Staffan Kjellberg.
+9.6 An issue is raised to create comprehensive automated tests for Multi-
+    component Verifer.
+
+End
+---
+
+$Log: dts0100598591.dnt,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/08/06 14:55:23  campbell
+Job: dts0100598591
+Added design comments and added additional required tests. Documented setup of selected keyword value.
+
+Revision 1.3  2009/08/04 11:00:27  campbell
+Job: dts0100598591
+Added details of support for void return synchronous calls.
+
+Revision 1.2  2009/07/29 18:17:40  campbell
+Job: dts0100598591
+Updated with thread safety architectural change.
+
+Revision 1.1  2009/07/28 19:53:51  campbell
+Job: dts0100598591
+Introduced.
+

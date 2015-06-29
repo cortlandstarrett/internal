@@ -1,0 +1,189 @@
+========================================================================
+
+File:      $RCSfile: i186.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:46 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Fix UDT type checking
+
+Abstract
+--------
+
+This note describes the changes to the OAL validation routines
+to properly validate user defined types.
+
+History
+-------
+
+final i186-052604-01.rvm
+
+Document References
+-------------------
+Issue 186
+
+Background
+----------
+
+Assignment of literals to variables and attributes with a user
+defined type currently cause a 'mismatched datatype' error.
+They should not if the core type of the literal and the udt are
+the same.
+
+Design
+------
+
+i186.1 Update validation function
+
+The validation utility function data_types_compatible is updated
+to use the core type for user defined types, when the two types
+are mixed. The pseudo code for the added logic is:
+
+if dt1 != dt2
+  if dt1 isa UDT and dt2 isa CDT 
+    dt1 = get CDT for dt1
+  elif dt1 isa CDT and dt2 isa UDT
+    dt2 = get CDT for dt2 
+  end if
+end if
+
+// continue with normal compatibility checking for dt1 and dt2
+
+Note that this code does not allow two UDT's with the same 
+CDT to be considered equivalent, which is the desired behavior.
+
+Work Required
+-------------
+
+i186.1 Update validation function
+
+The changes are made to the utility function in function_imports.sql.
+
+
+Implementation Comments
+-----------------------
+
+- The test model, testOAL1.bak, was modified to add user defined types
+with all possible core data types, and attributes were added to the
+Test (D_TST) class with a type of each of these new UDTs.  The Time
+external entity was also added to the model.
+
+- The data type id's changed in function_import.sql, so they had
+to be changed in err_ee.sql.
+
+Unit Test
+---------
+
+The following tests are added to OalParserTest.java:
+
+// testAssignBool2UDT
+select any t from instances of D_TST; t.u_bool = false;
+
+// testAssignUDT2Bool
+select any t from instances of D_TST; x = true; x = t.u_bool;
+
+// testAssignInt2UDT
+select any t from instances of D_TST; t.u_int = 13;
+
+// testAssignUDT2Int
+select any t from instances of D_TST; x = 12; x = t.u_int;
+
+// testAssignReal2UDT
+select any t from instances of D_TST; t.u_real = 1.3;
+
+// testAssignUDT2Real
+select any t from instances of D_TST; x = 1.2; x = t.u_real;
+
+// testAssignInt2RealUDT
+select any t from instances of D_TST; t.u_real = 13;
+
+// testAssignRealUDT2Int
+select any t from instances of D_TST; x = 12; x = t.u_real;
+
+// testAssignReal2IntUDT
+select any t from instances of D_TST; t.u_int = 1.3;
+
+// testAssignIntUDT2Real
+select any t from instances of D_TST; x = 1.2; x = t.u_int;
+
+// testAssignString2UDT
+select any t from instances of D_TST; t.u_str = "test";
+
+// testAssignUDT2String
+select any t from instances of D_TST; x = ""; x = t.u_str;
+
+--- Error cases ----
+
+// testAssignInt2StringUDT
+select any t from instances of D_TST; t.u_str = 23;
+// testAssignBool2StringUDT
+select any t from instances of D_TST; t.u_str = true;
+// testAssignReal2StringUDT
+select any t from instances of D_TST; t.u_str = 2.3;
+// testAssignString2IntUDT
+select any t from instances of D_TST; t.u_int = "test";
+// testAssignBool2IntUDT
+select any t from instances of D_TST; t.u_int = true;
+// testAssignString2RealUDT
+select any t from instances of D_TST; t.u_real = "test";
+// testAssignBool2RealUDT
+select any t from instances of D_TST; t.u_real = true;
+
+// testAssignTime2Date
+d = TIM::current_date(); t = TIM::current_clock(); d = t;
+// testAssignDate2Time
+d = TIM::current_date(); t = TIM::current_clock(); t = d;
+
+// testAssignUDT2DiffUDTSameCore
+select any dt from instances of D_DT; select any t from instances of D_TST; t.u_str = dt.Status;
+
+- Run OalParserTest
+R All tests pass
+
+Code Changes
+------------
+
+com.projtech.bp.als/sql/err_ee.sql
+Initial version:  1.7   Final version: 1.8
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.27  Final version: 1.28
+
+com.projtech.bp.als.oal.test/mdl/testOAL1.bak
+Initial version:  1.2   Final version: 1.3
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/OalParserTest.java
+Initial version:  1.8   Final version: 1.9
+
+End
+---
+
+$Log: i186.int,v $
+Revision 1.1  2009/09/03 18:18:46  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.164.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/05/26 19:58:31  greg
+Job: 186
+Update after review
+
+Revision 1.1  2004/05/26 16:02:16  greg
+Job: 186
+Initial introduction
+

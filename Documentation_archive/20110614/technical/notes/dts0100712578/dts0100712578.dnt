@@ -1,0 +1,126 @@
+========================================================================
+
+File:      $RCSfile: dts0100712578.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Interface operations/signals with record-type parameters between component
+references causes value access errors
+
+1. Abstract
+-----------
+This note addresses the problem described above.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100712578 - Interface operations/signals with record-type
+    parameters between component references causes value access errors.
+[2] Bugzilla issue - i2225 - Enhance MC-Java performance/Bi-directional
+    References
+[3] ClearQuest DEI dts0100713290 - Accelerate subtype lookup
+
+4. Background
+-------------
+This issue was reported by a customer as a critical problem.
+
+5. Analysis
+-----------
+The problem occurred because the user created components in separate root level
+packages. It does not occur when there is a single root package. The problem is
+due to an architectural limitation. MC-Java generates accelerated instance look
+up for instances with single unique identifiers. This uses a call to:
+
+InstanceList.getGlobal(Object id);
+
+This searches first the local model root, and then looks globally. In the case
+of this problem, global lookup is needed because the components are in different
+model roots due to having been defined in different root packages.
+
+Unfortunately, MC-Java currently specifically excludes identifiers which are
+also referentials. In the reported case in Value::Member Value Reference, in the
+operation getRuntimeValue() an instance of RuntimeValue::Structured Value was
+being looked up using the statement:
+
+select any strctValue from instances of RV_SVL where
+                                           selected.RuntimeValue_ID == rtVal_ID;
+
+Because Structured Value is a sub-type of Runtime Value, accelerated lookup was
+not generated for the statement and the old slow lookup method was used. This
+only searches in the local model root and so the instance was not found.
+
+6. Design
+---------
+6.1 Alternative fixes considered
+There is no clear reason from the documentation of the original accelerated
+lookup work[2] why identifiers which are also referentials were excluded from
+using accelerated lookup. However, fixing this would affect the whole of the
+generated source base and thus requires full testing.
+
+Since this issue was specified as critical for the customer, an alternative fix  
+is selected. The problem is avoided if the super-type is located using a where
+statement. This is because the super-type identifier is not a referential. A
+separate relative traversal may then be made to the required sub-type.
+
+An issue[3] is raised to get a generic fix to allow accelerated lookup of sub-
+type instances.
+
+6.2 Selected fix
+The statement specified above in section 5 becomes:
+
+select any strctRuntimeValue from instances of RV_RVL where
+                                           selected.RuntimeValue_ID == rtVal_ID;
+select one strctValue related by strctRuntimeValue->RV_SVL[R3300];
+
+A workspace search was made looking for additional places where this class of
+statement is used:
+
+- RV_SVL*where
+- RV_AVL*where
+- RV_SMV*where
+
+The searches found a total of 5 places in which this kind of statement is used:
+
+- Array Value.arrayCopy()
+- Structured Value.memberwiseCopy()
+- Member Value Reference.getRuntimeValue() (fully detailed above).
+- Member Value Reference.getValue()
+- Member Value Reference.setValue()
+
+All locations were updated to replace the sub-type where clause statement with
+a super-type where clause and subsequent sub-type traversal.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully described in the design section.
+
+9. Unit Test
+------------
+_- Run the customer model as described in the original issue[1].
+_R No errors are reported.
+
+_- Run the Verifier JUnit test.
+_R Pass.
+
+End
+---
+
+$Log: dts0100712578.dnt,v $
+Revision 1.1  2010/08/25 10:00:39  campbell
+Job: dts0100712578
+Introduced.
+

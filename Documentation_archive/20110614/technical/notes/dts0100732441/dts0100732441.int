@@ -1,0 +1,272 @@
+========================================================================
+
+File:      $RCSfile: dts0100732441.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Full verifier support for instance reference
+
+1. Abstract
+-----------
+To continue the instance reference support in BridgePoint,this issue 
+addresses  the complete support for " instance reference"  in the verifier.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100732441 - Full verifier support for instance reference
+[2]  Analysis note dts0100732441.ant 
+[3]  Design note dts0100732441.dnt
+[4] ClearQuest DEI dts0100703003 - Support intra-component instance reference
+    passing for classes.
+
+4. Background
+-------------
+See [2]
+
+5. Design
+---------
+See [3]
+
+6. Implementation Comments
+--------------------------
+6.1 The design in §[3, 6.3] doesn't support to pass Instance Reference Set into
+    parameters since SimpleValue::getValue() returns only one Instance ID.
+    
+    There are three approach to fix that problem : 
+    6.1.1 Return an array with reference Instance IDs. 
+          This approach can not implement currently because the MC-Java does not
+          support dynamic length array.
+    6.1.2 Return the superType RuntimeValue ID  of SimpleValue in case of return
+    	  Instance Reference Value value. 
+    
+    6.1.3 Return the superType RuntimeValue ID for when get value of any 
+    	  SimpleValue subtype for homogeneous fix.
+    	  This approach can not be done in this issue scope. Briefly, the
+    	  getValue() is heavily used in the Verifier and invoked from many 
+    	  different that cast the return value into Integer, String, etc.
+    	  So the change need to be carefully to avoid break the verifier.
+    	  Therefore a separate issue is to handle this homogeneous approach.
+    	  
+     The approach 6.1.2 is the selected one to implement.
+   
+    	  
+6.2 Regarding the approach 6.1.2 : 
+
+SimpleValue::getValue()  v1.8 
+Before :
+ 
+  select one scv related by self->RV_SCV[R3308];
+  select one crv related by self->RV_CRV[R3308];
+  value = GD::NULL_INSTANCE();
+  if (not_empty scv) 
+  	value = scv.Value;
+  elif (not_empty crv)
+    select one exeEngine related by self->RV_CRV[R3308]->I_EXE[R3309];  
+    if (not_empty exeEngine) 
+      // the engine is the instance we are looking for
+      value = exeEngine.convertToInstance();
+    end if;
+  end if;
+  return value;
+   
+After     	  
+	select one scv related by self->RV_SCV[R3308];
+	select one crv related by self->RV_CRV[R3308];
+	select one irv related by self->RV_IRV[R3308];
+	value = GD::NULL_INSTANCE();
+	if (not_empty scv)
+		value = scv.Value;
+	elif (not_empty crv)
+	  select one exeEngine related by self->RV_CRV[R3308]->I_EXE[R3309];  
+	  if (not_empty exeEngine) 
+	    // the engine is the instance we are looking for
+	    value = exeEngine.convertToInstance();
+	  else
+	    USER::logError(msg:"The Composite Reference Value instance does not have " + 
+	    										"an associated Component Instance");  
+	  end if;
+	elif (not_empty irv)
+	  select one rv related by self->RV_RVL[R3300];
+	  value = GD::unique_id_to_instance(value:rv.RuntimeValue_ID);
+	else
+	USER::logError(msg:"The Simple Value instance does not have an associated subtype");
+	end if;
+	return value;    	  
+           
+SimpleValue::setValue(instance)  v1.8 
+Before :
+// Simple Value.setValue()
+	select one dt related by self->RV_RVL[R3300]->S_DT[R3307];
+	if not_empty dt and dt.Name == "component_ref"
+	  select one crv related by self->RV_CRV[R3308];
+	  if empty crv
+	    create object instance crv of RV_CRV;
+	    relate crv to self across R3308;
+	  end if;
+	  crv.setValue(value:param.value);
+	else
+	  select one scv related by self->RV_SCV[R3308];
+	  if empty scv
+	    create object instance scv of RV_SCV;
+	    relate scv to self across R3308;
+	  end if;
+	  scv.Value = param.value;
+	end if;
+
+After :
+// Simple Value.setValue()
+select one dt related by self->RV_RVL[R3300]->S_DT[R3307];
+select one irdt related by dt->S_IRDT[R17];
+if not_empty dt and dt.Name == "component_ref"
+  select one crv related by self->RV_CRV[R3308];
+  if empty crv
+    create object instance crv of RV_CRV;
+    relate crv to self across R3308;
+  end if;
+  crv.setValue(value:param.value);
+elif not_empty irdt
+  // Remove the old value if exist 
+  select one irv related by self->RV_IRV[R3308];
+  if not_empty irv
+  	// delete all instance references
+  	select many iirs related by irv->L_IIR[R3311];
+  	for each iir in iirs
+  	  delete object instance iir;
+  	end for;
+  else 
+    // no Instance Reference Value is found
+    create object instance irv of RV_IRV;
+    relate irv to self across R3308;    
+  end if;
+  // Get the referenced instances by the source RuntimeValue
+  runtimeValueID = GD::instance_to_unique_id(value:param.value);
+  select any src_rv from instances of RV_RVL where selected.RuntimeValue_ID == runtimeValueID;
+  select one src_sm related by src_rv->RV_SMV[R3300];
+  select one src_irv related by src_sm->RV_IRV[R3308];
+  select many src_iirs related by src_irv->L_IIR[R3311];
+  select many src_insts related by src_iirs->I_INS[R3013];
+  if not_empty src_insts
+    for each src_inst in src_insts
+    	// create a instance reference for each instance and relate them
+    	create object instance iir of L_IIR;
+    	relate iir to irv across R3311;
+    	relate iir to src_inst across R3013;
+    end for; 
+  end if;
+else
+  select one scv related by self->RV_SCV[R3308];
+  if empty scv
+    create object instance scv of RV_SCV;
+    relate scv to self across R3308;
+  end if;
+  scv.Value = param.value;
+end if;
+
+6.3 Updated expected results in several com.mentor.nucleus.bp.io.mdl.test
+    unit tests.
+    
+    The following five unit tests were failing with pixel differences BEFORE
+    this promotion:
+    	testCreateNestedDTP 
+    	testCreateNestedFP 
+    	testCreateNestedEEP 
+    	testCreateNestedSS 
+    	testUnicode
+    
+    There test results were updated.  Note that these changes were promoted
+    directly to head and are not in this works branch.  They are simply 
+    documented in this note because it was during promotion of this issue the 
+    problem was found and fixed.
+
+
+7. Unit Test
+------------
+See [2].
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100732441
+			 R3_2_3-NM-dts0100732441
+			 
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Assign to Member/Assign to Member.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Simple Value/Simple Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Attribute Value Reference/Attribute Value Reference.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Binary Operation/Binary Operation.xtuml
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPValue.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPVariable.java
+
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_1/
+    2-100 [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_1/
+    2-100.jpg [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_1/
+    Nested_test_1-100 [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_1/
+    Nested_test_1-100.jpg [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_2/
+    3-101 [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_2/
+    3-101.jpg [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_2/
+    Nested_test_2-101 [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_2/
+    Nested_test_2-101.jpg [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_3/
+    3-102 [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_3/
+    3-102.jpg [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_3/
+    Nested_test_3-102 [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_3/
+    Nested_test_3-102.jpg [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_4/
+    4-5 [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_4/
+    4-5.jpg [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_4/
+    4-5.txt [outgoing addition]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_4/
+    Nested_test_4-5 [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Nested_test_4/
+    Nested_test_4-5.jpg [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Unicode_test/
+    1048578-5 [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Unicode_test/
+    1048578-5.jpg [outgoing deletion]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Unicode_test/
+    Unicode_test-5 [outgoing change]
+>com.mentor.nucleus.bp.io.mdl.test/>expected_results/Unicode_test/
+    Unicode_test-5.jpg [outgoing change]
+
+
+
+End
+---
+
+$Log: dts0100732441.int,v $
+Revision 1.2  2011/01/17 15:04:54  rmulvey
+job:dts0100732441
+Added a section, 6.3, that describes the changes made to the io.mdl.test unit tests and updated the code changes section accordingly.
+
+Revision 1.1  2010/12/19 20:49:24  nmohamad
+job:dts0100732441
+Create

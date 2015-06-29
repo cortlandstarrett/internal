@@ -1,0 +1,155 @@
+========================================================================
+
+File:      $RCSfile: dts0100852140.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Populate Signal assignment chooser correctly for nested components.
+
+1. Abstract
+-----------
+This note describes the design for fixing this defective behavior.
+
+2. History
+----------
+
+   final - dts0100852140-01
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100852140 - Empty dialog for assigning signals, using
+    Generic packages
+[2] ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+
+4. Background
+-------------
+A customer reported that there were no signals present in the signal chooser
+dialog for some models that employed nested components. 
+
+5. Requirements
+---------------
+5.1 The signals chooser should always reflect the set of available signals on a
+    component's immediate boundary.
+5.2 This should be the case whether or not the component is a leaf, outer or
+    nested component. 
+
+6. Analysis
+-----------
+6.1 Failure analysis
+There is a defect in a navigation in SM_TXN_GenericPackageAssignSignal(). This
+navigation traverses to the System and then descends the hierarchy looking for
+the component and its interface references. This traversal fails to account for
+nested components.
+
+There is a simple reason the 'working' model attached to the issue does not show
+the defect: The outer component in the working case happens to use the same
+interface as the nested one. If different interfaces are used, the fault is
+exposed in the working model too. In addition, Verifier will not execute this
+'working' model correctly either.
+
+6.2 Alternative failure modes analysis
+To look for similarly defective OAL, we perform a search for the following OAL
+fragment:
+
+    C_IR[R4016]
+
+This navigation step would be found in any similar traversal. Sixty five (65)
+cases were found and examined. All examples were either handled in this work or
+were already correct.
+
+7. Design
+---------
+The defect is actually manifest in 3 places:
+
+- In the CME action OAL itself, and repeated in
+- SM_SM.canAssignSignal() and again in
+- SM_SM.hasValidSignals()
+
+The correct behavior is provided by locating the containing package and calling
+package.getContainingComponentId() on it. The result is then used to select the
+component instance, then to use the remainder of the existing traversal from the
+component found. This always produces the correct element set required.
+
+8. Design Comments
+------------------
+8.1 Choice not to use visibility infrastructure
+The issue suggests that the visibility infrastructure be used to locate the
+required signal set. This will not work, because the visibility infrastructure
+is designed to locate referred to elements such as Data Types and Interfaces.
+In this case we are looking for Interface References which are not supported.
+Even if the required support was to be added, using the visibility infra-
+structure is not required, because the component has visibility of its ports and
+interface references by definition.
+
+8.2 Redundant OAL removed
+When examining the OAL for the function and the two operations above, it was
+noted that there were logic paths that cater for classes directly under
+components. Since classes cannot be drawn directly under a component, this
+redundant OAL was removed.
+
+9. Work Required
+----------------
+9.1 Carry out the changes specified in the design section.
+9.2 Extend the unit tests to test the failure scenario
+
+10. Unit Test
+------------
+There are currently no nested components in the Component Context Menu Test
+suite. This gap in the test assets explains why this defect was not detected by
+the existing unit tests.
+
+The current policy with respect to testing the component context menu behavior
+is to make a copy of the specific package tests converted to generic packages.
+Given that there is a gap in the testing of specific packages*, it is proposed
+that a nested component test case be added to the specific package case and the
+equivalent generic package case be regenerated from it.
+
+* Note: the failure case happens to work with specific packages 
+
+The existing test would therefore be enhanced to:
+
+_- Add a new component, Outer Test Component to the Component Context Menu Test
+   Test Library component package.
+_- Outer Test Component will contain a nested Inner Test Component.
+_- Outer Test Component shall provide Test Interface.
+_- Inner Test Component shall provide Interface2.
+_- Inner Test Component shall contain a Test Subsystem and a Test Class with a
+   class state machine with two states and one transition.
+_- The test shall activate the Assign Signal menu entry on the transition.
+_R Interface2::aSignal is available for assignment and assignment is successful.
+_E Prior to this work, it is expected this test will pass in the specific
+   package case and fail for generics (see * above).
+_E After this work, both flavors of test will pass.
+
+End
+---
+
+$Log: dts0100852140.dnt,v $
+Revision 1.5  2012/02/20 14:51:11  campbell
+Job: dts0100852140
+Address review observations.
+
+Revision 1.4  2012/02/16 11:56:16  campbell
+Job: dts0100852140
+Specify exact expected test result.
+
+Revision 1.3  2012/02/16 11:41:47  campbell
+Job: dts0100852140
+Specify unit test.
+
+Revision 1.2  2012/02/14 19:18:20  campbell
+Job: dts0100852140
+Check in WIP.
+
+Revision 1.1  2012/02/14 15:38:35  campbell
+Job: dts0100852140
+Introduced.
+

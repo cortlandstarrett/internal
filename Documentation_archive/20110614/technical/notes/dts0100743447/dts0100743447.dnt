@@ -1,0 +1,162 @@
+========================================================================
+
+File:      $RCSfile: dts0100743447.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+xtumlmc_build support for Vista
+
+
+1. Abstract
+-----------
+Integrating BridgePoint and Vista together using a flow of SystemC code requires
+some extra bits and pieces around the output code from BridgePoint.  This note
+describes the changes required to the BridgePoint build to support these extra
+bits.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100743447
+
+4. Background
+-------------
+See Abstract.
+
+5. Analysis
+-----------
+5.1 Create directory for Vista support scripts
+
+5.1.1  xtumlmc_build needs to be modified to create a directory named 
+       "vista_includes" under the project "src" directory. This action should
+       take place only whenever a tcl file exists under the /code_generate/_ch.
+
+5.1.2  *.tcl files should be copied from the /code_generate/_ch to
+       /src/vista_include 
+                           
+5.1.3  since BP is not shipped with a tcl engine, user will be responsible to
+       run the top_level script
+   
+6. Design
+---------
+6.1  At line 1505 in xtulmc_build starts the block where the script copies newly
+     generated source files in the "_ch" directory to the target source folder 
+     specified by the user on the command line (default is "../../src").  The
+     copy only happens if xtumlmc_build is called from eclipse.  If it is not,
+     the files are not copied out of "_ch".
+     
+     A new block is added here to handle TCL files.  If there are TCL files
+     found, we create the necessary directory and copy files into it.
+     
+    if ( -d $output_src ) {
+      my $DIR = xtumlmc_opendir( "_ch" ); my @entries = readdir $DIR;
+      my @ch_entries = grep{/\.(c|cc|cpp|h|hh|hpp)$/i} @entries;
+      foreach my $f ( @ch_entries ) {
+        xtumlmc_copy_different( "_ch/$f", "$output_src/$f" );
+      }
++      my @tcl_entries = grep{/\.(tcl)$/i} @entries;
++      if (@tcl_entries) {
++        xtumlmc_mkdir("$output_src/vista_include");
++        foreach my $g ( @tcl_entries ) {
++          xtumlmc_copy_different( "_ch/$g", "$output_src/vista_include/$g" );
++        }
++      }
+    }
+  
+7. Design Comments
+------------------
+7.1  While investigating this fix, it was decided that the code block outlined
+     in §6.1 should used both in command line and eclipse invocations.  To that
+     end, the entry point wrapper will be changed to remove the entry gate:
+     
+-     if ( 1 == $called_from_eclipse ) {
+       < block from §6.1 >
+-     }
+
+7.2  Note that the code block in §6.1 is still gated by the check for the exist-
+     ance of the output src dir.  If the directory does not exist, the special
+     handling for the "vista_include/" folder is skipped and the tcl files are 
+     left in "_ch/".
+7.2.1  This check is a leftover from the code generation's heritage of creating
+       a large directory structure.  Much of this has been removed in an effort
+       to simplify the build process.  The check here could theoretically be
+       removed and/or the script could create the output source directory if it
+       does not exist.  However, it was decided that now is not the time to make
+       this change.
+       
+     
+8. Work Required
+----------------
+See §6.
+
+9. Unit Test
+------------
+9.1  Manual tests (using eclipse)
+    _- Run xtumlmc_build in a SystemC environment that generates TCL files 
+    _R No errors are output from xtumlmc_build.  The vista-include/ folder is 
+       created and the *.tcl files are copied in from _ch/.
+
+    _- Run xtumlmc_build again in a SystemC environment that generates the same
+       TCL files 
+    _R No errors are output from xtumlmc_build.  The vista-include/ folder is 
+       unmodified.  Datestamps on contained files in this folder are from the 
+       previous build.
+       
+    _- Run xtumlmc_build again in a SystemC environment that generates the some
+       TCL files that are different than existing ones. 
+    _R No errors are output from xtumlmc_build.  The vista-include/ folder is 
+       updated with only the changed files.  Datestamps on contained files in 
+       this folder are are mixed, some being from the first build, others from
+       this build.
+        
+    _- Remove all the contents from the project's src/ folder
+    _- Run xtumlmc_build again in a SystemC environment that does not create TCL
+       files
+    _R No errors are output from xtumlmc_build.  The vista-include/ folder is 
+       not created.
+        
+    _- Run xtumlmc_build in a MC-3020 environment. (Remove all the contents from
+       the src/ folder if using the same project.)
+    _R No errors are output from xtumlmc_build.  The vista-include/ folder is 
+       not created.
+
+9.2 Manual tests (command line)
+    - Repeat test scenarios from §9.1, note that the "src" folder must be 
+      created by hand.
+    
+    
+End
+---
+
+$Log: dts0100743447.dnt,v $
+Revision 1.5  2011/01/25 22:07:25  kbrown
+job:dts0100743447
+Updated based on the review.
+
+Revision 1.4  2011/01/25 17:32:41  kbrown
+job:dts0100743447
+Updated DNT with more details.
+
+Revision 1.3  2011/01/24 17:12:25  yshoukry
+job:dts0100743447
+
+dnt modified to reflect discussions done by Cort, Keith and Yasser on Skype
+
+Revision 1.2  2011/01/24 16:53:46  yshoukry
+job:dts0100743447
+
+Revision 1.1  2011/01/13 15:58:01  kbrown
+job:dts0100743447
+Created shell for DNT. Populated it with some basic info and some questions.
+

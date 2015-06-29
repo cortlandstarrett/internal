@@ -1,0 +1,187 @@
+========================================================================
+
+File:      $RCSfile: dts0100591007.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Add Dis-Satisfy capability
+
+1. Abstract
+-----------
+This note describes the detailed implementation required to allow Component
+interface satisfactions to be removed.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100591007
+[2] cvs:/Documentation/technical/notes/dts0100591007.dnt
+
+4. Background
+-------------
+See[2].
+
+5. Design
+---------
+See[2].
+
+6. Implementation Comments
+--------------------------
+6.1 Core
+As [2,6.1], except all operations are named dissatisfy as opposed to unsatisfy
+as specified. Also each of the four classes specified in the design have an
+additional operation, getSatisfactionCount added to support the auto-
+reconciliation infrastructure (see 6.2).
+
+6.2 Canvas
+As [2, 6.3], except the listener class specified is implemented using the canvas
+auto-reconcile feature.
+
+6.2.1 Additional canvas plugin entries are added to tell the reconciler to check
+the graphics for Requirement and Imported Requirement classes. The count method
+is specified as getSatisfactionsCount. The other methods are marked as
+'not used' to make it clear that they are not needed for connectors.
+
+6.2.2 The canvas Auto Reconciliation Specification class is modified to
+reconcile connector ends. This is implemented by comparing the satisfaction
+count obtained through the auto reconciliation extension point with the number
+of anchors (GraphConnector) instances found attached to the graphic element.
+
+It was found to be simpler to only reconcile requirement connectors, since they
+are only zero or one cardinality. Even if the Provision is clicked on to perform
+the dissatisfaction feature, the partner Requirements are all polled and the
+correct graphical connections removed. This avoids the complexity of
+identifying which anchor of a one to many set to remove. It also avoids the
+performance overhead of needlessly checking the same connector twice, once from
+the perspective of the Provision and once from the perspective of the
+Requirement.
+
+7. Unit Test
+------------
+During the implementation process it was discovered that a different code path
+(indeed a different graphics metamodel navigation) is required depending on
+whether the Requirement is dropped on the Provision or vice versa. Accordingly
+separate tests are devised that exercise both permutations.
+
+The degrees of freedom are therefore:
+
+- Provision dropped on Requirement (versus dropped on Provision)
+- Requirement side is dissatisfied (versus Provision side)
+- 2 connectors joined (3 connectors joined)
+- Local Provision (versus Imported Provision)
+- Local Requirement (versus Imported Requirement)
+
+Test matrix:
+                                            Provision          Requirement    O
+Dropped on  | Dissatisfied side | Count \ Local | Imported | Local | Imported
+Requirement | Requirement       |   2   |   x   |          |   x   |          0
+Requirement | Provision         |   2   |   x   |          |   x   |          0
+Provision   | Requirement       |   2   |   x   |          |   x   |          0
+Provision   | Provision         |   2   |   x   |          |   x   |          0
+Requirement | Requirement       |   3   |   x   |          |   x   |          1
+Requirement | Provision         |   3   |   x   |          |   x   |          0
+Provision   | Requirement       |   3   |   x   |          |   x   |          1
+Provision   | Provision         |   3   |   x   |          |   x   |          0
+Requirement | Requirement       |   2   |       |    x     |   x   |          0
+Requirement | Provision         |   2   |       |    x     |   x   |          0
+Provision   | Requirement       |   2   |       |    x     |   x   |          0
+Provision   | Provision         |   2   |       |    x     |   x   |          0
+Requirement | Requirement       |   3   |       |    x     |   x   |          1
+Requirement | Provision         |   3   |       |    x     |   x   |          0
+Provision   | Requirement       |   3   |       |    x     |   x   |          1
+Provision   | Provision         |   3   |       |    x     |   x   |          0
+Requirement | Requirement       |   2   |   x   |          |       |    x     0
+Requirement | Provision         |   2   |   x   |          |       |    x     0
+Provision   | Requirement       |   2   |   x   |          |       |    x     0
+Provision   | Provision         |   2   |   x   |          |       |    x     0
+Requirement | Requirement       |   3   |   x   |          |       |    x     1
+Requirement | Provision         |   3   |   x   |          |       |    x     0
+Provision   | Requirement       |   3   |   x   |          |       |    x     1
+Provision   | Provision         |   3   |   x   |          |       |    x     0
+Requirement | Requirement       |   2   |       |    x     |       |    x     0
+Requirement | Provision         |   2   |       |    x     |       |    x     0
+Provision   | Requirement       |   2   |       |    x     |       |    x     0
+Provision   | Provision         |   2   |       |    x     |       |    x     0
+Requirement | Requirement       |   3   |       |    x     |       |    x     1
+Requirement | Provision         |   3   |       |    x     |       |    x     0
+Provision   | Requirement       |   3   |       |    x     |       |    x     1
+Provision   | Provision         |   3   |       |    x     |       |    x     0
+
+Outcomes (O):
+
+0 - All connectors disconnected.
+1 - One connector still connected.
+
+- In the case of expected outcome 0, test that all connector ends (2 or 3
+  depending on the test) can be independently moved after the Dissatisfy is
+  performed.
+- In the case of expected outcome 1, test that the correct connector is free to
+  move independently and that the other is still attached to the partner
+  connector.
+- For all tests, after the Dissatisfy, show that a disconnected connector can be
+  reconnected to the same partner connector and to a different partner
+  connector.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui/.cvsignore
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Provision/Imported Provision.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Requirement/Imported Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Provision/Provision.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Requirement/Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/Context Menu Entry Functions/Context Menu Entry Functions.xtuml
+com.mentor.nucleus.bp.core/sql/context_menu.pei.sql
+
+com.mentor.nucleus.bp.ui.canvas/models/com.mentor.nucleus.bp.ui.canvas/
+    ooaofgraphics/Graphical Data/Auto Reconciliation Specification/
+    Auto Reconciliation Specification.xtuml
+com.mentor.nucleus.bp.ui.canvas/plugin.xml
+
+com.mentor.nucleus.bp.ui.canvas.test/src/com.mentor.nucleus.bp.ui.canvas.test/
+    DissatisfactionTests.java
+
+
+
+
+End
+---
+
+$Log: dts0100591007.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/06/10 13:58:04  kbrown
+job:dts0100591007
+Updated code changes section with the refined list of files for promotion.
+
+Revision 1.4  2009/06/05 16:24:09  campbell
+Job: dts0100591007
+Adjust test details.
+
+Revision 1.3  2009/06/05 11:35:56  campbell
+Job: dts0100591007
+Add additional test details.
+
+Revision 1.2  2009/06/05 11:28:53  campbell
+Job: dts0100591007
+Correct expected outcomes.
+
+Revision 1.1  2009/06/05 11:26:28  campbell
+Job: dts0100591007
+Introduced.

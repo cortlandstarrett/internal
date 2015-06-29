@@ -1,0 +1,157 @@
+========================================================================
+
+File:      $RCSfile: dts0100895665.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support inter-project referencing for interaction elements.
+
+1. Abstract
+-----------
+This note describes the changes required to support referencing elements in
+other projects by interaction elements.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100895665
+
+4. Background
+-------------
+Interaction elements in packages were designed to use the element chooser dialog
+when formalizing.  They were designed to ignore visibility by default but allow
+the user to choose to enable visibility filtering in the dialog.  When IPRs were
+enabled support for these elements was not added.
+
+5. Requirements
+---------------
+Interaction elements shall be allowed formalization to any element that can be
+accessed.  This includes elements in other projects when IPRs are enabled.
+
+6. Work Required
+----------------
+6.1 Enable elements in other systems
+
+The chooser_elements_provider.inc archetype is modified to look for all elements
+in all allowable systems.  To do this the system of the element being formalized
+is checked for IPR enablement, if it is enabled then all other systems that have
+globals enabled are processed.  The elements found are passed to the chooser
+dialog.  This enables all possible elements in the chooser dialog which then
+takes care of the filtering as it did before.
+
+In the Utility external entity the getElementCountInSystem bridge is modified to
+also consider inter-project referencing when determining the count of elements
+possible.  This allows the Formalize... menu to show when no local elements are
+present but external elements are.
+
+7. Implementation Comments
+--------------------------
+7.1 Fix formalize() operations to handle IPRs
+
+Testing of this issue showed that while selecting an IPR element worked
+perfectly, the actual assignment to such an element failed for the following
+types:
+
+Package Participant
+Class Participant
+Class Instance Participant
+External Entity Participant
+
+In all cases the problem was that we were selecting from instances on the
+subtype element, not the Packageable Element instance.  The current hash map
+lookup infrastructure does not support this.  For each class above the
+formalize() operation is modified to locate the PE instance instead of the
+subtype.
+
+7.2 Make Package Participant.actionFilter() common to other participants
+
+All participants except for the Package Participant use the utility bridge,
+getElementCountInSystem(), to determine the number of possible elements to
+formalize against.  There was a bug in the Package Participant actionFilter that
+can be resolved by simply using the same common bridge.  For consistency this
+approach was taken.  For the bridge to support the Package Participant it was
+modified to add a case for the PACKAGE element type.
+
+7.3 Pass true for global searching during element collection in selection dialog
+
+In ElementSelectionFlatView, the call to Package.collectVisibleElementsForName()
+must pass true for collecting globally.  This change is made to support the
+visibility filtering.
+
+8. Unit Test
+------------
+Repeat for Package Participant, External Entity Participant, Class Participant,
+Class Instance Participant and Component Participant
+
+_- Create the formalize to element in a project that has globals enabled
+_- Create the participant element in another project that does not have IPRs
+   enabled
+_- Right click on the participant element
+_R The formalize... menu item is not present
+_- Add a formalize to element in the project containing the participant element
+_- Right click on the participant element
+_R The formalize... menu item is present
+_- Click the formalize... menu item
+_R The selection dialog only contains the local element
+_- Delete the local formalize to element
+_- Enable IPRs on the participant's project
+_- Right click the participant
+_R The Formalize... menu item is present
+_- Click the Formalize... menu item
+_R The selection dialog displays the external element
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100895665
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/dialogs/
+	ElementSelectionFlatView.java
+com.mentor.nucleus.bp.core/arc/chooser_elements_provider.inc
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+	External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+	Interaction/Class Instance Participant/Class Instance Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+	Interaction/Class Participant/Class Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+	Interaction/External Entity Participant/External Entity Participant.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+	Interaction/Package Participant/Package Participant.xtuml
+
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+	TigerNatureWorkspaceSetupTestGenerics.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+	TigerNatureExistingProjectsTestGenerics.java
+com.mentor.nucleus.bp.core.test/expected_results/TigerNatureTest_*Participant*
+	
+End
+---
+
+$Log: dts0100895665.int,v $
+Revision 1.4  2012/08/02 22:44:46  tlondon
+Job: dts0100895665
+Add new expected result files to code changes section
+
+Revision 1.3  2012/08/02 21:50:26  tlondon
+Job: dts0100895665
+
+Adjust note to account for different location of tests.
+
+Revision 1.2  2012/08/02 13:47:39  tlondon
+Job: dts0100895665
+
+Add comments about actionFilter fixes
+
+Revision 1.1  2012/08/01 15:06:08  tlondon
+Job: dts0100895665
+Add implementation note

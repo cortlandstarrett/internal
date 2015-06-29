@@ -1,0 +1,141 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Persist action language in the model file
+
+1. Abstract
+-----------
+This note describes how BridgePoint was modified to persist action language in 
+the model file.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 1699
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1699
+[2] <cvs>Documentation/internal/technical/Persistence/i1699.dnt
+[3] <cvs>Documentation\internal\test_results\R1_5_0\i1699
+[4] Bugzilla item 2746
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2746
+    
+4. Background
+-------------
+
+5. Design
+---------
+5.1 Modify bp.io.mdl/sql/file_io.pei.sql to include OAL in the data that is 
+    persisted.
+5.2 Persistence of OAL is done across R601/R666 in the body subsystem.  
+5.3 The xtumlmc_build script was modified and xtumlmc_cleanse_for_BridgePoint
+    was introduced to it.  This new routine performs 2 tasks:
+    -Replace UUIDs with longs
+    -Remove any PEI data before processing
+5.3.1 BridgePoint build scripts that previously called ReplaceUUIDWithLong
+      were modified to call xtumlmc_cleanse_for_BridgePoint instead.
+
+         
+6. Implementation Comments
+--------------------------
+6.1 When the new PEI data was added, there were a couple of places in generated
+    code where duplicate variables were encountered.  These were in 
+    create_external_link_evaluator.arc, and gen_export_java.inc.  The archetypes
+    were modified to prevent these duplicate variable names.
+6.2 During initial testing it was observed that proxies were being written
+    when navigating between the body and block classes.  This was happening 
+    because the code used to determine if elements exist in the same persistable
+    model component (NonRootModelElement.java::inSameComponent()) did not 
+    properly account for the case(s) where one or both of the PMCs were null.  
+    A rouinte named shouldWriteProxy() was introduced.  This new routine 
+    determines if a proxy should be written by looking to see if the 2 given 
+    elements are not null and if they are in the same component.  This new
+    routine is now used in place of inSameComponent() in the export code 
+    (gen_export_java.inc).
+6.3 The initial implementation introduce the code to populate the R666/R601
+    relationship in the activity editor resource listener.  Testing uncovered
+    problems with this where a change was made and this resource listener didn't 
+    get notified until after persistence happened (which resulted in NPEs and 
+    other bad behavior because R601/666 had not been populated with the 
+    modified elements before persitence was attempted). Therefore, 
+    ModelElementPropertyStorage.setPropertyValue() was modified to cause the
+    persitence to occur when OAL is saved.
+6.4 In MC-Java/build.xml, the name the file-io-sql target was renamed to
+    generate-with-file_io.java.  This was done to address i2746 [4].  Issue 
+    i2746 can be closed with this issue.
+
+7. Unit Test
+------------
+7.1 Ran all unit tests and checked results into [3].
+
+8. Code Changes
+---------------
+The changes are in branch Review-i1699-01.
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    NonRootModelElement.java
+com.mentor.nucleus.bp.core/generate.xml
+
+com.mentor.nucleus.bp.core.test/generate.xml
+
+com.mentor.nucleus.bp.io.core/arc/gen_export_java.inc
+com.mentor.nucleus.bp.io.core/generate.xml
+
+com.mentor.nucleus.bp.io.mdl/arc/create_external_link_evaluator.arc
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+
+com.mentor.nucleus.bp.ui.canvas/generate.xml
+
+com.mentor.nucleus.bp.ui.canvas.test/generate.xml
+
+com.mentor.nucleus.bp.ui.properties.test/generate.xml
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    ModelElementPropertyStorage.java
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/
+    ActivityEditor.java
+
+MC-Java/build.xml
+
+model_compilers/mccommon/bin/xtumlmc_build
+
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.3  2007/03/02 19:27:38  rmulvey
+Job:1699
+Added more detail.
+
+Revision 1.2  2007/03/02 19:15:54  rmulvey
+Job:1699
+Updated the implementation note with the latest information about the implementation.
+
+Revision 1.1  2007/02/08 20:52:19  rmulvey
+Job:1699
+Introduced

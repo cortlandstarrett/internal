@@ -1,0 +1,169 @@
+========================================================================
+
+File:      $RCSfile: dts0100701342.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Test models need updated
+
+1. Abstract
+-----------
+Corruptions have been found in BridgePoint test models.  This issue is raised
+to determine how this happened and fix it.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100701342
+[2] Bugzilla issue 845
+    Package-level CM (multi-file model persistence).
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=845
+[3] Bugzilla issue 2405
+    Simultaneous UUID upgrade with release of PLCM
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2405
+[4] bp/core/ui/ConvertToMultifileWizard.java
+    This is PLCM single-file to multi-file wizard that was
+    used to update single-file models to multi-file.   
+[5] bp/core/common/IDConvertor.java
+    This is the class used by the PLCM single-file to 
+    multi-file wizard to update long-based IDs to
+    UUIDs. 
+
+4. Background
+-------------
+The Component Context Menu Test contains some domain proxys with very stale 
+file paths (they refer to a completely different project).  Additionally, 
+the file:
+Component Context Menu Test\Component Context Menu Testing\Test Library\Unnamed Component\Unnamed Component.xtuml
+contains both an S_DOM instance _and_ an S_DOM_PROXY instance.  This shouldn't 
+be (it is the proxy which contains the stale path of course).
+
+The stale path calls out a location in canvas.test model, so the problem is 
+only shown as an error when the canvas.test project is not present in the 
+workspace.  Since the team normally has both the Models and canvas.test 
+projects in their workspaces, no error is observed, but the corruption is 
+still present.
+
+
+
+5. Analysis
+-----------
+5.1 How did our test models get into this situation?
+    Our test models contain dummy UUIDs.  A dummy UUID is a UUID that was 
+    created based on the old long-based identifier that BridgePoint used to use.
+    When the issue to change IDs from long-based identifiers to UUIDs was
+    completed [3], it was determined that it was best to update the 
+    identifiers by simply placing the existing long-based value into the
+    low-order 4 bytes of the UUID (leaving all the other bytes set to 0).
+    This was done with the very good intention of being able to track
+    any problems introduced by the long -> UUID conversion back to the
+    original long-based model.  However, these "dummy UUIDs" are not really 
+    valid UUIDs.  The problems started when we later introduced system-level
+    components.  These "dummy UUIDs" were not unique across domains.  
+    Therefore, as the tool started allow us to do things like
+    formalize components to existing domains, these IDs were duplicated
+    at the system level.  When an xtUML project was loaded, the loader
+    would search for the first ID with the given value and sometimes it
+    got the right element and sometimes not.  This was the beginning of
+    the corruption.
+    
+5.2 Could this happen in customer models?
+    This problem will not ever be seen in a customer model.
+    The reason is that the long to UUID change was performed in the same time
+    frame as the PLCM project [2].  In fact, the long > UUID conversion [5]
+    was done inside the PLCM branch.  The update wizard used to convert
+    customer files from single-file-format to multi-file format [4]
+    performed a long > UUID conversion inside the single-file-format 
+    model as the first step in the conversion to the multi-file format.  This
+    conversion created valid UUIDs, not the "dummy ids" that we used 
+    internally.
+    
+
+6. Design
+---------
+6.1 Clean up the corruption in the test models
+6.1.1 All test models with formalized component packages
+    shall be exported and then reimported into the tool.
+    This is done to force the UUIDs to be recreated as valid UUIDs 
+    (removing the "dummy UUIDs" from the model). 
+    This export and import should be done in a workspace with no
+    other test models present to assure that invalid references
+    are not included.    
+    The project affected are: 
+    Models/Component Context Menu Test
+    Models/ComponentSyntaxTest
+    Models/System Component Testing
+6.2 Modify batchRelate generation in MC-Java/java.arc so it will only search 
+    within the current project.   BP should NOT EVER search outside of the 
+    current project to resolved references.  This is currently an internal 
+    issue because only our test models have long-based UUIDs which are not 
+    unique across projects.   However, this is an accident waiting to happen,
+    and it effects performance,  so it is fixed here.
+    
+
+7. Design Comments
+------------------
+
+
+8. Work Required
+----------------
+Specified in the design section.
+
+9. Unit Test
+------------
+9.1 Assure that the bad references are now gone.
+_- Repeat the following steps for each of the projects in the BP development 
+   environment that contain xtUML models.  these projects are:
+		com.mentor.nucleus.bp.als
+		com.mentor.nucleus.bp.als.oal.test
+		com.mentor.nucleus.bp.compare.test
+		com.mentor.nucleus.bp.core
+		com.mentor.nucleus.bp.core.test
+		com.mentor.nucleus.bp.io.image.test
+		com.mentor.nucleus.bp.io.mdl.test
+		com.mentor.nucleus.bp.io.sql.test
+		com.mentor.nucleus.bp.ui.canvas
+		com.mentor.nucleus.bp.ui.canvas.test
+		com.mentor.nucleus.bp.ui.explorer
+		com.mentor.nucleus.bp.ui.explorer.test
+		com.mentor.nucleus.bp.ui.properties.test
+		com.mentor.nucleus.bp.ui.text.test
+		com.mentor.nucleus.bp.ui.tree
+		com.mentor.nucleus.bp.welcome
+		Models   
+_- Start with an empty workspace
+_- Check out one of the BP development
+   projects listed in the first step
+_- Open the xtUML perspective
+_- Expand the project in ME   (Shift+Numpad *)
+_- Open the problems view
+_R No errors
+
+9.2 All existing unit tests pass
+
+End
+---
+
+$Log: dts0100701342.dnt,v $
+Revision 1.3  2010/08/19 16:32:26  rmulvey
+job:dts0100701342
+Addressed review observations.
+
+Revision 1.2  2010/08/19 16:18:00  rmulvey
+job:dts0100701342
+Addressed review observations.
+
+Revision 1.1  2010/08/18 18:50:59  rmulvey
+job:dts0100701342
+Introduced
+

@@ -1,0 +1,218 @@
+========================================================================
+
+File:      $RCSfile: i372.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:28 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+
+Implementation Comments
+-----------------------
+
+- Updated ooaofooa.mdl and ooaofooa.bak files for changing get_name operation
+to include empty check, which was causing NullPointerException. It now returns
+Orphaned just like other model classes do.
+
+- Canvas and Explorer files are changed to update invocations to createInstance,
+which was previously setInput. CanvasEditorInput.setInput is also changed to 
+CanvasEditorInput.createInstance and is marked as deprecated.   Issue 759 
+tracks removing the deprecated methods.
+
+- ModelAdapter has been modified to generate ModelElementAdapter and query 
+classes for all editable and required model elements, as changes of both model 
+elements can effect place holders and open editors.
+
+- Following classes are modified to handle cases where initialization of editor
+input resulted in Exceptions if under lying model element of editor input does 
+not exists. They add null check for IFile, which may not exist. Moreover instead 
+of displaying error dialog and throwing exception, editor gracefully opens and 
+shows "under lying model element does not exist" as per framework API 
+documentation.
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/DocumentProvider.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    ActivityAnnotationModel.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+    DescriptionAnnotationModel.java
+
+DocumentProvider also removed call to super.setDocumentContent as it was not
+required it type of input is AbstractModelElementEditorInput
+
+- Following files simplify code by using abstractions defined by ui.text 
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/DocumentProvider.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorListener.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    AllActivityModifier.java
+    
+- A utility method getRequiredModelElement() is defined in 
+AbstractModelElementEditorInput class so that one would not need to use factory
+methods if editor input is present.
+
+- EditorInput that was previously generated is removed and any files that had 
+references to EditorInput are updated to directly use methods available from
+derived classes of AbstractModelElementEditorInput.
+
+- A method isOrphaned is added to NonRootModelElement to handle cases where
+reload of a model makes a cached model element technically orphaned. 
+ModelElementID.resolve method checks if model element is orphaned then it 
+attempts to re-resolve the model element.
+
+- PlaceHolder.java is modified to add deletePlaceHolderFile(IFile) method, which
+uses IWorkbench.run() to delete the place holder file, so that it can avoid 
+potential resource lock error. Both DescriptionEditor and ActivityEditor is
+modified to use this method as well.
+
+- Equals implementation suggested in design note under section i372.4 has been 
+backed out as it is not required by ui.text and had many ripples effects on 
+canvas.
+
+- Following files were changed to properly log errors, which were previously
+printing them on console.
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasEditor.java
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+    ModelContentOutlinePage.java
+com.projtech.bp.ui.explorer/arc/create_explorer_view.inc
+
+- Following files were modified to support logging of all types of throwables
+and creation of IStatus which can be used to throw CoreExceptions, where needed.
+com.projtech.bp.ui.explorer/src/com/projtech/bp/ui/explorer/ExplorerPlugin.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/TextPlugin.java
+
+- Any files that were only modified by 359 are not listed here. However the 
+branch for this issue (Review-i372-03) also contains the delta for i359.
+
+- Timestamps for internal io expected results were updated.
+
+Unit Test
+---------
+See design note.
+
+Code Changes
+------------
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+com.projtech.bp.core/mdl/ooaofooa.mdl
+
+com.projtech.bp.internal.io.sql.test/expected_results/ee_exp_g.sql
+com.projtech.bp.internal.io.sql.test/expected_results/ee_exp_nog.sql
+com.projtech.bp.internal.io.sql.test/expected_results/err_ee1.sql
+com.projtech.bp.internal.io.sql.test/expected_results/os_ee1.sql
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasEditor.java
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasEditorInput.java
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasFactory.java
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasPlugin.java
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+    ModelContentOutlinePage.java
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/ShowCanvasAction.java
+
+com.projtech.bp.ui.explorer/arc/create_explorer_view.inc
+com.projtech.bp.ui.explorer/src/com/projtech/bp/ui/explorer/ExplorerPlugin.java
+
+com.projtech.bp.ui.text/arc/create_activity_editorinput_factory_java.inc [added]
+com.projtech.bp.ui.text/arc/create_description_editorinput_factory_java.inc 
+                                                                         [added]
+com.projtech.bp.ui.text/arc/create_editorinput_factories_java.arc [added]
+com.projtech.bp.ui.text/arc/create_editorinput_java.arc [removed]
+com.projtech.bp.ui.text/arc/create_editorlistenerdata_java.arc [removed]
+com.projtech.bp.ui.text/arc/create_editorstorage_java.arc [removed]
+com.projtech.bp.ui.text/arc/create_modeladapter_java.arc
+com.projtech.bp.ui.text/arc/create_plugin_xml.arc
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/.cvsignore
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    AbstractModelElementEditorInput.java [added]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    AbstractModelElementEditorInputFactory.java [added]    
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    AbstractModelElementPropertyEditorInput.java [added]    
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/DocumentProvider.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorListener.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorListenerData.java [added]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorModelId.java [removed]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    IModelElementEditorInputFactory.java [added]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/IPlaceHolder.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/ModelElementID.java [added]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/
+    ModelElementPropertyStorage.java [added]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/PlaceHolder.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/TextPlugin.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/.cvsignore [added]
+    
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityEditor.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    ActivityEditorInput.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    ActivityFactory.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    AllActivityModifier.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+    ShowActivityAction.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/annotation/
+    ActivityProblem.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/.cvsignore [added]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+    DescriptionAnnotationModel.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+    DescriptionEditor.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+    DescriptionEditorInput.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+    DescriptionFactory.java [removed]
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+    ShowDescriptionAction.java
+com.projtech.bp.ui.text/generate.xml
+
+com.projtech.bp.ui.text.test/src/UITextSuite.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/description/
+    DescriptionEditorInteraction.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i372Tests/
+    i372TestSuite.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i372Tests/
+    NavigationAfterModelElementDeletionTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i372Tests/
+    NavigationTest.java
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/i589Test/
+    ElementDeleteTest.java
+
+MC-Java/java.arc
+
+End
+---
+
+$Log: i372.int,v $
+Revision 1.1  2009/09/03 18:24:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.44.1  2008/12/31 16:10:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/03/11 04:34:34  greg
+Job: 372
+Final review updates
+
+Revision 1.3  2005/03/10 21:00:29  babar
+Job:372
+minor changes
+
+Revision 1.2  2005/03/10 20:58:53  babar
+Job:372
+Added more comments
+
+Revision 1.1  2005/03/10 18:28:50  babar
+Job:372
+Introduced.

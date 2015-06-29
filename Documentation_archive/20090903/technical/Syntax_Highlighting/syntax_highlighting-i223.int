@@ -1,0 +1,460 @@
+========================================================================
+
+File:      $RCSfile: syntax_highlighting-i223.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:28:36 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Syntax Highlighting
+
+Abstract
+--------
+This document describes the implementation specifics of the Syntax Highlighting 
+for Tiger's action semantics editor.
+
+Document References
+-------------------
+[1] bp.core/doc/internal/technical/Action_Semantics/action_semantics.dnt
+[1] bp.core/doc/internal/technical/Action_Semantics/action_semantics.dnt
+[2] bp.core/doc/internal/technical/Syntax_Highlighting/syntax_highlighting-i223.ant
+[3] bp.core/doc/internal/technical/Syntax_Highlighting/syntax_highlighting-i223.dnt
+[4] bp.als.oal/bnf/oal.bnf
+[5] bp.als/mdl/grammar.bak
+[6] bp.als/sql/oal_grammar.sql
+
+Implementation Comments
+-----------------------
+
+- Integration of OALEditor (Providing syntax highlighting) with ActivityEditor is 
+done by having all of Activity Editor classes to extend from corresponding OAL 
+Editor classes. Following are precise details
+
+	1 - com.projtech.bp.ui.text.DocumentProvider --extends-->
+	    com.projtech.bp.ui.text.editor.oal.OALDocumentProvider
+
+	2 - com.projtech.bp.ui.text.EditorConfiguration --extends-->
+	    com.projtech.bp.ui.text.editor.oal.EditorConfiguration
+	
+	3 - com.projtech.bp.ui.text.TextPlugin --extends-->
+	    com.projtech.bp.ui.text.OALEditorPlugin
+	    
+	4 - com.projtech.bp.ui.text.activity.ActivityEditor --extends-->
+	    com.projtech.bp.ui.text.editor.oal.OALEditor
+    
+	This is done for attaining following advantages
+	1- Previewer in syntax preferences uses classes that should not include 
+	anything except syntax highlighting. Over-riding allows to attain that.
+	2- Least possible merging overhead with clear boundaries of syntax 
+	highlighting.
+
+- Following methods have been renamed for better clarity
+
+    - IPreferenceModel
+    public void synchronizeTo(IPreferenceModel model);
+    public Object deepClone();
+
+- IPreferenceModel.IChangeListener's modelChanged method signature is changed to
+    public void modelChanged(IPreferenceModel model, int changeHints);
+    
+    Instead of String changeHints, int is used, since both required defining 
+    constants for maintaining integrity, which in turn eliminates advantage for 
+    which String hint was used.
+
+- Previewer in preferences does not uses OALEditor directly as it does not 
+provides control over how created widget is going to be layout. Instead, 
+SourceViewer is used using the same SourceViewerConfiguration that OALEditor uses.
+    
+- Package naming convention is kept different from the Activity Editor, since
+it provides more logical breakup of code.
+
+com.projtech.bp.ui.text.editor provides any files that would be common for all 
+editors.
+e.g.,
+SyntaxHighlightingPreferences is a generic preference model class that can be 
+used by any editor that intent to provide syntax highlighting, and so does 
+SyntaxHighlightingPreferencesStore.
+
+- OALPreviewCode.txt file is created that provides content for preview window.
+
+- BaseModelEditor class is introduced which provides abstract functionality of
+any preference page that would use preference framework.
+
+- TabbedPreferenceContainer is modified so that it can invoke init method of 
+any preference page that is being added to it if its instance of 
+IWorkbenchPreferencePage.
+
+- DescriptionEditor is modified to use its own source viewer configuration. 
+Previously it created an instance of same EditorConfiguration which is used for 
+ActivityEditor. That EditorConfiguration now extends OALEditor's Configuration 
+with syntax highlighting setup. Using the same EditorConfiguration results in 
+DescriptionEditor highlighting the description. Therefore a separate 
+configuration class specific to DescriptionEditor is created, which is inner 
+class of DescriptionEditor. Following are few other arguments to support this 
+decision
+     * - It does not require syntax highlighting.
+     * - It does not require TextHover.
+     
+However DescriptionEditor still requires Annotation Hover to show hovers when 
+mouse is hovered over the bookmark/task in either the left- or right-hand margin.
+So DescriptionEditor.Configuration class overrides getAnnotationHover() to 
+return TextHover but not in getTextHover().
+     
+- OALEditorConstants is used to keep all constants including color constants. 
+Hard coding the default color constants in OALEditorConstants is infered from 
+JDT.
+
+- The preferences framework has been renamed to com.projtech.bp.ui.preferences
+and moved to bp.core, to allow other sub-projects to be able to use it. Design
+note has been udpated to reflect the changes.
+
+- BasePlugin method 
+registerPreferencesStore(String storeClassName, boolean loadonStartup)
+has been changed to
+registerPreferencesStore(IPreferenceModelStore store, boolean loadModelonStartup)
+
+Since the framework has been moved to core, BasePlugin required de-coupling in 
+true meanings. And therefore derived classes are now required to pass an instance
+of store rather then just its name.
+
+The sample code in the preferences is kept in the OALPreviewCode.txt file under
+the source tree.  The release creation script is changed to support copying all
+files that are not *.java, and .* files to the binary tree so that support files
+will be contained in the plugin jar file.
+
+The compile target in bp.core/generate.xml is changed to support the addition of
+source to the bp.core/src/com/projtech/bp/ui tree.  The compile target is
+changed to compile everything under src/com/projtech/bp instead of
+src/com/projtech/bp/core.  A classpath entry was added for jface.text.
+
+Unit Test
+--------- 
+Manual test for Syntax highlighting (OALEditor)
+_- Import some sql file in Model Explorer 
+_- Open any state diagram and double click any state
+_R Activity Editor will open up. Any action language in it will be syntax 
+   highlighted as given in preferences.
+   Default settings are 
+   Single-line comments  - Green(R=63, G=127, B=95)
+   Multi-line comments   - Green(R=63, G=127, B=95), Bold
+   Strings               - Blue(R=42, G=0, B=255)
+   Keywords              - (R=127, G=0, B=85), Bold
+   Others                - Black(R=0, G=0, B=0)
+   
+_- Enter a single line comment start with // character pattern.
+_R Single line should be highlighted as given in preference as soon as you enter 
+   // character sequence.
+_- Enter a multi-line comment starting with /* and ending with */
+_R Comments should be highlighted as soon as you enter starting pattern.
+_- Enter a string both with double quotes and single quote.
+_R Strings should be highlighted after end quote is given.
+_- Paste the following keywords
+	assign
+	break
+	bridge
+	control
+	stop
+	continue
+	create
+	event
+	instance
+	of
+	object
+	_debug
+	delete
+	for
+	each
+	in
+	end
+	generate
+	if
+	elif
+	else
+	relate
+	to
+	across
+	using
+	return
+	select
+	one
+	any
+	many
+	transform
+	unrelate
+	from
+	while
+	_trace
+	_off
+	_on
+	_dump
+	_sor
+	_stat
+	rcvd_evt
+	assigner
+	class
+	creator
+	related
+	by
+	instances
+	param
+	where
+	cardinality
+	empty
+	false
+	not
+	not_empty
+	true
+	selected
+	self
+	and
+	or
+
+_R All of these keywords must be highlighted according to the given preference.
+_- Remove characters randomly from above keywords.
+_R Any keywords that are edited not to stay as keywords will also lose Keyword 
+   highlighting 
+_R Any words that are not keywords, single-line comment, multi-line comment
+   or strings will be highlighted in color that is given to others keyword 
+   category in preference.
+
+Manual test for preference pages (OALEditor)
+_- Open an editor showing some BPAL.
+_- Open the Dialog Window > Preferences > BridgePoint > Activity Editor
+_R There is a 'Syntax' Tab on the preferences pane.
+_- Select the 'Syntax' tab.
+_R A page showing the fields, 'Background color', 'Foreground:', 'Color:',
+  'Bold' and 'Preview:'.
+_R The Background color field is formed of a group of two radio
+         buttons labeled 'System Default' and 'Custom:'.
+_R This page is laid out exactly as for the Java Editor preferences;
+         'Window > Preferences > Java > Editor > Syntax'.
+_R The 'Foreground:' field contains the following entries:
+         - 'Multi-Line comment'
+         - 'Single-Line comment'
+         - 'Keywords'
+         - 'Strings'
+         - 'Others'
+_R The default value for the Background color is 'System Default:'
+_-  Select the 'Custom:' option.
+_R The color chooser button is enabled.
+_- Push the color chooser button.
+_R A color chooser dialog is shown.
+_- Select a new color and click OK.
+_R The preview field back ground changes color to match the selected color.
+_R The editor background does not change.
+_- Push the color chooser button.
+_R The color chooser dialog is shown.
+_- Select a different color and click Cancel.
+_R The preview field background does not change color.
+_- Click the 'System Default' button.
+_R The preview field background changes back to the system default color.
+_R The editor background does not change.
+_-  Select the 'Custom:' option.
+_- Push the color chooser button again.
+_- Select a new color and click OK.
+_- Click 'Apply'
+_R The editor background changes color to match the selected color.
+_- Select 'Keywords' in the 'Foreground' list box.
+_R The 'Color' button changes to the default Java color for keywords.
+_R The 'Bold' checkbox changes to the default Java setting for keywords.
+_- Push the color button
+_R A color chooser dialog is shown.
+_- Select a new color and click OK.
+_R The keywords in the preview field change color to match the selected color.
+_R The editor keywords do not change color
+_- Push the color chooser button.
+_- Select a different color and click Cancel.
+_R The preview field keywords do not change color.
+_- Uncheck the 'Bold' checkbox
+_R The keywords in the preview field change from Bold to Normal weight.
+_R The editor keywords do not change.
+_- Click Cancel.
+_R The preferences dialog closes.
+_R The editor keywords do not change.
+_- Reopen the syntax highlighting preferences.
+_- Select 'Keywords' in the 'Foreground' list box.
+_- Change the keyword color.
+_- Change the keyword Bold setting
+_- Click Apply.
+_R The editor keywords change to match the color and bold settings made.
+_- Click Reset Defaults
+_R The preview field returns to match the default Java colors.
+_- The editor colors do not change.
+_R Click 'Cancel'.
+_- The editor colors do not change.
+_- Click Reset Defaults
+_R Click 'Apply'.
+_- The editor colors change to match the preview field.
+_-  Select the 'Custom:' option.
+_- Push the color chooser button.
+_- Select a new color and click OK.
+_- Click 'OK'
+_R The preference dialog closes
+_R The editor background changes color to match the selected color.
+_- Select 'Keywords' in the 'Foreground' list box.
+_- Push the color button
+_- Select a new color and click OK.
+_- Uncheck the 'Bold' checkbox
+_- Click 'OK'.
+_R The preference dialog closes
+_R The editor keywords change to match the color and bold settings made.
+_- Exit the Eclipse 
+_- Restart the Eclipse
+_- Open the Dialog Window > Preferences > BridgePoint > Activity Editor
+_- Click the Syntax tab.
+_R All preference pages should retain any changes that were made in previous session.
+
+Code Changes
+------------
+com.projtech.bp.ui.text/generate.xml
+Initial Version:  1.2  Final Version: 1.4
+
+com.projtech.bp.ui.text/arc/create_plugin_xml.arc
+Initial Version:  1.3  Final Version: 1.5
+
+com.projtech.bp.ui.text/arc/kw_utils.inc
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/arc/literal_gen.inc
+Introduced  Final Version: 1.9
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/DocumentProvider.java
+Initial Version:  1.4  Final Version: 1.5
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/EditorConfiguration.java
+Initial Version:  1.2  Final Version: 1.5
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/OALEditorConstants.java
+Introduced  Final Version: 1.4
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/OALEditorPlugin.java
+Introduced  Final Version: 1.4
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/TextPlugin.java
+Initial Version:  1.3  Final Version: 1.4
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityEditor.java
+Initial Version:  1.8  Final Version: 1.9
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/DescriptionEditor.java
+Initial Version:  1.3  Final Version: 1.5
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/SyntaxHighlightingPreferences.java
+Introduced  Final Version: 1.5
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/SyntaxHighlightingPreferencesStore.java
+Introduced  Final Version: 1.4
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/OALDocumentProvider.java
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/OALEditor.java
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/OALEditorConfiguration.java
+Introduced  Final Version: 1.1 
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/OALPartitionScanner.java
+Introduced  Final Version: 1.4
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/OALScanner.java
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/OALTokenTypes.java
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/WhitespaceDetector.java
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/preference/OALEditorPreferencesPage.java
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/preference/OALEditorSyntaxPreferencePage.java
+Introduced  Final Version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/editor/oal/preference/OALPreviewCode.txt
+Introduced version: 1.2
+
+com.projtech.bp.core/src/com/projtech/bp/ui/preference/SharedColorRepository.java
+Introduced version: 1.1
+
+com.projtech.bp.core/src/com/projtech/bp/ui/preference/BaseModelEditor.java
+Introduced version: 1.1
+
+com.projtech.bp.core/src/com/projtech/bp/ui/preference/BasePlugin.java
+Introduced Version: 1.1  Final Version: 1.3 
+
+com.projtech.bp.core/src/com/projtech/bp/ui/preference/IPreferenceModel.java
+Introduced version: 1.1 
+
+com.projtech.bp.core/src/com/projtech/bp/ui/preference/IPreferenceModelEditor.java
+Introduced version: 1.1
+
+com.projtech.bp.core/src/com/projtech/bp/ui/preference/IPreferenceModelStore.java
+Introduced version: 1.1 
+
+com.projtech.bp.core/src/com/projtech/bp/ui/preference/TabbedPreferenceContainer.java
+Introduced version: 1.1 
+
+com.projtech.bp.core/tools/create_tiger_release.sh
+Initial Version: 1.3 Final Version: 1.7
+
+com.projtech.bp.core/generate.xml
+Initial Version: 1.8 Final Version: 1.9
+
+End
+---
+
+$Log: syntax_highlighting-i223.int,v $
+Revision 1.1  2009/09/03 18:28:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:21  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.160.1  2008/12/31 16:10:30  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2004/06/29 18:35:31  tlondon
+Job: 223
+
+Adding imp comments and code changes
+
+Revision 1.7  2004/06/25 16:43:33  greg
+Job: 223
+Update generate.xml version numbers
+
+Revision 1.6  2004/06/25 16:42:29  greg
+Job: 223
+Corrected and updated code changes section
+
+Revision 1.5  2004/06/25 13:31:30  babar
+Job: 223
+Updated for revision numbers
+
+Revision 1.4  2004/06/25 08:21:31  babar
+Job: 223
+Updated to reflect changes in BasePlugin
+
+Revision 1.3  2004/06/25 05:47:21  babar
+Job: 223
+Updated against syntax_highlighting-i223-062304-01.rvm
+
+Revision 1.2  2004/06/23 15:52:00  babar
+Job: 223
+Updated implementation note for updation of Description Editor
+
+Revision 1.1  2004/06/22 17:35:41  babar
+Job: 223
+Introduced
+

@@ -1,0 +1,183 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Address Prebuilder export performance issues
+
+1. Abstract
+-----------
+There are field reports of 10 to 20 times performance degradation with the
+pre-builder with generic package based models. This note describes the steps
+taken to address these problems.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100854440 - Heap exhaustion and slow performance during
+    export under generic packages.
+[2] ClearQuest DEI dts0100631941 - Migrate away from specialized packages (to
+    generic package support).
+[3] ClearQuest DEI dts0100673899 - Pre-Builder performance problem - rapid
+    increase in time as model grows.
+ 
+4. Background
+-------------
+With the introduction of work for [2], a general performance degradation has
+been both internally and in the field. One aspect of this was investigated in
+[3] and the decision was taken to delete activity bodies prior to performing the
+pre-export parse. Performance problems remain however, and this job investigates
+and implements fixes to address the issues.
+
+5. Requirements
+---------------
+5.1 - The export process must complete in a timely manner with little or no
+      degradation when compared with specific package export.
+
+5.2 - The number of Action (ACT_ACT), Statement (ACT_SMT) and Value (V_VAL)
+      instances should be identical between an export from a specific package
+      based model and one from the same model converted to generic packages. Of
+      course, other OAL instance populations should also be identical, but these
+      instance populations can be considered as yardsticks that assure the
+      correct data is being emitted.
+
+6. Analysis
+-----------
+Two areas of performance were investigated. Stack traces provided by the
+customer indicated that a great deal more time was being spent parsing and
+traversing R8001.
+
+6.1 Parser
+When collecting elements for parsing, the fix for [3] assumed that it needed to
+collect every element containing action language. However, the parsing infra-
+structure is designed to recursively descend package hierarchies, parsing
+everything it finds. Thus only top level root elements need to be provided to
+the top level iteration. This almost always results in activities being parsed
+multiple times. Thus, the parseAllForExport algorithm needs to change to reflect
+this. Conversely, the calls to initializeBodies() a little further down assume
+that recursion does happen when in fact for this method it does not.
+
+6.2 R8001 traversal
+During the export itself, it was noted that a very large amount of time was
+spent in the findAllComponents() method.
+
+6.2.1 Cross component nature of R8001
+R8001 is marked as a cross component association because for some subtypes, the
+super and subtype are persisted in different resources. However, this is true
+of only three out of 19 subtypes. Since the traversal code is generated for all
+subtypes, lots of persistence code is included unnecessarily. This needs to be
+addressed.
+
+6.2.2 R8001 not in persistence hierarchy
+In general, when a cross component association is traversed from the referred to
+element, we need to load all the data in the project resources to be sure we
+have brought in the target element. This is a very CPU intensive task, but
+fortunately in the vast majority of cases traversals from the referred to
+element the traversal is either up or down the containment hierarchy. This saves
+a lot of time because only the parent resource or set of child resources needs
+to be loaded. The marking file bp.core/color/ooaofooa_package_spec.clr specifies
+what elements participate in the containment hierarchy and across what
+associations. R8001 was never added to this marking set when the generic package
+work was done and so the generated code assumes that all project resources need
+to be loaded every time we traverse R8001. This multiplies the problem described
+in 6.2.1. Unfortunately, it is not simply a case of adding R8001 to the marking,
+because the marking infrastructure is not designed to accommodate subtype
+associations.
+
+7. Design
+---------
+7.1 Parse for Export
+AllActivityModifier is changed to correctly use system level elements only and
+implement recursion where needed.
+
+7.1.1 initializeBodies()
+The entry point method initializeBodies() is renamed to initializeAllBodies() to
+be symmetrical with the clearAllBodies() call and to better document what the
+effect of the call is. The cascade change to the io.mdl.CoreExport method
+parseAllForExport() is also made. The body of initializeAllBodies() is changed
+to explicitly pass null to the private implementation method so that the
+required model root wide behavior is selected.
+
+For the case where an element is passed to limit the parsing scope, the
+recursion is reviewed and improved where needed. Comments are added to better
+document what is happening and when so that this error cluster can be reduced
+in forward maintenance.
+
+Some safety code is added to ensure that the same model root cannot be visited
+multiple times, which causes lost OAL instances.
+
+7.1.2 getElementsToParse
+In io.core, CoreExport.getElementsToParse(), a new convenience method taking an
+extra boolean argument was added to explicitly specify if recursion is required
+or not when collecting elements. In all places where the call was previously
+made, a value of false was passed, preserving pre-existing behavior. In
+parseAllForExport(), however, we pass true in this new argument to disable the
+recursive behavior.
+
+7.2 Modifications for R8001 persistence infrastructure
+7.2.1 Cross Component nature of R8001
+
+In MC-Java mfp_utils.inc, the function isCrossComponentAssociation is modified
+to return true for R8001 only if the referred to class has key letter PE_PE and
+the referring classes are either EP_PKG, C_C or O_OBJ. These are the only meta-
+classes which are root instances of persistence components.
+
+7.2.2 R8001 as containment association
+In MC_Java referring.inc, the function declare_canonical_reference is modified
+in three places to force R8001 to be treated as a containment association, even
+though it is not marked as such.
+
+8. Work Required
+----------------
+Fully covered in the design section.
+
+9. Implementation Comments
+--------------------------
+9.1 Unexpected stack overflow
+During test, an unexpected stack overflow was hit when getting the parent of a
+system level Packagable Element. This is because this code briefly traverses
+downwards, which causes unintended recursion through the persistence lazy
+loading infrastructure. The call to getOneEP_PKGOnR8001 is modified in this
+specific circumstance to disable loading by passing false in the loadComponent
+argument. Normally this would be unsafe, but at the system level, the supertype
+Packageable Element instance is persisted in the same file as the subtype
+Package instance being sought, so it is guaranteed to be loaded.
+
+9.2 Component not found log entries
+In io.core, some code to disable testing for a valid parent persistence
+component in the case of global data types was moved so that it was generated
+regardless of the cardinality of the traversal being performed.
+
+10. Unit Test
+-------------
+The tests in the suite OALPersistenceTestsGenerics already assure that the
+correct OAL instances are output. So this suite must be run and must pass. Some
+expected result changes are anticipated since the order of parsing activities
+will have changed.
+
+The persistence infrastructure changes described in 7.2 have a far reaching
+effect consequently all existing JUnit tests must pass.
+
+9. Code Changes
+---------------
+Branch name: Review-854440-655156-857414-878659-732063-847605-01
+NOTE: This branch was promoted under a process exception in advance of
+engineering documentation being completed, so no individual code change list is
+available.
+
+End
+---
+
+$Log$

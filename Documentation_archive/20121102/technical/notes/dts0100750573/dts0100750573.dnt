@@ -1,0 +1,172 @@
+========================================================================
+
+File:      $RCSfile: dts0100750573.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Prompt user for model element name upon creation
+
+1. Abstract
+-----------
+This note describes a proposal to automatically prompt for model element name
+during new element creation.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100750573
+
+4. Background
+-------------
+The default model elements names currently used by BridgePoint during new model 
+element creation are sometimes useful when users are creating multiple model 
+elements at once because they allow elements to be created quickly.  However, 
+feedback from the field indicates that this is not the primary usage pattern.  
+Instead, users create an element and they know the name that will be assigned 
+to that new element.   Therefore, they want to assign the name as part of the 
+element creation.  They can do this today, but to do so takes several extra 
+mouse clicks/keyboard operations (it is very inefficient).  
+
+
+5. Requirements
+---------------
+5.1 BridgePoint shall provide the ability to prompt the user to enter a model 
+    element name when a new element is created.
+5.1.1 This feature will be the default behavior.
+5.2 The existing new element creation behavior, which uses a default name, 
+    will not be removed.
+5.2.1 Use of default names on new element creation will be enabled through a 
+      configuration option.
+      
+6. Analysis
+-----------
+6.1 Currently to create an element on the canvas and rename it, here is what a 
+    user must do:
+    _- Create an element (using either the pallette or CME)
+    _- Changed back to pointer/selection mode by selecting the new model element
+    _- Select F2 (or right-click => rename) and enter a proper name.
+    _- Select OK to dismiss the rename dialog 
+    
+6.1.1 For users creating a small number of elements at one time this is 
+   too many steps.
+6.2 The tool shall be modified to automatically raise the rename dialog for 
+    new element creation.
+6.2.1 The rename dialog used shall be the one currently used today when a user
+    select an element on the canvas and select F2 or rename.    
+6.2.2 For consistency, this same rename dialog shall be used in the following
+    situations:
+6.2.2.1 User creates an element from the pallette
+6.2.2.2 User creates an element from the canvas CME
+6.2.2.3 User creates an element from ME
+6.3 A new BridgePoint preference shall be introduced to control this new rename
+    behavior.  The name of this shall be:
+    Use Default Names For New Model Elements
+6.3.1 The default for this preference shall be false.  This means we will NOT 
+    use default names, we will prompt the user to enter a name.
+6.3.2 This preference shall be kept under 
+    Window > Preferences > BridgePoint preferences    
+6.4 The rename dialog will be pre-populated with the current name.  The current
+    name in the situation of new element creation is the default name.
+    
+7. Design
+---------
+7.1 Introduce the new preference specified in section 6.3 to the 
+    BridgePointPreferencesStore.
+7.1.1 Set the default for this preference to false.    
+
+7.2 To allow the common rename dialog to be used for both ME and canvas 
+    creations ui.graphics.editor.GraphicalEditor.handleRename() shall be moved 
+    to a common location where it can be accessed by both canvas and ME.
+
+    
+7.3 There are 3 model element creation cases to consider.
+7.3.1 Element creation from the pallette.
+	In ui.graphics.commands.ShapeCreationCommand, during the creation of a 
+    shape, introduce code to set the newly-created shape into the selection. 
+    Once set into the selection, call handleRename() to raise the rename dialog.
+7.3.2 Element create from the canvas CME
+      Modify the archetypes that generate the New* actions to call 
+      handleRename() when the new preference demands it. 
+7.3.3 Element creation from the ME CME
+      Modify the archetypes that generate the New* actions to call 
+      handleRename() when the new preference demands it. 
+
+
+8. Design Comments
+------------------
+8.1 Modify the handleRename() method by adding a disable boolean passed to it 
+    so it's behavior can be controlled not to get executed twice.
+    There was a problem when the value of the passed shell is null in case of 
+    actually using the dialog "when Ok is pressed" not cancel
+    there was a null pointer exception at the line 
+     >>  sh.getDisplay().asyncExec(query);
+   so it is modified it to be 
+   ...
+    if (sh != null) {
+    sh.getDisplay().asyncExec(query);
+   } else {
+    PlatformUI.getWorkbench().getDisplay().asyncExec(query);
+   }
+
+8.2 Element create from the canvas CME
+      Create new bridge named "handleRename()" under the external entity 
+      "utilities".
+      That bridge has a native java implementation.
+      It gets passed one parameter of type "Object" representing the non root 
+      model element being currently created. 
+      then this bridge calls the method "handleRename()" that is mentioned in "7.2"
+      for the created object.
+      The call for the newly created bridge is added at the end of the class 
+      operations new*<>, for instance Creating a new Package on a package, 
+      the class operation Package::newPackage() would call the bridge 
+      "handleRename()" passing the newly created element object.
+
+8.3 Element creation from the ME CME 
+      same as 7.3.2
+
+9. Work Required
+----------------
+Outlined in the design section
+
+10. Unit Test
+------------
+10. The generated CME unit tests for both ME and canvas shall be modified to 
+  account for the new preference specified in section 6.3.  The tests shall 
+  make 2 passes one with the prior behavior "Use Default Names For New Model 
+  Elements" set to true, and one with the new behavior "Use Default Names For 
+  New Model Elements" set to false (the new default behavior.
+
+End
+---
+
+$Log: dts0100750573.dnt,v $
+Revision 1.5  2012/06/18 16:33:31  hkhaled
+job:dts0100750573
+move the design modifications to the design comments section
+
+Revision 1.4  2012/06/18 16:08:27  hkhaled
+job:dts0100750573
+update dnt
+
+Revision 1.3  2012/06/18 16:04:18  hkhaled
+job:dts0100750573
+update dnt
+
+Revision 1.2  2012/06/18 15:46:52  hkhaled
+job:dts0100750573
+update dnt
+
+Revision 1.1  2012/05/11 17:31:13  rmulvey
+job:dts0100750573
+Introduced
+

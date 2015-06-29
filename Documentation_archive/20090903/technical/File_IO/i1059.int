@@ -1,0 +1,148 @@
+========================================================================
+
+File:      $RCSfile: i1059.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Calling clearDatabase on Model Import Only When Model-Root is Non-Empty
+
+Abstract
+--------
+This note describes the implementation for changing the model import 
+process such that clearDatabase() is only called on a model-root when it 
+contains model elements.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 1059
+[2] Bugzilla issue 561
+[3] Bugzilla issue 848
+
+Background
+----------
+There is a block of code at the start of CoreImport.doLoadSql() that prior
+to issue 561 [2] looked like this:
+
+	Domain_c domain = Domain_c.DomainInstance(m_modelRoot);
+	if (domain != null) {
+		...
+	}
+	m_modelRoot.clearDatabase(pm);
+	
+However, during the work for 561, it was discovered that calling clearDatabase()
+on an empty model-root was causing an extra, blank node to appear as a child
+of a newly-expanded domain(-proxy) node in the model-explorer.  The problem 
+was due to one refresh of the tree (due to the above clearDatabase() call when
+importing the model associated with the domain node) occurring during another 
+(the one for expanding the domain node).  The inner refresh would add a 
+blank node as a child to the domain node since no model contents had yet
+been loaded.  So, for issue 561, the clearDatabase() call was moved inside
+the test to see if there was any domain associated with the model-root,
+which prevents the inner refresh from occurring when the model-root is empty:
+
+	Domain_c domain = Domain_c.DomainInstance(m_modelRoot);
+	if (domain != null) {
+		...
+		m_modelRoot.clearDatabase(pm);
+	}
+	
+However, during the work for issue 848 [3], it was discovered that there are
+times when there is no domain associated with the model-root, but the 
+model-root is still populated with model elements.  One such case is when a 
+project is closed, at which point its associated system-model is disposed, 
+causing the disposal of all of its domains.  So, the above change was 
+sometimes preventing a non-empty model-root from being cleared of elements
+before the re-importing of a model from disk.  
+
+In the interest of completing the 848 work more expediently, the above code 
+was reverted to its pre-561 form, and this issue was opened.
+
+Design
+------
+1.
+The above code is once again changed to keep the inner model-explorer
+refresh from occurring when the model-root is empty.  It now looks like this:
+
+	Domain_c domain = Domain_c.DomainInstance(m_modelRoot);
+	if (domain != null) {
+		...
+	}
+
+    if (!m_modelRoot.isEmpty()) {
+        m_modelRoot.clearDatabase(pm);
+    }
+
+where isEmpty() is a more accurate test of whether the model-root holds any
+elements, and is defined in ModelRoot as:
+
+    /**
+     * Returns whether this model-root has yet to be populated at all.
+     */
+    public boolean isEmpty()
+    {
+        // if the instance-list map is empty, or contains just one instance list
+        // (which would be the one for domains), which is itself empty
+        return instanceListMap.isEmpty() || 
+            (instanceListMap.size() == 1 
+                && ((InstanceList)instanceListMap.values().toArray()[0]).isEmpty());
+    }
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+- Open model explorer
+- Expand a domain
+R No blank node appears as the first child of the domain's node
+
+A few lines were added to testDomainDeleteFromModelExplorer() in explorer.test's 
+ExplorerTest to check that the first child node of the selected domain (before
+its deletion) is non-blank.  The test correctly simulates the above conditions 
+because the domain is newly reloaded from disk just before the added check 
+occurs.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ModelRoot.java
+
+com.mentor.nucleus.bp.io.core/src/com/mentor/nucleus/bp/io/core/CoreImport.java
+
+com.mentor.nucleus.bp.ui.explorer.test/src/com/mentor/nucleus/bp/ui/explorer/
+	test/ExplorerTest.java
+
+End
+---
+
+$Log: i1059.int,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.30.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/07/28 22:31:22  jmather
+Job: 1059
+Addressed review comments.
+
+Revision 1.1  2005/07/28 16:59:22  jmather
+Job: 1059
+Introduced.

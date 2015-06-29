@@ -1,0 +1,286 @@
+========================================================================
+
+File:      $RCSfile: dts0100731118.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Allow growing BridgePoint viewable canvas area
+
+1. Abstract
+-----------
+This note describes the changes required to support growing the visible canvas
+area.
+
+Additionally, this note describes changes to better support selection and
+modification of floating text.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100731118 
+[2] ClearQuest DEI dts0100703449 - 
+     Cannot reposition association labels/phrases when selected
+[3] ClearQuest DEI dts0100743797 - Test auto growth of canvas, Test floating
+     text behavior
+     
+4. Background
+-------------
+GEF naturally supports diagram area growth, however the initial visible canvas
+area is as small as the window size.  This causes the need to trigger automatic
+diagram growing once the window size is full.  The original graphics have always
+had a fixed size at 8000, 6000 pixels.  This gives the user the ability to draw
+and scroll a large area before ever needing to trigger automatic diagram growth.
+We have implemented the default size at 8000, 6000 but broke the automatic
+growing capability.  In addition to breaking it some version of the tool allowed
+elements to be positioned outside of the 8000,6000 limit and therefore made it
+difficult for users to gain access to such symbols.
+
+Regarding [2] GEF did not have a built-in way to support automatic selection of
+children, which in the case of connectors and floating text prevents us from
+supporting the original graphics behavior.  The tool was modified to allow such
+behavior, but was left with a limitation to resizing and moving floating text
+unless that floating text was the initial selection.
+
+5. Analysis
+-----------
+5.1 Support diagram area growth
+
+When reaching the limits of the default diagram area (8000,6000) we shall allow
+the user to move symbols beyond and adjusted the diagram area accordingly.  In
+addition to extending the area we shall add a buffer of space (~100 pixels) so
+that manipulation of such elements is easier.
+
+5.2 Allow floating text changes when not the initial selection
+
+GEF supports symbol modification for all selected elements as long as the
+modification is supported by the selected element.  For instance, if you select
+two shapes and resize one, both will be resized by the same delta.  Same goes
+for shape movement.  Floating text is special in that we do not want to share
+the same modifications that the owning shape or other shapes do.  When modifying
+a floating text symbol only it shall be modified.
+
+6. Design
+---------
+6.1 Support diagram area growth
+
+To support the default canvas area (8000,6000) we provided an override to the
+diagram layer's getFreeformExtent method.  Instead of determining the required
+size based on the children, we simply returned 8000,6000.  This prevented
+automatic growth.  Instead of just returning the default size, we shall now
+return the larger of the children's extent or the default size.  Additionally,
+we shall add 100 pixels as a buffer area.
+
+6.2 Allow floating text changes when not the initial selection
+
+The various drag trackers in GEF work against the viewer's selection, which
+after the changes below will always be the parent of floating text.  In order to
+allow creation of modification requests against floating text the
+createOperationSet() methods require additional code that adds the floating text
+as edit parts to process.  When a drag tracker for floating text is asked to
+create an operation set (set containing elements to modify) it shall now create
+a special request, TextEditPartChangeBoundsRequest.  This request shall only be
+used for floating text and no other symbol.  The request holds a pointer to the
+target element for modification.  The ShapeEditPart class is modified to return
+false when asked if it understands this type of request, which prevents floating
+text modifications from also modifying shape symbols. Additionally, to prevent
+resizing the GraphicsXYLayoutPolicy class is modified to return false when asked
+if it understands this type of request if the host of the policy is not the
+parent of the modification target.
+
+The TextResizableEditPolicy class is modified such that it returns false for
+understanding a TextEditPartChangeBoundsRequest unless the target to be modified
+is the host element of the policy.  This prevents modifying multiple selected
+floating text.
+
+The code that causes floating text to be selected along with the parent and
+visa-versa, would try to handle the selected state.  Which was either a primary
+selection, a selection, or not selected.  This is no longer required with the
+new modification behavior.  The code is changed to remove the floating text from
+selection (in the viewer), and add the parent instead.  This allows the parent
+to always be the primary selection, and the floating text to always be the
+secondary.
+
+6.3 Provide better default location for connector text
+
+When creating a new connector, the floating text is incorrectly split and placed
+off center of the new connector.  You can see this by creating a new provided or
+required interface.  The reason for this was that during calculation of the
+preferred size we were getting the required dimensions based off of a 0 width.
+This caused the text wrapping code to calculate the width as small as possible,
+adding newlines to the expected text.  During the initial placement code we
+calculate the wrapping based off of the text extent width, which did not
+calculate newlines.  Therefore, the default location calculations did not match
+the final wrapping result.
+
+The code is changed to calculate the preferred dimensions using a max value of
+400 pixels, rather than zero.  The stored width is used to calculate the bounds
+if they exist, if they have never been set their values are zero.  If they do
+not exist the default 400 width is used.
+
+It was also noticed that renaming an element which is represented by the
+floating text, as an example an Interface for an assigned interface reference,
+did not trigger recalculation of the floating text box.  This was due to the
+fact that we were using the stored values explicitly rather than a guide for
+recalculation.  The method, TextEditPart.refreshVisuals(), is modified to reset
+the current GEF symbol's size to -1, -1 so that the getPreferredSize() method
+will always recalculate the bounds.  The getPreferredSize() method calculates
+the bounds against the stored values.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design section.
+
+9. Unit Test
+------------
+The following tests are manual and have been captured in [3] under the QA
+system.
+
+9.1 Support diagram area growth
+
+_- Move a shape all the way to the right edge (of currently allowed scrollable
+   area)
+_- Move the shape passed this spot
+_R The scroll bar is adjusted and additional space exists
+_R An additional ~100 pixel area is available
+
+_- Move a shape all the way to the bottom edge (of currently allowed scrollable
+   area)
+_- Move the shape passed this spot
+_R The scroll bar is adjusted and additional space exists
+_R An additional ~100 pixel area is available
+
+_- Move a shape all the way to the left edge (of currently allowed scrollable
+   area)
+_- Move the shape passed this spot
+_R The scroll bar is adjusted and additional space exists
+_R An additional ~100 pixel area is available
+
+_- Move a shape all the way to the top edge (of currently allowed scrollable
+   area)
+_- Move the shape passed this spot
+_R The scroll bar is adjusted and additional space exists
+_R An additional ~100 pixel area is available
+
+_- Start a clean workspace
+_- Create the GPS example
+_- Open the UIDataTypes.xtuml file in a text editor
+_- Find the first DIM_GE entry and change the first attribute value to
+   8900.000000
+_- Open the diagram for UIDataTypes
+_R The data type is visible and zoom is adjust to show the symbol
+
+
+9.2 Allow floating text changes when not the initial selection
+
+_- Select a connector
+_R All floating text for the connector is selected as well
+_- Mouse down on one of the floating text symbols and drag some distance
+_R The floating text is moved
+
+_- Select a connector
+_- Mouse down on the resize handle of one of the floating text symbols (it must
+   be resizable, which means it must have at least one space in the name) and
+   drag some distance
+_R The floating text is resized
+
+_- Select a floating text symbol (child of a connector)
+_R The parent connector is selected as well as all child floating text symbols
+_- Mouse down on one of the connector bendpoint handles and drag some distance
+_R The bendpoint is moved
+_R Depending on the circumstance, some of the text may or may not move.  The
+   specifics of which are not tested here.
+
+_- Select a shape with floating text (Accept Time Event Action, found in an
+   activity diagram.  You will need to create a new one, or use a test model
+   that has one already)
+_R The floating text for the shape is also selected
+_- Mouse down on the floating text and drag some distance
+_R The floating text is moved
+_R The parent shape is not moved
+
+_- Select a shape with floating text (Accept Time Event Action, found in an
+   activity diagram.  You will need to create a new one, or use a test model
+   that has one already)
+_R The floating text for the shape is also selected
+_- Mouse down on the resize handle for the floating text (it must be resizable,
+   which means it must have at least one space in the name) and drag some
+   distance
+_R The floating text is resized
+_R The parent shape is not resized
+
+_- Select a shape with floating text (Accept Time Event Action, found in an
+   activity diagram.  You will need to create a new one, or use a test model
+   that has one already)
+_- Add another shape to the selection
+_- Mouse down on the floating text for the first selected shape and drag some
+   distance
+_R The floating text is moved
+_R Neither the parent shape of the floating text is moved nor the other selected
+   shape
+_- Mouse down on a resize handle for the parent shape and drag some distance
+_R The parent shape is resized and the other selected element is resized
+_R The floating text is not modified
+
+9.3 Provide better default location for connector text
+
+_- Create a new provided interface, off the east side of the component
+_R The floating text is positioned just above the interface reference and
+   centered
+
+_- Rename an unassigned provided interface such that the name is wider than the
+   current width of it's floating text
+_R The floating text is resized to fit the contents
+_- Rename it back to the original name
+_R The floating text again is resized to fit the contents
+
+_- Rename an unassigned provided interface (that has never had the text box
+   width adjusted) such that the name is greater than 400 pixels (> 70 chars)
+_R The text box is wrapped around 70 chars
+
+_- Rename an unassigned provided interface (that has had the text box width
+   adjusted to wrap text) such that the name is greater than 400 pixels (> 70
+   chars)
+_R The text box width is not increased
+
+End
+---
+
+$Log: dts0100731118.dnt,v $
+Revision 1.5  2011/01/18 15:56:51  tlondon
+Job: dts0100731118
+
+Clarify test procedures
+
+Revision 1.4  2011/01/18 15:16:13  tlondon
+Job: dts0100731118
+
+Add reference to QA test entry
+
+Revision 1.3  2011/01/12 23:57:56  tlondon
+Job: dts0100731118
+
+Update to account for new logic against stored values
+
+Revision 1.2  2011/01/12 23:24:43  tlondon
+Job: dts0100731118
+
+Address review minutes
+
+Revision 1.1  2011/01/06 21:18:31  tlondon
+Job: dts0100731118
+
+Add design note
+

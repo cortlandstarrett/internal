@@ -1,0 +1,467 @@
+========================================================================
+
+File:      $RCSfile: dts0100732063-dts0100847605.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Enforce Component Designer license limitations.
+BridgePoint gen_erate is erroneously reporting a license failure
+
+1. Abstract
+-----------
+This note describes resolutions for two BridgePoint licensing issues.  
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100732063
+    BridgePoint gen_erate is erroneously reporting a license failure
+[2] ClearQuest DEI dts0100847605
+    Enforce Component Designer license limitations.
+[3] http://mentorweb.wv.mentorg.com/licenseDefinitions/build/build!currentFile
+    The latest mgc.pkginfo file.
+    
+4. Background
+-------------
+A license check is done in gen_erate.exe.  This check uses information passed
+from the eclipse environment (through xtumlmc_build) to determine which license 
+to check.  Customers using their own model compilers should, technically, 
+be using a DAP license.  However, historically many customers in this scenario
+use a MC3020 source license which does allow them to use their own MC.  The
+problem with this is that the license check being performed in gen_erate for
+a source MC3020 license is first trying to get a DAP license, this fails because
+the customer does not have a DAP license.  The failure puts multiple errors in
+the output.  After the errors are output the code does retry with the MC3020
+source license and succeeds, but the error log entries make customers think
+something went wrong.
+
+
+BridgePoint currently only checks for a system designer license when
+model execution is performed and when a model build is performed.  Other than
+those two scenarios the tool never checks for any license other then 
+Component Designer.   Most customers are using models that contain multiple
+components and thus they should be consuming System Designer licenses.
+
+
+5. Requirements
+---------------
+5.1 Gen_erate shall check the license passed-in via the command-line argument
+    first, before any secondary checks.
+5.2 BridgePoint shall require a System Designer license for any project that
+    contains multiple components.
+5.2.1 The license error message shall be displayed (and logged) at most one time
+    per license error type at startup.    
+5.2.2 The license error shall be displayed each time the user attempts to
+    create a licensed model element in violation of the license.
+
+6. Analysis
+-----------
+6.1 There is a problem with the implementation of license checking in 
+    main_gen_erate.c that shall be addressed to resolve requirement 5.1.  
+    The problem is the code is checking for a DAP license
+    first even though -l3s parameter (which specifies to use the binary 
+    mc3020 license) is passed.  
+6.1.1 main_gen_erate.c shall be modified to assure that the license specified by 
+    the command-line argument is checked first.  This change will resolve both
+    requirements 5.1 and 5.2.
+
+6.2 To enforce requirement 5.3, the tool shall check for multiple 
+    components as the components are loaded (or created) by the user.  
+      
+6.2.1 The new check to determine if a system designer license is required will 
+    NOT cause components to be loaded.  Instead, the implementation shall 
+    perform the check as the user causes the components to be loaded and/or 
+    creates new components.   This assures this new license check has a minimal 
+    affect on performance.
+           
+6.2.2 In the case a system builder license is required and one is not available,
+    the tool shall report the failure to the user and prevent the operation.
+    
+    This failure message shall use the existing license error message.  Note 
+    that requirement 5.3.1 shall be enforced here.
+
+6.3 Atomic Licenses used by BridgePoint
+
+    This section describes the licenses currently used by Bridepoint
+    proper and where they are currently used in the tool.  These values are 
+    defined as constants in BridgePoint.  The place they are defined is
+    BridgePointLicenseManager.java.
+
+    It is worth noting here that all licensing requests from BridgePoint go
+    through a single place.  That place is BridgePointLicenseManager.java.   In 
+    BridgePointLicenseManager.java in order to minimize request to the 
+    Mentor FlexLM licensing system the tool maintains a license cache of 
+    licenses already successfully acquired.   Using this cache the tool 
+    prevents licenses that have already been acquired from being requested 
+    again for 1 hour.
+    
+    
+6.3.1	BUILDER_LICENSE_CODE = 2882;
+    This license is required in order to successfully open the xtUML 
+    perspective.
+    
+    This is enforced in CorePlugin.java::getDefault() which is where the tool
+    loads the bp.core plugin.  This happens a lot, and thus, this is currently
+    the primary license check.  Note that at this point in the code we do not 
+    know anything about the user's model because the model is not loaded.
+        
+6.3.2	BUILDER_SYSTEM_LICENSE_CODE = 100172;
+	This is the license that this issue [2] was raised to properly enforce.
+	The requirement for this enforce is clearly stated in requirement 5.3.
+	
+6.3.2.1	
+	Currently the only enforce this license when a model is exported.  This
+	happens when the user builds their model.  Since user don't often build
+	their models, the result is that this license is not being properly 
+	enforced.
+
+6.3.2.2	In addition to the fact the this license is not enforced at that proper 
+    time, the current code does not enforce the requirement defined in 5.3.
+    Instead, the code counts only components, component references, and domains 
+    that are in packages that are at the system level.
+    This problems shall be resolved as part of this issue.
+    
+6.3.2.3
+    This license is checked in 
+    bp.mc.mc3020/ExportBuilder.java::hasValidLicense(),
+    and in bp.mc/src/AbstractExportBuilder.java::hasValidLicense().  
+
+6.3.3	VERIFIER_LICENSE_CODE = 3157;
+    This license is used to assure the user has rights to execute a launch
+    configuration that contains a single component (or domain).
+     
+    This is used in bp.debug.ui/BPLaunchDelegate.java::launch().  This code is
+    enforced when a user executes a launch configuration.
+    
+6.3.4	VERIFIER_SYSTEM_LICENSE_CODE = 100173;
+    This license is used to assure the user has rights to execute a launch
+    configuration that contains a multiple components and/or domains.
+    
+    This is used in bp.debug.ui/BPLaunchDelegate.java::launch().  This code is
+    enforced when a user executes a launch configuration.
+    
+6.3.5 Following are all the Model Compiler licenses.  They are being listed 
+    together here because for the purpose of this document, their description 
+    is the same.  Additionally, they are included in this note for 
+    completeness, but they are not effected by the changes made for this issue.
+
+    This is a BridgePoint Model Compiler license.  
+    
+6.3.5.1 MC3020SOURCE_MC_LICENSE_CODE = 2885;
+6.3.5.2 MC2020SOURCE_MC_LICENSE_CODE = 2886;
+6.3.5.3 MC3020BINARY_MC_LICENSE_CODE = 3145;
+6.3.5.4 MC2020BINARY_MC_LICENSE_CODE = 3146;
+6.3.5.5 DAP_MC_LICENSE_CODE = 3065;
+6.3.5.6 SYSTEMC_SOURCE_MC_LICENSE_CODE = 101220;
+6.3.5.7 VHDL_SOURCE_MC_LICENSE_CODE = 101219;
+
+6.4 BridgePoint Composite Licenses    
+    
+    Mentor Graphics uses the FlexLM licensing system as the company standard 
+    to enforce licensing.   FlexLM allows atomic licenses to be grouped into
+    bundles which are attractive to customers.   This bundles are easily 
+    configurable and can be changed by Marketing, Sales, etc... without 
+    requiring any changes to the product.  Since composites can change, it is
+    always best to go directly to the source that defines these composites to 
+    see what they are.  The source for composites is mgc.pkginfo [3] which 
+    defines licenses for all Mentor Graphics products.
+    
+    It is worth noting here that while composites can change in any way, it 
+    is Mentor Graphics policy that composites are only ever added-to.  By 
+    policy, Atomics should not be removed from composites.
+    
+    
+6.4.1 Below all the BridgePoint composites are enumerated.  This is simply 
+      copied from version 3.1_0.8x of mgc.pkginfo which was created 
+      March 30, 2012.
+
+		5118 : bpmdlcmpc_c     
+		    2885 : xtumlmc3020     
+		    3147 : xtumlxmi        
+		
+		5119 : bpmdlcmpcpp_c   
+		    2886 : xtumlmc2020     
+		    3147 : xtumlxmi        
+		
+		5096 : bpumlbc_c       
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+		    3146 : xtumlmc2020b    
+		    3145 : xtumlmc3020b    
+		    3157 : xtumlvrfy       
+		    3147 : xtumlxmi        
+		
+		5097 : bpumlbcpp_c     
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+		    3146 : xtumlmc2020b    
+		    3157 : xtumlvrfy       
+		    3147 : xtumlxmi        
+		
+		5046 : bpumlc_c        
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+		    3065 : xtumlgnrtclean  
+		    2885 : xtumlmc3020     
+		
+		5047 : bpumlcpp_c      
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+		    3065 : xtumlgnrtclean  
+		    2886 : xtumlmc2020     
+		
+		5117 : bpumldsgnr_c    
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+		    3157 : xtumlvrfy       
+		    3147 : xtumlxmi        
+		
+		5200 : bpumlsysdsgnr_c 
+		    2884 : xtumldbg        
+		    100172 : xtumlsysbld     
+		    100173 : xtumlsysvrfy    
+		    3147 : xtumlxmi        
+
+		5015 : bridgepntc_c    
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+		    2883 : xtumlgnrt       
+		    2885 : xtumlmc3020     
+		
+		5016 : bridgepntcpp_c  
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+		    2883 : xtumlgnrt       
+		    2886 : xtumlmc2020     
+		
+		5017 : bridgepntuv_c   
+		    2882 : xtumlbld        
+		    2884 : xtumldbg        
+
+7. Design
+---------
+7.1 Update BridgePointLicenseManager.java to allow BridgePoint to
+    enforce both the Component and System designer licenses while the
+    model is being edited.
+
+7.1.1    
+	Introduced an inner-class named LicenseEntry.  This class is used by the 
+	existing license cache map, which is named licensesObtained.  This map 
+	previously held the string representation of the license requested (the key)
+	and a time-stamp showing when the license was last obtained from the 
+	server (the value).
+	
+	The new inner-class contains the time-stamp and adds a second attribute, 
+	long licenseTransactionID.  This transactionID is returned from the 
+	flexLM server when the license is obtained.  It is needed in order to 
+	return a license within a session.
+
+7.1.2 The checkLicenseInternal() function was modified to look in our license 
+    cache before hitting the server for a requested license.   This function 
+    also inserts the LicenseEntry into the cache for the actual license obtained 
+    (which may or may not be the one requested).  This functionality was 
+    previously done in the public function, checkLicense().  It was moved to 
+    checkLicenseInternal() because checkLicenseInternal() is where we actually
+     obtain the license, and getting it from the cache is a one way to obtain 
+     it so it makes sense that inserting into the cache happens here.   
+	
+	The checkLicense() function, on the other hand, is where we have the logic 
+	that searches "more general" licenses if a low-level license is not 
+	obtained.  For example, a request for a Component Designer license may be 
+	made and no such such license is available.  In that situation, before 
+	return failure we attempt to get a System Designer license, and if that is 
+	successful the user may use that license.
+
+7.1.3 Introduced a static map and a new function to manage acquisition of the 
+     Component Designer and System Designer licenses.  The map is:
+	 private static HashMap<String, String > editorLicenseMap = new HashMap<String, String >();
+	 
+	 The first string, the key, is the project name.  The second string, the 
+	 value, is the license type last SUCCESSFULLY obtained for the project.  
+	 This is one of 2 values:
+	 BUILDER_LICENSE_CODE
+	 BUILDER_SYSTEM_LICENSE_CODE
+
+7.1.4 A function is introduced that is called by the license hooks to check for 
+     the appropriate license and manage the display of license errors.
+     That function is:
+	 public static boolean isEditorLicensed(String projectName, String modelElementType, boolean alwaysShowError);
+	 
+	 This function uses the map described above to determine if any license has 
+	 been REQUESTED.  Any time a request for a licensed model element is made 
+	 we first remove the project entry from the map, if there is one.   We 
+	 insert an appropriate entry based on the license REQUESTED. Since this map
+	 is used to determine the required license, an entry is always written to 
+	 this map when this function is invoked.    If there was no 
+	 entry in the map yet for the given project, then this is the first licensed 
+	 model element, so we request a Component Designer license, otherwise we 
+	 request a System Designer License.   If a Component Designer License is 
+	 requested, and the request fails, this routine automatically checks for a
+	 System Designer license before returning an error.
+
+7.2 Added a license hook to check the license are new model elements are 
+    created.
+    
+7.2.1 This hook is in an existing function named 
+      bp.cvore.common/TransactroinManager.java::
+      checkIfTransactionCanComplete().
+    
+    The purpose of this function  is to abort transactions for various 
+    reasons.  This change simply adds an additional reason.  The transaction
+    delta is examined and if the delta contains a new model element
+    we call the the license, passing-in the model element type. If it
+    is a licensed model element the license is checked.  If the product is 
+    licensed the function returns true.  If it is not licensed, our license
+    error dialog is displayed, and this function returns false which aborts the
+    transaction and prevents the model element from being created.
+    
+    Note that this license hook gets called for all new model elements,
+    not just those that are licensed.  However, the check is a simple 
+    string comparison and new model elements are not created enough for this
+    to be a performance consideration.
+    
+7.3 Added a license hook to check licensed model elements, and only licensed
+    model elements as they are being loaded.
+
+7.3.1    
+    This change is made in import_fuinctions.inc.  A new function named 
+    "isLicensedElement" iss created to define what the licensed model element 
+    are.  They are currently:
+    "Component_c" , "ComponentReference_c", "Domain_c"
+
+7.3.2 RSL was added to the function that generates the create<model element>
+      functions to call the license check.  If the element is not licensed
+      the invoked license check displays an error 1 time (and only 1 time) for 
+      each license type.  If a user encounters a license error they can continue
+      using the system as long as they are not using licensed model elements.
+      If they want to sue licensed model elements they must exit, acquire a 
+      proper license, and restart the tool with the proper license.
+          
+      Here is the RSL (over course there is a closing "}" omitted from this):
+      
+	.// Check license for licensed model elements
+	.invoke elementIsLicensed = isLicensedElement( cn.body )
+	.if (elementIsLicensed.result)
+        // Check the license.  If the user isn't licensed then don't load the element
+		String projectName = Ooaofooa.getProjectNameFromModelRootId(modelRoot.getId());
+    	if (BridgePointLicenseManager.isEditorLicensed(projectName, "${cn.body}", false)) {	  
+	.end if
+
+    
+    
+7.4 Remove the existing checks of the Component and System designer licenses
+    that are called out by 6.3.2.3 and delete the related code because it is 
+    obsolete.
+
+7.4.1 Remove the Component Designer license check from 
+      core_create_plugin.arc so the tool no longer checks the license each time
+      bp.core is loaded.
+      
+7.4.2 Removed the old System Designer license check from the model export.  This
+      was done in mc.mc3020/ExportBuilder.java and in 
+      bp.mc/AbstractExportBuilder.java.
+      
+      Additionally, two function in CoreExport.java, numLicensedComponents() and
+      countElements() became obsolete and were deleted.
+
+7.5 Update the Verifier license check to use the same license manager the rest 
+     BridgePoint uses.   In BridgePointLicenseManager.java a function named
+     isExecutionLicensed(List<NonRootModelElement>) was added to check the
+     appropriate license based on the given list of elements selected for
+     execution. 
+
+8. Design Comments
+------------------
+none
+
+9. Work Required
+----------------
+Fully described in the design section.
+
+10. Unit Test
+------------
+10.1 Assure the system System Designer license is not required when it should 
+     not be.
+	_- Create a new xtUML project
+	_- create 1 component
+	_R System Designer license is NOT requested
+	_- Add an interface
+	_R System Designer license is NOT requested
+	_- create a second component
+	_R The Component Designer license is released
+	_R System Designer license is requested
+	
+
+10.2 License error is displayed only one time for each license error type.
+    _- Set a system so it contains no licenses
+    _- Open a workspace that contains GPS Watch
+    _R 1 error message is displayed for the failure to acquire a 
+       Component Designer License
+    _R 1 error message is displayed for the failure to acquire a 
+       System Designer License
+    _- Create a new Component in GPS Watch
+    _R The license error is displayed for the failure to obtain a System
+       Designer License
+    _- Create a new Component Referece in GPS Watch
+    _R The license error is displayed for the failure to obtain a System
+       Designer License
+    _- Create a new Domain in GPS Watch
+    _R The license error is displayed for the failure to obtain a System
+       Designer License
+    _- Create other model elements that are NOT licensed
+    _R No error dialog is displayed.
+       
+    
+	
+10.3 Assure that no error message is displayed in gen_erate when building a 
+     model with a mc3020 source license.
+     _- Setup a system to have a mc3020 source license but NOT a DAP license.
+		    2885 : xtumlmc3020  	// This is MC3020 source 
+	        3065 : xtumlgnrtclean  	// This is DAP
+	 _- Build a model
+	 _R no errors appear in the output
+     
+
+
+End
+---
+
+$Log: dts0100732063-dts0100847605.dnt,v $
+Revision 1.7  2012/04/25 14:36:37  rmulvey
+job:dts0100732063 dts0100847605
+Completed the remaining process documentation for this issue.
+
+Revision 1.6  2012/04/17 18:10:58  rmulvey
+job:dts0100847605
+Updated the explanation of the BP license manager to make it easier to understand (7.1.1).
+
+Revision 1.5  2012/04/17 17:41:05  rmulvey
+job:dts0100847605
+Addressed observation.  Implementation is complete.
+
+Revision 1.4  2012/04/05 14:51:29  rmulvey
+job:dts0100732063 dts0100847605
+Updated with latest plan after talks with Cort/Keith
+
+Revision 1.3  2012/04/04 23:38:13  rmulvey
+job:dts0100732063 dts0100847605
+Removed the phrase 'system-level' from the System designer license requirement.   A System Designer License shall be required any time more than 1 component is used '.'.
+
+Revision 1.2  2012/04/04 23:34:46  rmulvey
+job:dts0100732063 dts0100847605
+Updated note .
+
+Revision 1.1  2012/03/28 15:30:53  rmulvey
+job:dts0100732063 dts0100847605
+Introduced
+

@@ -1,0 +1,147 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Make the generator use less memory
+
+1. Abstract
+-----------
+This issue describes how an investigation into generator memory usage was 
+performed and action was taken to improve it's memory usage.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3482
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3482
+
+4. Background
+-------------
+When building ooaofooa, the generator takes about 2gb of virtual memory.  Work
+in progress to move BridgePoint toward model-based model compilers has 
+introduced more OAL which now causes the 2gb executable to be exceeded.  This 
+issues is raised to examine generator with an eye reducing the memory usage.
+
+5. Design
+---------
+Every database instance allocated inside the generator goes through the 
+InstanceTracker.  There are ~80 types of instances.  The InstanceTracker holds 
+a std::map of Instance pointers (Instance is a proper object).  Each Instance
+holds a pointer to the object instance allocated by the InstanceTracker.
+Allocation is performed through the use of C++ placement-new operators.
+A problem was found whereby the underlying buffer held in the Instance object
+is always deleted, but the InstanceTracker::Instance objects which wrap these
+buffers are not being deleted.  This meant, the InstanceMap was growing larger 
+then it should have.
+
+The InstanceTracker did define analogous placement-delete operators, but they
+were not being used.  Instead, the caller allocating the buffer called the
+standard operation delete to free the buffer, but nothing was being done
+to remove the Instance object from the map at that time.
+
+The fix for this was to call the placement delete operation in the destructor
+of objects allocated by the InstanceTracker.  It has been observed that this 
+change decreases memory consumption from ~30-40%.
+
+
+
+6. Implementation Comments
+--------------------------
+6.1 A new placement-delete operation was introduced:
+    void operator delete(void *addr, char *dummy)
+    
+    This new placement delete is the one that is used in the database object
+    destructors.  This is used instead of the existing ones, which are analogous 
+    to each placement-new simply as a convenience (it is very easy to call, 
+    and the only parameter actually needed is the address pointer).  
+
+
+7. Unit Test
+------------
+7.1 Build BridgePoint with the new generator and verify it build successfully.
+7.1.1 Run all unit test after building and verify they all still pass.
+7.2 Run the model compiler test and verify they pass.
+
+8. Code Changes
+---------------
+The version of the generator is: 1.32.6.1.  The branch is: Review-i3482-01.
+
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/include/
+    i_var.hh
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_ainst.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_attr.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_c_rop.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_clock.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_einst.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_esdi.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_esdii.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_evt.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_idaref.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_ir_rop.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_obj.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_oinst.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_rel.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_roip.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_rop.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/idb/
+    i_var.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/main/src/gen_erate/
+    main_gen_erate.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/utility/include/
+    u_string.hh
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/utility/src/u_desc.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/utility/src/u_string.cc
+model_compilers/generator/mc_dbms/include/mc_dbms/collection.h
+model_compilers/generator/mc_dbms/include/mc_dbms/InstanceTracker.h
+model_compilers/generator/mc_dbms/src/collection.cpp
+model_compilers/generator/mc_dbms/src/InstanceTracker.cpp
+
+
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:21  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.1  2008/04/11 23:22:56  rmulvey
+Job:3482
+Introduced implementation note

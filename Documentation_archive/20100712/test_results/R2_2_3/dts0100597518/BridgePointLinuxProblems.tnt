@@ -1,0 +1,206 @@
+========================================================================
+
+File:      $RCSfile: BridgePointLinuxProblems.tnt,v $
+Version:   $Revision: 1.12 $
+Modified:  $Date: 2010/01/05 04:31:18 $
+
+(c) Copyright 2006-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Technical Note
+Provide Linux host support for BridgePoint
+
+Abstract
+--------
+This note is used to track problems found and fixed while implementing
+BridgePoint Linux host support.  This document is being used instead of
+the normal issue tracking system because while implement the host support
+there are many small problems found and fixed and this document allows
+us to quickly manage these problems without the overhead of the
+issue tracking system.
+
+When the issue dts0100597518 [1] is complete any open issues remaining in
+document shall be put into the ClearQuest issue tracking system.
+
+History
+-------
+
+Document References
+-------------------
+[1] ClearQuest DEI dts0100597518
+    Provide Linux host support for BridgePoint
+
+
+
+Open issues
+-----------
+_- dts0100614454: Need an installer
+   - Need to create a proper "launcher.bat" and capture required .ini settings
+   - Note that when using just a zip file a user must update the
+     eclipse.ing and the BP_Launcher.sh files to point to the
+     location that the zip file was put in.  By default this is
+     /home/bpuser of course the installer will fix this once we have one.
+
+_- dts0100614455: Copy Image functionality has Windows platform-specific code in
+   bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/CanvasTransfer.java.
+
+   Until a platform agnostic implementation is put in place internally we must
+   comment this code out in order to self-host under linux.  Of course the
+   copy-image functionality we will be broken under linux under this is fixed.
+
+_- dts0100614456: Error in canvas when selecting model elements
+	Can't Happen:  Selection Tool state = 2 event = CT_SEL2:Mouse Pressed
+	_- Select a transition (or any other type of model element)
+	_- Right click
+	_- Select the transition (or whtever the model element was) again
+	_R BUG
+    Note: I verified that this does NOT currently happen in Windows.
+		Workaround: Seem to be able to jsut select the item a send time
+		and it works.
+
+_- dts0100614457: Moved Model Elements in SeatHeater  SHCtlAlg caused exception
+           Note this is a ME under a component
+
+_- dts0100614458: The BridgePoint green-bp.ico icon is not being displayed.  The can be seen
+   by opening the canvas for any system-level type and looking at the
+   icon in the tab at the top of the canvas (the icon is not present).
+   Note: when run under the debugger in linux this works.  Perhaps this is an
+   artifact of me exporting my own core plugin for linux.
+
+_- dts0100614459: The pretty background and formatting has been lost on the BP Welcome page.
+
+_- dts0100614460: It appears that the CVS team interface is not behaving well under Linux.
+   When I modify files that are under source control I often see errors when
+   unfocusing and then refocusing the editor.  The errors seems to come from the
+   team interface.  They look like this:
+
+   Resource is out of sync with the file system: '/com.mentor.nucleus.bp.io.sql/sql/file_io.pei.sql'.
+
+   Similarly, after modifying a file I often see the message:
+   The file has been modified on the file system. Do you want to load the changes?
+
+   It acts like there is an auto-save happening or something...
+
+
+Resolved Issues
+---------------
+x- Persistence is not working properly (after a restart, can't load model)
+   FIX: Modified code that expected to always find a device name (drive letter)
+x- Error opening the ISM icon (Note same error for CSM)
+		   Can not load the icon: icons/metadata/InstanceStateChart.gif
+		   I saw this in the dogs model.
+   FIX: There was a case-sensitivity problem in the icon names.  Linux is
+        case sensitive and Windows is not.
+x- NPE when opening a workspace with open canvases
+   FIX: In create_core_plugin_class.arc code was modified to be graceful when
+        an icon can not be loaded because of a license failure.
+x- There is some kind of startup error in the licensing.  If I have canvases
+   open from a prior session it gives me a license error.  If i ignore the
+   error and go look at licensing I see that  I have all the licenses.
+   I then open the model and it works fine.  It is only a startup error. Perhaps
+   a missing dependency?
+   FIX: In BridgePointLicenseManager.java
+   Fixed a problem that was seen in linux where the very first call to
+   INucleusProduct.isLicensed() was failing even though there is a valid
+   license. This only happens at startup, and only on the very first call to
+   FlexLM.  I simply added a static variable to see if this is the very first
+   time in a session that licensing is checked, and if it is and it fails
+   simply make the same call a second time.
+x- New project wizard isn't working.
+   FIX: WizardDelegateChooser.java mc3020NewProjectWizard.java
+   MC-3020 extends the com.mentor.nucleus.product extension point
+   named com.mentor.nucleus.code-builders.  In the linux implementation
+   available choices from that is only "New Code Builder Test Wizard 2"
+   where in the full EDGE we also get "EDGE builder" as an option".
+   I added a filter so the user never sees this dummy entry.
+
+		    // EDGE has a "dummy" builder implemented "New Code Builder Test
+			// Wizard 2".  There is no reason users
+  	      	// should have to look at this dummy builder.
+		    // However, note that in order for us to ignore it we must also
+		    // make sure we ignore it in our delegating wizards that extend the
+			// EDGE model-compilers extension point (mc3020NewProjectWizard.java).
+x- Getting started doesn't work
+   Same fix as New project wizard problem.
+x- Verifier execution is not working
+   FIX: This was simply configuration a matter of getting the correct plugins into
+   the linux system being tested.
+x- Model translation is not available (no generator)
+   CQ ISSUE: dts0100608014
+x- AOOB when component_ref is selected in ME from the system level datatypes.
+           Note that this happens in Windows int he current version as well.
+   CQ ISSUE: dts0100608825
+x- The java in Bob's zipfile is not what I am putting in the installer.  I'm
+   putting the JRE in windows, not the JDK.  I planned to do the same for Linux.
+   And the zip file java dir is not packaged inside the BP dir, it should be.
+   FIX: I added the jre under  the MentorGraphics/BridgePoint folder (just
+        like we do in windows) and I updated the eclipse.ini accordingly
+        to use it.
+x- BP_Launcher.sh does not allow BP to be launched from a link, you must be
+   in the same folder as the launch file.
+   FIX: added a MENTORHOME="/home/bpuser/MentorGraphics" variable to the
+   launcher.  The installer will update this. The user will need to update it
+   until we have an installer.
+
+End
+---
+
+$Log: BridgePointLinuxProblems.tnt,v $
+Revision 1.12  2010/01/05 04:31:18  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.11  2009/08/25 02:42:35  kbrown
+job:dts0100597518
+fixed typo.
+
+Revision 1.10  2009/08/25 02:33:46  kbrown
+job:dts0100597518
+Updated to reflect issues now in CQ.
+
+Revision 1.9  2009/08/24 17:43:08  rmulvey
+job:dts0100597518
+Made a note about the latest change to CanvasTransfer.java (this is the place that has Windows-specific code)
+
+Revision 1.8  2009/08/24 16:23:03  rmulvey
+job:dts0100597518
+Added an issue about the CVS team interface behaving in an odd manner.
+
+Revision 1.7  2009/08/24 15:31:24  rmulvey
+job:dts0100597518
+-The MentorGraphics/BridgePoint folder now includes the jre (just like Windows does) and the eclipse.ini has been updated accordingly.
+-The BP_Launcher.sh was fixed so it can now be launched from a link
+
+Revision 1.6  2009/08/24 15:04:21  kbrown
+job:dts0100597518
+Moved new tasks to proper section.
+
+Revision 1.5  2009/08/24 13:44:30  kbrown
+job:dts0100597518
+Updated.
+
+Revision 1.4  2009/08/20 05:45:34  rmulvey
+job:dts0100597518
+More issues updated
+
+Revision 1.3  2009/08/20 04:18:15  rmulvey
+job:dts0100597518
+Updated to reflect that several more issues are fixed.
+
+Revision 1.2  2009/08/18 20:34:18  rmulvey
+job:dts0100597518
+Added an issue:
+_- There is some kind of startup error in the licensing.  If I have canvases
+   open from a prior session it gives me a license error.  If i ignore the
+   error and go look at licensing I see that  I have all the licenses.
+   I then open the model and it works fine.  It is only a startup error. Perhaps
+   a missing dependency?
+
+Revision 1.1  2009/08/17 14:18:35  rmulvey
+job:dts0100597518
+Introduced this document to help track issues found and fixed while introducing Linux support.
+

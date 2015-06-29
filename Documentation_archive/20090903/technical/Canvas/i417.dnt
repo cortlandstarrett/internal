@@ -1,0 +1,184 @@
+========================================================================
+
+File:      $RCSfile: i417.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Adding a Domain Chart
+
+Abstract
+--------
+This note describes the changes required to add a Domain Chart editor to the
+tiger product.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 417
+[2] Bugzilla issue 187
+
+Background
+----------
+A domain chart editor was required for the user group conference. Although not
+assigned as a task, the changes made to get a domain chart editor working are
+documented here for reference when the feature is scheduled.
+
+Design
+------
+i417.1   Change metamodel to add domain chart concepts
+i417.1.1 A new reflexive association is added to the Domain class, labeled 'has
+         dependents' and 'depends on'. A link class, Dependency is added to this
+         new association. An association from the System model to the Dependency
+         class is also added this is a simple contains 'is contained by'
+         association. All added items are formalized.
+i417.1.2 Update ooaofooa hierarchy
+         . . . So that Dependency is included (2 places).
+
+i417.2   Add New icons
+         Two new icons are created for the tools for creating a new domain and a
+         new dependency.
+
+i417.3   Change the canvas plugin to support the new domain chart
+i417.3.1 Add new plugin manifest elements
+         The canvas plugin manifest is extended to define two new symbols and a
+         diagram. The symbols are:
+
+           - A shape called Domain (class Domain_c, new elem type 60)
+           - A connector called Dependency (class Dependency_c, new elem type
+             61).
+
+         The new diagram is named 'System Package Diagram' in line with the
+         Tiger specification document. It has a model type of 1000. The only
+         valid symbols are those defined above.
+i417.3.2 Change the Client external Entity implementation
+         Cl_c must support the new diagram and symbols. Add the System Model
+         to the list of alternates checked in Getooa_idfrominstance(). Add
+         Add Domain, Dependency and System Model to Getinstancefromooa_id.
+i417.3.3 Change the graphics domain model to simplify setting line style
+         The change to have some connectors represent association subtypes where
+         a connector consists of multiple parts[2] missed an opportunity to
+         simplify the Connector.draw() operation. This simplification is made
+         here. It allows the metamodel elements to control what line style their
+         connectors appear as. Draw is changed to call get_line_style passing
+         End::Middle on the represents attribute and set the line style with the
+         result of that. The line is set back to SOLID when drawing is complete.
+
+i417.4   Change Explorer so that the system, not the domain appears at the root
+i417.4.1 Add hand written Root Adapter class
+         This works like a generated adapter class, but always returns the
+         singleton system instance. The getChildren code thus differs from
+         generated adapters thus:
+         
+  public Object[] getChildren(Object arg) {
+    if (Ooaofooa.getDefaultInstance().getRoot() != null) {
+      SystemModel_c[] systems = new SystemModel_c[1];
+      systems[0] = Ooaofooa.getDefaultInstance().getRoot();
+      return systems;
+    } else
+      return new SystemModel_c[0];
+  }
+
+i417.4.2 Change create explorer view.inc
+         Change this so that the Explorer's input is set to be the ooaofooa
+         itself, rather than the system instance (in 2 places).
+i417.4.3 Change the content provider
+         Change this so that it checks for a passed instance of ooaofooa and
+         delegates the call to the root adapter.
+
+i417.5   Allow System Model rename
+i417.5.1 Add S_SYS_Rename to cme functions
+         With string parameter name. Looks like all the others.
+i417.5.2 Add entry in context_menu.pei.sql
+         To wire up S_SYS.Rename to a context menu.
+
+i417.6   Change file io to export and import the extra model instances
+i417.6.1 Changes for export
+         - Change domain_table, domain_class_name and domain_instance_name to
+           use the word 'root' instaed of domain.
+         - Change same area to search for the 'System Model' table first before
+           searching for the Domain table.
+i417.6.2 Changes for import
+         - Change postProcessStatements so that it does not check for multiple
+           domains when importing a model (callingProject is NBP).
+         - In finishLoad, check to see if a system was loaded and create one if
+           not (this code is needed because most model files currently do not
+           contain a system model instance, this can be discarded once all
+           models are upgraded).
+
+    .select any domain_inst from instances of T where ( selected.Name == "Domain" )
+    .invoke dcn = get_class_name( domain_inst )
+    .invoke dia = get_instance_accessor( domain_inst )
+		${dcn.body} d2 = ${dcn.body}.${dia.body}(getModelRoot());
+		${package.ui_root_class_name} sys = ${package.ui_root_class_name}.${package.ui_root_class_accessor}(getModelRoot());
+		if (sys == null) {
+		  sys = new ${package.ui_root_class_name}(getModelRoot());
+          sys.setName(d2.getName() + " System");
+	.if (callingProject == "NBP")
+          fixUpGraphicalData();
+    .end if
+          d2.relateAcrossR28To(sys);
+        }
+        getModelRoot().setRoot(sys);
+        Ooaofooa.Enablemodelchangelisteners(getModelRoot(), old_val);
+
+		pm.worked(1);
+
+        - a fire model change event is fired at the end of finishLoad, otherwise
+          the tree does not update to show the newly loaded model (not clear on
+          why this was not needed before).
+        - small fixUpGraphicalData is added back into import model so that a
+          model instance is created for the system if it has not been loaded
+          (again, this is only needed until all models are upgraded).
+          
+i417.6.3 Changes for Model
+         - Add System Model as the root in the file_io.pei.sql. This is achieved
+           by adding the following entries (note the changed Domain entry):
+INSERT INTO EO VALUES ( '0',	'1',	'', 	'System Model', 0, 'none', 'first' );
+INSERT INTO EO VALUES ( '1',	'1.1',	'0.1', 	'Domain', 28, 'many', 'first' );
+INSERT INTO EO VALUES ( '0.1',	'',	'0.2', 	'Dependency', 45, 'many', 'first' );
+INSERT INTO EO VALUES ( '0.2',	'',	'', 	'SPD', 0, '', 'first' );
+
+         - The following lines are also added to ensure that the system package
+           diagram graphics are output:
+INSERT INTO EI VALUES ( 'SPD' );
+INSERT INTO GD VALUES ( 'SPD', 1000, 'System Model', 'Sys_ID' );
+
+Work Required
+-------------
+
+Unit Test
+---------
+Unit tests will have to be added to ensure that the System Package Diagram is
+drawn correctly. This is outside the scope of this work at this time and must be
+done when the feature is scheduled.
+
+End
+---
+
+$Log: i417.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.126.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2004/11/09 00:39:27  campbell
+Job: 417
+Introduced.

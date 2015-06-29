@@ -1,0 +1,226 @@
+========================================================================
+
+File:      $RCSfile: i3100-i3122.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Export OAL as part of the model export.
+
+1. Abstract
+-----------
+This note describes the implementation of the inclusion of OAL in model export.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3100
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3100
+[2] Documentation/internal/technical/notes/i3100.dnt
+[3] Bugzilla item 1699
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1699
+    Persist action language
+[4] Bugzilla item 3122
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3122
+	OAL in the component operation and signal action homes is not persisted
+
+4. Background
+-------------
+See [2]
+
+5. Design
+---------
+6.1 The PEI data file, io.mdl/sql/stream.pei.sql, was modified to include OAL
+    data.  The entries came largely from the file_io.pei.sql file which was
+    previously modifed to include OAL data [3].
+6.2 Implement a Model Export preferences page 
+    (core/ui/preferences/ExportPreferences.java)
+6.2.1 New string fields, 'exportOAL' and 'exportGraphics' are added to the java 
+      class, BridgePointPreferencesModel. 
+6.2.2 The 'synchronizeTo' and 'deepClone' operations in 
+      BridgePointPreferencesModel are modifed to include 'exportOAL' and 
+      'exportGraphics'.
+6.2.3 BridgePointPreferencesStore.java is modified to add new property names
+      for the new attributes.  The new properties were added in the 'saveModel' 
+      and 'loadModel' methods. 
+6.2.4 A new class, ExportPreferences.java is created with checkbox widgets that 
+      handle selection of the Export OAL and Export Graphics options.
+
+6.3  Exclude OAL from copy/paste
+6.3.1 Introduce isOAL as a boolean attribute in file_io::EO
+6.3.2 Modify file_io.sql and stream.pei.sql and populate the new isOAL attribute
+      for every OAL-related class (E_*, ACT_*, and V_*).
+6.3.3 In CoreExport.java, introduce m_exportOAL as a boolean member variable.  
+      The m_exportOAL variable is set to false by default and is set to true 
+      only if the ModelExportWizard is doing the export AND the user preference 
+      to export OAL is set to true.  The user is able to enable this option in 
+      the Model Export preferences page.      
+6.3.4 In export_functions.inc::gen_export_methods check for the EO.isOAL 
+      attribute and if it is set generate code that uses CoreExport.m_exportOAL
+      to determine if the export should procede or not.
+6.4.4 In CoreExport introduce a new parameter to the constructor, 
+      String exportOAL, that is set to one of 3 constants defined in CoreExport.
+      They are: YES, NO, USER_PREFERENCE.  Code that instantiates an instance
+      of CoreExport was modified to pass one of these values.  For copy/paste
+      NO is used.  For normal persistence, file_io, YES is specified.
+6.4.4.1 In ModelExportWizard.java::createExportProcessor, call 
+      CoreExport.setExportOAL to signal that the user preference should be
+      used to determine if OAL is exported or not (use the USER_PREFERENCE 
+      constant).
+      
+6.4.5 Introduce bp/core/common/OALPersistence.java
+      This class contains several utility functions that were previously 
+      duplicated in multiple places.
+      
+6.4.5 Update NewDomainWizard to persist OAL
+6.4.5.1 In NewDomainWizard.java::createDomain perform the parse before the 
+      persistence to get OAL to persist on import of pre v1_5_0 models. 
+6.4.5.2 In NewDomainWizard.java::createDomain call the utility function in
+        OALPersistence.java to cause the OAL data to get hooked-up across 
+        R601/R666.
+
+6.4.6 In ModelImportWizard.java::ImportStream::run perform the parse before the 
+      persistence to get OAL to persist on import when dealing with v1_5_0 
+      models.
+6.4.5.1 When ModelImportWizard.java::ImportStream::run persists data, it uses 
+      ModelStreamProcessor.getBodyInstances() to determine which OAL data to
+      persist.  This function was updated to use the new OALPersistence.java
+      utility class.      
+6.5  Optionally exclude graphics from export based on a user preference.
+6.5.1 Introduce isGraphical as a boolean attribute in file_io::EO
+6.5.2 Modify file_io.sql and stream.pei.sql and populate the new isGraphical 
+      attribute for every graphics-related class (GD_*, and DIM_*).
+6.5.3 In CoreExport.java, introduce m_exportGraphics as a boolean member 
+      variable.  The m_exportGraphics variable is set to true by default and is 
+      set to false only during ModelExport and only if user preference 
+      to export graphics is set to false.  The user sets this option in 
+      the Model Export preferences page.      
+6.5.4 In export_functions.inc::gen_export_methods check for the EO.isGraphical 
+      attribute and if it is set, generate code that uses 
+      CoreExport.m_exportGraphics to determine if the export should procede or 
+      not.
+
+6. Implementation Comments
+--------------------------
+6.1 OAL locations were added in the v1.5.0 release for ACT:Required Signal Body, 
+    ACT:Required Operation Body, ACT:Provided Signal Body, and       
+    ACT:Provided Operation Body.  I added entries in the stream.pei.sql and 
+    file_io.pei.sql files to cause these new OAL classes and their data chains 
+    to be persisted. This resolves issue 3122 [4], it should be promoted with
+    this issue.
+
+7. Unit Test
+------------
+see [2]
+7.1 Test permutations of the new export options.
+_- OAL Export on, Graphics Export On
+_R Both OAL and Graphics are exported
+_- Import the model
+_R Import successfull
+
+_- OAL Export off, Graphics Export off
+_R Neither OAL or Graphics are exported
+_- Import the model
+_R Import successfull (but no graphics)
+
+_- OAL Export on, Graphics Export off
+_R OAL is exported or Graphics are not exported
+_- Import the model
+_R Import successfull (but no graphics)
+
+_- OAL Export off, Graphics Export on
+_R OAL is NOT exported, Graphics are exported
+_- Import the model
+_R Import successfull 
+_- Search the imported model for persisted OAL
+_R Persisted OAL is present 
+   Note:  It is present because it was parsed and persisted on import
+
+7.2 Test import of pre-1.5.0 model
+Note that the tests outlined in the design note utilizr pre 1.5.0 models
+
+7.3 Verify Persistence of the new action homes.
+_- ACT_RSBody, ACT_ROB, ACT_PSBody, and ACT_POB. 
+_R These new types are persisted.
+
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/arc/create_core_plugin.inc
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    BridgePointPreferencesModel.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    BridgePointPreferencesStore.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    ModelStreamProcessor.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    OALPersistenceUtil.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/
+    NewDomainWizard.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/preferences/
+    ExportPreferences.java
+com.mentor.nucleus.bp.core/generate.xml
+
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    VerifierModelChangeListener.java
+
+com.mentor.nucleus.bp.io.core/arc/export_functions.inc
+com.mentor.nucleus.bp.io.core/arc/gen_export_java.inc
+com.mentor.nucleus.bp.io.core/models/com.mentor.nucleus.bp.io.core/file_io/
+    File IO/Export Ordering/Export Ordering.xtuml
+com.mentor.nucleus.bp.io.core/src/com/mentor/nucleus/bp/io/core/CoreExport.java
+
+com.mentor.nucleus.bp.io.mdl/arc/gen_stream_export.arc
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql
+com.mentor.nucleus.bp.io.mdl/src/com/mentor/nucleus/bp/io/mdl/wizards/
+    ModelExportWizard.java
+com.mentor.nucleus.bp.io.mdl/src/com/mentor/nucleus/bp/io/mdl/wizards/
+    ModelImportWizard.java
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    ModelElementPropertyStorage.java
+
+
+
+End
+---
+
+$Log: i3100-i3122.int,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.2  2007/09/18 21:53:27  rmulvey
+Job:3100 3122
+Updated
+
+Revision 1.1  2007/09/13 23:42:22  rmulvey
+Job:3100 3122
+Implementation completed thus far.
+
+Revision 1.2  2007/09/11 20:31:18  rmulvey
+Job:3100
+Introduced
+
+Revision 1.1  2007/09/11 20:24:44  rmulvey
+Job:3100
+Introduced

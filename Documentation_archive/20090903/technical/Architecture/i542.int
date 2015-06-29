@@ -1,0 +1,329 @@
+========================================================================
+
+File:      $RCSfile: i542.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+clearDatabase sometimes does not remove all Graphics Domain instances
+
+Abstract
+--------
+It was noticed that as a result of call to clearDatabase function all graphics 
+instances were not getting removed, hence causing a memory leak.
+
+History
+-------
+final i542-010705-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 542
+
+Background
+----------
+See Bugzilla issue 542.
+
+Design
+------
+i542.1
+Every Model class that has a State Machine associated with it, registers itself
+with event poller such as ActivePoller. The cause of the problem is that 
+clearInstances() is not un-registering model elements from the ActivePoller.
+ActivePoller works as singleton, hence all elements registered with
+it can not be garbage collected unless they are un-registered. 
+The solution to this is that we should invoke delete method of each model 
+element present in the instance list rather then just clearing the instance 
+list directly. delete() method of each model element not only removes itself 
+from the instance list but also unregisters from ActivePoller. This will allow
+model elements to be available for garbage collection.
+
+Work Required
+-------------
+i542.1   Modify java.arc so that it generates code of model classes 
+         as specified in design section by modifying logic of generated method
+         clearInstances()
+
+Implementation Comments
+-----------------------
+
+- Profiler has been converted in to a plug-in, which provides an Instance count
+  view showing classes and their instance count. Following files are introduced:
+    
+  utilities/unqualified/com.projtech.util.profiler/.project
+  utilities/unqualified/com.projtech.util.profiler/src/com/projtech/util/
+                                                   profiler/ProfilerPlugin.java 
+  utilities/unqualified/com.projtech.util.profiler/src/com/projtech/util/
+                                               profiler/views/ProfilerView.java 
+  utilities/unqualified/com.projtech.util.profiler/icons/filter.gif 
+  utilities/unqualified/com.projtech.util.profiler/icons/garbage-collector.gif
+  utilities/unqualified/com.projtech.util.profiler/icons/profiler.gif
+  utilities/unqualified/com.projtech.util.profiler/icons/refresh.gif
+  utilities/unqualified/com.projtech.util.profiler/plugin.xml
+  utilities/unqualified/com.projtech.util.profiler/.classpath
+  utilities/unqualified/com.projtech.util.profiler/build.properties
+  
+- .externalToolBuilders for Profiler plug-in are also included to create (or 
+  clean) the profiler dll using generate.xml. Following file are introduced:
+  
+  utilities/unqualified/com.projtech.util.profiler/.externalToolBuilders/
+                                                        Profiler Builder.launch
+  utilities/unqualified/com.projtech.util.profiler/.externalToolBuilders/
+                                                        Profiler Cleaner.launch
+  utilities/unqualified/com.projtech.util.profiler/generate.xml
+
+- Java interface with native profiler is done using JNI. Profiler dll also 
+  implements native methods for ProfilerJavaInterface class, thus shares the 
+  variables with the profiler. However this implies that both jvm and 
+  System.loadLibrary() call from ProfilerJavaInterface class should load same 
+  copy of dll. 
+
+  The class ProfilerJavaInterface has following methods.
+	public native void runGC();
+	public native String[] getProfiledClassNames();
+	public native int getInstanceCount(String className);
+	private native boolean isRunning();
+	public native void setLogEnabled(boolean isEnable);
+	public native void startAllocationRecording();
+	public native void stopAllocationRecording();
+
+  Following files are introduced:
+  utilities/unqualified/com.projtech.util.profiler/native/
+                         com_projtech_bp_ui_canvas_test_ProfilerJavaInterface.h 
+  com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                     ProfilerJavaInterface.java                             
+  Following files are updated:
+  com.projtech.util.profiler/native/ProfilerDLL.cpp
+
+- Native profiler has been optimized for performance. Changes are made to 
+  ProfilerDLL.cpp.
+  
+- Filter class (Filter.cpp) has been updated to correctly handle AND filters.
+
+- ProfilerDLL.dll is also checked in. This is done to avoid need of 
+  compilation on every system which further requires Visual Studio 6.0 to be 
+  installed. The file is placed under bp.core/tools/unqualified folder. 
+  new-start.chk is also updated to include instruction for a new start to 
+  install the ProfilerDLL.
+
+- Canvas Test read-me has been updated to include instructions for running the 
+  profiler. This file uses two different launch specs. In the .bat contents it 
+  uses the %WORKSPACE_PATH%, as this will be translated prior to being run. But 
+  in case of Runtime Workbench's VM argument an explicit path is required. 
+  Canvas test plug-in now includes a filter file named profiler_filter.txt, 
+  that configures the profiler to record allocation data only for required 
+  classes (i.e., com.projtech.bp.ui.canvas.* "AND" *_c). 
+  Following files are introduced or modified as specified below in Code changes
+  section:
+  com.projtech.bp.ui.canvas.test/Test_Readme.txt
+  com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                        I542MemoryLeakTest.java
+                                                        
+- Readme.txt is added to utilities/unqualified/com.projtech.util.profiler that
+  described how to build the ProfilerDLL.
+  
+- I542MemoryLeakTest.java introduced in canvas.test extends BaseTest. Due to 
+  this, com.projtech.bp.ui.canvas.test/plugin.xml is updated to include 
+  dependency on com.projtech.bp.test.
+
+- The /utilities folder is not renamed. Instead all projects under /utilities 
+  are moved under /utilities/unqualified folder. Renaming was not done 
+  considering that CVS will still keep record of /utilities which might cause
+  confusions.
+  Following projects are moved:
+  . com.projtech.bp.ui.text.archetype
+  . com.projtech.process.tools
+  . com.projtech.util.gc
+
+- ProfilerDll requires the JAVA_HOME should be in the PATH environment variable.
+  This requirement is added to new_start.chk
+  
+- ProfilerDll.cpp is updated to include a class 'ProfilerMap' which is a 
+  wrapper to STL 'map' class. The class provides the support of JVMPI monitors
+  for thread safe access to the internal map.
+
+- Due to a bug identified in JDK ver. 1.4.2 as per URL:
+  http://bugs.sun.com/bugdatabase/view_bug.do;:WuuT?bug_id=4974024, the JVMPI 
+  events, listed below, are now enabled after the first class is added in to 
+  id2classMetaDataMap in JVMPI_EVENT_CLASS_LOAD event:
+  . JVMPI_EVENT_GC_START
+  . JVMPI_EVENT_GC_FINISH
+  . JVMPI_EVENT_OBJECT_ALLOC
+  . JVMPI_EVENT_OBJECT_FREE
+  . JVMPI_EVENT_OBJECT_MOVE
+
+Unit Test
+---------
+Since there is no way to find correct number of instances of a given class 
+with-in Java, this unit test requires a profiler. Please note that absence of a 
+given object from instance list,  does not mean that it is actually available 
+for garbage collection.
+
+Automated Unit test for this issue requires a profiler with following 
+capabilities
+. Ability to keep instance count for specific classes (which will be selected 
+  based on filters)
+. Create a snapshot of instance count of given classes
+. Communicate snapshot information with java during runtime or storing the 
+  result in a file _on demand_.
+
+i542-UT.1 
+
+_- Create a runtime configuration for using the profiler
+_- Start profiled Tiger and import a model that have graphics and model classes 
+   with Instance state chart and Class state chart.
+_- Invoke garbage collector using the profiler interface or using System.gc() 
+   method call
+_- Create a snapshot with instance count information on every "model class" in 
+   com.projtech.bp.ui.canvas package, using the profiler
+_- Re-import the model and invoke garbage collector using the profiler 
+   interface or using System.gc() method call
+_- Create another snapshot using the profiler. 
+_R Instance count for each of the model class should be same in both snapshots
+
+i542-UT.2  Manual Test to build Profiler DLL
+_- Follow steps given in 'utilities/unqualified/com.projtech.util.profiler/
+                                                                   Readme.txt'.
+_R The unqualified/com.projtech.util.profiler/Release/ProfilerDLL.dll is 
+   created.
+
+Code Changes
+------------
+MC-Java/java.arc
+
+Documentation/internal/process/templates/checklists/new-start.chk
+
+com.projtech.bp.core/tools/unqualified/ProfilerDLL.dll [added]
+
+com.projtech.bp.ui.canvas.test/Test_Readme.txt
+com.projtech.bp.ui.canvas.test/plugin.xml
+com.projtech.bp.ui.canvas.test/src/CanvasTestSuite.java
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/ProfilerJavaInterface.java
+
+com.projtech.bp.ui.canvas.test/profiler_filter.txt [added]
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/I542MemoryLeakTest.java [added]
+
+utilities/com.projtech.util.profiler/*  [removed]
+utilities/com.projtech.util.profiler/native/*  [removed]
+
+utilities/unqualified/com.projtech.util.profiler/.project    [changed & moved]
+utilities/unqualified/com.projtech.util.profiler/native/.cvsignore  [changed & moved]
+utilities/unqualified/com.projtech.util.profiler/native/Filter.cpp  [changed & moved]
+utilities/unqualified/com.projtech.util.profiler/native/ProfilerDLL.cpp  [changed & moved]
+utilities/unqualified/com.projtech.util.profiler/native/ProfilerDLL.dsp  [changed & moved]
+
+Files that are moved unchanged:
+utilities/unqualified/com.projtech.util.profiler/native/AllocInfo.cpp
+utilities/unqualified/com.projtech.util.profiler/native/AllocInfo.h
+utilities/unqualified/com.projtech.util.profiler/native/ClassMetadata.cpp
+utilities/unqualified/com.projtech.util.profiler/native/ClassMetadata.h
+utilities/unqualified/com.projtech.util.profiler/native/Filter.h
+utilities/unqualified/com.projtech.util.profiler/native/Filter_back.cpp
+utilities/unqualified/com.projtech.util.profiler/native/Filter_back.h
+utilities/unqualified/com.projtech.util.profiler/native/JVMObjectsInfoStruct.h
+utilities/unqualified/com.projtech.util.profiler/native/ProfilerDLL.dsw
+utilities/unqualified/com.projtech.util.profiler/native/StdAfx.cpp
+utilities/unqualified/com.projtech.util.profiler/native/StdAfx.h
+utilities/unqualified/com.projtech.util.profiler/native/jni/*
+
+utilities/unqualified/com.projtech.util.profiler/.classpath [added]
+utilities/unqualified/com.projtech.util.profiler/.cvsignore [added]
+utilities/unqualified/com.projtech.util.profiler/.externalToolBuilders/Profiler Builder.launch [added]
+utilities/unqualified/com.projtech.util.profiler/.externalToolBuilders/Profiler Cleaner.launch [added]
+utilities/unqualified/com.projtech.util.profiler/build.properties [added]
+utilities/unqualified/com.projtech.util.profiler/generate.xml [added]
+utilities/unqualified/com.projtech.util.profiler/icons/filter.gif [added]
+utilities/unqualified/com.projtech.util.profiler/icons/garbage-collector.gif [added]
+utilities/unqualified/com.projtech.util.profiler/icons/profiler.gif [added]
+utilities/unqualified/com.projtech.util.profiler/icons/refresh.gif [added]
+utilities/unqualified/com.projtech.util.profiler/native/com_projtech_bp_ui_canvas_test_ProfilerJavaInterface.h [added]
+utilities/unqualified/com.projtech.util.profiler/plugin.xml [added]
+utilities/unqualified/com.projtech.util.profiler/src/com/projtech/util/profiler/ProfilerPlugin.java [added]
+utilities/unqualified/com.projtech.util.profiler/src/com/projtech/util/profiler/views/ProfilerView.java [added]
+utilities/unqualified/com.projtech.util.profiler/Readme.txt [added]
+utilities/.cvsignore [added]
+
+utilities/com.projtech.bp.ui.text.archetype/*   [removed]
+utilities/com.projtech.process.tools/*  [removed]
+utilities/com.projtech.util.gc/*  [removed]
+
+utilities/unqualified/com.projtech.bp.ui.text.archetype/*   [added]
+utilities/unqualified/com.projtech.process.tools/*  [added]
+utilities/unqualified/com.projtech.util.gc/*  [added]
+
+End
+---
+
+$Log: i542.int,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/01/01 23:13:17  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.9.46.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.9  2005/02/24 13:14:11  siddique
+Job:542
+Updated after resolution to problem of hanging up during debug of
+canvas.test
+
+Revision 1.8  2005/02/07 08:01:24  siddique
+Job:542
+Added text to address obs. 8 in comment # 89.
+
+Revision 1.7  2005/02/07 07:27:31  siddique
+Job:542
+Final review observations addressed.
+
+Revision 1.6  2005/01/27 10:54:47  babar
+Job:542
+Updated to include changes made in Test_Readme.txt of canvas.test.
+
+Revision 1.5  2005/01/27 08:29:59  babar
+Job:542
+Code Changes and implementation comments section updated after
+inclusion of Profiler DLL in CVS.
+
+Revision 1.4  2005/01/26 13:26:21  babar
+Job:542
+Updated Implementation Comments.
+
+Revision 1.3  2005/01/26 09:31:47  babar
+Job:542
+Added implementation comments and updated code
+changes
+
+Revision 1.2  2005/01/12 08:12:09  farrukh
+Job:542
+Modified Design section to explain the problem.
+
+Revision 1.1  2005/01/06 12:50:46  farrukh
+Job:542
+Moving from Documentation/internal/technical/Canvas  to  
+Documentation/internal/technical/Architecture
+
+Revision 1.3  2005/01/04 14:09:46  farrukh
+Job:542
+Unit Test Section Updated.
+
+Revision 1.2  2005/01/03 14:58:23  babar
+Job:542
+Made minor changes
+
+Revision 1.1  2005/01/03 14:34:11  farrukh
+Job:542
+Introduced.
+

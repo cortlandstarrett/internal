@@ -1,0 +1,254 @@
+========================================================================
+
+File:      $RCSfile: i424.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:09 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Diff tree elements are not sorted properly
+
+Abstract
+--------
+This implementation note gives the implementation details of correct sorting 
+methodology as described in the design note[5]. It also describes the method of 
+generating code for meta model entities based on their relationships.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue # 424.
+[2] Bugzilla Issue # 175.
+[3] bp.core/doc/internal/technical/compare/compare-i175.ant
+[4] bp.core/doc/internal/technical/compare/i424.ant
+[5] bp.core/doc/internal/technical/compare/i424.dnt
+
+Background
+----------
+See analysis[4] and design[5] notes.
+
+Implementation Comments
+-----------------------
+- i424.1  package com.projtech.bp.core.inspector
+  All the code related to the sorting is moved to package 
+com.projtech.bp.core.sorter. 
+
+  A new class BaseModelClassInspector is introduced. All inspectors derive from
+this class. It contains code common to all inspectors. It has following methods
+  
+   - protected void sort(Object[] elements)
+   - protected Object invokeMethod(Object object, String methodName)
+
+- i424.1.1  Generating code for Sorters
+  To make sorters generic, all the code related to sorting within a meta model
+entity is generated. The model mdl/ooaofooa_hierarchy.mdl is modified to add 
+two new attributes in the class T_TNS class:
+  . SortingRelationNumber  Gives the number of relationship that describes
+                           sorting for the given meta model entity. The value 
+                           is '-1' in case where no sorting relationship exists.
+  . SortingRelationPhrase  Determines the direction of the relationship. For 
+                           example 'succeeds' or 'precedes'.
+
+   The file sql/ooaofooa_hierarchy.pei.sql is updated to include the sorting 
+information for O_ATTR.
+   
+   The class MetadataTypeSortingManager as described in Design note is renamed 
+to MetadataSortingManager, and now is generated using the archetype 
+arc/create_metadata_elements_sorters.arc. Also the sorter class for O_ATTR 
+(i.e. Attribute_cSorter) is dynamically generated from the PEI file information.
+A method "createDefault()" is also added to the class, for meta-model entities 
+that require a default sorter.
+
+- To regenerate the expected_results in case any changes are done to ooaofooa
+or ooaofoo_hierarchy, the function createResults() of I424SortingTest is called
+from the CompareTestResultCreator.java class. 
+
+- Some changes were made to com.projtech.bp.compare.test, see section Unit Test 
+  for details.
+
+Unit Test
+---------
+Following unit test is added to com.projtech.bp.compare.test.
+- i424SotringTest.java  Tests whether the elements are sorted properly.
+  See design note for details of test.
+  
+Common code for unit tests has been created which is going to be moved to 
+some common place under issue 582 (It will also update other unit tests of all 
+projects including compare.test). Following are classes that are created 
+to be generic.
+
+ITestResultsCreator
+   This interface generalizes the Test cases that may also generate test 
+   results. This interface will be used for creating a standard design pattern
+   for generating test results. It has following single method.
+   - public void createTestResults()
+
+TestingUtilities
+   - public static File getSourceDirectory()
+     This method returns the path of repository containing the code to be 
+     tested.
+   - public static IProject createProject(String name)
+     This method creates a project in testing workspace.
+   - public static IFolder importFolder(IContainer container, File folder)
+     This method imports a complete folder hierarchy into a container such as 
+     project or project folder.
+   - public static IFile importFile(IContainer container, File file)
+     This method imports a file into a container such as project or project 
+     folder.
+   - public static boolean isTextSame(Reader inputStream1, 
+                                                      Reader inputStream2)
+     Compare two inputStreams and find their differences by comparing line by
+     line.
+
+com.projtech.bp.compare.test.cases.BaseTest
+   This class abstracts functionality of TestCase which tests a plug-in and 
+   requires a test project to do it.
+   
+   - BaseTest(String projectName, String testName)
+   - protected IProject getSourceDirectory()
+   - protected IProject getProject()
+   - protected File createFullPathForFile(String name)
+     This method creates a full path by appending sourceDirectory path with 
+     path element given as argument
+   - protected IFolder importFolder(File folder)
+   - protected IFile importFile(File file)
+   - protected IFile importFile(String fileNamePath)
+   - protected IWorkbenchPage switchPerspective(String name)
+   - protected IFile createFile(String fileNamePath, InputStream in)
+
+Code Changes
+------------
+
+- com.projtech.bp.core
+  --------------------
+com.projtech.bp.core/arc/create_metadata_elements_sorters.arc
+Introduced: 1.2
+
+com.projtech.bp.core/arc/create_model_inspector.arc
+Initial version: 1.5    Final version: 1.6
+
+com.projtech.bp.core/arc/create_object_inspector.inc
+Initial version: 1.5    Final version: 1.6
+
+com.projtech.bp.core/generate.xml
+Initial version: 1.23   Final version: 1.24
+
+com.projtech.bp.core/mdl/ooaofooa_hierarchy.bak
+Initial version: 1.6    Final version: 1.7
+
+com.projtech.bp.core/mdl/ooaofooa_hierarchy.mdl
+Initial version: 1.6    Final version: 1.7
+
+com.projtech.bp.core/sql/ooaofooa_hierarchy.pei.sql
+Initial version: 1.9    Final version: 1.10
+
+com.projtech.bp.core/src/com/projtech/bp/core/inspector/.cvsignore
+Initial version: 1.6    Final version: 1.7
+
+com.projtech.bp.core/src/com/projtech/bp/core/sorter/.cvsignore
+Introduced: 1.2
+
+com.projtech.bp.core/src/com/projtech/bp/core/sorter/AlphaSorter.java
+Introduced: 1.2
+
+com.projtech.bp.core/src/com/projtech/bp/core/sorter/BaseTypeSpecificSorter.java
+Introduced: 1.2
+
+com.projtech.bp.core/src/com/projtech/bp/core/inspector/BaseModelClassInspector.java
+Introduced: 1.2
+
+- com.projtech.bp.compare
+  -----------------------
+com.projtech.bp.compare/src/com/projtech/bp/compare/ModelCacheManager.java
+Initial version: 1.16   Final version: 1.17
+
+com.projtech.bp.compare/src/com/projtech/bp/compare/structuremergeviewer/ModelCompareStructureCreator.java
+Initial version: 1.6    Final version: 1.7
+
+com.projtech.bp.compare/src/com/projtech/bp/compare/structuremergeviewer/ModelStructureDiffViewer.java
+Initial version: 1.4    Final version: 1.5
+
+com.projtech.bp.compare/src/com/projtech/bp/compare/text/ModelClassTextGenerator.java
+Initial version: 1.5    Final version: 1.6
+
+- com.projtech.bp.compare.test
+  ----------------------------
+com.projtech.bp.compare.test/Test_Readme.txt
+Initial version: 1.4    Final version: 1.5
+
+com.projtech.bp.compare.test/expected_results/testOAL1.txt
+Initial version: 1.8    Final version: 1.9
+
+com.projtech.bp.compare.test/expected_results/difftree_sorting_order.exp
+Introduced: 1.2
+
+com.projtech.bp.compare.test/mdl/i424_one.mdl
+Introduced: 1.2
+
+com.projtech.bp.compare.test/mdl/i424_two.mdl
+Introduced: 1.2
+
+com.projtech.bp.compare.test/src/CompareTestSuite.java
+Initial version: 1.5    Final version: 1.6
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/ITestResultsCreator.java
+Introduced: 1.2
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/TestingUtilities.java
+Introduced: 1.2
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/BaseTest.java
+Introduced: 1.2
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/I424SortingTest.java
+Introduced: 1.2
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/CompareFileDeletionCheck.java
+Initial version: 1.2    Final version: 1.3
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/CompareTestResultCreator.java
+Initial version: 1.2    Final version: 1.3
+
+End
+---
+
+$Log: i424.int,v $
+Revision 1.1  2009/09/03 18:22:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:35  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.78.1  2008/12/31 16:10:48  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/12/10 00:43:41  greg
+Job: 424
+Update file versions
+
+Revision 1.3  2004/12/09 07:02:45  siddique
+Job:424
+Completed code changes and Implementation comments section. 
+Corrected some typos.
+
+Revision 1.2  2004/12/09 05:56:51  babar
+Job: 424
+Added comments for generic test code and 
+BaseModelClassInspector
+
+Revision 1.1  2004/12/08 14:58:02  siddique
+Job:424
+Introduced.
+

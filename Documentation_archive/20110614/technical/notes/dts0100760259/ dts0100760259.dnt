@@ -1,0 +1,470 @@
+========================================================================
+
+File:      $RCSfile: \040dts0100760259.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Migrate IO MDL Tests  to Generics
+
+1. Abstract
+-----------
+This note describes how we will migrate the IO Model test suites to run on
+Generic Package models.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100760259 - Migrate IO MDL Tests  to Generics
+[2] ClearQuest DEI dts0100712772 - Migrating JUnit tests to Generic Packages
+[3] cvs://Documentation/internal/technical/notes/dts0100712772.dnt
+[4] ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+[5] ClearQuest DEI dts0100770277 - Change all tests to use heterogeneous UUID's
+[6] ClearQuest DEI dts0100770280 - Fix error due to attempt to persist non
+    persistent Packageable Element
+[7] ClearQuest DEI dts0100770284 - Element not unloaded when non persistent
+    elements refer to it
+[8] ClearQuest DEI dts0100770287 - Potential vulnerability in ExternalLink
+    Evaluator infrastructure
+[9] ClearQuest DEI dts0100770288 - callResolutionOperations masks exceptions
+[10]ClearQuest DEI dts0100770291 - NonRootModelElement.convertToProxy() sets a
+    full path
+[11]ClearQuest DEI dts0100770297 - Possibility that not all activity data is
+    disposed
+[12]ClearQuest DEI dts0100771018 - Paste behavior not yet 100% robust
+[13]ClearQuest DEI dts0100770602 - Activity , Sequence , UseCase , Communication
+                                   diagrams dont get converted to generics while 
+                                   importing
+ [14] ClearQuest DEI dts0100770855
+      Generic Package instance data is not being properly persisted in the 
+      stream export
+ 
+4. Background
+-------------
+Generic packages need to be shown to have robust persistence. Migrating the IO
+Model test suites so that they all get run in Generic Package form demonstrates
+this. The IO MDL Tests is one of the selected test suites to be migrated to 
+generic package functionality for the initial deployment of generic package 
+functionality to the field [4]. This issue was created as part of work. 
+
+
+5. Analysis
+-----------
+5.1 As stated in the Analysis Section of [3], this issue targets the migration
+of IO MDL Tests.
+    
+5.2 IO MDL Tests for generic packages contains :
+5.2.1 IOMDLTestSuiteGenerics
+5.2.2 IOMDLTestSuite2Generics
+5.2.3 PkgCM Test SuiteGenerics       
+
+5.3 All test files were manually created, there are no generated files.
+
+6. Design
+---------
+6.1  Steps to migrate a JUnit test suite
+6.1.1 Copy the existing test suite and rename it to <TestSuiteName>Generics. 
+6.1.2 Modify the internal behavior of each method  to be compatible with 
+      Generic package architecture.
+6.1.3 Modify the test code to support generic packages, create and update the
+      implementation note for this issue, and finally re-execute 
+      until the suites successfully pass.
+6.1.4 Update the "Unit_test_template.txt" and add the new generic packages test suites 
+      to be run.
+
+6.2 The robustness of the generic package import conversion shall be tested 
+    when importing an already upgraded model while the 'Upgrade to generics' 
+    checkbox is checked.
+
+6.3 Convert every <Model>Generics.xtuml test model with the latest 
+    work in head to assure the latest generic package functionality and 
+    fixes for known problem are in place.
+
+6.4	Changes for com.mentor.nucleus.bp.core
+6.4.1    IdAssigner.java
+Our testing uses a method of setting the IDAssigner seed to get test result
+repeatability. Previously, all metamodel class instance extents were seeded with
+the same value. This means that the UUID instance populations overlapped. Once
+we move to Generic Packages however, we have a common supertype so overlapping
+UUID instance populations are unsafe. This was seen as corrupted models and
+stack overflows in early testing. The solution was to start each instance extent
+IdAssigner with a different seed. To avoid having to regenerate large numbers of
+expected results, this kind of seeding is left optional, an issue is raised[5]
+to migrate all tests to this form of id seeding.
+
+6.4.2    User Data Type.xtuml
+The resolveCoreDataType() operation is modified to be more robust with
+incorrectly upgraded models. It logs an error if it finds such a model. The
+canUseDataType() operation is modified to disallow listing the current core type
+assigned to a user data type.
+
+6.4.3    Package.xtuml
+The deassociateFromParent() operation is modified to not attempt to unrelate a
+parent package when none is found. This fixes a defect detected in the
+MCConsistency test. It is also changed to unrelate the correct instances across
+the correct associations.
+
+6.5	Changes for com.mentor.nucleus.bp.io.core
+6.5.1  ImportHelper.java methods were modified to fix the conversion to
+       generic packages functionality while importing xtuml models:
+6.5.1.1 upgradeToGenerics ()                    
+6.5.1.1.1 The interface package, component package and system level datatype
+           package instances that are directly related to the system without 
+           a domain were collected then updated to generics.
+6.5.1.1.2 The graphical element representing the root package is now passed 
+           as a parameter to the update method.  This was done to eliminate a
+           problem that manifested itself by showing a duplicate component
+           package during the conversion to generic packages.
+           
+6.5.1.2 upgradeDomain ()           
+6.5.1.2.1 ExternalEntityPackage , functionPackage, DatatypePackage
+           and subsystem instances that are directly related to the domain
+           get their corresponding update methods called. 
+           Their nested instances will be updated within their update 
+           method  to prevent the nested specialized packages from being 
+           related twice to the root package and to their containing packages.
+6.5.1.2.2 A check is added to insure a domain instance is not null before 
+           updating it.         
+6.5.1.3 upgradeComponentPackage()
+          One more parameter is added to this method.  It is of type 
+          GraphicalElement_c.  It represents the graphical element of the 
+          parent package being converted to avoid the duplicate graphical element 
+          that otherwise shows while converting it.          
+6.5.1.4 upgradeDTPackage () 
+6.5.1.4.1 Dispose graphics for disposed and suppressed datatype elements 
+          (typically built in data types shifted to the system level).
+6.5.1.4.2 Ensure nested instances were being related properly
+          during conversion.
+          
+6.5.1.5 upgradeInterfacePackage(), upgradeFNPackage (), upgradeEEPackage ()                  
+          When updating Specialized Packages to generic packages the 
+          corresponding generic package is associated with a packageable 
+          element across R8001.  That packageableElement instance needed to 
+          get its type set to "Package_c".  This modification is added to 
+          all places where that packageable element is created
+
+ 
+6.5.1.6 In upgradeEEPackage(), added a check for the corresponding model 
+           instance to ensure it's not null before relating it to 
+           modelSpecification instance.
+        
+6.6	Changes for com.mentor.nucleus.bp.io.mdl:
+6.6.1  In the ModelImportWizard.java::performFinish() operation an extra check 
+       is added at the beginning of the method to check that the importPath is 
+       not null before using it. 
+       
+       In the domain creation runnable, a loop    
+         while(Display.getDefault().readAndDispatch()) {};
+       is added to refresh the UI event loop. Without this, the passed progress
+       dialog starts an asynchronous process to disable the cancel button.
+       If the UI event loop is not allowed to run, the process to disable the
+       cancel button doesn't get to run until after the dialog is disposed.
+       
+6.7 Changes for com.mentor.nucleus.bp.ui.canvas.test:
+6.7.1 In CanvasTest an overload was added for the method
+      validateOrGenerateResultsGenerics() with two parameters; a GraphicalEditor
+      and a boolean "generate".
+ 
+6.8 Changes for com.mentor.nucleus.bp.io.mdl.test:
+6.8.1 Some new Test Files for generic packages were added as specified in (6.1)
+6.8.1.1 IOMdlTestGenerics.java
+6.8.1.1.1 importModel() 
+	       Importing functionality changed from ImportModel to use
+	       TestingUtilities.importModelUsingWizardConvertToGenerics(). 
+	       This is the import method supporting conversion to
+	       generic packages.
+6.8.1.1.2 exportModel() 
+           Export functionality changed from ExportModel to use
+	       TestingUtilities.exportModelUsingWizard(). 
+6.8.1.1.3 importBPSql 
+	       Functionality in IOMdlTest is suppressed [6.8.2.3]
+6.8.1.1.4 outputLogsCompare() 
+	       This modification is done because actual results were shown different
+	       from expected because of the missing "\r" character.
+	       
+6.8.1.2 ParseOnImportTestSuiteGenerics.java
+	     Modified to point to the models that were converted to generic packages as 
+	     opposed to their specialized package version.
+6.8.1.3 ParseOnImportTestsGenerics.java
+	     importModel() is modified to import the generic package models as opposed to
+	     importing specialized models. 
+	   
+6.8.1.4 DataUpgradeCreatesNoDeltasTestGenerics.java
+          ensureavailabeAndLoaded() is replaced by creating project and 
+	      importing the specialized models while converting them to generics
+	       
+6.8.1.5 ImportVersion7_0ModelsTestGenerics.java
+	    This now uses the generic package version of the canvastest.xtuml
+6.8.1.6 IOMdlNestedTestGenerics.java
+	      Converted the specialized model to generic packages while importing, 
+	      then selected the different package instances to ensure the 
+	      specialized packages and the nested packages were updated to generics
+	      and related properly.
+	     
+6.8.1.7 IOMdlUnicodeTestGenerics.java 
+	      Converting the unicode specialized model to generic packages and  assured
+	      that the package diagram is opened correctly.
+	         
+6.8.1.8 ProxyTestsGenerics.java
+	     The test behavior was originally modified to comply with the generics
+	     persistence architecture.
+	     However, the test is commented out until the log file not empty failure 
+	     caused by the null PMC [6].
+	   
+6.8.1.9 ImportWizardTestsGenerics.java, SLDTTestsGenerics.java, 
+	     StaleProxyExportTestGenerics.java, CVSOperationsTestGenerics.java,
+	     FileVsFolder_i1608TestGenerics.java	    
+	     
+	     Modified the import functionality and the test to use package 
+	     instances.
+	    
+6.8.1.10 The Following test files were just modified for the Generics test 
+	     structure :
+          - IOMdlTestSuiteGenerics.java
+          - IOMdlTestSuite2Generics
+          - IOMdlTestSuiteIGenerics
+          - IOMdlTestSuiteIIGenerics
+          - PkgCMTestSuiteGenerics.java
+          
+6.8.2 Some tests were Excluded from the migration process because changing to 
+      a generic package structure would not effect the test in any way:
+6.8.2.1 SpecificationPackageUpgradeTests
+        SpecificationPackage instances don't exist in the generic packages 
+        context. 
+6.8.2.2 UniqueDomainIdsTest
+        The main purpose of this test is to create two domains and verify
+        that the ids of each are unique.
+        It was excluded because there are no domain instances in the 
+        generic packages context.
+         
+6.8.2.3 importBPSql functionality in IOMdlTest
+        This functionality was introduced first to get the old *.sql models
+        acquainted in the new format and enabled to being tested. 
+        There is no convert to generic packages while importingBpSql and it's decided 
+        such functionality is not needed in generics.
+
+6.8.3 Some files were modified to add the generic package methods along with 
+      the specialized ones :
+6.8.3.1      
+      The following tests were modified as stated in (6.1):
+      They were modified to use the generic packages version of the test methods.
+      The usage of specialized types like Domain , Subsystem , 
+      ComponentPackage, FunctionPackage, ExternalEntityPackage and 
+      DatatypePackage is replaced by using Package with the same name.
+      And the corresponding Editors for those specialized instances is replaced 
+      by using the Package editors. 
+        - PkgCMCreateTestGenerics.java
+	    - PkgCMDeleteTestGenerics.java
+	    - PkgCMModifyContentsTestGenerics.java
+	    - PkgCMModifyRelationTestGenerics.java
+	    - PkgCMRenameTestGenerics.java
+6.8.3.2
+	 The following tests get a generic package version of the test methods
+	 to keep the specialized functionality along with the generic functionality
+	 and to call the generic packages version for generating or validating results.     
+	   - ModifyContentsTest.java
+	     - performModifyChecksGenerics()
+	     - performModifyComponentContentsGenerics()
+	   - ModifyRelationTest.java
+	     - performModifyChecksGenerics()
+	     - editorTitlesTestGenerics() 
+	     - performModifyComponentGenerics()
+	   - PkgCMBaseTest.java
+	     - performCreateChecksGenerics()
+	     - performDeleteChecksGenerics()
+	     - performCreateChecksGenerics()
+	     - getProxyRefrences()
+	       -Modified to return the file path of package instances not just for
+	        SystemModel and Domain instances.
+	       -Modified to eliminate the NPE for using getDomainComponent() 
+	        operation with instances in generis.
+	   - RenameTest.java
+	     - performRenameComponentThruCEGenerics()
+	     - performRenameComponentThruMEGenerics()
+	     - performRenameComponentThruRNGenerics()
+	     - performRenameChecksGenerics()
+	   - CreateTest.java
+	     - createComponentThruCEGenerics()
+	     - performCreateChecksGenerics() 
+	     - performCreateComponentThruCEGenerics()
+	     - performCreateComponentThruMEGenerics()
+	   - DeleteTest.java
+	     - performDeleteComponentThruMEGenerics()
+    
+
+6.8.4 Some specialized tests were modified to exclude generic packages test models from
+      being tested in the specialized context  
+6.8.4.1 ParseOnImportTestSuite.java the a check  was added to exclude 
+        the generic packages models using the model names.
+        If the model name has the word "Generics" it gets excluded.
+        
+6.8.4.2 MCModelConsistency.java a check was added to exclude 
+        the generic packages models if the word Generics was parth of the path.
+
+6.8.5 Added some generic package utilities : 
+6.8.5.1  IOMdlUtilities.java
+         public class Package_by_name_c was added, it 
+         implements ClassQueryInterface_c
+6.8.5.2 EditorTestUtilities.java
+        Code is added to return the editor titles for package instances
+        the Package Diagram and Package Description.
+        
+
+7. Design Comments
+------------------
+7.1 Unable to locate PMC
+During testing, this error was thrown by the PersistOAL test in the 
+OALPersistenceTestsGenerics test suite. The error occurs because Packages at the
+system level have Packageable Element instances that do not have a parent across
+R8000. This violates the assumptions of the persistence mechanism, resulting in
+the error being reported during a call to export_PackageableElement_c. Since
+these system level Packageable Elements are recreated automatically on reload
+where necessary, there is no need to persist these elements and this error could
+be special cased out. An issue [6] is raised to track a fix for this.
+
+7.2 Package not unloaded in testConvertToProxyAfterComponentUnload
+This is seen in IOMdl test as an assertion failure, where Package.isOrphaned()
+is expected by the test to be true. The implementation of isOrphaned() checks
+for the existence of the instance in its instance extent. The reason that the
+package does not become orphaned is because it is instead converted to a proxy.
+
+The package is converted to a proxy because the ExternalLinkEvaluator infra-
+structure determines that there are referring instances to the one being un-
+loaded. In the case of a Package the behavior is erroneous, because it considers
+several metamodel classes that are non persistent. These should instead always
+be deleted from memory rather than prevent the unload of a referenced element.
+The current behavior represents a potential or actual memory leak. An issue is
+raised [7] to examine this.
+
+An additional issue was noted. The same infrastructure only considers the first
+element of potentially many across a given association. This may have previously
+been guaranteed, but with the changes in data topology caused by the Generic
+Package work this may no longer be true. A separate issue is raised to look at
+this possibility [8].
+
+7.3 Exceptions masked by load infrastructure
+ModelStreamProcessor.callResolutionOperations() has a TargetInvocationException
+catch clause which does nothing. This completely masks failures and must log an
+error caught. This is true of all the catch clauses in this method. An issue is
+raised [9] to track a resolution for this.
+
+7.4 NonRootModelElement.convertToProxy() sets a full path
+This is incorrect behavior. Any proxy in this state is permanently corrupted
+when any element above it in the persistence hierarchy is renamed. An issue is
+raised [10] to track a fix for this.
+
+7.5 Not all activity data is disposed
+In PersistableModelComponent.clearDatabase() there is code which disposes all
+action language instances. This code is called when an element is being
+unloaded. This code has not been enhanced to discard instances associated with
+more recently added action homes such as message bodies. An issue is raised [11]
+to track investigation of this.
+
+7.6 Package pasting strategy
+The current package paste implementation deletes the super type Packageable
+Element instance and then creates a new one. This action will change the UUID
+of the Package. Any external references to it, such as a Package Participant
+would be broken. An issue is raised [12] to track fixing this. 
+
+7.7 When importing a model with the "convert to generics" checked, 
+    the following specialized diagrams don't get converted:
+    - Activity 
+    - Sequence  
+    - UseCase  
+    - Communication 
+   a separate issue is raised to address this issue [13]. 
+7.8 Under the io.mdl.test plugin, inside the Generic Suite 2 test suite, the
+    testPersistOAL, and testPersistOALwithPOI unit tests are failing.  These
+    test have been commented out for now, and a separate  issue has been raised 
+    to address this problem [14].
+    During investigation it was found that a lot of instance data is missing.
+    This shall be addressed in the issue raised.
+    
+8. Work Required
+----------------
+Stated in the Design Section 
+
+9. Unit Test
+------------
+9.1 IO MDL Tests
+9.1.1 _- Run IOMDLTestSuiteGenerics
+      R- 0 Errors , 0 Failures
+
+9.1.2 _- Run IOMDLTestSuite2Generics
+      R- 0 Errors , 0 Failures
+
+9.1.3  _- Run PkgCM Test SuiteGenerics    
+      R- 0 Errors , 0 Failures
+       
+9.2 Run all the JUnit tests 
+    _- Tests pass
+
+End
+---
+
+$Log: \040dts0100760259.dnt,v $
+Revision 1.16  2011/05/14 12:50:15  hkhaled
+job: dts0100760259
+update dnt
+
+Revision 1.15  2011/05/14 08:16:27  hkhaled
+job:dts0100760259
+update dnt
+
+Revision 1.14  2011/05/13 15:00:25  rmulvey
+job:dts0100760259
+Pre-review and fixed grammar
+
+Revision 1.11  2011/05/13 13:48:22  hkhaled
+job:dts0100760259
+update dnt
+
+Revision 1.10  2011/05/11 21:24:56  campbell
+Job: dts0100760259
+Add more required detail.
+
+Revision 1.9  2011/05/11 18:37:26  campbell
+Job: dts0100760259
+Add details about the IdAssigner changes.
+
+Revision 1.8  2011/05/11 18:23:53  hkhaled
+job: dts0100760259
+update dnt
+
+Revision 1.7  2011/05/11 13:05:47  campbell
+Job: dts0100760259
+Updated with outstanding issues.
+
+Revision 1.6  2011/05/11 12:02:19  campbell
+Job: dts0100760259
+Updated with outstanding issues.
+
+Revision 1.5  2011/05/08 10:42:44  hkhaled
+job: dts0100760259
+update dnt
+
+Revision 1.4  2011/05/06 18:48:43  hkhaled
+job: dts0100760259
+update dnt
+
+Revision 1.3  2011/05/06 16:57:36  campbell
+Job: dts0100760259
+Updating status.
+
+Revision 1.2  2011/05/06 16:31:34  hkhaled
+job: dts0100760259
+update dnt
+
+Revision 1.1  2011/05/06 09:36:28  hkhaled
+job: dts0100760259
+Committing a dnt
+

@@ -1,0 +1,167 @@
+========================================================================
+
+File:      $RCSfile: i2426.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:31:30 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Model Debugger doesn't start correctly
+
+
+Abstract
+--------
+While testing the newest Eclipse update site-based releases, it was discovered
+that the model debugger no longer starts correctly when an EXE is double-clicked
+inside Eclipse.  This note explains how the issue will be fixed.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla 2426
+
+Background
+----------
+To support ease of use, BridgePoint extends Eclipse to start the BridgePoint
+Model Debugger when an EXE is double-clicked.  MD is started as an external
+editor.  This functionality has recently become broken.
+
+Analysis
+--------
+1       Current design
+1.1     The script "pt_debugger.cmd" is used to configure a temporary execution
+        environment to start MD in.
+1.1.1   "pt_debugger.cmd" still relies on ROX_PT_HOME environment variable
+1.2     The file plugin.properties in bp.core defines a variable to the path to
+        "pt_debugger.cmd".
+1.2.1   This variable is used by the plugin.xml to define the extension point
+        that associates EXEs with MD.
+1.2.2   This file contains a default setting for the path, but this value is
+        overwritten by the EDGE installer at install time to point to the user-
+        selected install path.
+1.3     MD requires support files and directories under
+        "<somedir>/win32/client"
+1.3.1   bin/
+            bp_md.exe         (model debugger itself)
+1.3.2   client_core/
+1.3.3   lib/
+            libexpat.dll
+            qt-mt321.dll
+            sablot.dll
+
+2       Options
+2.1     There are two basic options for packaging Model Debugger to solve the
+        issue at hand: move Model Debugger into bp.core tree, install Model
+        Debugger into a special application directory at installation time
+
+2.1.1   Option 1: MD lives in bp.core tree
+2.1.1.1 Characteristics
+            - A skeleton directory "md" is created in bp.core
+            - bp.core build.properties file is modified to include "md"
+            - Release script copies 1.3 into bp.core "md" tree before update
+              site is built.
+            - plugin.properties is no longer overwritten by the installer
+            - plugin.properties path is set to a relative
+              ("./md/pt_debugger.cmd") instead of absolute path
+2.1.1.2 Pros:
+            - BP stays self-contained, "mostly" does not rely upon a standalone
+              installer to install a specific component
+2.1.1.3 Cons:
+            - More EXEs and LIBs to copy around during the build process
+            - ROX_PT_HOME will have to be set by the user or an installer and
+              point to a specifically versioned bp.core plugin.
+                - Or, perhaps the "pt_debugger.cmd" script can live at the same
+                  level as "bp_md.exe" and become self-aware of where it is
+                  launched from and set up the needed paths appropriately.
+
+2.1.2   Option 2: MD lives standalone on system
+2.1.2.1 Characteristics
+            - The SLE BP installer handles the installation of MD to
+              "c:\mgc\bridgepoint"
+            - The bp.core plugin.properties file will still have to be
+              overwritten by the installer.
+2.1.2.2 Pros:
+            - Clean standalone install and config of Model Debugger
+2.1.2.3 Cons:
+            - Overwriting the plugin.properties becomes problematic to
+              impossible when the user is updating from an update site and the
+              plugins are installed to a new extension location
+
+
+Design
+------
+3       The solution to be implemented is option 1 outlined in section 2.1.1.
+        The reasons are oulined below.
+3.1     Overwriting the plugin.properties file is a hack and is very problematic
+        for update site installs.
+3.2     Packaging MD as part of the update site package breaks our dependencies
+        on the standalone installer.
+
+Design Comments
+---------------
+None.
+
+Work Required
+-------------
+4       Work Items
+4.1     Create dummy "md" directory in bp.core plugin
+4.1.1   Add it to build.properties file
+4.1.2   Put README.txt file in that directory to keep CVS from deleting it
+4.1.3   Move pt_debugger.cmd in CVS from "model_compilers/generator/bin" to
+        "...bp.core/md/"
+
+4.2     Modify create_bp_release script to copy MD files into bp.core (this
+        script is ran before the update site is built)
+
+4.3     bp.core plugin.properties path is set to a relative
+        ("./md/pt_debugger.cmd") instead of absolute path
+
+4.4     Modify "pt_debugger.cmd" to not get ROX_PT_HOME from the environment
+4.4.1   This script needs to use a 'pwd' or something similar to get it's
+        current location and set up the rest of the paths using that value
+
+Unit Test
+---------
+5       Testing
+5.1     Build the update site using the packaged model debugger
+5.2     Install the new update site
+5.3     Build and link an EXE for model debugging
+5.4     Double-click the built EXE, verify MD starts and the EXE runs correctly
+
+End
+---
+
+$Log: i2426.dnt,v $
+Revision 1.1  2009/09/03 18:31:30  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:14:50  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:12:18  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/09/08 19:41:00  kbrown
+Job:2426
+Updated design note and completed implementation note.
+
+Revision 1.2  2006/08/29 20:09:32  kbrown
+Job:2426
+Completed design review.
+
+Revision 1.1  2006/08/29 19:22:56  kbrown
+Job:2426
+Design note for this issue.
+

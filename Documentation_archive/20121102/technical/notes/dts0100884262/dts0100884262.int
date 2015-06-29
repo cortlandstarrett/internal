@@ -1,0 +1,208 @@
+========================================================================
+
+File:      $RCSfile: dts0100884262.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Prep release 3.5.0
+
+1. Abstract
+-----------
+This note is created to captured issues found and fixed in BP 3.5.0 after the 
+feature freeze, but before release.  This are issues found and fixed during the 
+test phase prior to release.
+
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI  dts0100884262
+[2] ClearQuest DEI  dts0100836674 - Convert a xtUML project from specific
+    package to generic package without using import/export
+[3] ClearQuest DEI dts0100812487 - Run All BridgePoint CheatSheets
+[4] ClearQuest DEI dts0100886054 - Problems with cheat sheet for simple system
+[5] ClearQuest DEI dts0100685215 - Run full UI.Canvas CCP tests
+[6] ClearQuest DEI dts0100886623 - Assigning component reference doesn't bring
+                                   in interface references
+[6] ClearQuest DEI dts0100886627 - Copy/paste issues with generic packages
+
+4. Background
+-------------
+The items found and fixed that are described in this note should still have a 
+separate CQ issue, and those issues should be called out in the document 
+references section.  However, this note is being used as the single point for 
+documenting the fixes for these issues.
+
+5. Requirements
+---------------
+
+6. Work Required
+----------------
+
+7. Implementation Comments
+--------------------------
+7.1 GPS upgrade issue
+The release candidate build was found to have an issue upgrading the demo GPS
+project. This was traced to the fact that the old style Generic Package that
+contained a sequence diagram was not related across R1405 as it should have
+been. Since projects in the field may be in this state, the upgrade code was
+extended to test for this state and add the missing association if required.
+This change was accelerated to HEAD under issue [2].
+
+7.2 By introducing the new way for synchronizing interface references from
+	automated to manual approach, Simple Model creation CheatSheet needs to
+	be updated by adding the interface operation before formalizing the
+	components connection to the interface, so that the manual synchronization
+	is not required.
+	
+	Also some of the actions description have been enhanced.
+
+7.3 Travis noted a number of issues in the cheat sheets in [4].  Keith took a 
+    big sweep through all the XML files that make up this cheat sheet and made
+    the formatting consistent, fixed grammar errors, added missing steps, and 
+    made fixes to the actions.  A few of the items were not done and are left
+    for later.  The work that was done is in branch R3_4_9-SKB-dts0100886054.
+
+7.4 Fix CCP tests
+
+The Model Recreation tests have been disabled for some time.  The tool's test
+infrastructure has changed enough to where the tests cannot run anymore.  The
+test has been modified to account for separate graphical selections vs the core
+selection.  Additionally the expected results have been updated to account for
+slight graphical differences.
+
+The tests create the test models by using the new domain wizard along with a
+template file.  This approach is broken in the tool as the ids for the elements
+are not properly updated and maintained within the instance hash map.  There are
+two problems here:
+
+1. In bp.core/.../common/IDConvertor.java we were updating the id in a way that
+did not propagate id changes to the elements subtype.  This is changed to call
+the common approach: updateInstanceKey().
+
+2. In io.mdl/arc/gen_uuid_convert_util.arc we generate code that processes all
+possible elements for id updating.  For subtypes of Packageable Element we must
+update the Packageable Element after the individual subtypes so that its ID is
+used.  To do this the archetype is modified to skip the PE_PE until after
+processing all other elements.
+
+These changes have gone directly to HEAD, the changes are listed here to prevent
+confusion with the other changes in this note:
+
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    IDConvertor.java
+
+com.mentor.nucleus.bp.io.mdl/arc/gen_uuid_convert_util.arc
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+    CompareTestUtilities.java
+
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/
+    test/ModelRecreationTests.java
+com.mentor.nucleus.bp.ui.canvas.test/expected_results/ModelRecreation_*
+
+The tests take around 45 minutes to run which is not much considering the full
+amount the entire BP suite takes.  Therefore rather than separate a few of the
+long running tests we will now run all tests.  The CQ test that ran the full
+set is now obsolete.
+
+7.5 Consider supertype parent's parent as proxy
+
+During paste the code looks at the exported data to determine what elements are
+the root elements that were exported.  To do this it usually checks for the
+parent being null.  In some cases the parent is local and a supertype of the
+element exported.  In this case we need to check the supertypes parent to see if
+its null or a proxy.  The code is modified so that when looking for null
+supertype's parents we also consider them if they are proxies.
+
+7.6 Move attached connectors when upgrading to generics
+
+During upgrade to generics we reuse the positional values of the domain elements
+(formalized to a component).  To do this we move the component container symbol
+such that it contains the original graphical element's positions.  We did not
+consider moving the anchors for the attached connectors on the component
+container symbol.  These are now moved as well.
+
+7.7 Set graphical represents for system level GD_GE instances before upgrade
+
+If a user upgrades a model to generics without ever looking at the system
+diagram, that diagram will result in blank graphics after a restart.  The
+problem occurs because the GD_GE elements have not had their represents value
+set at that point, and the code skips such a GD_GE as it cannot be used to
+compare against the element being upgraded.  A call to
+CanvasModelListener.setGraphicalRepresents() is added before performing the
+generic package upgrade.
+
+Change went directly to HEAD:
+
+com.mentor.nucleus.bp.io.mdl/src/com/mentor/nucleus/bp/io/mdl/upgrade/
+    GenericPackageUpgradeHelper.java
+
+8. Unit Test
+------------
+
+9. Code Changes
+---------------
+Branch name: R3_4_9-SKB-dts0100886054
+>com.mentor.nucleus.bp.welcome/>src/
+    com.mentor.nucleus.bp.welcome.cheatsheets.library/ChangeKeyLetter.java
+>com.mentor.nucleus.bp.welcome/>src/
+    com.mentor.nucleus.bp.welcome.cheatsheets.library/DrawModelElement.java
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/
+    BuildAndCodeGeneration.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/CreateXtumlProject.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/ModelArchitecture.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/ModelClassesCreation.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/
+    Model ExectutionInVerifier.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/ModelFramework.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/PrepareWorkspace.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/StateMachineCreation.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleModel/TestBenchCreation.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/HeartPacerCaseStudy.xml
+>com.mentor.nucleus.bp.welcome/>cheatsheets/SimpleSystem.xml
+
+
+End
+---
+
+$Log: dts0100884262.int,v $
+Revision 1.7  2012/05/03 15:27:16  tlondon
+Job: dts0100886837 dts0100884262
+
+Add documentation.
+
+Revision 1.6  2012/05/02 22:49:22  tlondon
+Job: dts0100886623 dts0100886627
+Add documentation for changes.
+
+Revision 1.5  2012/05/02 19:42:45  tlondon
+Job: dts0100685215
+
+Add documentation for change
+
+Revision 1.4  2012/05/01 05:15:55  kbrown
+job:dts0100884262
+Updated in for cheat sheet fixes.
+
+Revision 1.3  2012/04/30 21:07:41  nmohamad
+job:dts0100884262
+Add CheatSheet fix
+
+Revision 1.2  2012/04/25 14:55:26  campbell
+Job: dts0100884262
+Add note about GPS upgrade fix.
+
+Revision 1.1  2012/04/25 12:07:32  rmulvey
+job:dts0100884262
+Created an implementation note to capture information about issues fixed in the test cycle after feature freeze just before the 3.5.0 release.

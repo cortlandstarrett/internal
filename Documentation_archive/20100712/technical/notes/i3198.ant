@@ -1,0 +1,161 @@
+========================================================================
+
+File:      $RCSfile: i3198.ant,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Relax same data rule
+
+1. Abstract
+-----------
+This note describes how we will relax this rule, allowing events carrying
+heterogeneous data sets into a given state.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3208
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3208
+[2] Bugzilla item 491
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=491
+[3] Bugzilla item 2755
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2755
+[4] Bugzilla item 1797
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1797
+
+4. Background
+-------------
+BridgePoint has enforced the same data rule on data entry since its creation.
+However, with the addition of actions on transitions[2], there is a need to
+relax this rule. Responsibility for OAL data item reference validation and
+integrity shall pass to the parser.
+
+5. Analysis
+-----------
+5.1 Metamodel changes
+The Event Supplemental Data class (SM_SUPDT) shall remain, but its role shall
+be radically changed. Instead of enforcing that every event have a common data
+set, every event shall carry its own unique data set. Accordingly, R521 is
+redundant; a state shall now have many incoming data sets, and each data set may
+potentially be available to several states, but all this can easily be
+determined by traversal through the event (SM_STATE->SM_SEME[R503]->
+SM_SEVT[R503]-> SM_EVT[R525]->SM_SUPDT[R520]). The SM_STATE secondary identifier
+is obsolete and shall be removed. R520 shall change, becoming exactly 1 at the
+State Machine Event end; an event data set shall henceforth be owned by a single
+event.
+
+Extensive fallout changes will also be needed to the OAL that manages event
+parameters.
+
+Since parameters are now owned solely by the event, extensive simplification of
+polymorphic event handling is possible. This work shall perform this
+simplification. In particulr, the Non_local boolean attribute in SM_SUPDT is
+redundant. Since the data set carried by the polymorphic event need not obey
+the same event rule, the one defined for the original polymorphic event in its
+own supertype state machine is sufficient.
+
+5.2 Model Explorer changes
+The current event parameter configuration procedure in BridgePoint is not
+popular with users[3]. This shall be changed to allow arguments to be added to
+events more intuitively.
+
+The event data items subtree shall be removed and event parameters moved to be
+immediately under the event itself.  A 'New > Parameter' context menu entry
+shall be added to support this more intuitive way of working and event parameter
+deletion shall work as expected, affecting only the selected event.
+
+References to 'event data' in the tool shall be replaced with 'event parameter'
+in this job[4].
+
+5.3 Parser changes
+The parser shall be modified so that it checks all relevant events and signals
+for the availability of the referenced data items. This only affects state entry
+actions; all events and signals on all incoming transitions shall be checked
+for the availability of all data items referenced in the state action. If a
+parameter is found to be missing, each event and signal that does not have the
+required parameter is flagged in a parse error, or errors.
+
+All references to 'event data' in the parser output (error messages) shall be
+replaced with 'event parameter' in this job[4].
+
+5.4 Model Compiler changes
+This is a radical change for all the model compilers. Unlike new features that
+the MC's can be left to catch up with, this change completely breaks all
+model compilers that handle state machines. These changes must be communicated
+to owners of proprietary model compilers and must be handled by both our
+commercial model compilers, but also MC-Java.
+
+5.5 Verifier changes
+Verifier must similarly be modified to execute models created and updated to
+relax the same data rule.
+
+5.6 Data upgrade
+I suspect a new persistence format revision will be required, though data can
+be upgraded silently. Incoming legacy data must be processed so that fan in to
+common event data is replaced with individual instances for each event. Special
+case handling for SM_STATE and SM_SUPDT instances will be needed, since
+instances of these classes will expect fewer attributes.
+
+6. Work Required
+----------------
+Fully specified in the analysis section above.
+
+7. Acceptance Test
+------------------
+_- Create a state model with a number of states with three transitions
+   between two states and two transitions between another two.
+_- Create events with one, two and no parameters. Give one of the parameters the
+   same name and type in the two events that bear it.
+_- Assign the events to three transtions incoming to a single state.
+_R The events are available for assignment and are successfully assigned to the
+   transitions.
+_- Write some OAL that attempts to access the common event parameter.
+_R Parse errors are reported citing the event with no parameters.
+_- Write some OAL in the target state that attempts to access the other event
+   parameter.
+_R Parse errors are reported citing both the event with no parameters and the
+   event with one parameter.
+
+_- Assign the two data bearing events to two transitions into another single
+   state.
+_- Write some OAL that attempts to access the common event parameter.
+_R No parse errors are reported.
+_- Write some OAL that attempts to access the other event parameter.
+_R Parse errors are reported citing both the event with one parameter.
+
+_- Repeat the above tests with signals
+_- Repeat the above tests with a creation transition.
+
+_- Check that legacy models are updated.
+
+End
+---
+
+$Log: i3198.ant,v $
+Revision 1.3  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.2  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2007/10/11 18:19:36  campbell
+Job:3198
+Introduced.
+

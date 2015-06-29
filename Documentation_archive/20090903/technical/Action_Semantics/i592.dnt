@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile: i592.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Model Fails to Load
+
+Abstract
+--------
+This note describes the work required to resolve a case when a an mdl file 
+fails to load and throws Exceptions.
+
+History
+-------
+final - i542-010705-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 592
+
+
+Background
+----------
+See Bugzilla Issue 592 [1].
+
+Analysis
+--------
+i592.1  Problems with the ActivityAnnotationModel
+  (Referring to comment # 4 in Bugzilla [1])
+  It was identified that several BadLocationExceptions are thrown by the
+  addAnnotation() method. This happens because although AllActivityModifier
+  correctly deletes the place holder file when there are no more parse errors
+  or other marks (user added Bookmarks or Tasks), it does not disconnect the
+  document from its AnnotationModel at the same time. As a result,
+  AnnotationModel.ResourceDeltaVisitor retrieves an AnnotationModel instance
+  against the file which may have been reassigned to another model element with
+  same name and which also has parsing errors in the Action_Semantics attribute.
+  When this happens, the marker positions taken from AnnotationModel may not 
+  lie in valid places in the original file, causing BadLocationExceptions.
+
+i592.2  The import wizard dialog does not disappear
+  (Referring to main comment and comment # 5 in Bugzilla [1]).
+  While loading ooaofooa.mdl rev 1.69.8.2 the import wizard dialog does not 
+  dismiss without Cancel being pressed. This is caused by some unhandled 
+  NullPointerExceptions that arise when parsing OAL instance handles that refer
+  to deleted model elements.
+
+Design
+------
+i592.1  Problems with the ActivityAnnotationModel
+  Modify parseAction(Object o_input) method of AllActivityModifier class in 
+  com.projtech.bp.ui.text.activity package to disconnect an AnnotationModel
+  from its document when no parsing errors are found and no other markers are
+  present.
+
+i592.2  The import wizard dialog does not disappear
+  The Wizard dialog while importing does not dismiss due to a 
+  NullPointerException that occurs in one of the OAL validation operations. All 
+  those methods that have V_INT[R814] or V_INS[R814] in their parse chains 
+  shall be validated. These operation should report a parsing error in case 
+  a model class referred in an instance handle or instance set does not exist. 
+
+  The following functions in als.oal/sql/function_import.sql access the above
+  mentioned chains:
+
+. process_from_instances
+. process_related_by
+. process_instance_event
+. Local_variable_validate
+. Create_object_statement_end
+. Delete_statement_end
+. inst_ref_set_var_validate
+. For_statement_end
+. Relate_statement_end
+. Unrelate_statement_end
+. Assignment_expr_end
+. Attribute_validate
+. Attribute_access_end
+. Instance_chain_loop5_end
+. Transformer_function_validate
+. Transform_ib_invocation_end
+
+  The following functions from the above list already have a 'not_empty' check 
+  directly written or implied:
+
+. process_from_instances
+. process_related_by
+. process_instance_event
+. Local_variable_validate
+. Create_object_statement_end
+. Delete_statement_end
+. inst_ref_set_var_validate
+. For_statement_end
+. Attribute_validate
+. Instance_chain_loop5_end
+. Assignment_expr_end
+
+  The following functions are modified to include the 'not_empty' check, for 
+  model class reference selected through specified parse chains:
+
+. Relate_statement_end 
+. Unrelate_statement_end
+
+  In the above two functions the check is added to both 'relate' and
+  'relate using' cases. 
+
+  For the following functions the check is made on one place, where an object of 
+  V_INT is accessed across R814.
+
+. Attribute_access_end
+. Transformer_function_validate
+. Transform_ib_invocation_end
+
+If an empty model class reference is found, all the modified operations shall
+report  a parsing error of form ("Variable ->" + Name + "<- does not exist in
+scope as an object instance variable") using ERR::reportParseError() bridge
+operation.
+
+Work Required
+-------------
+- i592.1  Problems with the ActivityAnnotationModel.
+  Update the file AllActivityModifier.java as specified in the design 
+  section.
+   
+- i592.2  The import wizard dialog box does not disappear
+  Update the function_import.sql file as specified in the design section and 
+  export the updated functions to als.oal/sql/function_import.sql. 
+
+Unit Test
+---------
+- i592-UT.1  Problems with ActivityAnnotationModel
+  _- Clean Error log
+  _- Import ooaofooa.mdl rev 1.69.8.2 in Tiger 
+  _- View Error Log
+  _R Error log does not show any BadLocationException.
+  
+- i592-UT.2  The import wizard dialog box does not disappear
+  _- Import ooaofooa.mdl rev 1.69.8.2 in Tiger 
+  _R The model is loaded successfully and the Wizard dialog disappears after 
+     import.
+
+End
+---
+
+$Log: i592.dnt,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.54.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2005/01/18 18:09:31  siddique
+Job:592
+Added history.
+
+Revision 1.7  2005/01/18 16:43:00  siddique
+Job:592
+Minor change only.
+
+Revision 1.6  2005/01/17 05:24:42  siddique
+Job:592
+Review observations addressed.
+
+Revision 1.5  2005/01/13 23:23:13  campbell
+Job: 592
+Moved analysis of problem from design section into the
+analysis section where it belongs.
+
+Revision 1.4  2005/01/13 22:18:12  campbell
+Job: 592
+You your English syntax and word order have forgotten.
+Removed all references to oal_functions.sql and oal_utilities.sql
+since these are not controlled items.
+Clarified that Bookmarks and Tasks and not just Problems block
+placeholderfile deletion (and hence AnnotationModel disconnection).
+
+Revision 1.3  2005/01/13 17:56:28  siddique
+Job:592
+Minor change.
+
+Revision 1.2  2005/01/13 17:50:16  babar
+Job:592
+Rephrased where there was an ambiguity.
+
+Revision 1.1  2005/01/13 17:09:52  siddique
+Job:542
+Introduced.
+

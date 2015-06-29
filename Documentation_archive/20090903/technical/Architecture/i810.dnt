@@ -1,0 +1,149 @@
+========================================================================
+
+File:      $RCSfile: i810.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Improve delete performance
+
+Abstract
+--------
+This note describes a change to improve the performance of model element
+deletes.
+
+History
+-------
+
+final i810-033105-01.rvm
+
+Document References
+-------------------
+Issue 810
+Issue 745
+
+Background
+----------
+Deleting a subsystem or a domain takes "a long time".
+
+Analysis
+--------
+In issue 745, it was noted that the delete time can be significantly reduced
+if we only respond to DELETE model change events, rather than all the model
+change events when we are executing a user requested delete.
+
+Design
+------
+
+1. Change ModelDelta constants to bit fields
+
+An enum data type named ModelDelta is added to ooaofooa with the values 
+currently defined in the ModelDelta.java class.  The ModelDelta.java class is 
+changed to use the generated ModelDelta enum data type, as is the rest of the 
+code.
+
+The values of the integer constants in the enumeration are changed
+to be powers of 2.  This way we can selectively create bit masks that define
+which events are to be processed.  An additional constant, ALL_EVENTS, is
+defined, which contains all possible event types.  The constant NO_EVENTS is
+also defined with a value of zero.  All code that references the constants
+is changed (if necessary), to treat them as bits in a bit mask.
+
+2. Disable events during a user delete
+
+When the user requests a deletion, the operation DeleteAction.run() is
+eventually invoked.  This function is changed to call 
+Enablemodelchangelisteners() with a bit mask of DELETE before 
+deleting the instances, and Enablemodelchangelisteners() to reset the mask 
+after deleting the instances has finished.
+
+3. Only respond to events enabled by the bit mask.
+
+3.1 The variable Ooaofooa.listenersEnabled is changed from boolean to int, and
+initialized to ModelDelta.ALL_EVENTS.  
+
+3.2 The function Ooaofooa.fireModelChange() is changed to check the bit mask
+to determine if the event should be processed.
+
+3.3 The following changes are made to the OAL functions in the ooaofooa model.
+The function disableModelChangeListeners is deleted, and the signature of
+enableModelChangeListenersFor is changed to the following:
+
+enableModelChangeListenersFor( mask: ModelDelta ): ModelDelta
+
+The function returns the value of the mask prior to updating it.
+
+3.4  All invocations of disableModelChangeListeners are changed to an invocation
+of enableModelChangeListeners(mask: ModelDelta.NO_EVENTS).  
+
+Design Comments
+---------------
+
+Work Required
+-------------
+1. Change ModelDelta constants to bit fields
+
+The new datatype is added to ooaofooa.mdl.
+ModelDelta.java has the constant definitions removed.
+
+2. Disable events during a user delete
+
+The archetype create_global_action.inc is changed to add the calls to
+Enablemodelchangelisteners() for a delete action (only).
+
+3. Only respond to events enabled by the bit mask.
+
+3.1 and 3.2 
+These changes are made to java.arc
+
+3.3 This change is made to ooaofooa.mdl
+
+3.4  All invocations of disableModelChangeListeners are changed as
+described in the design.
+
+
+Unit Test
+---------
+
+- Run all unit tests
+R All unit tests pass
+
+A deletion speed test (I810_SlowDeletionTest) is added to core.test. 
+
+- Execute core.test on HEAD
+- Record deletion time from console
+- Execute core.test on Review-i810
+R Execution time is less than HEAD execution time
+
+End
+---
+
+$Log: i810.dnt,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:17  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.38.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/03/31 19:27:38  greg
+Job: 810
+Addressed observations
+
+Revision 1.1  2005/03/31 14:39:16  greg
+Job: 810
+Change from .int to .dnt
+

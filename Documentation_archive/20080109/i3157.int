@@ -1,0 +1,284 @@
+========================================================================
+
+File:      $RCSfile: i3157.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Rework the way signals are assigned to transitions
+
+1. Abstract
+-----------
+The wizard that assigns signals to transitions has some problems. This note
+addresses these issues.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3157
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3157
+[2] Bugzilla item 3161
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3161
+[3] Bugzilla item 3190
+        http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3190
+[4] Bugzilla item 3323
+        http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3190
+[5] Bugzilla item 3255
+        http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3190
+
+4. Background
+-------------
+A state model with two transitions into the same state can have the same signal
+assigned to both transitions. If one of the signals is subsequently unassigned,
+the other transition shows an Orphaned event.
+
+5. Design
+---------
+5.1 This problem is not in the Action Filter but in the code which populates the
+Signal selection wizard. The old navigation simply traversed from the previously
+selected interface to all its signals. This is no good, since you only want to
+offer those signals not already assigned to the other incoming transitions.
+
+The activity SM_TXN_AssignSignal is modified to filter only those signals for
+which isAvailableForAllocationTo(transition_id) return true. This is the same
+operation used to control the enable status of the menu entry itself and so will
+always give consistent behavior with it.
+
+6. Implementation Comments
+--------------------------
+6.1     It was determined that we could easily fix [3] along with this issue.
+        The fix was to remove 2 unwanted persistence lines from io.mdl's
+        file_io.pei.sql file.
+
+6.2     The Component Context Menu Test JUnit test and model were not being
+        used.  The tests were enabled and the model updated to work and extended
+        to include some specific tests for this issue.
+6.3 ModelExportWizard.java was modified as specifed in i3323 [4].  
+6.4 A one line change was made to MCJava/java.arc::batchRelate as specified
+    in i3255 [5].
+Before:
+if (relateProxies || !isProxy() || inSameComponent(this, ${rel_inst_var_name})) {
+After:
+if (relateProxies || !isProxy() || (inSameComponent(this, ${rel_inst_var_name}) && !isProxy())) {
+
+7. Unit Test
+------------
+7.1 Test 1
+_- Create a formalized component with a provided interface defining 2 signals.
+_- Inside the component define a class with a class state machine.
+_- In the state machine, define a state with 2 incoming new state transitions.
+_- Right click on one of the transitions.
+_R The Assign Signal... menu is enabled.
+_- Select it, choose the interface and click Next.
+_R The wizard shows both signals.
+_- Choose one and click Finish.
+_R The signal is assigned.
+_- Right click the other transition.
+_R The Assign Signal menu entry is still enabled.
+_- Select it, choose the same interface and hit Next.
+_R The wizard shows only the signal that was not assigned earlier.
+
+7.2 Test 2 - Continues from Test 1
+_- Remove one of the interface signals
+_- Delete the class based state machine
+_- Create a new class based state machine
+_- Create two states
+_- Create a transition between the states and right click on it
+_R The Assign Signal... entry exists
+_- Assign the signal to the transition
+_- Right click on the transition
+_R The Assign Signal... entry does not exist
+_R The Remove Signal... entry does exist
+
+7.3 Test 3 - Continues from Test 2
+_- Create a second transition into the same state
+_- Right click on the new transition
+_R The Assign Signal... entry does not exist
+_- Add an event named "e" to the state machine
+_- Right click on the new transition
+_R The Assign Signal... entry does not exist
+_R The Assign Event... entry does exist
+_- Assign the transition to event "e"
+_- Right click on the new transition
+_R The Assign Signal... entry is not present
+
+7.4 Test 4 - Continues from Test 3
+_- Restart the tool
+_R The signal and event names on the transitions are correct and not "Orphaned"
+
+8. Code Changes
+---------------
+The changes are in branch Review-i3157-i3161-02 for all projects.
+
+com.mentor.nucleus.bp.core/arc/wfl_block.inc
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Interface/Interface.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Provided Signal/
+    Provided Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Signal Provisions and Requirements/Required Signal/
+    Required Signal.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Bridge Parameter/Bridge Parameter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function Parameter/Function Parameter.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/Context Menu Entry Functions/Context Menu Entry Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine/State Machine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Transition/Transition.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/marker/
+    RemoveAllEvent.java
+
+com.mentor.nucleus.bp.core.test/src/SystemLevelTestSuite.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ComponentContextMenuTests.java
+
+com.mentor.nucleus.bp.io.mdl/sql/file_io.pei.sql
+com.mentor.nucleus.bp.io.mdl/src/com/mentor/nucleus/bp/io/mdl/wizards/
+    ModelExportWizard.java
+
+MC-Java/java.arc
+
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Test.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Component Context Menu Testing.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Context Menu Test Interface/
+    Context Menu Test Interface.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Context Menu Test Interface/Interface2/
+    Interface2.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Context Menu Test Interface/Test Interface/
+    Test Interface.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Component Package/
+    Test Component Package.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Component Package/Unnamed Component/
+    Unnamed Component.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Component Package/Unnamed Component/
+    Context Menu Test/Context Menu Test.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Component Package/Unnamed Component/
+    Context Menu Test/Owner/Owner.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Component Package/Unnamed Component/
+    Context Menu Test/Owner/ClassStateMachine/ClassStateMachine.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Component Package/Unnamed Component/
+    Datatypes/Datatypes.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Component Package/Unnamed Component/
+    External Entities/External Entities.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Test Library.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Test Component2/
+    Test Component2.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Unnamed Component/
+    Unnamed Component.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Unnamed Component/Datatypes/
+    Datatypes.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Unnamed Component/
+    External Entities/External Entities.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Unnamed Component/
+    Test Component/Test Component.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Unnamed Component/
+    Test Component/TC/TC.xtuml
+Models/models/Models/Component Context Menu Test/
+    Component Context Menu Testing/Test Library/Unnamed Component/
+    Test Component/TC/ClassStateMachine/ClassStateMachine.xtuml
+Models/models/Models/Component Context Menu Test/Context Menu Test Interface/
+    Context Menu Test Interface.xtuml
+Models/models/Models/Component Context Menu Test/Context Menu Test Interface/
+    Test Interface/Test Interface.xtuml
+Models/models/Models/Component Context Menu Test/Test Component Package/
+    Test Component Package.xtuml
+Models/models/Models/Component Context Menu Test/Test Component Package/
+    Component Context Menu Test/Component Context Menu Test.xtuml
+Models/models/Models/Component Context Menu Test/Test Component Package/
+    Component Context Menu Test/Context Menu Test/Context Menu Test.xtuml
+Models/models/Models/Component Context Menu Test/Test Component Package/
+    Component Context Menu Test/Context Menu Test/Owner/Owner.xtuml
+Models/models/Models/Component Context Menu Test/Test Component Package/
+    Component Context Menu Test/Context Menu Test/Owner/ClassStateMachine/
+    ClassStateMachine.xtuml
+Models/models/Models/Component Context Menu Test/Test Component Package/
+    Component Context Menu Test/Datatypes/Datatypes.xtuml
+Models/models/Models/Component Context Menu Test/Test Component Package/
+    Component Context Menu Test/External Entities/External Entities.xtuml
+Models/models/Models/Component Context Menu Test/Test Library/Test Library.xtuml
+Models/models/Models/Component Context Menu Test/Test Library/Test Component/
+    Test Component.xtuml
+
+End
+---
+
+$Log: i3157.int,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.7  2007/12/12 18:39:41  rmulvey
+Job:3157
+Updated the list of modified files.  There were some that didn't need to be included because only the copyright had changed.
+
+Revision 1.6  2007/12/12 04:32:28  rmulvey
+Job:3157 3161 3190 3323 3255
+Updated the note to include 2 more small issues; bug 3323 and bug 3255.
+
+Revision 1.5  2007/12/10 21:22:45  kbrown
+Job:3157
+Updates to INT.
+
+Revision 1.4  2007/12/10 21:21:24  kbrown
+Job:3157
+Updates to INT.
+
+Revision 1.3  2007/12/10 21:19:58  kbrown
+Job:3157
+Updated file list for INT.
+
+Revision 1.2  2007/11/29 21:30:26  kbrown
+Job:3157
+Nearly complete implementation note.
+
+Revision 1.1  2007/09/27 15:37:09  campbell
+Job: 3157
+Introduced.

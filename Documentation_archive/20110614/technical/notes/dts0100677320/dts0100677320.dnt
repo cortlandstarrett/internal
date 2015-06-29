@@ -1,0 +1,162 @@
+========================================================================
+
+File:      $RCSfile: dts0100677320.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Handle Terminate and Relaunch correctly.
+
+1. Abstract
+-----------
+This note describes corrections to the terminate and Relaunch behavior so that
+no hangs occur.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100677320 - Verifier hangs during launch after 2
+    terminate and re-launch sequences.
+
+4. Background
+-------------
+This issue was reported internally, but there are also reports from the field.
+
+5. Analysis
+-----------
+Problems are seen when using the Terminate and Relaunch feature. Termination of
+the initial session appears to happen correctly, but when the new session re-
+starts, no breakpoints are hit in a function when it is executed.
+
+This unexpected behavior is due to terminating a session in the same activity
+that it was launched with. When this legitimate use case occurs there is some
+unsafe code in ExecuteAction.execute(). This code calls the method,
+Ooaofooa.beginVerifierExecution(). However the matching call to
+endVerifierExecution is inside the try catch clause. This means that if any
+exception occurs while looping within the execute method, the matching call is
+never made. If this happens during a Terminate and Relaunch, the relaunch hangs
+during the parse phase, waiting for Verifier to stop running.
+
+6. Design
+---------
+The solution is to place a try finally block inside the execute method so that
+it is impossible to exit the method without calling endVerifierExecution().
+
+7. Design Comments
+------------------
+7.1 Change Component Instance caching policy
+Once the initial headline problem was resolved, further test failures were
+encountered. These were traced to the fact that the ExecuteAction class caches
+the Component Instance it is working with. It does this whenever it receives a
+selection changed event from Eclipse. Unfortunately, in the case of Terminate
+and Relaunch this notification is not reliably received. This had the effect
+that sometimes the Execute action was working with a stale Component Instance.
+This caused a failure to enable the Execute menu item as expected. ExecuteAction
+is modified to always obtain the engine using the private method,
+getExecutionEngine().
+
+7.2 Fix existing tests to give Session Explorer focus
+The previous change had the cascade effect of causing some Verifier test
+failures. These failures were found to be because the Session Explorer did not
+have focus during the test at the moment the Execute menu entry was
+programmatically selected. The getExecutionEngine() method relies on the Session
+Explorer having focus in order to locate the correct execution engine in a
+multi-component execution scenario. The Session Explorer not having focus when
+Execute is selected is not a normal use situation (the Execute menu entry is
+found only in the Session Explorer so it must have focus). Accordingly, it is
+safe to add extra calls in the failing tests to give focus to the Session
+Explorer before stimulating the Execute menu selection.
+
+7.3 Adjust Termination timeout behavior
+It was noticed that the new test described below [9.2] was failing with the same
+frequency as other tests already noted to show intermittent failures in the
+Verifier JUnit test. However because this new test is repeated, the perceived
+failure rate was much higher. As a result, the state of the Java VM was examined
+at the point of failure to determine if this random pattern of failures could be
+addressed. 
+
+7.3.1 Accelerate thread termination when required
+It was found that very frequently at the point of failure, a verifier execution
+thread was attempting to terminate. In many cases, the thread had a null
+Component Instance reference. This would cause the call to isSuspended() to
+always return false, which would force the thread to wait for a full 15 seconds
+before completing the termination process. A thread without a Component Instance
+cannot perform any other meaningful work and we are in any case terminating at
+this point. Thus, the policy is changed so that threads without associated
+Component Instances can exit immediately. 
+
+7.3.2 Notify blocked Component Instances
+It was noted that the previous change reduced but did not eliminate failures due
+to Verifier threads not exiting. An additional failure mode was identified where
+the Component Instance did not terminate because it was blocked inside its run
+loop. A call to the Component Instance's notify() method was added close to the
+previous change inside the BPThread.terminate() method.
+
+7.3.3 Reduce the termination sleep timeout
+Inside the BPThread.terminate() method is a call to sleep for an arbitrary 500
+milliseconds. Since we now notify the Component Instance, this sleep period
+need not be so long and is reduced to 50 milliseconds. This further improves the
+termination time and thus both reduces failure frequency and improves Verifier
+performance as perceived by the user.
+
+With these policy changes in place the terminate and launch test reliability is
+enhanced by a factor of between 10 and 20. Some other tests also see this
+improvement.
+
+8. Work Required
+----------------
+8.1 Insert a try statement immediately below the call to
+Ooaofooa.beginVerifierExecution(). Close the scope of this try statement just
+above the call to Ooaofooa.endVerifierExecution(). Enclose the latter call in a
+finally clause attached to this new block.
+
+8.2 Insert a call to getExecutionEngine() at the beginning of the ExecuteAction
+execute() method. Since this method needs to be run on the UI thread, use a
+Display.syncExec call to perform the call.
+
+9. Unit Test
+------------
+9.1. All existing Verifier unit tests must pass.
+
+9.2 New Terminate and Relaunch test.
+A new test to cover the described symptoms is added to the test suite,
+VerifierExecuteActionTests. The new test is called testTerminateAndRelaunch().
+It delegates testing to a new private method, performTerminateAndRelaunchTest().
+Since the original issues noted that failure did not happen every time,
+testTerminateAndRelaunch() repeats the test by calling the delegate method ten
+times. The required test scenario is added to the existing test model,
+VerifierLaunchConfigurationTests.
+
+End
+---
+
+$Log: dts0100677320.dnt,v $
+Revision 1.5  2010/11/09 15:11:50  campbell
+Job: dts0100677320
+Address the review observation.
+
+Revision 1.4  2010/11/09 14:11:35  campbell
+Job: dts0100677320
+Correct hard to read sentence.
+
+Revision 1.3  2010/11/09 13:59:54  campbell
+Job: dts0100677320
+Add reference to test model additions.
+
+Revision 1.2  2010/11/09 13:32:56  campbell
+Job: dts0100677320
+Ready for review.
+
+Revision 1.1  2010/11/09 13:19:31  campbell
+Job: dts0100677320
+Introduced.
+

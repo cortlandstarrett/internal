@@ -1,0 +1,279 @@
+========================================================================
+
+File:      $RCSfile: i491-01.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:52 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Actions on Transitions - Builder Design
+
+1. Abstract
+-----------
+This note describes the design changes required to add the ability to specify
+actions on transitions in the Model Builder part of the BridgePoint tool.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] Bugzilla item 491
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=491
+[2] cvs://Documentation/internal/technical/notes/i491.ant
+[3] cvs://Documentation/internal/technical/notes/i491-02.dnt
+[4] http://www.antlr.org/
+
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Metamodel
+6.1.1 Body Subsystem
+The class 'Transition Action Body' is added as a subtype of Body across R698.
+This new class is associated with Action (SM_ACT) across a new association,
+R688.
+
+6.1.1.1 Block class
+The 'popUpBlock' operation is modified to incompletely address the addition of
+the 'Transition Action Body' class. This work will be completed and promoted
+under[3].
+
+6.1.1.2 Body class
+The OAL for the derived attribute 'Label', is modified to provide a unique name
+for the Transition Activity. The 'dispose' operation is extended to dispose of
+'Transition Action Body' instances. The 'self_is_valid' operation is extended to
+locate the State Machine Action (SM_ACT) instance associated with the body. From
+there, the existing OAL yields the correct result. The operation,
+'associateWithOwningComponent' is extended to allow the component to be located
+from a Transition Action.
+
+6.1.1.3 State Action Body
+Has a cosmetic change to add a boilerplate identifier comment as the first line.
+
+6.1.1.4 Transition Action Body
+This class is introduced by this work.
+
+6.1.2 Datatypes
+A new enumerator, 'TRANSITION_TYPE' is added to the enumeration, OalConstants.
+
+6.1.3 Event Subsystem
+The operation, 'Event Specification Statement.relateToOriginatingInstance' is
+modified to incompletely address the addition of the 'Transition Action Body'
+class. This work will be completed and promoted under[3].
+
+6.1.4 Functions
+6.1.4.1 OAL Validation Functions
+The 'Action_start' boilerplate function is extended to handle transition
+actions, setting act.Type and creating an instance of 'Transition Action Body'
+as it does for all other OAL locations.
+
+6.1.4.2 OAL Validation Utility Functions
+The functions 'self_validate' and 'event_root_value_validate' are extended to
+perform the alternate navigation to the Model Class instance through the
+'Transition Action Body' subtype introduced by this work. The function
+'is_valid_implicit_component_addressing' is extended to check that a
+'Transition Action Body' that uses implicit component addressing is triggered
+by a signal.
+
+6.1.5 State Machine Subsystem
+A new subtype of 'Action Home', 'Transition Action Home' is added to this
+subsystem. This new class is related to the 'Transition' class by a new
+association, R530.
+
+6.1.5.1 Action
+The 'dispose' operation is extended to perform the alternate navigation to the
+Body instance through the 'Transition Action Body' subtype introduced by this
+work.
+
+6.1.5.2 Action Home
+The dispose operation is extended to delegate disposal to a dispose operation
+defined on the introduced 'Transition Action Home' subtype.
+
+6.1.5.3 State Machine
+The 'newTransition' and 'newCreationTransition' operations  are extended to call
+the 'initialize' operation on the Transition instance to create the new
+Action Home instances associated with it. The 'pasteTransition' operation is
+modified to relate transition actions to their new owning state machine. This
+OAL replaces previous code to move mealy model instances that would never have
+been put in the paste buffer during the copy. 'Transition.dispose' is modified
+to locate the Action instance to dispose across the new association, R530
+instead of through the mealy model instance as it did before. The operation
+'Transition.initialize' is added to set up the new Action home instances , and
+the operation 'Transition.get_name' is added to provide the BridgePoint naming
+infrastructure with a name of the form '<Event name> in <Originating State> to
+<Destination State>'.  'Transition.get_connector_text' is changed to include the
+OAL as specified in [2]. Analogous changes are made to the operation
+'Creation Transition.get_connector_text' and a new operation (again, with
+analogous OAL), 'Creation Transition.get_name' is added.
+
+6.2 Persistence
+6.2.1 'gen_import_java' and 'import_functions' archetypes
+Calls to the io.core helper class to upgrade the transitions are added to code
+generated for the 'finishLoad' methods. Also, see section 7 for a cleanup
+performed on the 'gen_import_java' archetype.
+
+6.2.2 'ImportHelper'
+This io.core class has a new method, 'upgradeTransitions' added to it which
+searches all transitions and adds Action home instances to those who do not have
+them. The creation events for these new instances are not notified to the
+TransactionListener and therefore do not trigger persistence. If the user
+changes the file the upgrade is made permanent. If not, the upgrade will happen
+again the next time the file is loaded. Just in time action home data upgrade
+was considered but was discarded because the benefit to the user did not
+outweigh the extra complexity to the design.
+
+6.2.3 'file.io.pei.sql'
+The entries in this file are modified to persist 'Transition Action Home' and
+'Transition Action Body' instances. In addition, the 'Transition Action Body'
+instance is linked to the 'Body' file io tree so that OAL written for Transition
+Activities is persisted. The analogous changes are made to the stream pei file.
+
+6.3 Text Editor
+6.3.1 clr_pei.sql
+A new instance of Navigation Object is added to make the Activity editor support
+'Transition' and 'Creation Transitions' instances as Activities and to ensure
+that the Activity and Description editors can find the Transition and Creation
+Transition metamodel instances from the Action instance and vice versa.
+
+6.3.2 TextParser
+The action method of this class is extended so that the correct action instance
+can be found to pass to the antlr[4] generated parser code.
+
+7. Design Comments
+------------------
+7.1 Persistence
+In the 'gen_import_java' archetype, a minor defect was fixed where metamodel
+upgrade code was being conditionally executed within a block that would not be
+executed if the 'Import Graphics' checkbox on the import wizard was unchecked.
+This upgrade code is moved outside the if-block.
+
+7.2 Canvas
+7.2.1 CanvasTransfer
+The CanvasTransfer class is modified to fix a fault found during testing the
+copying of an image of a state machine with Transition Activities. The effect of
+this fault was that diagram font changes made in the Eclipse preferences were
+ignored by the image copy implementation. This was fixed by changing the
+implementation to pull the actual settings, not the defaults.
+
+7.2.2 GR::wrapTextTo
+The implementation of this bridge call is modified to fix a fault found during
+testing the copying of an image of a state machine with Transition Activities.
+This bridge has to date never been used to wrap multiline text or text with
+lines beginning with spaces. In both these cases, the wrapping does not occur as
+expected. The implementation is modified to break the line to be wrapped into
+individual lines before wrapping is attempted, else the newlines are ignored
+when calculating the place to wrap. This results in nonsensical wrapping being
+carried out.
+
+7.3 MC-Java
+A fault was found in the schema for MC-Java such that models edited with the
+1.5.0 plugins would not build. This is fixed by adding a required additional
+referential attribute to the 'Datatype in Domain' class. Adding this doesn't
+hurt building older models because of the permissive way generator reads its
+data.
+
+7.4 Test Infrastructure
+A new enumerator, ACTIVITY_TYPE_TRANSITION, is added to the OalParserTest class.
+This is read and acted upon in two test support methods; parseAction and
+clearAction. New default processing is added to the case statements in these
+methods to fail cleanly if the developer forgets to add a new case entry.
+
+8. Work Required
+----------------
+The work required is completely covered in the design section.
+
+9. Unit Test
+------------
+
+9.1 Parser
+The following new tests are added:
+- Self can be accessed from a transition action of an instance state machine.
+- Self cannot be accessed from a transition action of a class state machine.
+- An attribute of self can be accessed from a transition action of an instance
+  state machine.
+- Check that event parameters can be accessed from a transition action.
+- Check that invalid event parameters are detected in a transition action.
+- Check that 'sender' keyword is valid in a transition action triggered by a
+  signal.
+- Check that 'sender' keyword is invalid in a transition action not triggered
+  by a signal.
+- Check that return is invalid in a transition action.
+
+9.2 Core
+- Check that the transition action instances (SM_TAH, SM_AH and SM_ACT) are
+  created whenever a new transition is created.
+- Check that the transition action instances are deleted when a transition is
+  disposed.
+- Check that a Body and Transition Action Body subtype are created when a
+  transition action is parsed.
+  
+9.3 Persistence
+- Check that the transition action instances (SM_TAH, SM_AH and SM_ACT) are
+  persisted.
+- Check that OAL instances (subtypes of ACT_SMT and V_VAL) are persisted.
+- Repeat the above checks on exported files.
+
+9.4 Cut, Copy, Paste
+- Check that transition action instances (SM_TAH, SM_AH and SM_ACT) can be
+  copied and pasted.
+
+9.5 Text Editors
+- Check that the activity editor opens when double clicking a transition.
+- Check that the activity editor opens when Open is selected from the context
+  menu.
+- Check that the correct editor opens when Open With > Description Editor and
+  Open With > Activity Editor are selected.
+- Repeat opening tests from the Model Explorer tree and from the canvas.
+- Check that editors opened from transition reopen correctly after a restart.
+- Check that a syntax error in a Transition action is reported in the problems
+  view.
+- Check that double clicking a problem in a transition action opens the correct
+  activity editor.
+- Check that double clicking a problem in a transition action opens the correct
+  activity editor after a tool restart.
+- Repeat all text editor tests for both a regular and a creation transition.
+
+
+End
+---
+
+$Log: i491-01.dnt,v $
+Revision 1.2  2009/01/01 23:12:52  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.3  2007/09/18 21:48:34  campbell
+Job: 491
+Address review observations.
+
+Revision 1.2  2007/09/18 18:20:46  campbell
+Job: 491
+Described analogous changes for Creation Transition support.
+
+Revision 1.1  2007/09/18 16:03:02  campbell
+Job: 491
+Introduced.
+

@@ -1,0 +1,1180 @@
+========================================================================
+
+File:      $RCSfile: i95.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Verify expressions
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+expressions.
+
+History
+-------
+final i95-012004-01.rvm
+
+Document References
+-------------------
+Issue 95
+action_semantics.ant
+action_semantics.dnt
+i94.int
+
+Background
+----------
+
+Semantic validation for simple relational expressions 
+was implemented for the while statement (i94.int).  This
+note describes the changes needed to implement the rest
+of the expression validation.  This work is part of 
+implementing the action semantics design (action_semantics.dnt),
+section AS1.4.3.
+
+The existing BP parser has the following rules regarding expressions:
+
+expr!  :  sub_expr  ;
+
+sub_expr  :    conjunction
+    ( "or"! conjunction )*  ;
+    
+conjunction  :    relational_expr
+    ( "and"! relational_expr )*  ;
+    
+relational_expr  :    addition
+    ( comparison_operator addition )?  ;
+    
+addition  :    multiplication
+    ( plus_or_minus  multiplication )*  ;
+    
+multiplication  :
+    ( boolean_negation )=> boolean_negation
+  | sign_expr 
+    ( mult_op sign_expr )*  ;
+    
+sign_expr  : ( plus_or_minus )? term  ;
+    
+boolean_negation!  : "not" term  ;
+  
+term
+  :
+    ( "cardinality" local_variable[false] )
+  | ( "empty" local_variable[false] )
+  | ( "not_empty" local_variable[false] )
+  | rval
+  | TOK_LPAREN! (
+      ( assignment_expr )=> assignment_expr
+    | expr
+    )
+    TOK_RPAREN!
+  ;
+
+rval
+  : ( TOK_DOUBLECOLON )=> TOK_DOUBLECOLON! synch_svc_invocation
+  | ( transform_ib_invocation )=> transform_ib_invocation
+  | ( bridge_or_transform_expr )=> bridge_or_transform_expr
+  | ( enumerator_access )=> enumerator_access
+  | attribute_access
+  | constant_value
+  | local_variable[false]
+  | event_data_access
+  | bridge_expr
+  | transform_expr
+  | param_data_access
+  | TOK_QMARK
+  ;
+
+The assignment_expr subrule in the term rule is to emit
+an error (BP err314) if the user does something like: if ( x = 1 ).
+Similarly, the TOK_QMARK subrule of rval is there only to cause a syntax error,
+since question mark's aren't allowed in OAL select where clauses (but they
+are used for the special where archetype language construct).
+
+Validation functions are needed for the following rules:
+
+sub_expr
+conjuction
+addition
+multiplication
+sign_expr
+boolean_negation
+term
+rval
+
+The work to validate invocations is not part
+of this note. Only the rval's constant_value, 
+local_variable, and attribute_access are implemented in this note.
+Note that constant_value and local_variable have
+mostly (if not completely) been implemented by previous
+work.
+
+The validation functions verify the types
+of the arguments are correct, and create the 
+appropriate instances in the Value subsystem of the
+OOA of OOA. The validation functions need to 
+follow the type promotion rules (e.g., integer -> real) that 
+BP follows.
+
+Design
+------
+
+i95.1  Add management of utility functions
+
+In developing the code for the validation functions, common
+processing was discovered for several of the validation functions.
+The current development process offers no support for utility functions,
+so the process was extended to allow developers to define utility functions
+in OAL that can be used by the validation functions.
+
+A utility function is one where with the following parse keywords
+in the function description:
+
+ParserValidateFunction: TRUE
+ParserUtilityFunction: TRUE
+
+The ParserValidateFunction keyword is used so that the function 
+will be translated as part of the Oal_validate Java class
+(action_semantics.ant, AS1.5.2).  The ParserUtilityFunction is used 
+so that the utility function can be extracted from the 
+function sql file exported from BridgePoint.
+
+i95.1.1  Extract utility functions from function_import.sql
+
+The archetype extract_function_bodies.arc is extended to search
+for all functions that have the parse keyword ParserUtilityFunction
+as TRUE.  Each of the functions that have this keyword is exported
+to the file com.projtech.bp.als/sql/oal_utilities.sql.
+
+i95.2  Fix generated parser code for ()* constructs
+
+The grammar file generated from the input bnf file is missing
+information needed by the validation functions.  For example the
+following rule:
+
+sub_expr  :    conjunction
+    ( "or"! conjunction )*  ;
+
+would cause the validation function (amongst others) 
+Conjunction_loop8_end to be generated.  The parameters to
+the loop end function need to be expanded for the validation
+function to have enough information, namely the result of 
+each subrule in the optional repetition clause.
+
+i95.2.1  Add token parameter to loop end action
+
+A parameter of type Token is added to all loop end validation
+functions.  This allows the validation functions to report errors,
+since the error reporting functions require the current token as one
+of their parameters.
+
+i95.2.2  Pass sub-rule ids to loop end validation function
+
+The result of each sub-rule in a ()* construct is passed to 
+the validation function.  This passes any and all information
+that may be needed to the validation function.
+
+i95.2.3  Save loop id as current rule id
+
+Each time a validation function executes, it returns an id
+that can be used by other validation functions after it.  There
+is also a variable "current_rule_id", which contains the 
+value returned by the latest validation function. The 
+grammar is changed so that the result of the loop end 
+function is saved as the current rule id.
+
+i95.3  Generalize variable scoping
+
+Up to this point, the need for variable scoping processing was
+minimal.  With the addition of nested expressions, the 
+need to manage the current scope and variable scoping becomes 
+more general.
+
+i95.3.1  Add ACT_BLK.IsCurrentScope
+
+While parsing the statements in an action specification, the
+validation code needs to determine the current scope.  To
+track the current scope, the attribute IsCurrentScope, of
+type boolean is added to the Block (ACT_BLK) class.   The
+value of the attribute is initialized in the validation
+function block_start(), when the ACT_BLK instance is created.
+If this is the first block for the action, then the attribute
+is true.  If this is a block nested in the action, then the
+block with IsCurrentScope currently equal to true is set to 
+false, and the new block has the attribute set to true.
+Only one instance of ACT_BLK will have IsCurrentScope set
+to true at any time.
+
+i95.3.2  get_current_scope()
+
+The utility function get_current_scope() is created.  The
+function returns the value of ACT_BLK.Block_ID for the 
+instance of ACT_BLK with IsCurrentScope equal to true.
+The function returns OS::NULL_UNIQUE_ID() if the 
+search fails.
+
+i95.3.3  get_var_in_scope()
+
+The utility function get_var_in_scope() is created.
+The function has two parameters, name of type string,
+that is the variable in question, and rule_token, which
+is the current token (used for error reporting).  The
+function returns the value of V_VAR.Var_ID for the 
+variable with param.name in the current scope, or 
+in a containing scope.  If no variable can be found,
+OS::NULL_UNIQUE_ID() is returned.
+
+i95.3.4  local_variable_validate()
+
+The validation function local_variable_validate() is changed
+to use the get_var_in_scope() and get_current_scope() functions.
+The ad hoc current scope searching code is removed.
+
+i95.3.5  block_end()
+
+The validation function block_end() is changed to check that
+the block being closed is the current scope. An internal error
+is raised if it is not.  The IsCurrentScope attribute for the
+block being ended is set to false.  If there is a block enclosing
+the ending block (there will not be if this is the root block),
+then the IsCurrentScope attribute for the enclosing block is 
+set to true.
+
+i95.3.6  get_enclosing_block()
+
+The utility function get_enclosing_block() is created. 
+The function has two parameters, the id of the block we wish
+to find the enclosing block for, and the current token, for
+error reporting purposes. The function returns the value of 
+ACT_BLK.Block_ID for the instance of ACT_BLK that is the 
+scope in which the passed in block id is defined.  The function
+will return OS::NULL_UNIQUE_ID() if this is the root block. 
+It will output an internal error if the enclosing block can't be 
+determined.
+
+i95.3.7 OS::NULL_UNIQUE_ID()
+
+The bridge OS::UNIQUE_ID_TO_INTEGER was only ever called
+with a parameter of zero.  The bridge is renamed to 
+OS::NULL_UNIQUE_ID() (with no parameters).  The native implementation
+of the bridge returns a zero. 
+
+i95.4  Add validation for addition rule
+
+addition  :    multiplication
+    ( plus_or_minus  multiplication )*  ;
+    
+The following validation and utility functions are implemented 
+for this rule:
+
+i95.4.1  plus_or_minus_validate()
+
+This validation function merely invokes the utility function
+binary_operator_create(), passing in the current token text as
+the operator.  The datatype is unknown at this point.  The
+function returns the value returned by binary_operator_create().
+
+i95.4.2  Addition_loop9_end()
+
+There are three cases when this function is called:
+
+1- The (plus_or_minus  multiplication)* clause had zero occurrences
+2- The first occurrence of the clause
+3- A subsequent occurrence of the clause
+
+In the first case, the function needs to do nothing except
+return the current rule id.  In the second case, the function
+invokes the utility function binary_operation_validate (see below),
+with the result of the multiplication subrules.  In the third case
+(caused by, for example, 1 + 2 + 3), the operand arguments to 
+binary_operation_validate are the result of the previous binary 
+operation (the 1+2) and the next operand (the 3).
+
+i95.4.3  binary_operator_create()
+
+This utility function creates an instance of Binary Operation (V_BIN)
+(and the associated supertype instance of Value (V_VAL)). The arguments 
+to the function are:
+
+text: string - The operator ( +, -, *, /, and, or, etc.)
+dt_name: string - The name of the datatype that the operator results in
+   Can be the empty string.
+
+If dt_name is not the empty string, then the V_VAL associated with
+V_BIN is related to the datatype with that name.  The function 
+returns the id of the created V_VAL instance.
+
+i95.4.4  binary_operation_validate()
+
+This function performs validation of a binary operation. 
+It has the following parameters:
+
+left_op:unique_id ByVal  - id of left operand V_VAL instance
+operator:unique_id ByVal - id of V_BIN instance
+right_op:unique_id ByVal - id of right operand V_VAL instance
+op_type:string ByVal     - name of operation for error messages
+set_dt:boolean ByVal     - if true, set datatype of V_BIN instance
+rule_token:Token ByVal   - current token for error messages
+rule_id:unique_id ByVal  - current rule id for default return value
+
+The function verifies that the operator and left and right hand operands
+all are valid, and that the operands have valid datatypes that are valid
+for this operation.  If any validation fails, the instances are deleted,
+and an error is reported.  If everything is good, then the operands are
+related to the V_BIN instance, and the datatype is set if param.set_dt is
+true.  The function returns the V_BIN.Value_ID attribute.
+
+i95.4.5  data_types_compatible()
+
+This function verifies that a binary operation can be performed on
+the given datatypes.  It returns the datatype id of the result of
+the operation if it is allowed.  If the operands are incompatible, then
+the function returns OS::NULL_UNIQUE_ID().  It has the following parameters:
+
+dt1:unique_id ByVal - the datatype of the left operand
+dt2:unique_id ByVal - the datatype of the right operand
+op:string ByVal     - the operator
+
+dt1 and dt2 must be equal, except in the case of integer's being
+promoted to reals.  The following operations are disallowed for
+the following datatypes:
+
+non-boolean:  and, or
+boolean: +,-,*,/,%,>,<,>=,<=
+string:  -,*,/,%
+unique_id: +,-,*,/,%,>,<,>=,<=
+inst_ref<Object>: +,-,*,/,%,>,<,>=,<=
+inst_ref_set<Object>: +,-,*,/,%,>,<,>=,<=
+
+
+i95.5  Add validation for multiplication rule
+
+multiplication  :
+    ( boolean_negation )=> boolean_negation
+  | sign_expr 
+    ( mult_op sign_expr )*  ;
+    
+The following validation and utility functions are implemented 
+for this rule:
+
+i95.5.1  mult_op_validate()
+
+This validation function merely invokes the utility function
+binary_operator_create(), passing in the current token text as
+the operator.  The datatype is unknown at this point.  The
+function returns the value returned by binary_operator_create().
+
+i95.5.2  multiplication_loop10_end()
+
+There are three cases when this function is called:
+
+1- The (mult_op sign_expr)* clause had zero occurrences
+2- The first occurrence of the clause
+3- A subsequent occurrence of the clause
+
+In the first case, the function needs to do nothing except
+return the current rule id.  In the second case, the function
+invokes the utility function binary_operation_validate,
+with the result of the sign_expr subrules.  In the third case
+(caused by, for example, 1 * 2 * 3), the operand arguments to 
+binary_operation_validate are the result of the previous binary 
+operation (the 1*2) and the next operand (the 3).
+
+
+i95.5.3  Boolean_negation_validate()
+
+This validation function merely invokes the utility function
+unary_operation_validate() (see below), passing in "not" as
+the operator.  The resulting operation datatype is boolean.  This
+function returns the value returned by unary_operation_validate().
+
+i95.6  Restructure term rule to expose unary operators
+
+The term rule is changed to the following:
+term  :	cardinality_op    | 
+    empty_op  | 
+    not_empty_op  |
+    rval  |
+    TOK_LPAREN!
+    (
+      ( assignment_expr )=> assignment_expr
+    |
+      expr
+    )
+    TOK_RPAREN!
+  ;
+  
+and the following new rules are added:
+
+cardinality_op  :  "cardinality"! local_variable[false]  ;
+empty_op  :  "empty"! local_variable[false]  ;
+not_empty_op  :  "not_empty"! local_variable[false]  ;
+
+This causes validation functions to be created for each of
+the inst_ref unary operators.  Note that the literal strings
+have been removed from the generated parse tree (by adding
+! after them).
+
+i95.7  Implement term rule validation
+
+i95.7.1  cardinality_op_end()
+
+This validation function is changed to invoke the utility
+function inst_ref_operator_validate (see below).  The function
+returns the result of the inst_ref_operator_validate invocation.
+
+i95.7.2  empty_op_end()
+
+This validation function is changed to invoke the utility
+function inst_ref_operator_validate (see below).  The function
+returns the result of the inst_ref_operator_validate invocation.
+
+i95.7.3  not_empty_op_end()
+
+This validation function is changed to invoke the utility
+function inst_ref_operator_validate (see below).  The function
+returns the result of the inst_ref_operator_validate invocation.
+
+i95.7.4  inst_ref_operator_validate()
+
+This utility function has the following parameters:
+
+variable_id:unique_id ByVal - id of the operand V_VAL instance 
+operator_name:string ByVal  - the operator
+op_dt:string ByVal          - the datatype of the operator result
+rule_token:Token ByVal      - the current token
+rule_id:unique_id ByVal     - the current rule
+
+Since the inst_ref operators can also operate on inst_ref_set's,
+the function first determines the type of the operand.  The function
+then invokes unary_operation_validate with inst_ref_set<Object> 
+as the expected operand datatype for operands with the type inst_ref_set<Object>,
+or inst_ref<Object> as the expected operand datatype for operands with 
+any other datatype.  This ensures that the operation validation catches
+any datatype mismatches.  The result of the invocation is returned.
+
+i95.7.5  unary_operator_validate()
+
+This utility function has the following parameters:
+
+rule_token:Token ByVal   - current token
+op_type:string ByVal     - name of the operation
+op_dt_name:string ByVal  - operand's expected datatype name
+dt_name:string ByVal     - operator result datatype name
+val_id:unique_id ByVal   - id of the operand V_VAL instance
+text:string ByVal        - operation token text
+rule_id:unique_id ByVal  - current rule
+
+The function verifies that the operand exists, and has the expected type.
+If not, a parse error is reported.  If all is well, then an instance of
+Unary Operation (V_UNY) is created, along with it's supertype V_VAL instance.
+The instances are related to the operand and result datatype.  The V_VAL.Value_ID
+attribute value is returned.
+
+
+i95.8 Attribute read access
+
+i95.8.1  Add isLval parameter to rule attribute_access
+
+The attribute access rule has the isLval parameter added to it:
+
+attribute_access[boolean isLval]
+   :
+    inst_ref_var
+    TOK_DOT!
+    attribute
+  ;
+
+This allows the validation functions to do the right thing 
+depending on whether the attribute access is an l-value or r-value.
+All attribute_access rule references are updated to add the appropriate
+value for isLval.  We're only going to deal with the case of isLval being 
+false for this note.
+
+i95.8.2  inst_ref_var_validate()
+
+When accessing an attribute, the inst_ref variable must be valid.
+This validation function verifies the variable reference is in scope.
+It returns the id of the V_VAR instance for the variable if it is
+in scope.  If the variable not in scope a parse error is raised.
+
+i95.8.3  attribute_access_start()
+
+This validation function returns the current rule id if isLval
+is true (since we're not implementing attribute as l-values right now).
+If the attribute reference is an r-value, an instance of Attribute Value
+(A_AVL) and its associated V_VAL is created.  This instance is a placeholder
+that will be filled in by attribute_access_end().  The V_VAL.Value_ID
+is returned for r-values.
+
+i95.8.4  attribute_validate()
+
+This validation function finds the instance of O_OBJ associated
+with the inst_ref variable being used to access the attribute.
+It then searches for an O_ATTR that has the name passed in as the
+token text.  If there any problems, a parse error is reported.
+If an attribute with that name does not exist, OS::NULL_UNIQUE_ID()
+is returned.  Otherwise, the O_ATTR.Attr_ID value is returned.
+
+i95.8.5  attribute_access_end()
+
+This validation function first determines if isLval was true.
+If it wasn't, then we check if attribute_validate() returned 
+OS::NULL_UNIQUE_ID().  If it did, then we delete the V_AVL instance
+we previously created, and raise a parse error about the attribute
+not being present.  If we did find the attribute, then we finish
+relating the V_AVL instance to the attribute instance and datatype.
+The function returns the V_AVL.Value_ID value on success.
+
+i95.9  Add validation for sign_expr rule
+
+sign_expr  : ( plus_or_minus )? term  ;
+
+i95.9.1  sign_expr_end()
+
+The validation function checks if the plus_or_minus rule
+was invoked.  If it wasn't, then the function returns the
+current rule id.  If there was a plus_or_minus, then the previous
+processing has created a Binary Operation instance for that
+operator.  This function migrates the Binary Operation instance
+to a Unary Operation instance, after verifying that there
+are no errors (unary plus and minus are only valid for integer
+and real datatypes).  The function returns the V_VAL.Value_ID
+of the Unary Operation.
+
+i95.10  Add validation for conjunction rule
+
+conjunction  :    relational_expr
+    ( "and"! relational_expr )*  ;
+
+i95.10.1  conjunction_loop8_end()
+
+There are three cases when this function is called:
+
+1- The ("and"! relational_expr)* clause had zero occurrences
+2- The first occurrence of the clause
+3- A subsequent occurrence of the clause
+
+In the first case, the function needs to do nothing except
+return the current rule id.  In the second case, the function
+invokes the utility function binary_operation_validate,
+with the result of the relational_expr subrules.  In the third case
+(caused by, for example, true and false and true), the operand arguments to 
+binary_operation_validate are the result of the previous binary 
+operation (the true and false) and the next operand (the last true).
+
+i95.11  Add validation for sub_expr rule
+
+sub_expr  :    conjunction
+    ( "or"! conjunction )*  ;
+    
+i95.11.1 sub_expr_loop7_end()
+
+The design of this function is exactly the same as for
+conjunction_loop8_end(), with "or" substituted for "and"
+and the conjunction rule substituted for the relationship_expr
+rule.
+
+i95.12  Implement enumeration data type checking
+
+i95.12.1  Add Literal Enumerator class to OOA model
+
+The class Literal Enumerator (V_LEN) is added to the Value subsystem
+of the ooaofooa model.  It is a subtype of the Value (V_VAL) class.
+It has a 1-1c relationship to the class Enumerator (S_ENUM).
+
+i95.12.2  enum_data_type_validate()
+
+This validation function searches for an instance of S_DT with
+the same name as the (passed in) enumeration name.  If the data
+type does not exist, or is not an enumeration data type, errors
+are reported.  If the name is OK, then the DT_ID of the enumeration
+data type is returned.
+
+i95.12.3  enumerator_validate()
+
+This validation function finds the enumeration data type 
+validated from the previous invocation of enum_data_type_validate(),
+and then searches for an instance of S_ENUM with the (passed in)
+enumerator name. If there is no enumerator with that name, an
+error is raised.  Otherwise, the S_ENUM.Enum_ID value is returned.
+
+i95.12.4  enumerator_access_end()
+
+This validation function uses the Enum_ID returned by enumerator_validate()
+to get the S_ENUM instance.  It then creates an instance of 
+Literal Enumerator (V_LEN), the supertype V_VAL instance, and 
+relates them to the enumerator and enumeration data type.
+
+i95.13  Updates to ooaofooa and existing validation functions
+
+This section contains miscellaneous changes to the ooa of ooa model
+and validation functions.
+
+i95.13.1  Modify V_VAL.clear for subtypes now being created.
+
+The V_VAL.clear operation is modified to add checks for subtypes that
+are now being created.  These subtypes are Unary Operation (V_UNY),
+Attribute Value (V_AVL), and Literal Enumerator (V_LEN).
+
+i95.13.2  Add V_UNY.clear
+
+The Unary Operation clear operation is created.  The operation 
+deletes its related operand.
+
+i95.13.3  comparison_operator_validate()
+
+This validation function is changed to use the binary_operation_create()
+utility function.
+
+i95.13.4  relational_expr_end()
+
+This validation function is changed to use the binary_operation_validate()
+utility function.
+
+i95.13.5  create_object_statement_start()
+
+This validation function is changed to use the get_current_scope()
+utility function.
+
+i95.13.6  create_object_statement_end()
+
+During development, it was noticed that this validation function
+doesn't handle the case where no instance variable is specified,
+i.e., create object instance of D_D;.  The validation function 
+is changed to handle this case.
+
+i95.13.7  Modify ACT_SMT.clear for subtypes now being created.
+
+The ACT_SMT.clear operation is modified to add checks for subtypes that
+are now being created.  There is one new subtype, Create No Variable (SMT_CNV).
+
+i95.13.8  Add SMT_CNV.clear
+
+The Create No Variable clear operation is created.  The operation 
+unrelates the instance from the O_OBJ instance it is related to.
+
+
+
+Work Required
+-------------
+
+i95.1  Add management of utility functions
+
+i95.1.1  Extract utility functions from function_import.sql
+
+i95.1.1.1  Extract common code
+
+The archetype functions output_datatype_definitions and output_function_sql
+are added to get_names.inc.  These functions are extracted from the 
+code in function_gen.arc that performs these functions.  The functions
+are used by both function_gen.arc and extract_function_bodies.arc.
+
+i95.1.1.2  Add function extraction code
+
+The archetype extract_function_bodies is extended to
+output utility functions to the file 
+com.projtech.bp.als/sql/oal_utilities.sql.
+
+i95.1.1.3  Fix MC-Java schema error
+
+The attribute S_UDT.CDT_DT is changed to S_UDT.CDT_ID in ooa_schema.sql.
+
+i95.2  Fix generated parser code for ()* constructs
+
+i95.2.1  Add token parameter to loop end action
+
+In grammar_enhancer.arc, in the function emit_loop_end_action,
+add a token parameter to the invocation of the loop end function.
+
+i95.2.2  Pass sub-rule ids to loop end validation function
+
+In grammar_enhancer.arc, in the function emit_loop_end_action,
+the archetype function get_referenced_rules() is used to obtain
+the subrules of the ()* construct.  The results of these rules
+are added as parameters to the loop end function.
+ 
+i95.2.3  Save loop id as current rule id
+
+In grammar_enhancer.arc, in the function emit_loop_end_action,
+the current_rule_id variable is assigned to the value returned
+by the loop end validation function.
+
+i95.3  Generalize variable scoping
+
+i95.3.1  Add ACT_BLK.IsCurrentScope
+
+The attribute is added to the class in the ooaofooa.bak model.
+
+i95.3.2  get_current_scope()
+
+The utility function get_current_scope() is added as
+described in the design.
+
+i95.3.3  get_var_in_scope()
+
+The utility function get_var_in_scope() is added as
+described in the design.
+
+i95.3.4  local_variable_validate()
+
+The validation function local_variable_validate() is changed
+as described in the design.
+
+i95.3.5  block_end()
+
+The validation function block_end() is changed
+as described in the design.
+
+i95.3.6  get_enclosing_block()
+
+The utility function get_enclosing_block() is added as
+described in the design.
+
+i95.3.7 OS::NULL_UNIQUE_ID()
+
+The files os_ee.sql and os_ee_w_graphics.sql are changed
+as described in the design.
+
+i95.4  Add validation for addition rule
+
+i95.4.1  plus_or_minus_validate()
+
+The validation function plus_or_minus_validate() is changed
+as described in the design.
+
+i95.4.2  Addition_loop9_end()
+
+The validation function Addition_loop9_end() is changed
+as described in the design.
+
+i95.5.3  binary_operator_create()
+
+The utility function binary_operator_create() is added as
+described in the design.
+
+i95.4.3  binary_operation_validate()
+
+The utility function binary_operation_validate() is added as
+described in the design.
+
+i95.4.4  data_types_compatible()
+
+The utility function data_types_compatible() is added as
+described in the design.
+
+i95.5  Add validation for multiplication rule
+
+i95.5.1  mult_op_validate()
+
+The validation function mult_op_validate() is changed
+as described in the design.
+
+i95.5.2  multiplication_loop10_end()
+
+The validation function multiplication_loop10_end() is changed
+as described in the design.
+
+i95.5.4  Boolean_negation_validate()
+
+The validation function Boolean_negation_validate() is changed
+as described in the design.
+
+i95.6  Restructure term rule to expose unary operators
+
+In oal.bnf, the term rule is changed as described in the design.
+
+i95.7  Implement term rule validation
+
+i95.7.1  cardinality_op_end()
+
+The validation function cardinality_op_end() is changed
+as described in the design.
+
+i95.7.2  empty_op_end()
+
+The validation function empty_op_end() is changed
+as described in the design.
+
+i95.7.3  not_empty_op_end()
+
+The validation function not_empty_op_end() is changed
+as described in the design.
+
+i95.7.4  inst_ref_operator_validate()
+
+The utility function inst_ref_operator_validate() is added as
+described in the design.
+
+i95.7.5  unary_operator_validate()
+
+The utility function unary_operator_validate() is added as
+described in the design.
+
+i95.8 Attribute read access
+
+i95.8.1  Add isLval parameter to rule attribute_access
+
+In oal.bnf, the attribute access rule has the isLval parameter added to it.
+
+i95.8.2  inst_ref_var_validate()
+
+The validation function inst_ref_var_validate() is changed
+as described in the design.
+
+i95.8.3  attribute_access_start()
+
+The validation function attribute_access_start() is changed
+as described in the design.
+
+i95.8.4  attribute_validate()
+
+The validation function attribute_validate() is changed
+as described in the design.
+
+i95.8.5  attribute_access_end()
+
+The validation function attribute_access_end() is changed
+as described in the design.
+
+i95.9  Add validation for sign_expr rule
+
+i95.9.1  sign_expr_end()
+
+The validation function sign_expr_end() is changed
+as described in the design.
+
+i95.10  Add validation for conjunction rule
+
+i95.10.1  conjunction_loop8_end()
+
+The validation function conjunction_loop8_end() is changed
+as described in the design.
+
+i95.11  Add validation for sub_expr rule
+
+i95.11.1 sub_expr_loop7_end()
+
+The validation function sub_expr_loop7_end() is changed
+as described in the design.
+
+i95.12  Implement enumeration data type checking
+
+i95.12.1  Add Literal Enumerator class to OOA model
+
+The new class is added to the ooaofooa model.
+
+i95.12.2  enum_data_type_validate()
+
+The validation function enum_data_type_validate() is changed
+as described in the design.
+
+i95.12.3  enumerator_validate()
+
+The validation function enumerator_validate() is changed
+as described in the design.
+
+i95.12.4  enumerator_access_end()
+
+The validation function enumerator_access_end() is changed
+as described in the design.
+
+i95.13  Updates to ooaofooa and existing validation functions
+
+i95.13.1  Modify V_VAL.clear for subtypes now being created.
+
+The V_VAL.clear operation is modified as described in the design.
+
+i95.13.2  Add V_UNY.clear
+
+The Unary Operator clear operation is created as described in the design.
+
+i95.13.3  comparison_operator_validate()
+
+The validation function comparison_operator_validate() is changed
+as described in the design.
+
+i95.13.4  relational_expr_end()
+
+The validation function relational_expr_end() is changed
+as described in the design.
+
+i95.13.5  create_object_statement_start()
+
+The validation function create_object_statement_start() is changed
+as described in the design.
+
+i95.13.6  create_object_statement_end()
+
+The validation function create_object_statement_end() is changed
+as described in the design.
+
+i95.13.7  Modify ACT_SMT.clear for subtypes now being created.
+
+The ACT_SMT.clear operation is modified as described in the design.
+
+i95.13.8  Add SMT_CNV.clear
+
+The Create No Variable clear operation is created as described in the design.
+
+Implementation Comments
+-----------------------
+
+- The relationship 658 from Block to ElseIfStmt was changed
+from 1-Mc to 1-1c.  The relationship multiplicity was incorrect,
+since a block is only the context for zero or one else if clauses.
+This correction was needed for implementing get_enclosing_block.
+
+- The new utility archetype functions were placed in the file als_sql.inc,
+rather than mixed the function types with get_names.inc.
+
+Unit Test
+---------
+
+The following tests are added to OalParserTest:
+
+- simple addition (integer)
+x = 1 + 2;
+
+- simple subtraction (real)
+x = 1.1 - 2.9;
+
+- simple addition (string)
+x = "top " + "job";
+
+- longer addition
+x = 1 + 2 - 3;
+x = 0.1 + 0.2 - 0.3;
+x = "top " + "job" + " done";
+
+- longer addition with parens (same eval order)
+x = (1 + 2) - 3;
+
+- longer addition with parens (eval order changed)
+x = 1 + (2 - 3);
+
+- The following relationship test now parses without error
+x = 1 < 2.2;
+
+- Relational operator tests
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 != d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 == d2;
+x = color::red == color::orange;
+x = fruit::apple != fruit::orange;
+
+- Mixed addition
+x = 1 - 2.2;
+x = 2.3 + 1;
+x = 1 + 2 - 2.4;
+x = 1 + 2.0 - 3;
+x = .7 + 2 - 3;
+x = 1 + 9.2 - 2.4;
+x = 1.11 + 2 - 3.14;
+x = .99 + 0.01 - 3;
+
+- Simple multiplication
+x = 1 * 2;
+x = 2.2 / 2.1;
+
+- Longer multiplication
+x = 1 * 2 / 3;
+x = 0.1 / 0.2 * 0.3;
+
+- Logical negation
+x = not true;
+
+- Boolean operators
+x = true and false;
+x = true or false;
+x = 1 < 2 and 4 > 3;
+x = true and false and true;
+x = true or false or true;
+
+- Unary operators
+create object instance d1 of D_D; x = cardinality d1;
+create object instance d1 of D_D; x = empty d1;
+create object instance d1 of D_D; x = not_empty d1;
+x = +2;
+y = -2.2;
+
+- Nested operators
+x = (1); x1 = -(2); x2 = (-3); y = 1 + (x * 2); z = ((x)+300)-(y+2);
+
+- Attribute read access
+create object instance d1 of D_D; x = d1.Disk_ID;
+
+- Update create object instance
+create object instance of D_D;
+
+- Invalid operations
+x = "a" - "b";
+x = false + true;
+x = "c" * "d";
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 + d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 % d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 and d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 or d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 <= d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 < d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 >= d2;
+create object instance d1 of D_D; create object instance d2 of D_D; x = d1 > d2;
+x = true / false;
+x = NOT 1;
+x = not 3.14;
+x = not "true";
+y = "D_D"; x = cardinality y;
+y = 1; x = empty y;
+y = 2.2; x = not_empty y;
+create object instance d1 of D_D; x = d1.Bad_Attribute;
+x = + "X";
+x = -false;
+x = 1 and 2;
+x = 1 and 2.1;
+x = 1.1 and 2.2;
+x = "x" and "y";
+x = 1 or 2;
+x = 1.1 or 2;
+x = 1.1 or 2.2;
+x = "x" or "y";
+x = fruit::apple == color::orange;
+x = fruit::red == fruit::apple;
+x = fruit::apple != fruit::red;
+create object instance of XX;
+
+R All tests pass
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/extract_function_bodies.arc
+Introduced version:  1.1
+
+com.projtech.bp.als/arc/extract_function_bodies.arc
+Initial version:  1.1  Final version: 1.3
+
+com.projtech.bp.als/arc/function_gen.arc
+Initial version:  1.4  Final version: 1.6
+
+com.projtech.bp.als/arc/get_names.arc
+Initial version:  1.2  Final version: 1.4
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version:  1.5  Final version: 1.7
+
+com.projtech.bp.als/sql/.cvsignore
+Initial version:  1.2  Final version: 1.3
+
+com.projtech.bp.als/sql/os_ee_w_graphics.sql
+Initial version:  1.1  Final version: 1.2
+
+com.projtech.bp.als/sql/os_ee.sql
+Initial version:  1.1  Final version: 1.2
+
+com.projtech.bp.als/build.xml
+Initial version:  1.3  Final version: 1.4
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version:  1.12 Final version: 1.13
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/Os_c.java
+Initial version:  1.1  Final version: 1.3
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.5  Final version: 1.6
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.4  Final version: 1.5
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.8  Final version: 1.9
+
+TinyJava/ooa_schema.sql
+Initial version:  1.4  Final version: 1.6
+
+End
+---
+
+$Log: i95.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.16  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.15.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.15  2004/01/26 21:03:20  greg
+Job: 95
+Fix typo
+
+Revision 1.14  2004/01/26 20:05:48  greg
+Job: 95
+Add als_sql.inc introduction
+
+Revision 1.13  2004/01/26 20:02:19  greg
+Job: 95
+Changes for implementation review
+
+Revision 1.12  2004/01/21 18:53:26  greg
+Job: 95
+Add history entry
+
+Revision 1.11  2004/01/21 16:30:52  greg
+Job: 95
+Update implementation comments.
+
+Revision 1.10  2004/01/21 16:21:40  greg
+Job: 95
+Update implementation comments.
+
+Revision 1.9  2004/01/21 15:32:11  greg
+Job: 95
+Update from review
+
+Revision 1.8  2004/01/20 00:25:03  greg
+Job: 95
+Added SMT_CNV work
+
+Revision 1.7  2004/01/16 20:53:35  greg
+Job: 95
+Addressed Campbell's pre-review comments.
+
+Revision 1.6  2004/01/16 20:30:42  greg
+Job: 95
+Updated copyright
+
+Revision 1.5  2004/01/14 20:36:00  greg
+Job: 95
+Add changes for create_statement validation functions
+
+Revision 1.4  2004/01/14 18:09:56  greg
+Job: 95
+Add MCJ change
+
+Revision 1.3  2004/01/14 17:48:22  greg
+Job: 95
+Ready for review
+
+Revision 1.2  2004/01/13 23:49:57  greg
+Job: 95
+Design filled in, but needs editing
+
+Revision 1.1  2003/12/09 23:58:11  greg
+Job: 95
+Initial checkin
+
+

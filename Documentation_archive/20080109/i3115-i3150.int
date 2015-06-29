@@ -1,0 +1,209 @@
+========================================================================
+
+File:      $RCSfile: i3115-i3150.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:52 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Prevent model corruption during import/export
+
+1. Abstract
+-----------
+This issue describes two bug fixes made to prevent model corruption during
+model import.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3115
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3115
+[2] Bugzilla item 3150
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3150
+[3] Bugzilla item 3143
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3143
+
+4. Background
+-------------
+While investigating a stack overflow that occurred during model export [3] a 
+model corruption was found.  After import not all IP_IP's were related across 
+R4304.  Investigation revealed that this issue had been raised previously, but
+was not yet addressed.  This note describes the problem and how it was 
+addressed.
+
+5. Design
+---------
+The problem is that upon paste/import of an Interface Package which is a child
+of a Component or Component Package, R4304 is not being setup.  This association 
+is between a System Model and an Interface Package.  The association is setup 
+for Interface Packages that are children of other Interface Packages, but not 
+for the cases when the parent is either a Component or Component Package.  
+
+5.1 IP_IP.associateChildPackageWithSystem() is renamed to 
+    associatePackageWithSystem().  This routine was modified so that it 
+    associates the current package with system (through R4304) before recursing 
+    through the children.
+5.2 CP_CP.associateChildPackageWithSystem() is renamed to 
+    associatePackageWithSystem().  This routine was modified so that it 
+    finds all components and all component packages that contain an 
+    interface package. As it finds these, it assures these interface 
+    packages are associated with System across R4304.
+5.3 S_SYS.pasteInterfacePackage and S_SYS.pasteComponentPackage are modified to
+    use IP.associatePackageWithSystem() and CP.associatePackageWithSystem() 
+    respectively.
+
+6. Implementation Comments
+--------------------------
+6.1 Issue i3150 [2] has also been addressed in this branch.  This issue 
+describes a problem where an interface name appears on both sides of a 
+satisfaction after import.
+6.1.1
+This is caused by the fact that the identity of a satisfaction is not guaranteed
+unique.  A satisfaction has two attributes, Requirement_Id and Provision_Id.
+These values are the same for a satisfaction that is created on an import
+diagram.  During import of a stream, the call to 
+Satisfaction_c.resolveInstance() resolves one of the satisfactions to the first
+unique one created.  This does not occur in multi-file import because only one
+is imported during the load.  Though a problem would show if you had satisfied
+the same two interfaces twice in an import diagram.  
+6.1.2 This was resolved by giving C_SF a unique id.
+6.1.3 Upgrade code was added to model import to handle the addition of this new
+      identifier.
+
+6.2 The determinePrefixUse() function in MC-Java/model_consistency_functions.inc
+    was removed.  This function contained special-case code to handle the fact
+    that the Satisfaction link class did not contain a unique identifier.  Now
+    that Satisifaction does contain a uniqie identifer this function is no 
+    longer needed, and in fact it causes problems (prefixes are used when they
+    should not be when generating code for the Satisfaction class). 
+
+7. Unit Test
+------------
+7.1 Verify fix for i3115 [1].
+_- Create a xtUML project (i3143)
+_- Create a CP (cp1)
+_- Create an IP in cp1 (ip1)
+_- In ip1 create 2 interfaces (i1, i2)
+_- In cp1 create a component (c1)
+_- c1 has a provision formalized to i1
+_- Export->BridgePoint Model
+_- Select Next
+_- Destination file name (c:\temp\export.xtuml)
+_- Select finish
+_- Create a xtUML project (import)
+_- import export.xtuml
+_- Open cp1
+_- Select i1 and right-click
+_R The formalize option is present
+_- Select Unformalize
+_- Right click i1
+_R Both formalize and unformalize are present
+
+
+7.2 Verify fix for i3150 [2].
+_- Create project "test"
+_- Create interface pkg "IP"
+_- Inside "IP", Create interface "i1"
+_- Create component pkgs "CP" and "ICP" in the system
+_- Inside "CP", create components "c1" & "c2"
+_- "c1" provides "i1"
+_- "c2" requires "i1"
+_- Satisfy the interfaces using drag and drop
+_- Inside "ICP", create imported components assigned to "CP::c1" & "CP::c2"
+_- Satisfy the interface by dragging and dropping the provision on the
+requirement.
+_- Export the entire model to disk as "test.xtuml"
+_- Create new project "test2"
+_- Import "test.xtuml" into test2
+_- Open the "CP" component pkg
+_R The interface name "i1" appears only on the provision
+_- Open the "ICP" component pkg
+_R The interface name "i1" appears only on the provision
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Component Library.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Provision In Satisfaction/
+    Imported Provision In Satisfaction.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Library/Imported Requirement/Imported Requirement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Packaging/Component Package/Component Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Satisfaction/Satisfaction.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    System Model/System Model.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interface Package/Interface Package/Interface Package.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Persistence Associations.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Satisfaction In Component/
+    Satisfaction In Component.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Persistence Associations/Satisfaction In Component Package/
+    Satisfaction In Component Package.xtuml
+
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+com.mentor.nucleus.bp.io.core/arc/import_functions.inc
+
+MC-Java/model_consistency_functions.inc
+MC-Java/model_consistency.inc
+
+
+End
+---
+
+$Log: i3115-i3150.int,v $
+Revision 1.2  2009/01/01 23:12:52  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.7  2007/09/26 20:36:13  rmulvey
+Job:3115 3150
+Addressed review observations
+
+Revision 1.6  2007/09/26 18:46:57  rmulvey
+Job:3115
+Added 2 more files to the code changes section.
+
+Revision 1.5  2007/09/26 00:15:51  rmulvey
+Job:3115 3150
+fixed typo
+
+Revision 1.4  2007/09/26 00:15:24  rmulvey
+Job:3115 3150
+fixed typo
+
+Revision 1.3  2007/09/26 00:09:29  rmulvey
+Job:3115 3150
+fixed typo
+
+Revision 1.2  2007/09/25 23:55:14  rmulvey
+Job:3115 3150
+Additoinal detail added
+
+Revision 1.1  2007/09/25 23:51:05  rmulvey
+Job:3115 3150
+Introduced implementation note

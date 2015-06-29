@@ -1,0 +1,393 @@
+========================================================================
+
+File:      $RCSfile: dts0100710176.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support rectilinear routing
+
+1. Abstract
+-----------
+This note describes the changes required to support rectilinear routing.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100710176
+[2] com.mentor.nucleus.bp.ui.canvas.test/matrices/non-generated/
+                                                         rectilinear_routing.txt
+[3] dts0100693828 Support image copy to clipboard in GEF graphics
+[4] dts0100832189 Copy Image does not work in Linux
+[5] dts0100833835 Upon auto-creation of component diagram interfaces the
+                  direction is not always determined correctly
+[6] https://bugs.eclipse.org/bugs/show_bug.cgi?id=283960 Clipboard ImageTransfer
+                  does not work on Linux x86_64
+
+4. Background
+-------------
+Customers have requested support for rectilinear routing.
+
+5. Requirements
+---------------
+5.1 The tool shall be capable of routing connections in a rectilinear fashion.
+5.2 Rectilinear routing shall be optional.
+5.3 Oblique routing shall remain and remain the default.
+
+6. Analysis
+-----------
+GMF supports rectilinear routing.  Rather than recreating that support the tool
+shall make use of the rectilinear router in GMF.
+
+7. Design
+---------
+7.1 Remove code that disables existing rectilinear routing support
+
+The previous release included the initial work towards supporting rectilinear
+routing.  Rather than extract what was added there hooks were put into place
+that prevented the UI from ever using the rectilinear functionality.  These
+hooks are removed.
+
+7.2 Add custom RectilinearRouting class
+
+7.2.1 Add customized GMF Rectilinear class
+
+Due to the nature of the way we support whitespace terminals we must have a
+customized version of the GMF rectilinear routing class.  A new class
+RectilinearRouting is added to ui.graphics that overrides the following from
+the GMF based class:
+
+isReorienting() - Overridden to support the cases where we consider the
+                  connection being overridden.  When true the connection is not
+                  routed in a rectilinear manner.  It is true when the
+                  connection is not over a terminal that implements the
+                  OrthogonalConnectionAnchor
+routeLine() - Overridden to store the start and end point before routing, used
+              in the next overridden method
+resetEndPointsToEdge() - Overridden to support the case where the line has only
+                         the start and end point and at least one terminal is
+                         whitespace.
+                         
+The resetEndPointsToEdge override support routing the line in a rectilinear
+fashion during connection creation.  The default implementation relies on all
+terminals to have bounds.  The whitespace terminal has bounds but the line
+should not be routed around it as it is the entire diagram space.  Here we use
+the two points in the line and create a rectilinear form.
+
+7.2.2 Add rectilinear support in anchors
+
+Along with using the GMF router we must also change the current anchor classes
+such that they implement the OrthogonalConnectionAnchor interface.  This allows
+the router to determine an orthogonal point to move the anchor location to when
+the next point outside of the shape is moved.  For the ConnectorAnchor class we
+only provide a new point when the connection does not terminate at the start or
+the end as that point cannot change.  For shape terminals we use a modified
+version of the BaseSlidableAnchor class provided by GMF, this is the anchor used
+in all GMF diagrams and it supports rectilinear routing.  We modify it so that
+connections to elliptical symbols are correctly cropped.
+
+7.2.3 Support rectilinear layout when moving shapes
+
+Currently the ooaofgraphics model is still used to move connectors that are
+attached to shapes.  In order to support rectilinear routing in this case the
+next point in the segment being moved must also be moved.  This maintains a 
+rectilinear line.  To support this a non persistent attribute is added to the
+GD_CON class, routingType.  The type of this attribute is one of two new
+enumerators RoutingType::RECTILINEAR or RoutingType::OBLIQUE.  During a visual
+refresh of the ConnectorEditPart in ui.graphics this value is set according to
+the routing type configured by the user.  This attribute's value is then used in
+the GD_SHP.move() operation to determine when the other point must also be
+moved.
+
+7.3 Add custom line segment move policy
+
+GEF and therefore GMF use policies to handle updating a connection during user
+actions.  These allow the tool to display the connection in the form they will
+take when the user completes an action.  The GMF rectilinear behavior uses a
+policy that handles moving the connections by selecting segments or bendpoints,
+similar to our connection move behavior for oblique routing.  The default
+version of this class does not fully fulfill what is required.  The following
+methods are overridden to support our whitespace terminal:
+
+lineOutsideSource() - Overridden to update the WSAnchor location after moving
+                      before checking if the point is outside of the terminal
+                      (never true for whitespace)
+lineOutsideTarget() - Same as above
+getBendpointsChangedCommand() - Overridden to provide our command for committing
+                                the connection changes
+showSourceFeedback() - Overridden to support moving multiple selections (GMF
+                       does not support this)
+
+The ConnectorBendpointMoveCommand is modified to consider rectilinear routing
+when determining if the command actually changed connection data.
+
+7.4 Support hybrid image/text to clipboard
+
+[3] suggests that we move to a hybrid copy, which includes both model data and
+the selections image (when using copy in the graphics).
+
+The abstract CopyCutAction class is extended such that clients may provide
+secondary clipboard data for the copy or cut.  This is supported through the 
+following abstract methods:
+
+
+	protected abstract Transfer getSecondaryTransfer();
+
+	protected abstract Object getSecondaryClipboardData();
+	
+	protected abstract boolean onlyIncludeSecondaryData();
+
+A client may provide a transfer and the secondary data if relevant.  If the
+onlyIncludeSecondaryData method returns true the code will not start a
+transaction and will not export the selection to stream data.  The graphics copy
+action uses this when the selection contains data that is not copiable, but an
+image could be copied.
+
+7.4.1 Explorer
+
+The ExplorerCopyAction and ExplorerCutAction classes are modified to implement
+the new abstract methods.  Each class returns null for the getSecondayTransfer()
+and getSecondaryClipboardData() methods, and false for the
+onlyIncludeSecondaryData().  There is no secondary data present for explorer
+copies as there are no graphics present without some additional work that will
+not be done as part of this issue.
+
+7.4.2 Graphics
+
+The CanvasCopyAction and CanvasCutAction classes are modified to implement the
+new abstract methods.  For the CanvasCopyAction class the canSelectionBeCopied()
+method is changed to always return true, and the old logic within that method is
+moved to the onlyIncludeSecondaryData() method.  This allows for the case where
+the model data is not copiable but the image copy is.  The
+getSecondaryClipboardData() method is implemented to return the image data
+gathered from creating an image of the selection, this is done similarly to how
+the documentation generator currently gathers images.  The
+getSecondaryTransfer() method is implemented to return the built-in image
+transfer provided by eclipse.  This approach is supported in linux [4], with the
+exception of a bug in 64 bit linux and SWT [6].
+
+The CopyImageAction and all references to it are removed as it is no longer
+used.  The SymbolTransfer class is also removed as it only existed to support
+the CopyImageAction class.
+
+7.5 Use current points to keep directional arrows updated
+
+During the work for this issue an opportunity to resolve [5] was taken.  Rather
+than update the direction of the connections decoration after refresh (called
+when transactions are ended) the logic is changed to use the current points for
+the connection.  This allows for the decoration direction to change as the
+connection changes.
+
+7.6 Grid snap shapes created with default sizes (single click)
+
+It was noticed that single click shape creation was not grid snapping the
+created result.  The code in ShapeCreationCommand is modified to perform the 
+grid snapping on the shape to be created.
+
+7.7 Build server changes
+
+There was an old function to build the plugins in a -standalone- manner from
+days gone by.  This function has not been used in years.  However, we still had
+a code path that could execute the function when doing a branch build.  This
+caused problems.  Thus, create_tiger_release.sh is modified to remove this old
+and outdated part of the build.  This obviated the need for a param to this
+script, so it was removed (and its spot in the script create_nightly_build.sh
+that passed it in.)
+
+7.8 Support test graphical editor
+
+To ease and speed up testing in the graphics a new editor is created.  This
+editor can be used when testing only graphical changes.  The model behind the
+editor is not tied to bp.core and therefore does not have the overhead of
+persistence and transactional based changes.  To support this the
+GraphicalCommandStack class in ui.graphics is modified to refresh the diagram
+after processing commands if no transaction is present (as normal editors are
+refreshed by the transaction listeners).  Additionally, the GraphicalEditor
+class is modified to support a new editor input type SimpleGraphicalEditor.
+This input type is not tied to resources and does not support state saving like
+others.
+
+The underlying model is very simple and straight forward, it simply provides a
+connector, shape and diagram class which each hold the necessary graphical
+methods for text and style.  This model is contained within the canvas.test
+plugin, and the definition for the editor along with symbol types are defined in
+the canvas.test plugin.xml file.  This editor will only be present in the tool
+if the canvas.test is present therefore it will have no effect on the delivered
+product.
+
+7.9 Reset selection after printing a diagram
+
+During testing it was noticed that the selection was not properly maintained
+after printing a diagram (either through the print dialog or image generation).
+
+This is resolved by modifying PrintDiagramOperation in ui.graphics to make a
+copy of the selection list rather than using the list stored in the selection
+manager.  Otherwise the changes to remove the elements from selection are made
+to the list used and nothing is available to re-select.
+
+7.10 Properly display next change/diff buttons in compare
+
+The xtUML compare window shows the button labels for next/previous change/diff
+as:
+
+action.NextDiff.label
+action.PrevDiff.label
+action.NextChange.label
+action.PrevChange.label
+
+It should match the eclipse compare which shows only the appropriate icon with
+the tooltip text showing:
+
+Next Difference
+Previous Difference
+Next Change
+Previous Change
+
+To fix this the create_properties_file.inc file in bp.compare is modified to
+include the following entries:
+
+action.NextDiff.label=
+action.PrevDiff.label=
+action.NextChange.label=
+action.PrevChange.label=
+action.NextDiff.tooltip= Next Difference
+action.PrevDiff.tooltip= Previous Difference
+action.NextChange.tooltip= Next Change
+action.PrevChange.tooltip= Previous Change
+action.NextDiff.image=dlcl16/next_diff_nav.gif
+action.PrevDiff.image=dlcl16/prev_diff_nav.gif
+action.NextChange.image=dlcl16/next_change_nav.gif
+action.PrevChange.image=dlcl16/prev_change_nav.gif
+action.IgnoreAncestor.label=
+
+Eclipse compare code knows to look for these entries and configures the buttons
+accordingly.  The icons were added and copied from the eclipse text compare
+plugin.
+
+8. Design Comments
+------------------
+
+9. Work Required
+----------------
+See the design section.
+
+10. Unit Test
+------------
+See [2] for routing tests.
+
+[2] will test the following:
+
+- Segment movement
+- Segment movement outside of target's bounds moves segment to new side
+- Creation with rectilinear routing
+- In all of the above the connections are routed appropriately
+
+10.1 Test rectilinear form when moving attached to shape
+
+Note: this test is currently manual
+
+_- Create two classes with an association between them
+_- Make the connection have four points
+_- Move the first class
+_R The connection still has four points and the connection
+   is rectilinear
+_- Move the other class
+_R The connection still has four points and the connection
+   is rectilinear
+
+10.2 Hybrid copy
+
+Note: this test is currently manual
+
+_- Right click a diagrams background
+_R The copy entry is present
+_- Select the copy entry
+_- Right click
+_R The paste entry is not enabled
+_- Open an image editor
+_- Right click
+_R The paste entry is present
+_- Select the paste entry
+_R An image of the diagram is pasted
+_- Select some elements on a diagram that can be copied
+_- Right click
+_R The copy entry is present
+_- Select the copy entry
+_- Right click the diagram background
+_R The paste entry is present
+_- Select the paste entry
+_R The copied elements are pasted
+_- Open an image editor
+_- Right click
+_R The paste entry is present
+_- Select the paste entry
+_R An image of the selected elements is pasted
+
+10.3 Arrow direction on diagrams
+
+Note: this test is currently manual
+
+_- Repeat the test in [5]
+_R The direction of all arrows is correct
+
+10.4 Grid snap single click creation of shapes
+
+Note: this test is currently manual
+
+_- Open a diagram
+_- Select any shape tool
+_- Single click in the diagram
+_R The symbol is properly grid snapped
+
+10.5 Reset selection after print
+
+Note: this test is currently manual
+
+_- Select a symbol on a diagram and use Copy
+_R After the copy completes the symbol is still selected
+
+10.6 Compare buttons
+
+_- Start an xtUML Compare
+_R There are four buttons in the top right corner
+_- Hover over each
+_R The following text shows for each (in order)
+   _R Next Difference
+   _R Previous Difference
+   _R Next Change
+   _R Previous Change
+   
+10.7 Test Documentation generation
+
+_- Create the MicrowaveOven example project
+_- Run documentation generation
+_R All diagrams have an image created
+
+End
+---
+
+$Log: dts0100710176.dnt,v $
+Revision 1.3  2012/03/02 19:02:05  tlondon
+Job: dts0100710176
+
+Address review minutes
+
+Revision 1.2  2012/02/29 15:49:03  tlondon
+Job: dts0100710176
+
+Add compare changes to note
+
+Revision 1.1  2012/02/28 21:29:39  tlondon
+Job: dts0100710176
+
+Introduce design note
+

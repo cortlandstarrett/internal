@@ -1,0 +1,158 @@
+========================================================================
+
+File:      $RCSfile: i714.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:29:46 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+EDGE integration Extension Points
+
+Abstract
+--------
+This note describes the design for integrating EDGE components together.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 714
+[2] Documentation/internal/technical/External_Component_Interface/i714.ant
+[3] MC-Documentation/internal/technical/Runtime-build/runtime-build.ant
+
+Background
+----------
+This note describes how toolchain components will be integrated, with specific
+emphasis on Project creation. For more details, please see i714.ant[2].
+
+Design
+------
+To minimize the amount of redesign of downstream components, the proposed design
+is as follows:
+
+1. A new wizard, DelegatingWizard is introduced into bp.core.ui. It's behavior
+   shall be as specified in the analysis[2]. See section 3 below for a detailed
+   discussion of its design.
+
+2. The extension points are introduced as proposed in the analysis[2]. their
+   declaration is changed to fit with the Eclipse extension registration
+   mechanism. This requires that the configuration data is put in a separate
+   element from the outer extension declaration. An example usage is therefore:
+
+   <extension point="com.mentor.nucleus.model-compilers">
+      <model-compiler class="com.mentor.nucleus.modelcompiler.3020.NewWizard"
+         name="MC-3020 Model Compiler"/>
+   </extension>
+
+3. The required interface for downstream tools declared on the extension points
+   is changed to 'IWizard getChainedWizard()'. When called, this method shall
+   return a wizard to the caller. This is hereafter referred to in this document
+   as the 'supplied wizard'. When the user has stepped through all of the 
+   calling wizards pages (referred to subsequently as the 'client wizard'), the
+   DelegatingWizard then delegates all calls to the supplied wizard to get the
+   subsequent pages. If the user steps backward past the supplied wizards first
+   page, the client wizard starts stepping back through its pages. Once over the
+   inter-wizard 'boundary', all IWizard calls shall be delegated to the supplied
+   wizard. This will have the effect, for example, of the dialog images changing
+   as the user steps through the creation process. This shall provide the user
+   good feedback about his progress.
+
+4. An additional interface shall be required of a supplied wizard. The method,
+   performFinish(IProject). This will be called at the expected time, when the
+   user clicks Finish and the client wizard has completed its own intialization.
+   The normal Eclipse required performFinish method takes a void argument list
+   and so can be distinguished by the compiler. The new performFinish shall do
+   everything that the regular New*ProjectWizard.performFinish does, except
+   create the physical resource. This is created by (or passed to) the client
+   wizard and passed in the IProject argument.
+
+Design Comments
+---------------
+The original analysis[2] called for the downstream tool to implement
+IWizardPage[] getPages(IProject). This isn't practical, because it conflicts
+with one of the other design rules; don't do anything until the user clicks
+'Finish'. Obviously, a project can't be sent since it can't be created until
+until after the user clicks Finish.
+
+A big advantage of the proposed design for downstream tool implementors is that
+they can return an existing wizard to the getChainedWizard call, saving double
+maintenance.
+
+Downstream tool components should refactor their new project wizard so that
+the regular performFinish calls PerformFinish(IProject) after creating the
+resource. Toolchain components in the middle of the chain shall be able to
+reuse the DelegatingWizard class introduced by this design. Components at the
+end of the tool chain do not need to use a DelegatingWizard, an existing
+wizard modified to implement performFinish(IProject) shall also be acceptable.
+
+Work Required
+-------------
+1. The DelegatingWizard class is introduced as described in the design.
+
+2. The extension points and associated schema described in the design are
+   introduced into the com.mentor.nucleus project in the Mobile Subversion
+   engineering database.
+
+3. Add methods to DelegatingWizard for each member of the IWizard interface.
+   Each one shall check for the existence of a downstream tool if delegation is
+   required.
+   
+4. The existing NewSystemWizard shall be changed to extend DelegatingWizard, and
+   shall create the project resource and pass it to the downstream components
+   if they exist, by calling performFinish(IProject).
+
+Unit Test
+---------
+The no pages returned test required in the analysis is obsoleted by the changed
+design proposed above and is removed.
+
+A test stub project shall be created to simulate zero, one and many tool chain
+components.
+
+- All tests must be performed with other components installed and not installed.
+- Test the cases where the user backs up through the wizard.
+- Test the cases where more than one suitable component is declared.
+- Test the cases where one suitable component is declared.
+- Test the cases where no suitable components are declared.
+
+Tests for the code-builder extension are not performed by this work. The tests
+above shall be re-performed as part of the acceptance test for the model 
+compiler work[3] to confirm that initialization handover behavior works
+correctly both from Tiger and to the EDGE code builder.
+
+End
+---
+
+$Log: i714.dnt,v $
+Revision 1.1  2009/09/03 18:29:46  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:26  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.42.1  2008/12/31 16:10:35  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2005/03/23 00:40:32  campbell
+Job: 714
+Updated for pre-review comments from GBR.
+
+Revision 1.2  2005/03/22 19:59:08  campbell
+Job: 714
+Added xml element closure.
+
+Revision 1.1  2005/03/22 19:38:31  campbell
+Job: 714
+Introduced.
+

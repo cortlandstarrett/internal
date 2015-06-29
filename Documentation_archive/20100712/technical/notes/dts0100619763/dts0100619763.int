@@ -1,0 +1,180 @@
+========================================================================
+
+File:      $RCSfile: dts0100619763.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Fix the installer
+
+
+1. Abstract
+-----------
+This note describes the changes that were made to improve the BridgePoint 
+installer.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100619763
+[2] dts0100619763.ant
+[3] ClearQuest DEI dts0100627277 - Japanese Language Support
+
+4. Background
+-------------
+The installer needs to be improved.  Details of the desired changes are
+captured in the analysis note [2].
+
+5. Design
+---------
+5.1  Created a test installer program.  It found that MIP is still unable to 
+     install from or to a path that contains unicode characters.
+
+5.2  Japanese machine issues
+5.2.1  [3] handled problems with the default font encoding and no data being
+       written to the console
+5.2.2  As part of this issue, I created a VBScript (create_shortcut.vbs) that 
+       is able to create a shortcut on the desktop even when the desktop path
+       contains unicode characters.  This script was heavily based on some 
+       sample code from Tim Harp of the installer team.  The trick is to have 
+       the VBScript get the desktop path using built-in special variables, the 
+       translate that to the DOS 8-character shortpath form in order to create
+       the .lnk file.  I had to go this route because the MSI_CMD -k still does 
+       not support creation on a desktop with a unicode path.  It also does not
+       have a flag to set the "Run minimized" option on the shortcut.  This new
+       script does that, so we no longer have to use the old bp_run_min.vbs
+       which was not very robust.
+
+5.3  Shortcut handling
+5.3.1  We now ask the user if they want a desktop shortcut or not.
+5.3.2  If they do, we warn that this will overwrite an existing desktop shortcut
+       named "BridgePoint"
+5.3.3  If that is OK, then it will attempt to put the shortcut on the All Users
+       Desktop.  If that does not succeed, the shortcut is placed on the Current
+       User Desktop.
+
+5.4  MIP now has fixed internal handling for the case where a non-admin install
+     is attempted after an admin install.  This no longer causes an error.  The
+     Release Notes are updated to remove the workaround.              
+
+5.5  Updated the default workspace configuration on Windows according to the 
+     requirements in [2 §5.6]
+     
+5.6  Allow the user to install BridgePoint over the top of itself.
+5.6.1  Modified the director to no longer prevent this scenario.
+5.6.2  When installing BridgePoint_with_Eclipse to an existing BP folder, added 
+       a suitably ominous delete confirmation.  If the user elects to proceed,
+       we will nuke the existing folder, then install to the exact same 
+       location.
+    
+5.7  Allow the user to uninstall BridgePoint without uninstalling Eclipse.
+5.7.1  If the user has chosen to install BridgePoint into an existing eclipse
+       installation, the uninstall process already will only uninstall the 
+       BridgePoint components and not the entire existing eclipse.
+5.7.2  If the user has chosen to install BridgePoint with Eclipse, we do not 
+       support uninstall of BridgePoint only.  The eclipse installed with 
+       BridgePoint originally is uninstalled as well.
+
+5.8  In the Install-into-Existing-Eclipse flow, inform the user that BridgePoint
+     plugins require a certain level of Eclipse and also additional (EMF, GMF, 
+     etc) functionality.  However, we go ahead and install if the user insists.
+    
+5.9  Added additional text to the page where the user selects the BridgePoint   
+     target folder to install into.  Made the right answer as clear as possible
+     by giving an example.  
+      
+5.10  Added additional text to the page where the user selects the existing 
+      eclipse to install into.  Made the right answer as clear as possible by 
+      giving an example.  Also stated that the user will have an additional 
+      chance to specify where additional BridgePoint contents will be 
+      installed.  
+
+5.11  Add new script to pull installer and build scripts from CVS before running
+      the build process.  Added bp.core/tools/configure_build_process.sh to 
+      perform the installer configuration.
+
+5.12  The eclipse base is now configured to use p2 as the plugin provisioning 
+      system.  The artifact.xml file was updated to remove the Junit plugins
+      because the update manager won't work properly with them in there.  Since
+      the plugins no longer exist on disk (removed for legal issues), p2 was 
+      convinced the system was improperly configured.  With them removed from 
+      the artifacts file, p2 does not complain.
+            
+5.13  The Linux version of the installer now uses a GUI based front-end like
+      the windows version.
+       
+      
+6. Implementation Comments
+--------------------------
+6.1  We explored leaving some of the eclipse configuration (links files, 
+     eclipse_extensions [not BridgePoint or EDGE]) etc. when performing an
+     install of BP to an existing BP location, but this was going to be very
+     complicated.  Hence, we opted not to go this route and forego adding 
+     this additional complexity/potential bug cluster.
+6.1.1  This may have been a more doable task if the installer knows if 
+       BridgePoint already exists. We could have then queried about uninstalling
+       the old BP before installing the new one. However, MIP does not provide
+       this functionality.
+
+6.2  It was suggested that when BridgePoint plugins are seen to already exist
+     during a "install into existing eclipse" situation, rename the 
+     "BridgePoint" folder to "BridgePoint_<datestamp>". This would have been
+     special case behavior that was inconsistent with our handling for install-
+     ing over the top of an existing BridgePoint folder.  Instead, this behaves 
+     the same as install over existing BP.  That is, the backup is not created 
+     by the installer, the existing folder is removed before installing anew.
+     A suitably ominous warning and confirmation dialog is added to the install-
+     er.
+
+7. Unit Test
+------------
+
+8. Code Changes
+---------------
+Changes directly to HEAD:
+com.mentor.nucleus.bp.core/tools/configure_build_process.sh
+com.mentor.nucleus.bp.core/tools/run_bb.bat
+com.mentor.nucleus.bp.core/tools/run_cnb.bat
+com.mentor.nucleus.bp.core/tools/run_mnb.bat
+
+Changes are in branch: R3_0_3-SKB-dts0100619763
+
+Installer_MIP_MIMIC/bp_run_min.vbs (removed)
+Installer_MIP_MIMIC/BridgePointResources.jar (removed)
+Installer_MIP_MIMIC/build_installer_bp.sh
+Installer_MIP_MIMIC/create_shortcut.vbs
+Installer_MIP_MIMIC/File_list.txt
+Installer_MIP_MIMIC/MSI_Director.java
+Installer_MIP_MIMIC/post_install_script.bat
+Installer_MIP_MIMIC/pre_uninstall_script.bat
+Installer_MIP_MIMIC/toolkitBasicDialogs.jar (removed)
+Installer_MIP_MIMIC/toolkitDialogsEngine.jar (removed)
+
+com.mentor.nucleus.bp.doc/ReleaseNotes/HTML/ReleaseNotes.htm
+
+
+End
+---
+
+$Log: dts0100619763.int,v $
+Revision 1.3  2010/01/05 04:29:47  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.2  2009/12/29 16:50:15  kbrown
+job:dts0100619763
+Updated INT.
+
+Revision 1.1  2009/12/18 17:04:39  kbrown
+job:dts0100619763
+Initial implementation.

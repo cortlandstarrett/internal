@@ -1,0 +1,290 @@
+========================================================================
+
+File:      $RCSfile: i2614.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Update MC plugins to use stream model export
+
+
+1. Abstract
+-----------
+BridgePoint provides a model export mechanism.  The goal of this issue is to
+change the way the model compiler plugins work so we can take advantage of the
+BP stream export.  Once complete, Export-to-Single-File and Export-to-MC-build
+will use exactly the same pipe. Having these be the same pipe ensures that batch
+compiles (on the exported single-file-model) and interactive compiles do the
+"Same Thing".
+
+2. History
+----------
+None
+
+3. Document References
+----------------------
+[1] Bugzilla item 2614
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2614
+
+4. Background
+-------------
+The model compilers need to be able to build formalized domains as well as un-
+formalized domains.  In order to get the input file to feed to the model comp-
+iler during code generation, we are going to use the stream model exporter.
+
+5. Analysis
+-----------
+5.1     The cleanest way to get a properly formed model to pass to code
+        generation is to use BridgePoint's stream model export.  We can then
+        pass this properly formed model or models to xtumlmc_build.exe.
+
+5.2     We would eventually like to remove the resource change listener.  As a
+        future alternative, we can investigate changing the launch configuration
+        of our external tool builder (see a MC-3020 Model Compiler.launch). We
+        currently use
+        org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType.
+        Perhaps there is another type that would better suit us.  We could call
+        our plugin instead of xtumlmc_build in this launch configuration.  If we
+        do this, we can have the plugin do this:
+            - update the markings and command-line as neeed
+            - export using the stream builder
+            - launch xtumlmc_build
+
+        Doing this allows us to get by with 1 builder and we can remove the
+        resource change listener.  We would still need a model change listener
+        in order to create marking files when a project is created.  We need to
+        do this because the user may want to edit the marking before build
+        (otherwise the build could create the markings too).
+
+        This is a possible enhancement to the builder that we have chosen not to
+        purse at this time.
+
+6. Design
+---------
+6.1     General Design
+6.1.1   The new model build will be achieved by adding a new "pre-builder" to
+        the build chain.  This pre-builder will export the model using the
+        stream exporter.  xtumlmc_build.exe will then use the newly exported
+        model instead of working on the filesystem directly.
+6.1.2   This design will use the io.mdl ExportStreamFactory.  This exporter
+        takes an array of model elements to export and spits them out to a
+        memory buffer.  The buffer can then be dumped to disk when desired.
+
+6.2     Export Builder
+6.2.1   Create a new Eclipse incremental builder class called ExportBuilder.java
+        in the bp.mc.mc3020 plugin.
+6.2.2   Modify bp.mc.mc3020 plugin.xml to expose this builder (called "Model
+        Compiler Pre-Build").  This is the name that will show up in the
+        "Builders" list in the project properties.
+6.2.3   Modify MC3020Nature.java to add this new builder to MC-3020 projects at
+        project creation time.
+6.2.4   We will output multiple files from the export builder into the
+        <project>/gen/code_generation folder.  One for each domain.
+6.2.4.1 For each unformalized domain, we simply need to export the domain itself.
+6.2.4.2 For each formalized domain, we need to export the system-level elements
+        as well as the formalized domain itself.  To do this, we will take a
+        bottom-up approach, starting at the domain and working back up to the
+        system model.  The following traversal will be used:
+            Domain
+            Domain As Component
+            Component (Interface Package)
+              Component in Component [via R4203]
+              or
+              Component Package [via R4604] (Interface Package)
+                Component Package in Package [via R4601]
+                or
+                System Model [via R4602] (Interface Package, DataType Package)
+                {Note: do not add S_SYS to elements to export}
+
+6.2.4.3 The export builder will delete any existing "code_generation" folder
+        under the "gen" folder, then create a new one before building.
+6.2.4.4 The model files are named "<domain name>.sql"
+6.2.5   The export builder will show up in the list of builders for the project,
+        which, in order, are: "XMI 2.1 Export" (unchecked), "Model Compiler
+        Pre-Build", "MC-3020 Model Compiler", and "EDGE Builder".
+
+6.3     xtumlmc_build Changes
+6.3.1   Remove the hook that attempted to delete the "code_generation" directory
+        before building when called from eclipse.  This didn't work anyway due
+        to a race condition in the build launching and is no longer needed
+        because the pre-builder will take care of deleting the directory.
+6.3.2   Because the exported model files are named with "<domain name>.sql", we
+        do not have to pass the -o option to xtumlmc_build.  The domain name is
+        taken from the name of the model file.
+6.3.3   When xtumlmc_build is called with no "-o <domain name>" and "-m <model
+        file>" arguments, xtumlmc_build shall go look for models in the
+        build directory specified by the "-d <directory>" option.  Typically,
+        this is "code_generation".
+6.3.4   Model files are found using the regexp /(\.bak|\.mdl|\.sql|\.xtuml)/
+        just like elsewhere in xtumlmc_build.
+
+6.4     Model Compiler Resource Listener Changes
+6.4.1   No longer pass domain names as "-o <domain name>" arguments to
+        xtumlmc_build
+6.4.2   No longer pass a directory tree as "-m <dir>" argument to xtumlmc_build
+6.4.3   The change listener no longer cares about changes inside the "models"
+        folder.  Remove code that handles those changes.
+
+7. Design Comments
+------------------
+Our goal here is to attempt to conform to the same export stream as the export
+wizard.  This export pre-builder is based on ModelExportWizard.java.
+
+8. Work Required
+----------------
+Work required is specified in the design section.
+
+9. Unit Test
+------------
+9.1     Test unformalized domains
+        _- Create a new xtUML Project named "dogs_unformalized"
+        _- Import file "dogs.xtuml"
+        _- In dogs_domain.mark, tag initalization functions "setup" and "test"
+        _- "Project > Build Project"
+        _R The pre-build runs and creates "gen/code_generation/dogs.sql"
+        _R MC-3020 code generation runs without error
+        _R EDGE code compile runs without error
+        _- Execute "Configuration 0/Output/dogs_unformalized.exe"
+        _R The program runs to completion
+
+9.2     Test formalized domains
+        _- Create a new xtUML Project named "dogs_formalized"
+        _- Import file "dogs.xtuml"
+        _- Create a new system level component package named "CP"
+        _- Create a new component in "CP"
+        _- Formalize the newly created component to domain "dogs"
+        _- In dogs_domain.mark, tag initalization functions "setup" and "test"
+        _- "Project > Build Project"
+        _R The pre-build runs and creates "gen/code_generation/dogs.sql"
+        _R MC-3020 code generation runs without error
+        _R EDGE code compile runs without error
+        _- Execute "Configuration 0/Output/dogs_formalized.exe"
+        _R The program runs to completion
+
+9.3     Test formalized domains several levels deep
+        _- Create a new xtUML Project named "dogs_formalized_deep"
+        _- Import file "dogs.xtuml"
+        _- Create a new system level component package named "CP1"
+        _- Create a new component package "CP2" in "CP1"
+        _- Create a new component package "CP3" in "CP2"
+        _- Create a new interface package "IP" in "CP3"
+        _- Create a new interface "i" in "IP"
+        _- Create a new component in "CP3"
+        _- Make the new component provide "i"
+        _- Formalize the newly created component to domain "dogs"
+        _- In dogs_domain.mark, tag initalization functions "setup" and "test"
+        _- "Project > Build Project"
+        _R The pre-build runs and creates "gen/code_generation/dogs.sql"
+        _R MC-3020 code generation runs without error
+        _R EDGE code compile runs without error
+        _- Execute "Configuration 0/Output/dogs_formalized_deep.exe"
+        _R The program runs to completion
+
+9.4     Test mixture of formalized and unformalized domains
+        _- Create a new xtUML Project named "mix"
+        _- Import file "dogs.xtuml"
+        _- Import file "bounce.xtuml"
+        _- Import file "MicrowaveOven.xtuml"
+        _- Create a new system level component package named "CP1"
+        _- Create a new system level component package named "CP2"
+        _- Create a new component in "CP1"
+        _- Formalize the newly created component to domain "bounce"
+        _- Create a new component in "CP2"
+        _- Formalize the newly created component to domain "MicrowaveOven"
+        _- "Project > Build Project"
+        _R The pre-build runs and creates in "gen/code_generation" the files:
+           "dogs.sql", "bounce.sql", and "MicrowaveOven.sql"
+        _R MC-3020 code generation runs without error
+        _R EDGE code compile runs without error
+        _- Open each file, search for S_DOM
+        _R Each file contains only one S_DOM and it is for the correct domain
+
+9.5     Test formalized domains several levels deep
+        _- Create a new xtUML Project named "dogs_formalized_deep_components"
+        _- Import file "dogs.xtuml"
+        _- Create a new system level component package named "CP1"
+        _- Create a new component "C1" in "CP1"
+        _- Create a new component "C2" in "C1"
+        _- Create a new component "C3" in "C2"
+        _- Create a new interface package "IP" in "C3"
+        _- Create a new interface "i" in "IP"
+        _- Make "C3" provide "i"
+        _- Formalize "C3" to domain "dogs"
+        _- In dogs_domain.mark, tag initalization functions "setup" and "test"
+        _- "Project > Build Project"
+        _R The pre-build runs and creates "gen/code_generation/dogs.sql"
+        _R MC-3020 code generation runs without error
+        _R EDGE code compile runs without error
+        _- Execute "Configuration 0/Output/dogs_formalized_deep_components.exe"
+        _R The program runs to completion
+
+9.6     Test sample project
+        _- Create the sample MicrowaveOven project using the Welcome page or
+           Help documentation link
+        _- "Project > Build Project"
+        _R Pre-build runs and creates "gen/code_generation/MicrowaveOven.sql"
+        _R MC-3020 code generation runs without error
+        _R EDGE code compile runs without error
+        _- Execute "Configuration 0/Output/MicrowaveOven.exe"
+        _R The program runs to completion
+
+9.7     Use "Clean project"
+        _- Select one of the projects that has been previously built
+        _- Note that it contains the "gen/code_generation" folder
+        _- Choose "Project > Clean..."
+        _R The "gen/code_generation" folder is removed
+
+9.8     Perform ad-hoc testing to try to break domain gen and build.
+
+End
+---
+
+$Log: i2614.dnt,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.7  2007/12/14 19:40:19  kbrown
+Job:2614
+completed design note review changes.
+
+Revision 1.6  2007/12/14 16:16:20  kbrown
+Job:2614
+Some updates to the dnt.
+
+Revision 1.5  2007/12/14 15:21:29  kbrown
+Job:2614
+Completed design note.
+
+Revision 1.4  2007/12/14 08:25:27  kbrown
+Job:2614
+Completed design note.
+
+Revision 1.3  2007/12/14 08:14:48  kbrown
+Job:2614
+Nearly complete design note.
+
+Revision 1.2  2007/12/12 21:17:53  kbrown
+Job:2614
+Added design for the exporter.
+
+Revision 1.1  2007/12/12 14:41:02  kbrown
+Job:2614
+Started design note.
+

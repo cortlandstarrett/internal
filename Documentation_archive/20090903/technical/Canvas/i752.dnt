@@ -1,0 +1,214 @@
+========================================================================
+
+File:      $RCSfile: i752.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Ensure editors close correctly after a restart
+
+Abstract
+--------
+This note describes how editors will be made to close correctly even immediately
+following a restart.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 752
+[2] Documentation/internal/technical/Persistence/i561-3.dnt|int
+
+Background
+----------
+If a part of the model was deleted immediately after a restart, editors open
+on that part of the model would not close and subsequently give errors when
+focussed. If the editors were first focussed before the deletion was attempted
+they would close correctly.
+
+Analysis
+--------
+This problem consists of two parts:
+
+- The editor listeners that respond to the DELETE model change events are not
+  installed until an editor is restored. Editors are not restored after a
+  restart until the user focusses the editor.
+
+- By the time the DELETE model change message arrives, both the instance
+  represented by the diagram in the editor and the underlying physical resource
+  have been deleted. This is due to the design of i561[2], which installs a
+  resource listener that deletes the model when deletion of the underlying file
+  is detected.
+
+Eclipse holds a set of editor references for each of the editor tabs that are
+shown after the restart. These are used to hold just enough data to show the tab
+plus the memento data, until the user focusses the editor, when the memento data
+is used to restore the editor. Identifying and removing the editor references
+corresponding to the model portion being deleted was considered, but the
+WorkbenchPage class, that owns the references does not offer the protocol for
+removing them, so this is not an option.
+
+Since we have little control over exactly when the editors are dismissed, the
+best we can do is to ensure that the editors are restored before the deletions
+take place.  This has no visible effect on the user interface, but when the main
+model change listener sees the model element deletions, the editors can close
+down successfully because they are by this time fully restored. Editor closedown
+then happens normally as specified in i561[2].
+
+When the first part of the problem is fixed as described above, it still leaves
+the second part. If the model file associated with an editor has been deleted,
+the canvas editor factory returns null. This causes a new error to be logged and
+shown to the user in a dialog. To address this, the canvas editor factory is
+changed so that an editor is created and returned by the factory if an instance
+can be located in memory, even if the model file is deleted.
+
+This change does not completely solve the problem, because even with the
+physical file resource deletion issue addressed, the DELETE message itself
+arrives after the instance represented by the diagram has been removed from the
+instance extent, so Cl_c.Getinstancefromooa_id cannot locate the instance from
+the memento data and the same symptoms are shown. The change proposed above is
+itself modified to sense a new model change event that shall be sent _before_
+model elemenst are deleted. The editors can now be successfully restored when
+this message is received.
+
+Design
+------
+The proposed solution is therefore as follows:
+
+1. A new PRE_DELETE model change type shall be added to the ModelDelta class.
+   This event shall be listened for in the global canvas editor listener. This
+   shall force restoration of all editors whose references return the Tiger
+   canvas factory id value. This prevents the overhead of restoring all editor
+   references, some of which may not be Tiger editors and which may have a
+   significant restore time that would be unwelcome to the user and might have
+   unwanted third party side effects.
+
+2. It was considered that the PRE_DELETE model change event type be sent before
+   every deletion. However, there was a concern that this might impose
+   significant overhead on deletion. Since we already have deletion performance
+   problems, it was decided to send a single PRE_DELETE event from the
+   DeleteAction immediately prior to executing the model element deletion code.
+   The canvas model listener shall therefore receive this event synchronously
+   before any deletions take place. The editors can then be restored.
+
+3. To properly support removal of model files by methods other than through
+   Model Explorer, the core resource change listener shall also send the
+   PRE_DELETE model change event when about to clear a model from memory because
+   removal of a model file has been detected.
+
+4. Although not required by this fix, CanvasEditorInput.exists() and 
+   CanvasEditorInput.getPersistable() behaviors are brought into line with the
+   equivalent methods in the text editor inputs.
+
+Design Comments
+---------------
+Since we cannot easily distinguish between editors on different model roots
+(doing so requires a reflection call), a simplification is simply to restore all
+Tiger canvas editors. If this option is chosen, the modelRoot argument to
+restoreEditors (discussed below) is not required, and the message to multiple
+modelRoots can be replaced with a single call on the default root at the
+beginning of the delete action.
+
+Work Required
+-------------
+1.   Add the new PRE_DELETE model change event
+1.1  Add new event type in java.arc where the ModelDelta class is generated.
+1.2. Add a check for the PRE_DELETE event in CanvasModelListener.java. If the
+     check passes the listener shall call a new private method,
+     restoreEditors().
+1.3. The restoreEditors() method shall find all editor references, and test them
+     to see if they have a factory id of "com.projtech.bp.ui.canvas.factory"
+     (the id value shall be defined as a final String). If the reference has the
+     correct id, the editor is restored using:
+     
+     IEditorReference.getEditor(restore = true).
+
+2.   create_global_action.inc is modified to send a PRE_DELETE event to each
+     model root that is the container for an element in the set selected for
+     deletion.
+
+4.   Change the resource listener in ooaofooa
+4.1  Modify the body of the resource change listener (generated in java.arc) so
+     that it sends the PRE_DELETE event before clearing the databases.
+4.2  Modify the CanvasEditorFactory as described in the analysis to return an
+     editor input even when a resource is not found (the resource change is
+     reporting that the model file was deleted).If neither the file nor an
+     element is found, the factory returns null as before.
+
+5.   Change the CanvasEditorInput.exists() method to return true only if the
+     represents value is valid and is not orphaned. The getPersistable() API
+     returns null rather than self if exists() is false.
+     
+Unit Test
+---------
+_- Create a project and a new empty domain.
+_- Add a couple of subsystems.
+_- Add a couple of classes.
+_- Add an ISM and a couple of states.
+_- Exit the tool leaving the diagram editors open.
+_- Restart the tool.
+_R The tool restarts and brings back all the editors.
+_- Without opening an editor, delete the domain.
+_- All diagrams and editors are closed.
+_- No error dialogs are shown and the error log shows no entries from the
+   delete operation.
+
+End
+---
+
+$Log: i752.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.44.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2005/03/18 17:13:06  campbell
+Job: 752
+Specify that restoreEditors does not take a model root argument
+(we cannot easily obtain this information from the editor reference).
+
+Revision 1.7  2005/03/18 00:06:15  campbell
+Job: 752
+Changed design note to document the simpler option
+of restoring all editors.
+
+Revision 1.6  2005/03/17 21:20:08  campbell
+Job: 752
+Addressed review issues.
+
+Revision 1.5  2005/03/17 17:03:34  campbell
+Job: 752
+Addressed pre-review comments.
+
+Revision 1.4  2005/03/17 03:30:34  campbell
+Job: 752
+Ready for review.
+
+Revision 1.3  2005/03/17 02:26:45  campbell
+Job: 752
+Layout change only
+
+Revision 1.2  2005/03/14 18:23:40  campbell
+Job: 752
+Added comments about getPersistable.
+
+Revision 1.1  2005/03/14 17:27:10  campbell
+Job: 752
+Introduced.
+

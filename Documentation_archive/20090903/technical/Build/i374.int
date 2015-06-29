@@ -1,0 +1,235 @@
+========================================================================
+
+File:      $RCSfile: i374.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:23 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Support for promoting unit test modules
+
+Abstract
+--------
+
+This note describes the changes necessary for adding promotion support for the
+unit test modules.
+
+History
+-------
+
+final i374-081904-01.rvm
+
+Document References
+-------------------
+
+Issue 374
+
+Background
+----------
+
+The unit test modules currently are ignored by the nightly build script.  They
+must be promoted along with the other modules to correctly maintain version
+control. 
+
+Design
+------
+
+i374.1 Add function to check out unit test modules
+
+The unit test modules need a function added which will check out all the
+necessary files for those modules.
+
+A variable, unit_test_modules, is added to create_release_functions.sh, which
+contains a list of the currently available unit test modules.
+
+A new function, extract_unit_test_modules, is added to
+create_release_functions.sh.  The function contains a for loop which iterates
+through the modules listed in the unit_test_modules variable.  For each module,
+the function calls the rsh command to check out the current module on the cvs
+server.  The chown command is then called recursively on the current module to
+change the ownership of the files and directories to the user running the
+nightly build script.  
+
+i374.2 Add support for modified check
+
+The unit test modules shall be treated like the other modules included with
+Tiger.  They need to trigger a nightly build if they have any files tagged with
+the current nightly build tag.  This is done by checking out the unit test
+modules before the call to checkif_modified and adding support for the unit test
+modules to that same function.
+
+i374.3 Add support for promoting unit test modules
+
+The unit test modules need to be version controlled in the same manner as the
+other Tiger modules.  The unit test modules shall be extracted right before the
+call to promote the other Tiger modules.  Support for the unit test modules in
+the promotion call is added.
+
+i374.4 Manually promote unit test modules 
+
+The unit test modules are currently not up to date with the nightly build tags.
+In order for the nightly build script to operate correctly all the unit test
+modules must be tagged with the last successful nightly build tag.
+
+Work Required
+-------------
+
+i374.1 Add function to check out unit test modules
+
+The changes are made to the create_release_functions.sh script.
+
+i374.2 Add support for modified check
+
+A call to the function created in i374.1 is added to the nightly build script
+before the checkif_modified function is called.  The unit_test_modules variable
+added in i374.1 is added to the list of modules used in the checkif_modified
+function.
+
+The unit_test_modules variable is added to the list of modules used in the
+remove_extraction function adding support for removing the temporary extractions
+of the unit test modules. 
+
+i374.3 Add support for promoting unit test modules
+
+A call to the extract_unit_test_modules function is added before the promotions
+are made.
+
+The unit_test_modules variable is added to the list of modules to be promoted.
+
+i374.4 Manually promote unit test modules
+
+All unit test modules are manually brought up to date with the last successful
+nightly build tag.
+
+Implementation Comments
+-----------------------
+
+After running the unit test for this work a bug was found with the
+verify_checkout calls in create_nightly_build.sh.  The verify_checkout function
+depends on the module variable being set.  This variable was not being set before
+the verify_checkout calls.  The correct way to verify all modules is to surround
+the call with a for loop which iterates through all the modules needing to be
+verified.  The module variable is set to the current module being verified in
+the for loop.  Therefore, the following for loop is added to
+create_nightly_build.sh around each call to verify_checkout:
+
+for module in ${modules in question}; do
+	verify_checkout >> ${NB_RUN_LOG}
+done
+
+The modules in question variable above is to be replaced with a list of modules
+needing to be verified for that call. 
+
+The checkif_modified function in create_nightly_build.sh currently uses a
+'greater than or equal to' logic in its if test for the dir_count value.  This
+will cause a nightly build to occur every night because the value will always
+be equal to one even if there are no modified files.  The function's if test is
+changed to check if the value is greater than one.
+
+The modified_files variable should be set to false initially and the
+checkif_modified function should set the variable to true if it finds modified
+files.  If no modified files exist the script should exit but because the
+variable is not set to false it will not exit.  The create_nightly_build.sh
+script is modified to set the modified_files variable to false in the start of
+the script.
+
+Unit Test
+---------
+
+Log in to the build machine (whimbrel) using user: build.
+
+Back up the existing shell script files.
+
+Copy the changed files to \\whimbrel\nightly_build\.
+
+Modify the create_nightly_build.sh to change the BUILD_ADMIN setting:
+
+BUILD_ADMIN="<your_email_address>@mentor.com"
+
+Modify create_release_functions.sh to use the test repository:
+
+cvsroot="/arch1/sun/u/tlondon/work/repository"
+
+In Eclipse, switch to the CVS view to do the tagging in this test. Set up the
+repository above, logging in as build.
+
+Now complete the following:
+
+- Tag a file in one of the unit test modules with the days date
+- Run the nightly build script
+R Script runs the nightly build
+R Script completes without error
+R The above tag exists on all files in all the unit test modules
+
+If the test passes, undo the edits specified in the Unit test.
+If the test fails, restore the backed up files.
+
+
+Code Changes
+------------
+
+com.projtech.bp.core/tools/create_release_functions.sh
+Initial Version:  1.8  Final Version: 1.10
+
+com.projtech.bp.core/tools/create_nightly_build.sh
+Initial Version: 1.27  Final Version: 1.31
+
+End
+---
+
+$Log: i374.int,v $
+Revision 1.1  2009/09/03 18:22:23  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:12:59  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.152.1  2008/12/31 16:10:02  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2004/08/24 17:51:55  tlondon
+Job: 374
+
+Updated code change file versions
+
+Revision 1.6  2004/08/23 18:32:49  tlondon
+Job: 374
+
+removed else statement to set modified_files to false if none exist
+
+The value should be set to false in the beginning of the script
+
+Revision 1.5  2004/08/23 18:21:04  tlondon
+Job: 374
+
+Added else statement to set modified_files to false if none exist
+
+Revision 1.4  2004/08/23 18:15:09  tlondon
+Job: 374
+
+Updated implementation comments.
+
+Revision 1.3  2004/08/19 21:49:29  tlondon
+Job: 374
+
+Updated according to review minutes
+
+Revision 1.2  2004/08/19 17:37:37  tlondon
+Job: 374
+
+Added implementation comment for verify_checkout bug.
+
+Revision 1.1  2004/08/19 16:24:42  tlondon
+Job: 374
+
+Introducing int

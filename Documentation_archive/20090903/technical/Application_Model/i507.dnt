@@ -1,0 +1,161 @@
+========================================================================
+
+File:      $RCSfile: i507.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:18 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Correctly reconfigure referential attributes when deleting subtypes
+
+Abstract
+--------
+Referential attributes in subtypes were not being migrated to regular
+identifying attributes when the subtype was being deleted. This note
+addresses this problem. 
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue i507
+[2] Bugzilla issue i329
+
+Background
+----------
+BridgePoint Builder used to migrate referential attributes to identifying
+attributes when a referential was part of a class's identifier. The most
+common scenario for this situation is the referential that formalizes a subtype/
+supertype association. When a subtype association is unformalized or deleted,
+this migration should occur. Tiger was not performing this function.
+
+Design
+------
+The reason for this behavior is that the Class as Subtype instance was disposing
+itself, but leaving behind the other supertype instances. The design is changed
+to call dispose() on the Class In Association supertype. This delegates the
+dispose downwards through the class hierarchy. The downward delegation passes
+through Referring Class In Association, the dispose() for which calls the
+operation, clearReferences(). This operation migrates or deletes referential
+attributes as required, so this change achieves the objective of this note by
+fixing the headline symptom.
+
+This change does leave other parts of the Association subsystem with
+inconsistent implementations. Class As Link accepts the dispose directly and
+either disposes itself or calls migrateToSimple on a Linked Association if one
+is found across R211. The migrateToSimple body takes care of deleting the
+supertypes of Class As Link.
+
+The implementation for ClassAsLink.dispose() is brought into line with the
+change for Class As Subtype above by removing the Class As Link hierarchy
+manipulation from the body of migrateToSimple, and by always deleting self in
+the body of ClassAsLink.dispose(), whether or not a Linked Association
+instance is found. The dispose for Class As Link is changed to mirror the
+Class As Subtype implementation, in other words, to work downward from the
+Class In Association.dispose() call.
+
+Since the supertype connector represents the Association itself, rather than the
+Class As Supertype, the R_SUPER_Delete context menu function is redundant and
+is removed.
+
+A defect was found in MC-Java that was causing a returned instance set array to
+have null entries. The fix for this defect also addresses another, currently
+unscheduled, issue[2].
+
+Work Required
+-------------
+i507.1   Navigate to the Class In Association and call dispose()
+i507.1.1 In cme_functions, change R_SUB_Delete and R_ASSR_Delete so that they
+         navigate to the Class In Association supertype and call dispose() on
+         that.
+
+i507.2   Bring Class As Link disposal into line with Class As Subtype
+i507.2.1 In Class As Link.dispose, move the delete self statement outside of the
+         else block and delete the else.
+i507.2.2 In LinkedAssociation.migrateToSimple, remove the OAL from the comment
+         beginning 'Select the link, disconnect from the rgo . . .' all the way
+         down to the next comment.
+
+i507.3   Remove the redundant CME Function
+i507.3.1 In cme_functions, delete the function, R_SUPER_Delete
+i507.3.2 In context_menu_pei.sql, remove the only insert statement that refers
+         to R_SUPER.
+
+i507.4   Fix defect in MC-Java
+i507.4.1 In referred_to.inc, change the implementation of get instance set with
+         instance set argument so that both the passed array element and the
+         association implenting instance reference are checked for being non-
+         null before allocating and assigning the result element.
+         
+Unit Test
+---------
+_- Open ODMS
+_- Open the Class Diagram
+_- Right click on the subtype connector from Online Disk to Disk
+_- Delete it
+_R The subtype line is deleted and the Disk_ID is migrated to an identifying
+   attribute of type integer.
+_- Right click on the Link line between Disk Request and R1
+_- Delete it
+_R The link is deleted and Disk_ID and Qualified_Process_ID are migrated to
+   identifying attributes of type integer.
+_- Select Qualified Process class.
+_- Delete it
+_R Associations R1 and R2 are removed and Disk_ID in Disk Ownership is migrated
+   to an identifying attribute of type integer.
+_- Select the Drive class
+_- Delete it
+_R Association R5 is deleted. Drive_Disk Assignment.Drive_ID is migrated to an
+   identifying attribute. Drive_Disk Assignment.Disk_ID is deleted (the subtype
+   line to R7 is also removed as a by product of this test).
+_- Select the Supertype connector of R7.
+_- Delete it
+_R The supertype line is deleted. The subtype connectors to Slot and
+   Entry_Exit Port are deleted.
+_- Select the association, R9.
+_- Delete it.
+_R The association is deleted. The referential attribute Robot.Disk_Transfer_ID
+   is deleted.
+
+_- Run all unit tests
+_R All tests pass.
+
+End
+---
+
+$Log: i507.dnt,v $
+Revision 1.1  2009/09/03 18:21:18  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.140.1  2008/12/31 16:10:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/10/29 18:45:38  campbell
+Job: 507
+Addressed review issues.
+
+Revision 1.3  2004/10/29 17:07:30  campbell
+Job: 507
+Added MC-Java fix.
+
+Revision 1.2  2004/10/29 00:23:56  campbell
+Job: 507
+Introduced.
+
+Revision 1.1.2.1  2004/10/28 23:05:45  campbell
+Job: 507
+Introduced.

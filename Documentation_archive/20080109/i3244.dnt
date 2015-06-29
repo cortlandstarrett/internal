@@ -1,0 +1,184 @@
+========================================================================
+
+File:      $RCSfile: i3244.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:51 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Remove S_DID class and restore R14
+
+1. Abstract
+-----------
+This note describes the changes required to remove the S_DID class and restore
+the R14 association.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3244
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3244
+
+4. Background
+-------------
+The S_DID class was introduced to allow for a data type to associate with many
+domains.  With this approach the persistence behavior was incorrect.  Everytime
+a new system level data type was introduced all formal components would get
+persisted.  An attempt to resolve this was made by adding a new association
+between the S_DPK class and the S_DID class.  The idea here was to persist the
+S_DID instances in the S_DPK file which also owned the related S_DT class.  This
+only shifted the incorrect persistence behavior to where formalizing a component
+caused all system level data type packages to persist.
+
+5. Analysis
+-----------
+After some thought it was determined that a new class, S_DID, was never
+necessary.  All system level data types are accessible through the formal
+component.  So the only change that was required was to update all OAL to use
+the correct traversals when searching for a system level data type.
+
+The one exception to updating the OAL is when a list of both system level and 
+component level data types are required.  In such a case both sets must be added
+together.
+
+The persistence after such a change will be identical to that of creating a new
+data type, only the package where the data type was added will persist.
+
+6. Design
+---------
+6.1 Remove the S_DID class
+
+The S_DID class shall be removed.  The R14 association shall be modified to be
+S_DOM (conditional, one) to S_DT (many).  The R48 association shall be removed
+as part of the S_DID removal.  The entry in the file io tree shall be removed.
+
+All OAL which requires a search for a data type in the system level packaging
+will already exist.  The only OAL changes required are to remove the S_DID class
+from the traversal chain.
+
+Any OAL that exists to setup R14 for system level data types shall be removed.
+
+All PEI data shall be updated to remove S_DID from all traversals.
+
+The MC-Java schema and the model compiler schema shall be updated to account for
+the S_DID removal.
+
+6.2 Change properties to combine data type list
+
+When dealing with an element found under a component, i.e, O_ATTR, the
+properties for a type must combine the list of local data types and system level
+data types.  Currently the code will use only R14 for these elements.  This
+worked previously because all system level data types where associated across
+R14 when a component was formalized.  This must be changed to combine the list
+of local data types with the list of system level data types.  At this point the
+properties for element's like S_UDT have code that searches both lists, the only
+problem is that the first found list is overridden by the second list.  This
+code shall be fixed to add the two lists.  This code shall be reused for all
+elements that may use both system level and component level data types.
+
+6.3 Upgrade old model data
+
+The only upgrade required is to associate S_DT instances with S_DOM instances.  
+To do this the code shall search for instances of S_DT in the current loading
+scope.  The code shall also search for a S_DOM instance under the current
+model-root, if found each S_DT shall be associated with the S_DOM found.  In the
+case of system level data types a S_DOM instance will not be found.  Without the
+S_DID presence only component level data types will pass through this code.
+
+6.4 Update model compilers to exclude S_DID class
+
+The model compilers shall be updated to exclude the S_DID class in any
+traversals to the S_DT class.  This shall be covered in issue 3279.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See Design section.
+
+9. Unit Test
+------------
+S_DID removal:
+
+The existing tests shall run and pass.
+
+Manual tests: 
+
+_- Open properties for return type of operation in a component
+_R All system level and domain level dts are present in the drop down list
+_R No core types are duplicated
+
+_- Open properties for return type of operation in a domain
+_R No system level dts are present in the drop down list
+
+_- Open properties for user data type at the component level
+_R All system level and domain level core dts are present in the drop down list
+_- Repeat for structure member
+
+_- Open properties for user data type at the system level
+_R All system level core dts are present in the drop down list
+_R No domain level core dts are present in the drop down list
+_- Repeat for structure member
+
+_- Open properties for user data type at the domain level
+_R No system level core dts are present in the drop down list
+_R All domain level core dts are present in the drop down list
+_- Repeat for structure member
+
+Upgrade code:
+
+The test models found in the io.mdl test suite contain S_DID instances.  These
+will automatically get upgraded during the test runs.  The expected results
+shall be updated to account for the removal of the S_DID entries.
+
+End
+---
+
+$Log: i3244.dnt,v $
+Revision 1.2  2009/01/01 23:12:51  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:34  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.5  2007/11/27 21:34:10  tlondon
+Job: 3244
+
+Remove comment about no upgrade code needed, at least some of the test models showed that upgrade code was necessary.
+
+Revision 1.4  2007/11/26 21:40:42  tlondon
+Job: 3244
+
+Update to include that model compilers will be updated with separate issue.
+
+Revision 1.3  2007/11/26 21:36:40  tlondon
+Job: 3244
+
+Add design comment explaining the exlusion of any upgrade code.
+
+Revision 1.2  2007/11/26 21:34:36  tlondon
+Job: 3244
+
+Adjust according to review minutes.
+
+Revision 1.1  2007/11/19 18:35:35  tlondon
+Job: 3244
+
+Introduce
+

@@ -1,0 +1,346 @@
+========================================================================
+
+File:      $RCSfile: i342.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:23 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Nightly build script defect fixes
+
+Abstract
+--------
+
+This note describes the changes necessary to the nightly build script for
+promoting the bp.pkg-feature project. This issue also documents the fact
+that no email notifications are sent on check out failures.
+
+History
+-------
+
+Initial i342-080604-01.rvm
+final i342-081004-01.rvm
+
+Document References
+-------------------
+
+Issue 342
+
+Background
+----------
+
+A build was not triggered in the case when a file in the bp.pkg-feature module
+was promoted in isolation (i.e. no files from any other package were promoted
+the same day). This is because this module is only promoted when the build
+scripts detect changes in other packages. This note addresses this problem and
+also addresses the problem, raised in the same issue, that no email
+notifications are sent on check out failures.
+
+Design
+------
+
+Having identified that pkg-feature was not triggering builds properly, treating
+it identically to all other modules was considered. This option was discarded
+because pkg-feature does not directly contribute to delivered functionality,
+but mainly controls the build and defines the packages needed for delivery.
+
+Instead, the procedure for finding modified files needs to be the same as for
+the rest of the modules, but there is no need to actually perform a build on
+this module, since it contributes no delivered files or functionality. The
+intermediate step of promoting all of the files of a module prior to build is
+also needed for pkg-feature, but since this is already performed as part of the
+build step, this part of the nightly build procedure is left unchanged.
+
+i342.1 Change check for latest tag to only test for feature.xml
+
+The feature.xml file specifies what packages are part of the deliverable.
+Although not raised as part of the issue, a change to another file (other than
+feature.xml) of pkg-feature would have caused the build scripts to try to
+check out a copy of feature.xml with the same nightly build tag. Since there was
+no guarantee that feature.xml would always be promoted at the same time as
+another file, there existed a possibility that the check out would fail and the
+build not be performed. This potential problem is addressed by checking only for
+the latest tagged version of feature.xml when obtaining the module list.
+
+i342.2 Refactor check out error detection
+
+Checkout error detection was previously done using a repeated section of shell
+script. This is refactored into a common function, verify_checkout, added to
+create_release_functions.sh.
+
+The verify_checkout function first sets the dir_count variable equal to the
+result of the following command: "ls ${module} | wc -l".  This gives dir_count a
+value equal to the number of files or directories under the module being
+verified.  If dir_count is less than or equal to one, then no files have been
+checked out, and an error has occurred.  The reason it can be equal to one and
+still fail is because if a successful check out was completed with one file
+being tagged the CVS directory would also exist and dir_count would equal two.
+If an error is detected an exit is called at this point ending the execution.
+
+The following script is removed from the extract_release_files function.
+
+		dir_count=`ls ${module} | wc -l`
+
+		if [ ${dir_count} -le 1 ]; then
+
+			# Set variable to false if module version not found
+			version_exists="false"
+
+		else
+
+			# Set variable to true if modified files exist
+			modified_files="true"
+
+		fi
+
+The check_errors function is removed from create_nightly_build.sh because the
+verify_checkout function now handles checking for check out errors.  The two
+calls to the check_errors function, in create_nightly_build.sh, are also
+removed.  The version_exists variable is no longer needed therefore it is
+removed.  A call to the newly created function is added after each check out
+of the modules, except when checking for modified files.
+
+i342.3 Change get_required_modules function to remove error checking
+
+The verify_checkout function is now responsible for detecting checkout errors,
+so the error checking script in this function is removed. The 'if exists' test
+on the feature.xml file is retained so that the grep is not attempted if the
+file is not present.
+
+A call to the verify_checkout function is added after each checkout of the
+bp.pkg-feature module, except when checking if files were modified (shortly
+after getting the required modules list).
+
+i342.4 Add new function to check for modified files
+
+Since create_release_functions.sh is a common script and only the nightly build
+script is interested in modified files,  the functionality for checking for
+modified files is removed from it.  This functionality is added to the
+create_nightly_build.sh script.
+
+A new function 'checkif_modified' is added to the create_nightly_build.sh
+script. It iterates over all the modules and performs a file count similar to
+that described above (i342.2). If the count is 2 or more, it sets its result
+(the modified_files variable) to true.
+
+A call to the function mentioned above is added after the modules are checked
+out with the current nightly tag. 
+
+i342.5 Add support for bp.pkg-feature in remove_extraction
+
+The remove_extraction function is changed to add support for removal of the
+bp.pkg-feature module.
+
+The modules variable, ${release_pkg}, is added to the for loop in the function.
+Inside the for loop an if test is added to verify that the modules exist before
+trying to remove them.  This prevents the function from trying to remove all other
+modules when the only one in question is bp.pkg-feature.  A sleep is called for
+two seconds to avoid a problem with cvs, where checking out the same module
+within a second will cause it to fail.  The sleep command that was used in the
+test for modified files is removed as it is now done in the remove_extraction
+function.  A call to remove_extraction replaces the old method of removal for
+the bp.pkg-feature module.  Another call is added directly after the modules
+list is compiled from the latest tagged version of feature.xml. 
+ 
+i342.6 Add email notification to module check out failures
+
+In the new function added from i342.2 an email notification of check out
+failures is added.  The notification is sent when any module check out does not
+contain the tag in question.
+
+i342.7 Add check out of bp.pkg-feature with latest tag
+
+In order for the promotion step to correctly promote the bp.pkg-feature module
+the latest tagged version of the modules needs to be checked out.  A call to the
+get_required_modules function is added after the second time the latest tag,
+from all the modules, is found.  This call is added to the
+create_nightly_build.sh script.
+
+Work Required
+-------------
+
+i342.1 Change check for latest tag to only to be for feature.xml
+
+The create_nightly_build.sh is changed so that the return value of 
+previous_nb_tags contains the tag set from feature.xml only. The for loop which
+finds the latest tag from the set is made analogous to the same functionality
+later in the script (where the list for tag promotion is found) by adding a
+check that prevents finding any tag greater than the days date.  This is because
+the script should not deal with anything later than that.
+
+i342.2 Refactor check out error detection
+
+The changes are made to create_release_funtions.sh and create_nightly_build.sh.
+
+i342.3 Change get_required_modules function to remove error checking
+
+The changes are made to create_release_funtions.sh.
+
+i342.4 Add new function to check for modified files
+
+The changes are made to create_nightly_build.sh.
+
+i342.5 Add support for bp.pkg-feature in remove_extraction
+
+The changes are made to create_nightly_build.sh.
+
+i342.6 Add email notification to module check out failures
+
+The changes are made according to the design.
+
+i342.7 Add check out of bp.pkg-feature with latest tag
+
+The changes are made according to the design.
+
+Implementation Comments
+-----------------------
+
+With the addition of the verify_checkout function, two calls to this function are
+added in the create_tiger_release.sh script after each time the modules are
+checked out.
+
+A list of the modules being verified is created, containing all modules
+including bp.pkg-feature.  This list is used in a for loop which calls
+verify_checkout for each module in the list.
+
+The following script is removed as its functionality is now handled with the
+verify_checkout function.
+
+	# Check to see if version exists exitting if not
+	if [ ${version_exists} = "false" ]; then
+
+		# Report an error to a user
+		echo "ERROR:  Version ${product_version} does not exist for ${module}"
+		exit 1
+
+	fi  
+
+When creating a tiger release the user is executing the script, instead of
+running automated, therefore an email notification about check out failures to the
+build administrator is not necessary.  An if test is added to the verify_checkout
+function which tests which script is calling create_release_functions.sh.  If the
+calling script is create_tiger_release.sh then the email is not sent. 
+
+An additional call to verify checkout is added to create_tiger_release.sh
+immediately after the first call to get_required modules in the
+create_standalone function. This allows the script to detect a checkout failure
+earlier and present less confusing feedback to the user.
+
+Unit Test
+---------
+
+Log in to the build machine (whimbrel) using user: build.
+
+Back up the existing shell script files.
+
+Copy the changed files to \\whimbrel\nightly_build.
+
+Modify the create_nightly_build.sh to change the BUILD_ADMIN setting:
+
+BUILD_ADMIN="<your_email_address>@mentor.com"
+
+Modify create_release_functions.sh to use the test repository:
+
+cvsroot="/arch1/sun/u/tlondon/work/repository"
+
+In Eclipse, switch to the CVS view to do the tagging in this test. Set up the
+repository above, logging in as build.
+
+Now complete the following:
+
+- Tag a file in bp.pkg-feature with the days date
+- Run the nightly build script
+R Script completes without error
+R The above tag exists on all files in the module
+- Set product_version to foo right before the second call to
+  get_required_modules (replacing N${large_num})
+- Run the nightly build script
+R An email is sent to the build administrator explaining a check out failure.
+- Restore the old value for product_version
+- Set product_version to foo right before the second call to
+  extract_release_files (replacing HEAD)
+- Run the nightly build script
+R An email is sent to the build administrator explaining a check out failure.
+- Run the create_tiger_release.sh script passing an invalid tag as the argument
+R An error message is displayed and the script exits
+
+If the test passes, undo the edits specified in the Unit test.
+If the test fails, restore the backed up files.
+
+Code Changes
+------------
+
+com.projtech.bp.core/tools/create_nightly_build.sh
+Initial: 1.24	Final: 1.27
+
+com.projtech.bp.core/tools/create_release_functions.sh
+Initial: 1.5		Final: 1.8
+
+com.projtech.bp.core/tools/create_tiger_release.sh
+Initial: 1.8 		Final: 1.11
+
+End
+---
+
+$Log: i342.int,v $
+Revision 1.1  2009/09/03 18:22:23  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/01/01 23:13:00  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.9.152.1  2008/12/31 16:10:03  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.9  2004/08/13 19:19:37  campbell
+Job: 342
+Final version update.
+
+Revision 1.8  2004/08/13 19:14:55  campbell
+Job: 342
+Misc small fixes.
+
+Revision 1.7  2004/08/10 22:49:05  tlondon
+Job: 342
+
+Fixed according to review minutes
+
+Revision 1.6  2004/08/10 16:48:43  tlondon
+job: 342
+
+Checking in completed int
+
+Revision 1.5  2004/08/09 23:30:25  campbell
+Job: 342
+Refactored design.
+
+Revision 1.4  2004/08/09 14:21:08  tlondon
+Job: 342
+
+Fixed according to review minutes.
+
+Revision 1.3  2004/08/06 19:10:22  tlondon
+Job: 342
+
+Updated implementation note
+
+Revision 1.2  2004/08/05 22:31:47  tlondon
+Job: 342
+
+Finished implementation note
+
+Revision 1.1  2004/08/03 16:29:26  tlondon
+Job: 342
+
+Introducing implementation note
+

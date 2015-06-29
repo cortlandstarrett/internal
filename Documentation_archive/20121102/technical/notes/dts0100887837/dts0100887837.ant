@@ -1,0 +1,234 @@
+========================================================================
+
+File:      $RCSfile: dts0100887837.ant,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Introduce nightly build support
+                          
+1. Abstract
+-----------
+This document describes an approach to extend BridgePoint model execution and 
+translation to the command-line.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100840203
+    Introduce the ability to invoke the pre-builder from the command-line.
+[2] ClearQuest DEI dts0100887837
+    Introduce nightly build support
+    (Note: This is an issue where requirements come from Ericsson.)
+[3] http://www.developertesting.com/archives/month200508/20050823-HeadlessHelloWorldInEclipse.html
+    Headless Hello World in Eclipse
+[4] Build and Test Automation for plug-ins and features
+    http://www.eclipse.org/articles/Article-PDE-Automation/automation.html
+[5] Creating Headless (Command Line) Plugins
+    https://wiki.sei.cmu.edu/aadl/index.php/Creating_Headless_(Command_Line)_Plugins
+[6] Example of using ANT to build from the command-line
+    http://stackoverflow.com/questions/206473/build-eclipse-java-project-from-command-line
+
+4. Background
+-------------
+Currently BridgePoint model execution, translation, and builds must be 
+performed from the inside the Eclipse environment.   It is common in software
+development to build and run unit tests nightly.   In order to support
+this, BridgePoint needs to expose an interface to users that allows this 
+functionality to be performed from the command line.
+
+5. Requirements
+---------------
+5.1 BridgePoint shall provide a command line interface (CLI) to allow users to
+    perform nightly build operations from a build server.
+5.2 Model Translation
+5.2.1 Any model compiler that uses the com.mentor.nucleus.bp.mc plugin 
+      introduced in BridgePoint 3.5.0 can be invoked from the command line.  
+      This includes all Mentor Graphics model compilers as well as customer model
+      compilers.
+5.2.2 The user shall have the ability to invoke only the model compiler 
+      pre-builder from the command-line.  
+5.2.3 The user shall be able to specify a destination folder for the model 
+      compiler artifacts.      
+5.3 Model Execution
+5.3.1 The tool shall provide the ability to launch Verifier debug 
+      configurations from the command-line.
+5.3.2 The tool shall provide the ability to invoke a function, class-based 
+      operation, or interface message when the launch configuration is invoked.
+5.3.3 The ability to terminate a verifier session after a specified time period
+      shall be provided.
+5.4 An option to direct console output to a file shall be provided.      
+5.5 Licensing shall be enforced by the command-line interface.  This enforcement
+    means the user is required to have a license that would be required for 
+    loading/editing the model (component designer or system designer). 
+    Additionally, the user must have required execution and model compiler 
+    licenses if the corresponding execution and model compiler building is done 
+    from the command line. 
+
+6. Analysis
+-----------
+Currently BridgePoint provides all its functionality under the umbrella of the 
+Eclipse environment.  This functionality includes model editing, model 
+execution, model translation, and building.   The goal of this issue is NOT to 
+duplicate functionality available to the user under this eclipse umbrella.  
+Instead, the goal is to allow access to portions of this functionality that are
+required to allow users to perform standard "nightly build" operations.  These
+operations are: model execution, model translation.   
+
+Command-line model execution is needed because it allows BridgePoint Verifier 
+to be used as a unit testing tool.  Modeled test suites are executed through 
+Verifier and the results are captured and compared against an expected result.
+
+Command-line model translation allows the model to be built though a Model 
+Compiler.  This includes parsing and exporting the model followed by executing 
+a specified model compiler.
+
+Note that compilation and linking of the result produced from a model compiler
+is intentionally not discussed here.   Eclipse already provides means for users 
+to build applications and the means to do this from the command-line is 
+present today.   The BridgePoint command-line interface will allow the user
+to specify the destination folder for the artifacts produced by the model 
+compiler as specified in 5.1.3 the user can then use this in any way they choose
+to include these in their build process.  If an Eclipse build is desired, then 
+ant can be used [6].  This analysis note will not discuss the mechanics 
+of compiling/linking the artifacts produced by a Model Compiler any further 
+because it is very lightly coupled to BridgePoint proper and is a part of all
+nightly build processes.  It is not directly related to BridgePoint.
+
+
+6.1 Command Line interface (Requirement: 5.1)
+    A new plugin shall be introduced that acts as the BridgePoint command line
+    interface (CLI).  Through this plugin the user will be able to perform all
+    tasks needed for nightly-build operations.
+6.1.1 Command-line options shall be evaluated in the order they appear on the 
+    command-line.
+        
+6.1.2 The CLI shall provide command-line options.  These options, and their
+    purpose are enumerated here.
+6.1.2.1 -project <name>
+    This specifies the name of the model that will be used.  This name specified
+    is case-sensitive.
+    
+6.1.2.2 -mc <name>  (Requirement: 5.2.1)
+    This allows the user to specify the BridgePoint model compiler that should 
+    be used.  It is required that the user be licensed for the specified model
+    compiler.  The name specified should be the plugin name.  For example:
+    
+    com.mentor.nucleus.bp.mc.c.binary
+    com.mentor.nucleus.bp.mc.c.source
+    com.mentor.nucleus.bp.mc.systemc.source
+    com.customer.custom.mc    
+    
+6.1.2.2.1 When this option is specified, the appropriate license shall be 
+    checked, and the launch will not be allowed to the appropriate license is 
+    not available. (Requirement: 5.5)
+    
+6.1.2.2.2 -prebuildOnly (Requirement: 5.2.2)
+    This option is only valid when -mc is also specified.   This option causes 
+    only the pre-builder of the specified Model Compiler to run.   This allows 
+    the model to be parsed and exported without causing the model compiler 
+    itself to be invoked.  When this option is specified no model translation is 
+    performed.
+6.1.2.2.3 -mcFolder <folder>  (Requirement: 5.2.2)
+    This specifies a destination folder for the model compiler artifacts.   This 
+    folder must already exist or as error shall be raised.
+    
+6.1.2.3 -output <file> (Requirement: 5.4)
+    This specifies a file name for output that would have been directed to the 
+    Eclipse console when running inside Eclipse.  This can be a fully qualified
+    file name.  If the file already exists it shall be overwritten.
+    
+6.1.2.4 -launch <launch config> (Requirement: 5.3.1)
+    This allows the user to specify a BridgePoint Verifier launch configuration 
+    to execute.   The path specified can be a fully qualified path OR a 
+    path relative to the project.
+
+6.1.2.4.1 When this option is specified, the appropriate license shall be 
+    checked. The launch will not be allowed if the appropriate license is 
+    not available. (Requirement: 5.5)
+    
+    
+6.2 The CLI plugin shall provide a single entry point that shall be used to 
+    perform the required functionality from the command line.  This entry-point
+    is what the user specifies on the command-line to invoke BridgePoint.  By 
+    having a single entry-point the user specifies the same entry point name 
+    regardless of what operation(s) is/are being performed.
+
+6.2.1 Command-line examples:
+6.2.1 Using Eclipsec.exe
+      eclipsec.exe -application bpcli.CLI <options>
+      
+6.2.2 With java (This may be useful to integrate it with other java programs). 
+      java -jar plugins\org.eclipse.equinox.launcher_1.0.0.v20070523.jar -application bpcli.CLI <options>
+
+6.3 The Verifier Launch configuration GUI shall be extended to allow the user to
+    specify a initialization function.  This shall be automatically executed 
+    when the launch configuration is run.
+    (Requirement: 5.3.2)
+    
+6.4 The Verifier Launch configuration GUI shall be extended to specify a 
+    timeout for verifier execution.
+	(Requirement: 5.3.3)
+6.5 TODO
+[12:48:36 PM] Cortland Starrett: Bob, I would like you to size the effort of 
+actually doing the CLI to create a workspace.  It may become a 
+requirement for some reason.
+	
+7. Work Required
+----------------
+7.1 Introduce a new plugin, com.mentor.nucleus.bp.cli, that holds the entry-
+    point(s) for the BridgePoint CLI.
+7.2 Add a class to new plugin to manage the command-line arguments.
+7.3 Invoke the prebuilder using the provided command-line arguments. 
+7.4 Modify the Verifier launch config allow the user to choose an 
+    initialization function.
+7.5 Modify the Verifier launch config allow the user to choose a execution 
+    timeout value.  Execution is terminated if the session runs longer than this
+    period.
+7.6 Launch Verifier using the CLI.
+7.7 Modify Verifier to invoke the provided termination function when one is
+    provided.
+     
+8. Acceptance Test
+------------------
+8.1 Assure that a build can be invoked from the command-line
+8.1.1 Test that the pre-build option only performs the pre-build and not the 
+      full build.
+8.1.2 Test CLI build using MC-3020 binary
+8.1.3 Test CLI build using MC-3020 source
+
+8.2 Test that Verifier can be invoked from the CLI.
+    
+End
+---
+
+$Log: dts0100887837.ant,v $
+Revision 1.5  2012/06/11 20:28:01  rmulvey
+job:dts0100887837
+Updated the note to account for review observations.
+
+Revision 1.4  2012/05/29 17:22:18  rmulvey
+job:dts0100887837
+Corrected a typo
+
+Revision 1.3  2012/05/29 17:11:25  rmulvey
+job:dts0100887837
+Added a work required section to this document.
+
+Revision 1.2  2012/05/29 16:58:48  rmulvey
+job:dts0100887837
+Remove the phrase 'state save' from the requirements.   We will simply provide the ability to call a function, defined by the launch config, on termination.
+
+Revision 1.1  2012/05/24 15:57:29  rmulvey
+job:dts0100887837
+Introduced the analysis note.
+

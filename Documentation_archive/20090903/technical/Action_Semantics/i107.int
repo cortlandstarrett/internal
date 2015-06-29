@@ -1,0 +1,1071 @@
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement select, select where
+
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+the select statement variations.
+
+History
+-------
+
+final i107-021304-01.rvm
+
+
+Document References
+-------------------
+Issue 107
+action_semantics.dnt
+
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so the select statements are validated properly.
+
+This work is part of implementing the action semantics 
+design (action_semantics.dnt), section AS1.4.3.
+
+The Tiger reduced parser (oal.bnf) has the following rules
+regarding this statement.  Note that the where_spec rule
+isn't even used.
+
+select_statement
+  :
+    "select"!
+    (
+      "one"
+      local_variable[true]
+      object_spec
+    |
+      "any"
+      local_variable[true]
+      object_spec
+    |
+      "many"
+      local_variable[true]
+      object_spec
+    )
+    ;
+
+object_spec
+  :
+  (
+    "related"!
+    "by"!
+    instance_chain
+  |
+    "from"!
+    "instances"!
+    "of"!
+    object_keyletters
+  )
+  (
+     "where"!
+     expr
+  )?
+  ;
+
+instance_chain
+  :
+   local_variable[false]
+    ( TOK_ARROW!
+      object_keyletters
+      TOK_LSQBR!
+      relationship
+      (
+        TOK_DOT!
+        phrase
+      )?
+      TOK_RSQBR!
+    )+
+  ;
+  
+where_spec!
+  :
+  expr
+  ;
+  
+
+Design
+------
+
+i107.1 Grammar changes
+
+i107.1.1 Change grammar to use where_spec rule
+
+The grammar is changed so the object_spec rule uses the
+where_spec rule, rather than hard coding it.  The exclamation
+point is removed from the where_spec rule, so that a validation
+function is generated for it:
+
+object_spec
+  :
+  (
+    "related"!
+    "by"!
+    instance_chain
+  |
+    "from"!
+    "instances"!
+    "of"!
+    object_keyletters
+  )
+  ( where_spec )?
+  ;
+  
+where_spec
+  :
+  "where"! expr
+  ;
+
+i107.1.2  Move local variable to be part of object_spec
+
+The local_variable rule reference is moved from the instance_chain
+rule to the object_spec rule.  This provides visibility of the
+result of the local_variable rule to the object_spec rule, 
+where it is needed by the validation functions to create the
+appropriate select instances.
+
+object_spec
+  :
+  (
+    "related"!
+    "by"!
+    local_variable[false]
+    instance_chain
+  |
+    "from"!
+    "instances"!
+    "of"!
+    object_keyletters
+  )
+  ( where_spec )?
+  ;
+
+instance_chain
+  :
+    ( TOK_ARROW!
+      object_keyletters
+      TOK_LSQBR!
+      relationship
+      (
+        TOK_DOT!
+        phrase
+      )?
+      TOK_RSQBR!
+    )+
+  ;
+  
+  
+i107.1.3  Add parameter to where_spec rule
+
+The where_spec rule needs to know if the previous rule executed
+was a relationship chain or just the keyletters of an object.  The
+parameter isChain (boolean) is added to the where_spec rule.  The
+invocations of the where spec rule are duplicated and the correct
+parameter sent in the object_spec rule.  The final results are:
+
+object_spec
+  :
+  (
+    "related"!
+    "by"!
+    local_variable[false]
+    instance_chain
+    ( where_spec[true] )?
+  |
+    "from"!
+    "instances"!
+    "of"!
+    object_keyletters
+    ( where_spec[false] )?
+  )
+  ;
+
+where_spec[boolean isChain]
+  :
+  "where"! expr
+  ;
+
+i107.1.4  Remove validation of literal strings
+
+The "one", "any" and "many" literal strings in the select_statement
+rule have an exclamation point appended to them, to turn off generation
+of validation functions for these literal strings.
+
+i107.2  Tighten assignment rules
+
+i107.2.1 The validation functions need to verify when operating on
+variables of type inst_ref<Object> or inst_ref_set<Object>
+that the <Object> portion of the variable is the same.
+The assignment to transient variable and create object instance 
+validation functions have this improved checking added 
+to them.  The select functions will need to use the 
+same validation processing. 
+
+i107.2.2 The validation utility function data_types_compatible() is
+enhanced to check assignment statements.  This function is 
+then used in assignment_expr_end() and return_stmt_end()
+to verify the data types are compatible, replacing the ad hoc
+code that was there.
+
+i107.3 Changes to meta-model
+
+i107.3.1 Changes to Value subsystem 
+
+i107.3.1.1  The class Selected Reference (V_SLR) has a relationship R812 to
+the Variable class (V_VAR).  This relationship was created as a 
+convenience, rather than as a reflection of the subject matter.
+The relationship is changed to relate to the Attribute (O_ATTR)
+class.  This models the reading of an attribute for the selected
+reference in a where clause.  Additionally, the selected reference
+can be used to invoke an instance-based operation.  A second 
+relationship, R825, is added from V_SLR to the Transform Value (V_TRV)
+class to capture this usage.   BP OAL allows the use of the selected
+variable directly as an instance reference, for example, 
+
+where selected == inst1
+
+This usage is only supported by Tiger as a backwards compatibility
+to BP, as the same result can be obtained by using the assignment statement.
+In this case, neither relationship 812 nor 825 is formalized.
+
+i107.3.1.2  The operations migrate_to_int and migrate_to_ins are
+added to the Variable (V_VAR) class.  These operations migrate a 
+variable that has a Transient Var subtype to, respectively, an
+Instance or Instance Set subtype.  These operations are needed as the
+validation functions initially create a Transient Var instance
+when the variable's type is not known.  Once the type is known,
+we may need to migrate the type.
+
+
+i107.3.2  Add Multiplicity data type
+
+The data type Multiplicity is added.  It is an enumeration,
+with the following values: Unknown, One, Many.
+
+i107.3.3 Changes to Action_Select subsystem 
+
+i107.3.3.1  The relationship R613 is from the Select (ACT_SEL)
+class to the Variable (V_VAR) class.  This relationship captures
+the starting variable used in a relationship chain.  Since the
+starting variable is actually an r-value of the variable, the
+relationship should be to the Value (V_VAL) class. The relationship
+is changed to connect the ACT_SEL and V_VAL classes.  The relationship
+cardinality and phrases remain the same.
+
+i107.3.3.2  The relationship R637 is a Mc-Mc:M associative relationship
+between the Select class, Chain Link class, and the Relationship class.
+Additionally, the Chain Link class has a reflexive relationship to 
+define the order of the links in the relationship chain.  To simplify
+this relationship, which is difficult to populate and validate, the following
+changes are made:
+
+- R637 is changed to a 1c-1 between the Select and Chain Link classes.
+The Select class 'starts with' the Chain Link class, i.e., this relationship
+identifies the first link in a chain for a select related by statement.
+Only one instance of Chain Link per chain is related to the Select class,
+hence the conditionality on the Select side.
+
+- R681 is added as a Mc-1 relationship between the Chain Link class and
+the Relationship class.  This captures the relationship being crossed for
+the Chain Link instances.
+
+i107.3.3.3  In order to validate that the multiplicity of the result
+requested by the select statement (one, any, many) is correctly 
+specified by the relationship traversal, the Mult attribute is 
+added to the Chain Link class.  It has a type of Multiplicity.
+
+i107.3.4  Add parse flags attributes
+
+In order to track conditions during the parse, attributes
+are added to the Block (ACT_BLK) class.  The Block class
+is the most suitable place for these attributes.  A Statement
+instance may not exist yet, but the Block the Statement is
+a part of will always exist. The following attributes, all 
+of type boolean, are added:
+
+InWhereSpec - is true if we are currently parsing a where spec
+SelectedFound - is true if the 'selected' keyword was found
+  while parsing the where spec
+WhereSpecOK - is true if the where spec has no errors
+
+The class has the following instance-based operations added:
+
+boolean get_in_where_spec()
+void set_in_where_spec( value: boolean )
+boolean get_selected_found()
+void set_selected_found( value: boolean )
+boolean get_where_spec_status()
+void set_where_spec_status( value: boolean )
+
+Each operation performs the set or get operation on the 
+associated attribute.
+
+i107.3.5  Update clear operations
+
+i107.3.5.1  Statement clear()
+
+Tests are added to the Statement.clear() operation for the following
+subtypes: ACT_FIO, ACT_FIW, ACT_SEL.  If successful, each test invokes the
+clear operation for the subtype.
+
+i107.3.5.2  Value clear()
+
+Code is added to the Value.clear() operation for the following
+subtypes: V_SLR, V_IRF, V_ISR.   The code clears the information
+for the subtype (either explicitly or by calling the subtype's
+clear operation), and deletes the subtype.
+
+i107.3.5.3  New clear operations
+
+The following classes have clear operations added to them:
+
+Select (ACT_SEL)
+Select From Instances (ACT_FIO)
+Select From Instances Where (ACT_FIW)
+Chain Link (ACT_LNK)
+Selected Reference (V_SLR)
+
+i107.3.6  Add Object In Relationship get_multiplicity()
+
+The operation get_multiplicity() is added to the class
+Object In Relationship (R_OIR).  The operation returns
+a Multiplicity enum.  The operation searches
+for the subtype of R_OIR that has a Mult attribute.  The
+function returns the string according to the Mult value 
+(0=one, 1=many).  If there is a problem, the Multiplicity::Unknown
+value is returned.
+
+i107.4  Allow single ticks in validation code
+
+The validation code needs to navigate the reflexive relationship
+for the Chain Link class (R604).  The OAL syntax for this contains
+single ticks to enclose the relationship phrase.  The current 
+tooling for generating code from the validation OAL does not
+change the single ticks to double single ticks when outputting
+the sql.  This causes problems when importing the generated sql.
+To solve this, a new $t function, named 2tick, is created.  The
+2tick function converts all single ticks in the passed in string
+to two single ticks.  This allows the generated sql to be
+imported correctly.
+
+i107.5  Select statement validation
+
+There are actually seven variations of the select statement:
+
+select any irv from instances of <KL>
+select many irsv from instances of <KL>
+
+select one irv related by irv2-><instance chain>
+select any irv related by irv2-><instance chain>
+select any irv related by irsv-><instance chain>
+select many irsv related by irv-><instance chain>
+select many irsv related by irsv2-><instance chain>
+
+where irv and irv2 have the type inst_ref<Object>
+and irsv and irsv2 have the type inst_ref_set<Object>
+
+All of these select statements can end with an optional
+where clause.
+
+The select one or any statements always create/update an inst_ref<Object>
+variable.  The select many statements always create/update an
+inst_ref_set<Object> variable.  For select one, the starting point
+of the instance chain must be an inst_ref, and all relationship
+traversals must have a multiplicity of one.  Similarly, for 
+select any or select many, there must be a multiplicity of
+many involved in the chain, either by starting with an inst_ref_set,
+or by one of the relationship traversals having a many multiplicity.
+
+The following errors can occur:
+
+- The keyword 'Selected' is used outside of a where expression
+- The keyword 'Selected' is not used inside of a where expression
+- Unknown object keyletters in a relationship chain
+- Unknown relationship in a relationship chain
+- 'Select one' used with 'from instances of'
+- Expression in where clause is not boolean
+- Variable in select one or select any is not an inst_ref<Object>
+- Variable in select many is not an inst_ref_set<Object>
+- A relationship with many multipicity in a select one statement
+- The starting variable is inst_ref_set<Object> in a select one statement
+- Nothing with many multipicity in a select any statement
+- Nothing with many multipicity in a select many statement
+
+i107.5.1  select_statement rule
+
+The select_statement_end validation function is implemented. The 
+function first checks that the 'Select one' used with 'from instances of'
+error hasn't occurred.  It then invokes one of the following utility
+functions to finish processing the statement:
+
+process_from_instances() - The function verifies that the result variable
+is the correct type and multiplicity if it already exists. If
+this is an implicit declaration of the variable, then it is
+migrated to the correct subtype (instance or instance set).
+The cardinality and is_implicit attributes are set.  The function
+returns the Statement_ID.
+
+process_related_by() - The function verifies that the cardinality of
+the statement (one, any, many) agrees with the cardinality
+of the relationship navigation. The function verifies that 
+the result variable is the correct type and multiplicity 
+if it already exists. If this is an implicit declaration 
+of the variable, then it is migrated to the correct subtype 
+(instance or instance set). The cardinality and is_implicit 
+attributes are set.  The function returns the Statement_ID.
+
+The utility function clear_select() is created.  The function 
+deletes the result variable for the select statement in the
+case where the variable is implicitly declared by this statement.
+
+The utility function clear_rel_data() is created. The function
+deletes any data for a relationship navigation.
+
+i107.5.2  object_spec rule
+
+The following validation functions are implemented to validate
+this rule:
+
+object_spec_start() - This function sets the where_spec_status
+parse flag to true.  This is for the case of a statement without
+a where clause following a statement with a where clause that
+had an error.  The function returns the current rule id.
+
+object_spec_end() - The function first checks that the where
+clause expression is boolean, and references the selected keyword.
+This check must be here so that we can delete any instances associated
+with this statement if there is an error.  If there is no error, then
+an instance of ACT_SMT and the appropriate select subtype instance are
+created, and all relationships that can be are formalized.
+
+i107.5.3  instance_chain rule
+
+The following validation functions are implemented to validate
+this rule:
+
+instance_chain_start() - This validation function returns a
+null unique_id.  When this value is later passed to instance_chain_loop5_end
+during the first iteration of the loop, this indicates that the
+loop end function is processing the first link in the chain
+from the instance reference.
+   
+instance_chain_loop5_end()  - This validation function first calls
+is_valid_relationship() to verify that the relationship navigation
+described by the link in the chain is correct.  If there are no
+problems, the function creates an instance of ACT_LNK, and formalizes
+all its relationships.  The function returns the identifier of
+the ACT_LNK instance.
+
+The validation function is_valid_relationship() is changed to 
+return the Multiplicity value of the relationship
+navigated. If there is an error the return value is Multiplicity::Unknown.
+
+The validation function has_valid_phrase() is modified to add
+further checks for the correct phrase being used when navigating
+an associative reflexive relationship.
+
+The utility function get_right_object_multiplicity() is created.
+The function returns the multiplicity for navigating from one
+object to another across a relationship. The returned value is 
+from the Multiplicity enum.
+
+i107.5.4  where_spec rule
+
+The following validation functions are implemented to validate
+this rule:
+
+where_spec_start() - This function creates three instance reference
+variables named SELECTED, Selected, and selected.  It also sets the
+parse flag attributes to:
+
+selected_found = false
+in_where_spec = true 
+where_spec_status = true
+
+The function returns the current rule id.
+
+where_spec_validate() - This function sets the where_spec_status
+parse flag to true or false, depending on if the expression parsed
+correctly. The function returns the current rule id.
+
+where_spec_end() - This function deletes the three instance reference
+variables named SELECTED, Selected, and selected.  It also sets the
+in_where_spec parse flag to false. The function returns the current rule id.
+
+The utility function selected_validate is created.  The function returns
+true if the string passed in is one of the possible selected variable
+names.  If the string passed in is a selected variable, the function raises
+an error if we are not in a where clause.
+
+The validation function attribute_access_end() is modified to add
+a call to selected_validate().  If this is a selected reference, the
+Attribute Value (V_AVL) instance is migrated to a Selected Reference.
+The selected_found parse flag is also set to true.
+
+The validation function local_variable_validate() is modified to
+add a call to selected_validate().  If this is selected, then the
+function creates a Selected Reference instance, and returns the
+Selected Reference id.
+
+i107.6  Fix leaks in validation functions
+
+With the addition of new errors being raised, the following
+validation utility functions were updated to eliminate instances
+that would otherwise be left as garbage.
+
+is_valid_relationship() - Parameters chain_start_val and chain_id are added.
+These parameters are the identifiers for the instance reference value that
+starts the relationship chain, and the id of one of the ACT_LNK instances
+in the chain.  These parameters are passed to clear_rel_data in the case of
+an error.  The parameters left and right are changed to be the Obj_ID values
+for the left and right object in the relationship.  Previously they were the
+variables that referenced the O_OBJ instances.
+
+is_valid_assoc_relationship() - Parameters chain_start_val and chain_id are added.
+
+has_valid_phrase() - Parameters chain_start_val and chain_id are added.
+
+relate_statement_end() - Parameters chain_start_val and chain_id are added to
+invocations of is_valid_relationship and is_valid_assoc_relationship.
+
+unrelate_statement_end() - Parameters chain_start_val and chain_id are added to
+invocations of is_valid_relationship and is_valid_assoc_relationship.
+
+attribute_access_end() - Remove the code that deletes an instance of Statement.
+This is no longer needed.  The additional deletion code added above now takes
+care of this deletion.
+
+Work Required
+-------------
+
+i107.1 Grammar changes
+
+i107.1.1 Change grammar to use where_spec rule
+
+Modify oal.bnf as described in the design.
+
+i107.1.2  Move local variable to be part of object_spec
+
+Modify oal.bnf as described in the design.
+  
+i107.1.3  Add parameter to where_spec rule
+
+Modify oal.bnf as described in the design.
+
+Add the parameter "boolean isChain" option to grammar_enhancer.arc
+
+i107.2  Tighten assignment rules
+
+i107.2.1 Add type checking
+
+The following validation functions have the improved type
+checking additions:
+
+assignment_expr_end()
+create_object_statement_end()
+implicit_assignment_statement_end()
+return_statement_end()
+
+i107.2.2 Update data_types_compatible() 
+
+The function is modified to check for legal uses of 
+the "assign" operation.
+
+i107.3 Changes to meta-model
+
+i107.3.1 Changes to Value subsystem 
+
+i107.3.1.1  Modify ooaofooa.bak as described in the design.
+i107.3.1.2  Modify ooaofooa.bak as described in the design.
+
+i107.3.2  Add Multiplicity data type
+
+i107.3.2.1  Modify ooaofooa.bak as described in the design.
+
+i107.3.2.2  Due to the new datatype in ooaofooa.bak, the datatype
+numbering in err_ee.sql and err_ee_w_graphics.sql is updated.
+
+i107.3.3 Changes to Action_Select subsystem 
+
+i107.3.3.1  Modify ooaofooa.bak as described in the design.
+i107.3.3.2  Modify ooaofooa.bak as described in the design.
+i107.3.3.3  Modify ooaofooa.bak as described in the design.
+
+i107.3.4  Add parse flag attributes
+
+Modify ooaofooa.bak as described in the design.
+
+i107.3.5  Update clear operations
+
+i107.3.5.1  Modify ooaofooa.bak as described in the design.
+i107.3.5.2  Modify ooaofooa.bak as described in the design.
+i107.3.5.3  Modify ooaofooa.bak as described in the design.
+
+i107.3.6  Add Object In Relationship get_multiplicity()
+
+Modify ooaofooa.bak as described in the design.
+
+i107.4  Allow single ticks in validation code
+
+The new $t function is used in extract_function_bodies.arc
+to export the action language for each function.  The $t
+function is implemented in pt_trans.c.
+
+i107.5  Select statement validation
+
+i107.5.1  select_statement rule
+
+Implement select_statement_end() as described in the design.
+Implement process_fi() as described in the design.
+Implement process_rb() as described in the design.
+Implement clear_select() as described in the design.
+Implement clear_rel_data() as described in the design.
+
+i107.5.2  object_spec rule
+
+Implement object_spec_start() as described in the design.
+Implement object_spec_end() as described in the design.
+
+i107.5.3  instance_chain rule
+
+Implement instance_chain_start() as described in the design.
+Implement instance_chain_loop5_end() as described in the design.
+Change is_valid_relationship() as described in the design.
+Change function has_valid_phrase() as described in the design.
+Implement get_right_object_multiplicity() as described in the design.
+
+i107.5.4  where_spec rule
+
+Implement where_spec_start() as described in the design.
+Implement where_spec_validate() as described in the design.
+Implement where_spec_end() as described in the design.
+Implement selected_validate() as described in the design.
+Modify attribute_access_end() as described in the design.
+Modify local_variable_validate() as described in the design.
+
+i107.6  Fix leaks in validation functions
+
+Modify is_valid_relationship() as described in the design.
+Modify is_valid_assoc_relationship() as described in the design.
+Modify has_valid_phrase() as described in the design.
+Modify relate_statement_end() as described in the design.
+Modify unrelate_statement_end() as described in the design.
+
+Implementation Comments
+-----------------------
+
+- The changes to pt_trans.c were checked into the newly created
+libTRANS project.  The dll export library definition file was 
+also checked in.
+
+- The timeout for generating the validation code was increased to 180
+seconds in build.xml.
+
+Unit Test
+---------
+
+// testAssignTypeIRO2IRO
+select any x from instances of D_D; select any y from instances of D_D; assign x = y;
+
+// testAssignTypeIRS2IRS
+select many x from instances of D_D; select many y from instances of D_D; assign x = y;
+
+// testIAssignTypeIRO2IRO
+select any x from instances of D_D; select any y from instances of D_D; x = y;
+
+// testIAssignTypeIRS2IRS
+select many x from instances of D_D; select many y from instances of D_D; x = y;
+
+// testSelectAnyFromImplicit
+select any x from instances of D_D;
+
+// testSelectAnyFrom
+create object instance x of D_D; select any x from instances of D_D;
+
+// testSelectAnyFromWhereImplicit
+select any x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectAnyFromWhere
+create object instance x of D_D; select any x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectAnyFromWhere
+create object instance x of D_D; select any x from instances of D_D where selected == x;
+
+// testSelectManyFromImplicit
+select many x from instances of D_D;
+
+// testSelectManyFrom
+select many x from instances of D_D; select many x from instances of D_D;
+
+// testSelectManyFromWhereImplicit
+select many x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectManyFromWhere
+select many x from instances of D_D; select many x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectOneRelatedByImplicit
+select any d from instances of D_D; select one h related by d->D_H[R4];
+
+// testSelectOneRelatedByImplicitWhere
+select any d from instances of D_D; select one h related by d->D_H[R4] where ( selected.Row_Number == 1 );
+
+// testSelectOneRelatedBy2Links
+select any d from instances of D_D; select one d related by d->D_H[R4]->D_D[R4];
+
+// testSelectOneRelatedBy2LinksWhere
+select any d from instances of D_D; select one d related by d->D_H[R4]->D_D[R4] where selected.Disk_ID == 1;
+
+// testSelectAnyRelatedByManyImplicit
+select many d from instances of D_D; select any h related by d->D_H[R4];
+
+// testSelectAnyRelatedByManyImplicitWhere
+select many d from instances of D_D; select any h related by d->D_H[R4] where ( selected.Row_Number == 1 );
+
+// testSelectManyRelatedByManyImplicit
+select many d from instances of D_D; select many h related by d->D_H[R4];
+
+// testSelectManyRelatedByManyImplicitWhere
+select many d from instances of D_D; select many h related by d->D_H[R4] where ( selected.Row_Number == 1);
+
+// testSelectAnyRelatedByManyRelImplicit
+select any d from instances of D_D; select any dq related by d->D_DQ[R1];
+
+// testSelectAnyRelatedByManyRelImplicitWhere
+select any d from instances of D_D; select any dq related by d->D_DQ[R1] where (selected.Qualified_Process_ID == 1);
+
+// testSelectManyRelatedByManyRelImplicit
+select any d from instances of D_D; select many dq related by d->D_DQ[R1];
+
+// testSelectManyRelatedByManyRelImplicitWhere
+select any d from instances of D_D; select many dq related by d->D_DQ[R1] where (selected.Qualified_Process_ID == 1);
+
+// testSelectOneRelatedByAssocRelImplicit
+select any d from instances of D_D; select one qp related by d->D_QP[R2];
+
+// testSelectOneRelatedByAssocRelImplicitWhere
+select any d from instances of D_D; select one qp related by d->D_QP[R2] where (selected.Qualified_Process_ID == 1);
+
+// testSelectOneRelatedByAssocRel2Implicit
+select any d from instances of D_D; select one qp related by d->D_DO[R2]->D_QP[R2];
+
+// testSelectOneRelatedByAssocRel2Implicit
+select any d from instances of D_D; select one qp related by d->D_DO[R2]->D_QP[R2] where (selected.Qualified_Process_ID == 1);
+
+//  R12 is a reflexive relationship added from D_D to D_D with phrases 'precedes' and 'follows'
+
+// testSelectOneGoodReflexive
+select any d from instances of D_D; select one d2 related by d->D_D[R12.'precedes'];
+    
+// testSelectOneGoodReflexive2
+select any d from instances of D_D; select one d2 related by d->D_D[R12.'follows'];
+
+// testSelectAnyGoodReflexive
+select many d from instances of D_D; select any d2 related by d->D_D[R12.'precedes'];
+    
+// testSelectAnyGoodReflexiveWhere
+select many d from instances of D_D; select any d2 related by d->D_D[R12.'precedes'] where selected.Disk_ID == 1;
+    
+// testSelectManyGoodReflexive
+select many d from instances of D_D; select many d2 related by d->D_D[R12.'follows'];
+
+//  R13 is an associative reflexive relationship added from D_QP to D_QP 
+     with phrases 'precedes' and 'follows' and associative object D_QPO
+
+// testSelectOneAssocGoodReflexive
+select any qpo from instances of D_QPO; select one qp related by qpo->D_QP[R13.'precedes'];
+    
+// testSelectOneAssocGoodReflexive2
+select any qpo from instances of D_QPO; select one qp related by qpo->D_QP[R13.'follows'];
+
+// testSelectAnyAssocGoodReflexive
+select many qpo from instances of D_QPO; select any qp related by qpo->D_QP[R13.'precedes'];
+    
+// testSelectManyAssocGoodReflexive
+select many qpo from instances of D_QPO; select many qp related by qpo->D_QP[R13.'follows'];
+
+// testSelectAnyAssocRelGoodReflexive
+select many qp from instances of D_QP; select any qpo related by qp->D_QPO[R13.'precedes'];
+    
+// testSelectManyAssocRelGoodReflexive
+select many qp from instances of D_QP; select many qp related by qp->D_QPO[R13.'follows'];
+
+// testSelectOneRelatedByFromSup
+select any d from instances of D_D; select one od related by d->D_OD[R3];
+
+// testSelectAnyRelatedByFromManySup
+select many d from instances of D_D; select any od related by d->D_OD[R3];
+
+// testSelectManyRelatedByFromManySup
+select many d from instances of D_D; select many od related by d->D_OD[R3];
+
+// testSelectOneRelatedByFromSub
+select any od from instances of D_OD; select one d related by od->D_D[R3];
+
+// testSelectAnyRelatedByFromManySub
+select many od from instances of D_OD; select any d related by od->D_D[R3];
+
+// testSelectManyRelatedByFromManySub
+select many od from instances of D_OD; select many d related by od->D_D[R3];
+
+----- Invalid statements ----------
+
+// testCreateWrongVarType
+x = 1; create object instance x of D_D;
+
+// testCreateWrongClassType
+create object instance x of D_D;\ncreate object instance x of D_H;
+
+// testAssignTypeMismatchIRO2IRO
+create object instance x of D_D; create object instance y of D_H; x = y;
+
+// testAssignTypeMismatchIRO2IRS
+select many x from instances of D_D; select any y from instances of D_D; x = y;
+
+// testAssignTypeMismatchIRS2IRO
+select any x from instances of D_D; select many y from instances of D_D; x = y;
+
+// testAssignTypeMismatchIRO2IRSClass
+select many x from instances of D_D; select any y from instances of D_H; x = y;
+
+// testAssignTypeMismatchIRS2IROClass
+select any x from instances of D_D; select many y from instances of D_H; x = y;
+
+// testAssignTypeMismatchIRS2IRS
+select many x from instances of D_D; select many y from instances of D_H; x = y;
+
+// testSelectOneFromImplicit
+select one x from instances of D_D;
+
+// testSelectOneFrom
+create object instance x of D_D; select one x from instances of D_D;
+
+// testSelectAnyFromBadVar
+x = 1; select any x from instances of D_H;
+
+// testSelectAnyFromWrongVar
+create object instance x of D_D; select any x from instances of D_H;
+
+// testSelectManyFromBadVar
+x = 1; select many x from instances of D_H;
+
+// testSelectManyFromWrongVar
+create object instance x of D_D; select many x from instances of D_H;
+
+// testSelectOneFromWhereImplicit
+select one x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectOneFromWhere
+create object instance x of D_D; select one x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectAnyFromBadVar
+x = 1; select any x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectAnyFromWrongVar
+create object instance x of D_H; select any x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectManyFromBadVar
+x = 1; select many x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectManyFromWrongVar
+create object instance x of D_H; select many x from instances of D_D where selected.Disk_ID == 1;
+
+// testSelectAnyFromWhereImplicitBadAttr
+select any x from instances of D_D where selected.Bad == 1;
+
+// testSelectManyFromWhereBadAttr
+select many x from instances of D_D; select many x from instances of D_D where selected.Bad == 1;
+
+// testSelectAnyFromWhereImplicitNoSelected
+select any x from instances of D_D where true;
+
+// testSelectAnyFromWhereImplicitJustSelected
+select any x from instances of D_D where selected;
+
+// testSelectManyFromWhereNotBool
+select many x from instances of D_D; select many x from instances of D_D where selected.Disk_ID;
+
+// testSelectedVarOutsideWhere
+selected = 1;
+
+// testSelectedAttrOutsideWhere
+create object instance selected of D_D; selected.Disk_ID = 1;
+
+// testSelectAnyRelatedByOneImplicit
+select any d from instances of D_D; select any h related by d->D_H[R4];
+
+// testSelectAnyRelatedByOneImplicitWhere
+select any d from instances of D_D; select any h related by d->D_H[R4] where selected.Row_Number == 1;
+
+// testSelectManyRelatedByOneImplicit
+select any d from instances of D_D; select many h related by d->D_H[R4];
+
+// testSelectManyRelatedByOneImplicitWhere
+select any d from instances of D_D; select many h related by d->D_H[R4] where selected.Row_Number == 1;
+
+// testSelectOneRelatedByManyImplicit
+select many d from instances of D_D; select one h related by d->D_H[R4];
+
+// testSelectOneRelatedByManyImplicitWhere
+select many d from instances of D_D; select one h related by d->D_H[R4] where selected.Row_Number == 1;
+
+// testSelectOneRelatedByManyRelImplicit
+select any d from instances of D_D; select one dq related by d->D_DQ[R1];
+
+// testSelectOneRelatedByManyRelImplicit
+select any d from instances of D_D; select one dq related by d->D_DQ[R1] where selected.Qualified_Process_ID ==1;
+
+// testSelectOneRelatedByManyAssocRelImplicit
+select any d from instances of D_D; select one qp related by d->D_QP[R1];
+
+// testSelectOneRelatedByManyAssocRelImplicitWhere
+select any d from instances of D_D; select one qp related by d->D_QP[R1] where selected.Qualified_Process_ID == 1;
+
+// testSelectOneRelatedByManyAssoc2RelImplicit
+select any d from instances of D_D; select one qp related by d->D_DQ[R1]->D_QP[R1];
+
+// testSelectOneRelatedByManyAssoc2RelImplicitWhere
+select any d from instances of D_D; select one qp related by d->D_DQ[R1]->D_QP[R1] where selected.Qualified_Process_ID == 1;
+
+// testSelectOneRelatedBy2LinksBadWhere
+select any d from instances of D_D; select one d related by d->D_H[R4]->D_D[R4] where selected.Disk_ID ;
+
+// testSelectBinaryBadRelNum
+select any x from instances of D_D; select one y related by x->D_D[R99];
+
+// testSelectBinaryWrongRelNum
+select any x from instances of D_D; select one y related by x->D_D[R4];
+
+// testSelectBinaryWrongPhraseNotReflexive
+select any d1 from instances of D_D; select one h related by d1->D_H[R4.'is permanent home for'];
+
+// testSelectBinaryBadPhraseNotReflexive
+select any d1 from instances of D_D; select one h related by d1->D_H[R4.'bad phrase'];
+
+// testSelectBinaryBadPhraseReflexive
+select any d1 from instances of D_D; select one d2 related by d1->D_D[R12.'neither'];
+    
+// testSelectBinaryBadNoPhraseReflexive
+select any d1 from instances of D_D; select one d2 related by d1->D_D[R12];
+
+// testSelectBinaryPhraseSubtype
+select any d1 from instances of D_D; select one od related by d1->D_OD[R3.'is a'];
+
+// testSelectBinaryTwoSubtypes
+select any od1 from instances of D_OND; select one od2 related by od1->D_OD[R3];
+
+// testSelectAssocBadAone
+select any h from instances of D_H; select any qp related by h->D_DQ[R1]->D_QP[R1];
+
+// testSelectAssocBadAoneNoAssr
+select any h from instances of D_H; select any qp related by h->D_QP[R1];
+
+// testSelectAssocBadAoth
+select any d from instances of D_D; select any qp related by d->D_DQ[R1]->D_H[R1];
+
+// testSelectAssocBadAothNoAssr
+select any d from instances of D_D; select any qp related by d->D_H[R1];
+
+// testSelectAssocBadAssr
+select any d from instances of D_D; select any qp related by d->D_H[R1]->D_QP[R1];
+
+// testSelectAssocBadReflexiveNoPhrase
+select any qp1 from instances of D_QP; select any qp2 related by qp1->D_QPO[R13]->D_QP[R13];
+
+// testSelectAssocBadReflexiveNoPhraseNoAssr
+select any qp1 from instances of D_QP; select any qp2 related by qp1->D_QP[R13];
+
+// testSelectAssocBadReflexiveBadPhrase
+select any qp1 from instances of D_QP; select any qp2 related by qp1->D_QPO[R13.'neither']->D_QP[R13];
+
+// testSelectAssocBadReflexiveBadPhraseNoAssr
+select any qp1 from instances of D_QP; select any qp2 related by qp1->D_QP[R13.'neither'];
+
+// testSelectOneRelatedByBadAttrWhere
+select any d from instances of D_D; select one h related by d->D_H[R4] where ( selected.xxx == 1 );
+
+// testSelectOneRelatedByNoSelectedWhere
+select any d from instances of D_D; select one h related by d->D_H[R4] where ( true );
+
+// testSelectOneRelatedByNotBooleanWhere
+select any d from instances of D_D; select one h related by d->D_H[R4] where ( selected.Row_Number );
+
+// testSelectFromWhereSelectedMisspelled
+select any d from instances of D_D where selectd.Disk_ID = 1;
+
+// testSelectRelatedByWhereSelectedMisspelled
+select any d from instances of D_D; select one h related by d->D_H[R4] where selectd.Disk_ID = 1;
+
+// testSelectAnyRelatedByFromSup
+select any d from instances of D_D; select any od related by d->D_OD[R3];
+
+// testSelectManyRelatedByFromSup
+select any d from instances of D_D; select many od related by d->D_OD[R3];
+
+// testSelectAnyRelatedByFromManySub
+select any od from instances of D_OD; select any d related by od->D_D[R3];
+
+// testSelectManyRelatedByFromManySub
+select any od from instances of D_OD; select many d related by od->D_D[R3];
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/extract_function_bodies.arc
+Initial version:  1.3  Final version: 1.4
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version:  1.7  Final version: 1.8
+
+com.projtech.bp.als/sql/err_ee.sql
+Initial version:  1.4  Final version: 1.5
+
+com.projtech.bp.als/sql/err_ee_w_graphics.sql
+Initial version:  1.3  Final version: 1.4
+
+com.projtech.bp.als/build.xml
+Initial version:  1.5  Final version: 1.6
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version:  1.15 Final version: 1.16
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.6  Final version: 1.7
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.7  Final version: 1.9
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.10 Final version: 1.12
+
+libTRANS/libTRANS.def
+Introduced version: 1.1
+
+libTRANS/pt_trans.c
+Introduced version: 1.2
+
+End
+---
+
+$Log: i107.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2004/02/16 16:11:16  greg
+Job: 107
+Changes from review
+
+Revision 1.1  2004/02/11 23:01:47  greg
+Job: 107
+Initial introduction
+

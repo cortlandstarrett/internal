@@ -1,0 +1,155 @@
+========================================================================
+
+File:      $RCSfile: dts0100732624.ant,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Should not require a return statement if action specification is empty
+
+1. Abstract
+-----------
+ For some of the activities, it is acceptable to have an empty body although the
+activity specifies a return value. Currently, the parser insists they should 
+have return statement in the body.  This issue shall resolve this.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100732624 - Should not require a return statement if 
+	action specification is empty
+[2] ClearQuest DEI dts0100530766 - OAL Parser do not report missing return value 
+	in the case where the body is completely empty
+
+4. Background
+-------------
+ Before [2], the parser was reporting a "Missing return statement" message for
+the empty activity bodies that specify a return value.  However, that error 
+was not visible to the user unless there was a space or new-line in the body. 
+Because of customers's request, the issue [2] has been raised.  However, with 
+the promotion for this issue [2], there is an error marker on all empty action
+bodies which are empty. This is a problem for cases there there is a wired
+interface operation because, for these cases, it is perfectly valid for the 
+action body to be empty. There should be no error for this situation, but there
+should be for all others.
+
+5. Analysis
+-----------
+5.1 The requirements to resolve this issue are :
+5.1.2  The parser should never report an error of the form "Return value 
+	  required by  <activity type>"  when the action body is empty for the 
+	  following types:
+5.1.2.1	Wired Provided interface operation (if message direction =From Provider)
+5.1.2.2 Wired Required interface operation (if message direction = To Provider)
+
+5.1.3  Error for empty action bodies SHOULD continue to be reported for all 
+      cases not specified in 5.1.2.
+
+5.1.4  Do not parse cases covered under 5.1.2	
+      A separate issue shall be raised this this.  It would be nice if the 
+      parser did not ever parse in this situation, but the immediate goal is to
+      prevent that error, and that can be done without changing the parser.
+
+5.2 Possible approaches to resolve this issue :   	
+
+5.2.1  In Action_end validation function, apply check mechanism for current 
+	  activity under parsing to see if it satisfies one of the criteria in 5.1.2
+	  If the result is positive, and the action_semantic_internal attribute is 
+	  empty then skip the error reporting.
+
+	Pros : Easy to implement and minimal chance to cause fall out.
+	Cons :  This approach asks the user to save the editor to remove the error 
+		   if it contained some code or comment previously before delete them, 
+		   and does not support empty body with comments only. Also interface 
+		   operation will be parsed and does not meet fully requirement.
+		 	
+5.2.2  In Action_end validation function, apply check mechanism for current 
+	  activity under parsing to see if it satisfies one of the criteria in 5.1.2
+	  If the result is positive, and the activity body do not have any valid
+	  statement then skip the error reporting..
+
+	Pros : Easy to implement and minimal chance to cause fall out.
+	Cons :  Unlike approach 5.2.1, this one can work also for dirty editor,
+	 	   but in case of there is rubbish code that could not be recognized 
+	 	   into any statement, then "Missing return statement" error message 
+	 	   will not be displayed until this rubbish got fixed in a any 
+	 	   proper statement.
+
+5.2.3 Change TextParser.action() to prevent parsing for the activities stated
+	   in 5.1.
+
+	Pros :  That can be easy to be implemented for interface operation, since
+		   checking is based one the port type, port connection, and the 
+		   message direction.
+	Cons :  Can not be done for Bridge cause the bridge does not have a specific
+		   criteria except the body can be empty which can contains comments
+		   and still considered as empty. Also the action_semantic_internal
+		   only represent the current body in case of not dirty editor.
+	
+	
+5.2.4 Undo the work done in [2].
+	
+	Pros : Easy to roll back.
+	Cons :  Parser error "missing return statement" will not be visible for all 
+		   activities even the one are not listed in 5.1, which will recall
+		   the problem that [2] was raise for, and some of the customer will be 
+		   more complaining for our maintainability.
+
+5.2.5 Combine 5.2.2 fix for bridge  with 5.2.3 for interface operation 
+
+	Pros : Fully requirements satisfaction
+	Cons : May cause fall outs especially in Junit tests, and give different
+		   handling for activities.
+
+
+6. Work Required
+----------------
+6.1  Due to the close release and time constraint it is better to implement 
+	approach 5.2.2, and raise another issue to prevent parsing for interface 
+	operation that satisfy the condition in 5.2.5 in the next release.
+
+
+7. Acceptance Test
+------------------
+- All JUnit test must pass.
+- Add a unit test to als.oal.test to assure the error is not reported for the 
+  activities in 5.1
+
+End
+---
+
+$Log: dts0100732624.ant,v $
+Revision 1.6  2011/04/28 21:18:48  nmohamad
+job:dts0100732624
+Update 5.1.2 , 5.1.2.1  and 5.1.2.2.
+
+Revision 1.5  2011/04/27 18:39:22  nmohamad
+job:dts0100732624
+fix 5.2.2
+
+Revision 1.4  2011/04/27 18:21:00  nmohamad
+job:dts0100732624
+some improvements
+
+Revision 1.3  2011/04/27 18:03:47  nmohamad
+job:dts0100732624
+Refine
+
+Revision 1.2  2011/04/27 15:56:49  rmulvey
+job:dts0100732624
+Reviewed and updated
+
+Revision 1.1  2011/04/27 15:30:56  nmohamad
+job:dts0100732624
+Create
+

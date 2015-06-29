@@ -1,0 +1,209 @@
+========================================================================
+
+File:      $RCSfile: dts0100583660.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Dimension "columns" are being evaluated backwards by parser
+
+ 
+1. Abstract
+-----------
+The BridgePoint parser evaluates the indexes of multi-dimensional arrays 
+backwards. This can cause array out of bound (AOOB) errors in the OAL editor for
+parts of code where it should not.
+
+2. History
+----------
+A previous review was done before. The prior review note can be found in
+Documentation/internal/review_minutes/dts0100583660.rvm
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100583660.
+[2] Design note i3085-01.dnt
+	describes how fixed-length arrays will be supported in BridgePoint.
+	<svn>://Documentation_archive/20080109/i3085-01.dnt
+
+4. Background
+-------------
+4.1 The Design note that describes how fixed-length arrays will be supported in
+BridgePoint [2,6.1.1.6] stated that :
+The 'Dimensions' class shall carry an integer attribute; 'dimensionCount'.
+This value indicates the position of this dimension in a multi-dimensional 
+array. It is a 0-based value. 
+
+E.g. if an array is created as fla[x][y][z], there will be three instances of 
+'Dimension' class related to this array (fla). The first instance represents [x]
+dimension with 'dimensionCount' = 0, and 'elementCount' = x. The second instance
+represents [y] dimension with 'dimensionCount' = 1, and 'elementCount' = y. The 
+third instance represents [z] dimension with 'dimensionCount' = 2, and 
+'elementCount' = z.
+
+5. Analysis
+-----------
+5.1 Currently, the 'dimensionCount' values are set backward. I.e. using the
+example in the 4.1, the Dimension.'dimensionCount' equals two for [x] dimension, 
+one for [y] dimension, and zero for [z] dimension. 
+
+5.2 When writing fla[3][7][5]=10, the parser should validate each index by 
+comparing it with the appropriate dimension size (stored in 
+'Dimension'.elementCount). Since the Dimension.'dimensionCount' value is set up 
+reversed as mentioned in 5.1, the parser compares the first dimension "[3]" 
+with "z" when it should compare with "x". Due to it's middle index it correctly 
+compares "[7]" with "y".  And then again incorrectly compares "[5]" with "x" 
+when it should use "z".
+
+5.3 The wrong behavior described in 5.2 makes the parser sometimes display AOOB 
+error notation when all the indexes are in bounds. Also, the parser sometimes 
+does not detect AOOB errors when one or more of the indexes are out-of-bounds.
+
+5.4 Although the wrong allocation occurs in the Dimension.'dimensionCount' 
+index, the verifier is still able to work on multi-dimensional arrays properly 
+because the verifier indexes the dimensions backward as well.
+
+    e.g.: fla[3][7][5]=10;
+    
+So when the verifier executes this statement, it need to check if each index 
+(3,5 and 7) are valid. For first index "[3]", The verifier selects the dimension
+instance which has 'dimensionCount' = 2, and then gets 'elementCount' value.
+Since the Dimension.'dimensionCount' value is set up reversed as mentioned in 
+5.1, the verifier compares "[3]" with "x" which is correct.
+ 
+5.5 There are two possible solutions for this bug:
+5.5.1 Make the parser index the dimensions for an array backwards while
+validating the index values. 
+5.5.2 Fix the backward allocation in the Dimension.'dimensionCount'. As a
+consequence for that, the Verifier needs to index the dimensions correctly.
+
+
+6. Design
+---------
+6.1 The approach 5.5.2 requires us to modify the allocation of the 
+'Dimensions.dimensionCount' value properly. In addition to modifying the 
+verifier to work on the new allocation, there is also some concern that there 
+could be additional unexpected fallout due to this allocation. Therefore the 
+approach 5.5.1 will be taken.
+
+6.2 Make the parser index the dimensions for an array backwards while validating 
+the index values.
+6.2.1 For  fla[3][5][7] 
+When validating the indexes (3, 5 and 7), the parser requests the
+Dimension.'elementCount' value (which represents the dimension size) for each 
+dimension in the array "fla" by selecting the dimension number.
+
+This behavior can be found in 
+bp.core::ooaofooa::Value::Value::IsElementCountValid()
+
+dimension = 0;
+while (isValid and not_empty aer)
+  <snipped code>
+  actualSize = self.getArrayLength(dimension:dimension);
+  <snipped code>
+  if ( (not actualSizeIsDynamic) and (specifiedDimension >= actualSize) ) 
+    isValid = false;
+  <snipped code>
+  dimension = dimension + 1;
+end while;
+
+Correct behavior : generally speaking, for the first index, the parser should 
+request the size (elementCount) of the dimension number N-1 (where N is the 
+dimensions count for the array). For the second index, the parser should request 
+the size of the dimension number N-2, and N-3 for the third dimension, etc.
+
+For the previous example :  N=3, so for index [3], the parser should request 
+the size of the dimension number  two, and dimension number one for index
+[5], and dimension number zero for index [7].
+
+6.3 Check for other places this behavior may be present and fix them.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+8.1 The work required is spelled out in the Design section above.
+
+9. Unit Test
+------------
+9.1 Test multi-dimensional array behavior.
+_- Create xtUML project, name it "test".
+_- Add xtUML model to project "test", name it "model".
+_- Add subsystem to the model, name it "Subsystem".
+_- Add class to previous created subsystem, name "TestClass" with key letter
+	TC.
+_- Add operation to "TestClass", name it "run" and choose 'Class Based'
+for "Instance Based Indicator" operation property
+_- Double click on the operation name "run" in the ME.
+_- write : a[1][5] = 10;
+_R No error notation should be visible
+_- Write : a[0][4] =9;
+_R No error notation should be visible
+_- Write : varIndexOne = 3;
+_- Write : a[varIndexOne][4] = 10;
+_R No error notation should be visible 
+_- Write : a[4][0] =8;
+_R An error notation should be visible next to last line, with description :
+	"variable ->a<- contains an Array Index out of bounds"
+
+_- Add breakpoint to the first line of the operation body
+_- Save the workspace
+_- Right click in the project name and select "Launch Verifier"
+_- Right Click on the operation "run" and select "execute"
+_R the breakpoint got hit.
+_- Step over: a[0][4] =9;
+_R no error should be found in the console view.
+_- Step over : a[varIndexOne][4] = 10;
+_R "Array index out of bounds. Suspending" error should be found in console view.
+
+9.2 JUnit tests should run successfully. 
+
+End
+---
+
+$Log: dts0100583660.dnt,v $
+Revision 1.9  2010/01/20 19:57:39  nmohamad
+job:dts0100583660
+Addressing review notes.
+
+Revision 1.8  2010/01/20 16:03:05  nmohamad
+job:dts0100583660
+vocabulary corrections..
+
+Revision 1.7  2010/01/20 15:15:14  kbrown
+job:dts0100583660
+Pre-review updates by SKB.
+
+Revision 1.6  2010/01/20 12:52:15  nmohamad
+job:dts0100583660
+Add details for design section..
+
+Revision 1.5  2010/01/18 18:01:23  nmohamad
+job:dts0100583660
+Addressing review minutes..
+
+Revision 1.4  2010/01/17 20:18:07  nmohamad
+job:dts0100583660
+Edit test unit section..
+
+Revision 1.3  2010/01/17 16:39:23  nmohamad
+job:dts0100583660
+vocabulary and alignment fixing..
+
+Revision 1.2  2010/01/17 15:59:27  nmohamad
+job:dts0100583660
+rewriting the analysis section and adding background..
+
+Revision 1.1  2010/01/14 12:17:11  nmohamad
+job:dts0100583660
+creating..
+

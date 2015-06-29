@@ -1,0 +1,191 @@
+========================================================================
+
+File:      $RCSfile: dts0100559731.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Verifier crashes with Stack.execute() error
+
+
+1. Abstract
+-----------
+Ericsson reported that a model that used to run in BP 2.0.3 no longer runs
+correctly in BP 2.1.1.  This note addresses the changes required to fix the
+issue.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest item dts0100559731
+    http://dtsweb.wv.mentorg.com/cqweb/login?/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&entityID=34114163&entityDefName=Defect
+[2] Bugzilla item 3405, Inter-component verification
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3405
+
+4. Background
+-------------
+There were significant changes to the verifier after BP 2.0.3.  Specifically [2]
+added support for inter-component verification.
+
+Initial investigation into the problem found that the problem was most visible
+using the Ericsson model, but I was also able to reproduce the issue on
+occasion with other test models, including MicrowaveOven.  The Stack.execute()
+error is not consistently reproducable, thereby indicating it may be a thread-
+ing issue.
+
+5. Design
+---------
+5.1  There is a threading conflict introduced with issue 3405 [2].
+     Specifically, two threads (one each in ExecuteAction and BPThread) prior to
+     issue 3405 each operated a significant chunk of code within a critical
+     section using:
+
+         synchronized(Ooaofooa.eventMaskSemaphore) {
+             ... <important code including stack access> ...
+
+         }
+
+     This was replaced in 3405 with a call to Ooaofooa.beginVerifierExecution()
+     and Ooaofooa.endVerifierExecution() that look like this:
+
+         public static void beginVerifierExecution() {
+             synchronized (verifiersRunningSemaphore) {
+                 if (verifiersRunning == 0) {
+                     while (threadsSaving > 0) {
+                         try {
+                             synchronized (threadsSavingSemaphore) {
+                                 threadsSavingSemaphore.wait();
+                             }
+                         } catch (InterruptedException e) {
+                         }
+                     }
+                 }
+
+                 verifiersRunning++;
+             }
+         }
+
+         public static void endVerifierExecution() {
+             synchronized (verifiersRunningSemaphore) {
+                 verifiersRunning--;
+                 if (verifiersRunning == 0) {
+                     verifiersRunningSemaphore.notifyAll();
+                 }
+             }
+         }
+
+     These functions do not provide the same critical section protection that
+     was in place the old raw object synchronization because
+     beginVerifierExecution() doesn't actually lock down the
+     verifiersRunningSemaphore for the duration of the critical section these
+     functions replaced.
+
+5.2  The verifier execution functions must provide locking protection for
+     multiple threads working against the same execution engine.  To provide
+     this support, we keep a map of currently running I_EXEs.  In this way, each
+     thread that attempts to run will check if this I_EXE is already running and
+     wait if it is.
+
+     public static Map<UUID,Integer> verifiersRunningMap =
+         new ConcurrentHashMap<UUID,Integer>();
+
+     public static void beginVerifierExecution(UUID engineID) {
+         try {
+             synchronized (verifiersRunningSemaphore) {
+                 if (verifiersRunning == 0) {
+                     while (threadsSaving > 0) {
+                         synchronized (threadsSavingSemaphore) {
+                             threadsSavingSemaphore.wait();
+                         }
+                     }
+                 }
+
+                 verifiersRunning++;
+             }
+
+             synchronized (engineID) {
+                 if ( !verifiersRunningMap.containsKey(engineID) ) {
+                     verifiersRunningMap.put(engineID, 0);
+                 } else {
+                     if ( verifiersRunningMap.containsKey(engineID) ) {
+                         engineID.wait();
+                         verifiersRunningMap.put(engineID, 0);
+                     }
+                 }
+             }
+         } catch (InterruptedException e) {
+         }
+     }
+
+     public static void endVerifierExecution(UUID engineID) {
+         synchronized (engineID) {
+             verifiersRunningMap.remove(engineID);
+             engineID.notify();
+         }
+
+         synchronized (verifiersRunningSemaphore) {
+             verifiersRunning--;
+
+             if (verifiersRunning == 0) {
+                 verifiersRunningSemaphore.notifyAll();
+             }
+         }
+     }
+
+6. Implementation Comments
+--------------------------
+6.1  The verifier tests are modified in places where
+     [begin|end]VerifierExecution() is called to now pass the engineID to the
+     function.
+
+7. Unit Test
+------------
+7.1  Execute the test case provided by the customer.  It is found in the
+     description in the original bug [1].  Verify no Stack.Execute() error
+     happens.
+
+7.2  Execute all JUnit tests.  Verify they work correctly.
+
+8. Code Changes
+---------------
+Changes are in branch R2_1_2-SKB-dts0100559731
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.actions/
+ExecuteAction.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+BPThread.java
+
+com.mentor.nucleus.bp.debug.ui.test/src/com.mentor.nucleus.bp.debug.test/
+VerifierTest.java
+
+MC-Java/java.arc
+
+End
+---
+
+$Log: dts0100559731.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/02/19 15:29:51  kbrown
+job:dts0100559731
+Completed final review checklist.
+
+Revision 1.2  2009/02/19 14:17:57  kbrown
+job:dts0100559731
+Updated INT with a clarification and some grammar fixes.
+
+Revision 1.1  2009/02/18 19:48:47  kbrown
+job:dts0100559731
+Finished INT.

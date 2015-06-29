@@ -1,0 +1,118 @@
+========================================================================
+
+File:      $RCSfile: i995.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:19 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Improve Event Data Item deletion
+
+Abstract
+--------
+This note describes a fix for the event data item dispose operation.
+
+History
+-------
+
+final i995-060105-01.rvm
+
+Document References
+-------------------
+Bugzilla issue 995
+
+Background
+----------
+The issue describes a model where the user is not allowed to select an 
+event for a transition that should be available.  Analyzing the model, there
+are two instances of SM_SUPDT in the state machine that both represent the
+empty dataset.  Two of the events in the model are associated with one dataset,
+and two events with the other dataset instance.  The event selection logic for
+adding an event to a transition requires that the dataset for the transition
+match the incoming dataset for the destination state.  Because the events 
+have different datasets, not all possible events are available for assigning to
+the transition, once an event is assigned to an incoming transition to the 
+state.
+
+Design
+------
+
+1. Remove extra SM_SUPDT instance
+
+The extra SM_SUPDT instance is created by creating an event data item, assigning
+the data item to an event, then deleting the data item.  The event data item 
+dispose() operation is changed to remove the data item from any events it is
+assigned to (causing the datasets to be re-normalized) before performing the
+rest of the dispose operation.  The following is added to the beginning of
+SM_EVTDI.dispose():
+
+  // State Machine Subsystem
+  select one sm related by self->SM_SM[R516];
++ select many event_set related by sm->SM_EVT[R502];
++ for each evt in event_set
++   if evt.hasDataItem(id: self.SMedi_ID)
++     // we can ignore the result because the data item is being 
++     // removed from all data item sets.
++     ignore = evt.changeDataItemSet(item_id: self.SMedi_ID, addition: false);
++   end if;
++ end for;
++ //
+  unrelate self from sm across R516;
+  select one dt related by self->S_DT[R524];
+
+Implementation Comments
+-----------------------
+
+The helper class findDataItemByName was added to AddRemoveDataItemsTest.java
+
+The mc3020 test hung during the build test, and was killed.
+
+Unit Test
+---------
+
+The test model AddRemoveDataItemsTest.xtuml has a class added with two events,
+one of which has a data item assigned to it.
+
+The method testDeleteDataItem() is added to the class AddRemoveDataItemsTest.
+The method deletes the data item from the new class in the
+AddRemoveDataItemsTest model.  The method tests that the correct number of
+event data items and supplemental datasets exist after the deletion.
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/AddRemoveDataItemsTest.java
+com.mentor.nucleus.bp.core.test/models/AddRemoveDataItems.xtuml
+
+End
+---
+
+$Log: i995.int,v $
+Revision 1.1  2009/09/03 18:21:19  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.30.1  2008/12/31 16:10:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/06/01 21:55:48  greg
+Job: 995
+Addressed observations
+
+Revision 1.1  2005/06/01 13:39:35  greg
+Job: 995
+Introduce

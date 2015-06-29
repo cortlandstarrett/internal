@@ -1,0 +1,244 @@
+========================================================================
+
+File:      $RCSfile: i558.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:09 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Diff: Next Change button does not always work
+
+Abstract
+--------
+This implementation note describes the changes made to fix the problems 
+regarding Next Change navigation button in compare difference.
+
+History
+-------
+ - Documentation/internal/review_minutes/M6/i558-121404-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 558
+[2] Documentation/internal/technical/Compare/compare-i175.dnt
+[3] Documentation/internal/technical/Compare/i506.dnt
+
+Background
+----------
+See Bugzilla Issue 558 [1].
+
+Design
+------
+The Bugzilla issue 558 has two bugs reported which are:
+- i558.1  Comment 01: Specific problem with the next button while comparing 
+          ooaofgraphics[1]. Next button fails to navigate to next difference in
+          Text Diff Viewer.
+  TextMergeViewer shows two kind of differences, major and minors. Minor(s) lie 
+within a Major. Next button first navigates to first available major from the 
+current cursor index or zero index. It then allows navigation to minor(s) 
+within selected major if it contains any minor(s). Each difference whether 
+major or minor is described by the ranges in two documents that differs from 
+each other. These ranges include EOL characters. Navigation's internal working 
+requires that length of minor difference should be atleast two characters less 
+then length of its parent major difference. In other words it presumes that 
+'\r\n' sequence is used to terminate lines through out the documents. Our text 
+generation class uses single character '\n' for line termination. The 
+navigation functionality fails in a special case where any attribute value ends 
+with a line termination character sequence '\r\n'. This combined with '\n' 
+character contributed by our text generator results in a empty line in the 
+generated text. If this EOL character stands out as a single major difference 
+against document in other side then logic in TextMergeViewer.nextDiff() falls 
+into a condition that continue to return same minor difference again and again. 
+  
+  The solution to this problem lies in rectification in our text generation 
+class ModelClassTextGenerator. In this class we now generate '\r\n' where ever 
+we needed to provide EOL. 
+
+- i558.2  Comment 02: The next/previous buttons disappear by navigating 
+          through the Compare Difference tree.
+  While removing the Memory Leaks in the Bugzilla Issue 506, it was required to 
+clear the navigation toolbar items which were holding objects of Document 
+causing a memory leak (See reference [3] for details). 
+It was identified that double clicking an element in the compare difference 
+tree caused the ContentMergeViewer to dispose and load the default 
+TextMergeViewer. This caused the toolbar items to be cleared as well. 
+The solution to this problem was to give the correct viewer against the 
+correct "Type" of the node double clicked in the compare difference tree. 
+CompareDocumentRangeNode should return a constant string from the method 
+getType() which is used by the framework to load the correct ContentViewer for 
+the given element's type. The method getType() should return "mdl2". The 
+rationale behind the decision to choose mdl2 as return string is derived from 
+the fact that JDT also follows this convention (and this convention is still 
+followed in Eclipse 3.0).Also add the "mdl2" in the extensions parameter in the 
+content merger viewer extension point of compare plug-in's manifest file. 
+  The method getModelFromCache(Object input)in ModelMergeViewerContentProvider 
+class is also modified to return the "input" object unchanged, if it is of type 
+CompareDocumentRangeNode. Whenever a user double clicks a model element in 
+the compare's difference tree, the element's DiffNode is received in this method.
+In this case we simply need to return the node as it is instead of trying to 
+load a mdl file against the node.
+
+Work Required
+-------------
+- i558.1 Comment 01, The Next button does not work in some cases:
+  Make changes, mentioned in the design section, to class 
+ModelClassTextGenerator in bp.compare.text package.
+
+- i558.2  Fixing problem with next/previous button's disappearance.
+  Change the files ModelCompareStructureCreator.java, plugin.xml and 
+ModelMergeViewerContentProvider.java to include code described in the design 
+section.
+
+Implementation Comments
+-----------------------
+
+com.projtech.bp.compare.test/mdl/i424_one.mdl
+com.projtech.bp.compare.test/mdl/i424_two.mdl
+
+- Testing code has been updated to reuse test results of test cases that had
+already been executed. I558DiffNextButtonTest uses the diff window result 
+from I424SortingTest. Therefore 558 scenarios have been introduced in these 
+test models that I424SortingTest use. These models have been exported with 
+graphics.
+
+com.projtech.bp.compare.test/expected_results/difftree_sorting_order.exp
+
+- As the test models have been exported with graphics and have "State Event 
+Matrix Entry" in them, it was required to re-generate the above stated expected 
+result file.
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/
+                                                               BaseTest.java
+- This class adds ability to share objects that are created as a result of 
+running tests.
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/
+                                                         BaseCompareTest.java
+- This class encapsulates all common code for running compare and saving
+their results to be used by other test cases.
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/
+                                                         I424SortingTest.java
+- This class has been updated to use BaseCompareTest.
+
+
+Unit Test
+---------
+
+- i558.UT-1 
+  _- Bring up resource history for bp.ui.canvas/mdl/ooaofgraphics.mdl
+  _- Compare two versions 1.48 and 1.46.14.1 
+  _- Navigate differences in the text with the Next Button in Text Diff Viewer 
+     toolbar
+  _R Next button in diff view does not stick on  any difference and reach the
+     end of differences. And finally shows the dialog box with "End of document 
+     reached. Continue at beginning?".  
+
+- i558.UT-1.1 I558DiffNextButtonTest.testNextButtonWorking()
+  Automated unit test to verify i558.UT-1.          
+  
+- i558.UT-2
+  _- Compare any two models with each other in Tiger.
+  _R Compare windows appear, with the two buttons with upward and downward 
+     arrows in the toolbar between the upper pane (diff tree viewer) and lower
+     panes (text diff vewer). The upward arrow navigates to previous change and 
+     downward arrow navigates to next change, in the text panes.
+  _- Expand the tree and click on many Model Elements in the difference tree.
+  _R The next/previous butttons do not disappear.
+
+- i558.UT-2.1  I558DiffNextButtonTest.testNextButtonDisappearance()
+  Automated unit test to verify i558.UT-2 .
+    
+  The toolbar buttons disappear (i.e. cleared) only when clearToolbar() method 
+is called. This method is invoked from the handleDispose() of 
+ModelContentMergeViewer class. Hence this test iterates the structure diff tree 
+by double clicking its elements, and finally verifies that the initially 
+created ModelContentMergeViewer is not disposed.  
+
+Code Changes
+------------
+
+com.projtech.bp.compare/plugin.xml
+
+com.projtech.bp.compare/src/com/projtech/bp/compare/contentmergeviewer/ModelMergeViewerContentProvider.java
+
+com.projtech.bp.compare/src/com/projtech/bp/compare/structuremergeviewer/ModelCompareStructureCreator.java
+
+com.projtech.bp.compare/src/com/projtech/bp/compare/text/ModelClassTextGenerator.java
+
+com.projtech.bp.compare.test/mdl/i424_one.mdl
+
+com.projtech.bp.compare.test/mdl/i424_two.mdl
+
+com.projtech.bp.compare.test/src/CompareTestSuite.java
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/UITestingUtilities.java
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/BaseCompareTest.java
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/BaseTest.java
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/I424SortingTest.java
+
+com.projtech.bp.compare.test/src/com/projtech/bp/compare/test/cases/I558DiffNextButtonTest.java
+
+com.projtech.bp.compare.test/expected_results/difftree_sorting_order.exp
+
+End
+---
+
+$Log: i558.int,v $
+Revision 1.1  2009/09/03 18:22:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:35  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.68.1  2008/12/31 16:10:48  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2004/12/22 13:03:58  farrukh
+Job:558
+Added information in Implementation Comments section about change in 
+'i424_one.mdl' and 'i424_two.md' after addressing observations in 
+i558-122104-01.rvm
+
+Revision 1.7  2004/12/21 13:38:13  farrukh
+Job:558
+Implementation Comments sections introdcued to describe code changes
+done to the bp.compare.test files.
+
+Revision 1.6  2004/12/21 12:37:37  farrukh
+Job:558
+Added list of files in the 'Code Changes' Section.
+
+Revision 1.5  2004/12/21 06:13:02  siddique
+Job:558
+Review observations addressed, Code Changes files yet to be added.
+
+Revision 1.4  2004/12/16 14:09:10  siddique
+Job:558
+Updated solution to i558.1 section. Updated all sections accordingly.
+
+Revision 1.3  2004/12/15 16:02:27  siddique
+Job:558
+Updated section i558.1, and the unit test section.
+
+Revision 1.2  2004/12/15 12:53:28  siddique
+Job:558
+Review observations addressed.
+
+Revision 1.1  2004/12/10 17:42:50  siddique
+Job:558
+Introduced.
+

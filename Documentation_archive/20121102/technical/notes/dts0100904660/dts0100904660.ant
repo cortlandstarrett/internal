@@ -1,0 +1,149 @@
+========================================================================
+
+File:      $RCSfile: dts0100904660.ant,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+DocGen support for Inter-Project References
+
+
+1. Abstract
+-----------
+The DocGen tool needs to support projects that contain Inter-Project References
+(IPRs).  This note describes the requirements and analysis for this 
+functionality.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100904660
+[2] ClearQuest DEI dts0100632985: Update Docgen to work with generic packages
+[3] ClearQuest DEI dts0100875414: Export referred to systems in pre-builder
+
+4. Background
+-------------
+The addition of generic package support in DocGen [2] opened up the need for 
+DocGen to support projects that use IPRs.
+
+Previous model compiler work required the data file produced by the pre-builder
+to contain information from referenced projects [3].  The approach chosen was to
+pull all the data from referenced projects (and, in turn, any projects this 
+project references).  A per-project preference was added to control this be-
+havior.  It is named "Emit referred-to model elements in other projects".
+
+This pre-builder created data file is also used as input to the document 
+generation tool.
+    
+5. Requirements
+---------------
+5.1  DocGen must not crash when operating on projects that use IPRs.
+5.2  DocGen must have the ability to include information from referred-to 
+     projects in the referring project documentation.
+5.3  BridgePoint must provide a project-level preference to allow the user 
+     to indicate if this project will include referred-to project documentation
+     when DocGen runs.
+5.3.1  The default for this preference will be to include referred-to documen-
+       tation.
+       
+6. Analysis
+-----------
+6.1  DocGen relies on the pre-builder to provide an input file of data to
+     process.  In the case of projects that use IPRs, [4] added support to
+     optionally include all the information from referred-to projects in the 
+     current project's pre-builder output file. 
+
+6.2  Current Functionality Test
+6.2.1  A test of the current behavior showed that when a project uses IPRs and 
+       pre-builder is set to emit referred-to project data, the HTML produced by 
+       docgen only includes one of the possibly many referred-to projects and 
+       does not contain the original project.  Thus, the current functionality 
+       is completely unacceptable.
+6.2.2  When pre-builder is not set to emit referred-to projects, the output HTML
+       includes only the information for the current project, which is the the 
+       expected behavior for this case.
+6.2.3  With the emit option on, the images for referred-to projects are not 
+       generated at all, either into the doc/ folder in the referred-to or
+       local project.
+
+6.3  Summary of existing behavior.  When the user invokes "Create documentation"
+     the sub-tasks occur.  Here we assess the behavior of each step in regards
+     to IPR support:
+       step 1: "Cleaning"
+           - Not IPR dependent, just cleans the doc/ folder of the project
+             DocGen is invoked on
+       step 2: "Loading model"
+           - In the bp.docgen plugin we only explicitly load the project that 
+             DocGen was invoked on.  The Export Builder takes care of loading
+             referred-to projects (if any).  No changes needed.
+       step 3: "Generating images"
+           - As mentioned previously, the image generator only creates the
+             canvas images for the originating project.  This plug-in needs to 
+             be enhanced to generate images for referred-to projects as well.
+       step 4: "Gathering model information"
+           - The export builder is already capable of gathering data for 
+             referred-to projects.  No changes required here.
+       step 5: "Prepping model for document generation"
+           - xtumlmc_build pre-processes the file output by the export builder.
+             This step is not IPR-specific.  No changes needed here.
+       step 6: "Processing model"
+           - DocGen only knows how to handle a single system, it does a blind
+             select for the S_SYS to process in the input file as one of the
+             very first steps.  It will need to be enhanced to handle multiple
+             systems.
+       step 7: "Generating display data"
+           - xsltproc is indifferent to the data in the XML file it is trans-
+             forming to HTML.  No changes needed.
+       step 8: "Refreshing"
+           - Just refreshs the project to pick up new files.  Not IPR dependent.
+           
+6.4  It would be simple to make DocGen only ever output the data for the
+     current project.  The use case would then be that if the user wants doc-
+     umentation for a referred-to project, then they would need to explicitly go
+     and generate that documentation themselves.
+6.4.1  Customers and marketing have indicated that the documentation for a
+       project that uses IPRs should contain data from referred-to projects.  
+       Thus the proposal above is not a favored solution.
+     
+6.5  Another possibility is to (in the case of IPRs) invoke DocGen for all 
+     referred-to projects.  This would modify the contents (in the doc/ folder)
+     of the referred-to projects.  We would also need to create some sort of
+     "landing page" or add the ability to link HTML across projects to allow the
+     user to traverse between each project's HTML data.
+  
+7. Work Required
+----------------
+7.1  Update bp.io.image to handle generating images for referred-to projects
+     into the invoking project's doc/images/ folder.
+7.2  Update docgen.exe to handle input files with multiple systems and output
+     an XML file that contains information for all the systems in the input
+     file.
+7.3  Implement a project-level preference to control IPR traversal during 
+     DocGen.
+
+8. Acceptance Test
+------------------
+8.1  Create a test configuration with 3 models, one "system" model and two
+     "library" models.  The system model should pull components and datatypes
+     from the library models using IPRs.  Run DocGen, see the data from all 
+     the projects in the generated HTML.  The referred-to projects are not 
+     modified.
+     
+End
+---
+
+$Log: dts0100904660.ant,v $
+Revision 1.1  2012/07/31 17:00:19  kbrown
+job:dts0100904660
+First pass at analysis note.
+

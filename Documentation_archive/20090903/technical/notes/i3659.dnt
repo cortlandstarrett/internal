@@ -1,0 +1,163 @@
+========================================================================
+
+File:      $RCSfile: i3659.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support drawing AUTOSAR component diagrams
+
+1. Abstract
+-----------
+This note describes the changes required to support graphics for AUTOSAR
+component diagrams.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3659
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3659
+[2] http://www.autosar.org/download/AUTOSAR_GraphicalNotation.pdf
+
+4. Background
+-------------
+We need to support a graphical way to create and view an AUTOSAR model.  To do
+this we must support all diagrams specified in [2].  For this work we will
+provide a graphics only version of the component diagram.
+
+5. Analysis
+-----------
+In order to avoid double maintenance we need to re-factor the canvas plug-in
+such that it relies on no other non-eclipse plug-ins.  The canvas plug-in relies
+on a client providing some data in order to control what and how elements are
+displayed.  Part of these methods are written to use java reflection so that no
+dependency is required, but not all are.  Rather than using reflection for most
+cases, the main data-providing methods shall be specified in an interface.
+These interfaces may be implemented by any application.
+
+To support a graphics only version of the AUTOSAR component diagram a new
+plug-in shall make use of the interfaces specified above.  Considering that this
+plug-in exists in eclipse it shall make use of the eclipse adapter framework.
+This plug-in shall allow graphics with no semantical meaning, and shall not be
+limited to AUTOSAR.  
+
+6. Design
+---------
+6.1 Re-factor canvas plug-in
+
+The Cl_c class shall be reworked to adapt the represented object to one of the
+new interfaces.  The new interfaces that shall be created are:
+
+CanvasProvider
+GraphicalElementProvider
+ConnectorProvider extends CanvasProvider, GraphicalElementProvider
+DiagramProvider extends CanvasProvider
+ShapeProvider extends CanvasProvider, GraphicalElementProvider
+SystemProvider
+
+Implementers of these interfaces will provide enough data to display symbols on
+the canvas.
+
+The canvas plug-in currently relies on the bp.core plug-in to support the
+following:
+
+instance maintenance
+selections
+cut/copy/paste
+undo/redo
+persistence
+transaction based changes
+change notification
+
+All of this support is pulled from the canvas plug-in, except for instance
+maintenance and selections.  The canvas plug-in will maintain it's own instances
+and will provide it's own selection provider unless the represented system
+provides one.
+
+The SystemProvider interface shall be used to hook the canvas operations into
+the represented system.  This shall provide support for selections, transaction
+based changes, undo/redo, cut/copy/paste, etc,.
+
+For this work the internal canvas selections will be used.  There will be no
+support for the other system related tasks.  There will also only be one
+graphics model root for this work.
+
+The canvas diagram behavior shall be changed such that the editor is marked
+dirty when changed.  The changes shall be committed when the user saves them.
+
+Support for drawing the component symbols specified in [2] shall be added to the
+graphics model.
+
+6.2 Create graphics only plug-in
+
+A new plug-in, com.mentor.systems.ui.canvas.simple, shall be created.  This
+plug-in will implement the interfaces created in 6.1.
+
+The symbol and diagram definitions shall be pulled from the canvas plug-in and
+placed into this new plug-ins plugin.xml file.  New symbol and diagram
+definitions shall be added for AUTOSAR components.
+
+A new EMF model shall be created, which will specify the elements that will be
+graphically represented by the canvas plug-in.  These elements are:
+
+NonSemanticalShapeProvider
+NonSemanticalConnectorProvider
+NonSemanticalDiagramProvider
+
+The shape and connector providers will determine the specification for which
+they are represented by, and provide the necessary data to the canvas plug-in.
+
+The EMF persistence mechanisms shall be used to persist these elements, along
+with their graphical data.  In order to capture the graphical data another class
+is created, GraphicalData.  This class contains one attribute, serializedData.
+The class is associated with the NonSemanticalDiagramProvider class, and will be
+used to extend the persisted data such that graphical information is contained.
+The serializedData attribute value will be passed back to the canvas plug-in on
+import.  This value will be used by the canvas plug-in to recreate the necessary
+graphical data instances.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See the design section.
+
+9. Unit Test
+------------
+- All AUTOSAR component graphics can be created
+- Canvas Editor dirty behavior works
+- Graphical data is persisted appropriately
+- Graphical data is imported correctly
+
+End
+---
+
+$Log: i3659.dnt,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.2.1  2008/12/31 16:10:10  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/08/05 17:25:57  tlondon
+Job: 3659
+
+Introduce
+

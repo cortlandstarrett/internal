@@ -1,0 +1,160 @@
+========================================================================
+
+File:      $RCSfile: dts0100620570.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Need better handling for nested elements
+
+
+1. Abstract
+-----------
+The document generator doesn't do a very good job handling elements
+(specifically canvases of elements) that are nested inside other elements.  This
+note describes the changes to make the image grabber and document generator use
+the same scheme for nested elements.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100620570
+[2] ClearQuest DEI dts0100622088 - Diagram and canvas association turns up
+    broken
+
+4. Background
+-------------
+4.1  The currently shipping version of docgen makes some assumptions about file
+     names it expects to come out of the image generator.  For instance, for a
+     instance state machine, it knows the ISM is inside a class which is in a
+     domain which is inside a system.  It is incapable of handling the case
+     where the domain is a component that is nested inside 2 component packages.
+
+4.2  The currently shipping version of the image grabber does have the ability
+     to handle some nesting.  There is room for improvement, though as there are
+     cases where datatype package images can overwrite each other.  It also does
+     not handle all the necessary types.
+
+4.3  The image grabber makes use of a bottom-up approach to nesting traversal.
+     This approach is used to build up the list of containing elements travers-
+     ing from the subject element up to the containing component.
+
+5. Design
+---------
+5.1  Change the image grabber to traverse all the way up to the containing
+     system instead of stopping at the component.  This will guarantee that all
+     canvases are uniquely named and will fix an issue where domain datatype
+     packages and system datatype package images overwrite each other when the
+     system and the domain have the same name.
+5.1.1  This change requires that the image grabber be given the ability to tra-
+       verse through domains, components, component packages, element packages,
+       and interface packages.
+5.1.2  This work is actually part of the ui.canvas GraphicsUtil class and is not
+       in the image grabber plugin proper.
+
+5.2  Added functions to the DocGen function package.  Each function handles a
+     specific element type from the metamodel.  The caller passes in an instance
+     reference to the subject element, the function then determines (from the
+     known possibilities) what element is the parent of the subject element.  It
+     then adds the appropriate name to the "container list" string, and passes
+     the container list string and the parent element instance reference to the
+     function for the parent element type.  In this way, we walk backwards up
+     through the parent chain from the subject element all the way to the
+     system, building the container list string as we go.
+5.2.1  The functions added are:
+         - getContainerListForA_A()        [Activity]
+         - getContainerListForCOMM_COMM()  [Communication]
+         - getContainerListForCP_CP()      [Component Package]
+         - getContainerListForC_C()        [Component]
+         - getContainerListForEP_PKG()     [Package]
+         - getContainerListForIP_IP()      [Interface Package]
+         - getContainerListForSQ_S()       [Sequence]
+         - getContainerListForS_DOM()      [Domain]
+         - getContainerListForS_DPK()      [Data Type Package]
+         - getContainerListForS_EEPK()     [External Entity Package]
+         - getContainerListForS_FPK()      [Function Package]
+         - getContainerListForS_SS()       [Subsystem]
+         - getContainerListForS_SYS()      [System Model]
+         - getContainerListForUC_UCC()     [Use Case]
+5.2.2  Of course, the work also changed the docgen_* functions to call these
+       getContainerList* functions to get the image name for the associated
+       canvas.
+5.2.3  docgen_system() did not handle element packages at all, only component
+       and interface packages.  Handling for element packages was added.
+
+5.3  Added a README.txt file to the gen folder of the MC-3020 branch of bp.core.
+     This file contains instructions for compiling docgen.
+
+6. Implementation Comments
+--------------------------
+6.1  During development, it was discovered that element Packages (metamodel
+     class Package) were not getting properly configured.  The relationship to
+     the system across R1405 was not set up.  The problem was that the code to
+     set up the relationship was using the relationship itself.  Obviously, this
+     won't work.  The following change was made directly to HEAD for
+     Package.newPackage():
+
+         - select one system related by self->S_SYS[R1405];
+         + select any system from instances of S_SYS
+                                  where (selected.Sys_ID == self.getSystemId());
+
+6.2  A workaround was added for a problem that should be investigated further as
+     time permits. See [2].
+
+7. Unit Test
+------------
+7.1  Create documentation for MicrowaveOven and GPS sample projects.
+7.2  Create documentation for any other projects you want.
+
+8. Code Changes
+---------------
+Changes in branch R3_0_1-SKB-dts0100620570:
+--------------------------------------------
+com.mentor.nucleus.bp.ui.canvas/src/com.mentor.nucleus.bp.ui.canvas.util/
+GraphicsUtil.java
+
+com.mentor.nucleus.bp.docgen/src/com.mentor.nucleus.bp.docgen.generator/
+Generator.java
+
+com.mentor.nucleus.bp.io.image/src/com.mentor.nucleus.bp.io.image.generator/
+Generator.java
+
+Changes in branch MC-3020-SKB-dts0100620570 to be merged to MC-3020-HEAD:
+--------------------------------------------------------------------------
+com.mentor.nucleus.bp.core/gen/datatype.mark
+com.mentor.nucleus.bp.core/gen/README.txt
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/DocGen/
+    DocGen.xtuml
+
+
+End
+---
+
+$Log: dts0100620570.int,v $
+Revision 1.4  2010/01/05 04:29:31  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.3  2009/09/29 04:23:00  kbrown
+job:dts0100620570
+Completed int review changes.
+
+Revision 1.2  2009/09/28 19:17:07  kbrown
+job:dts0100620570
+Complete implementation note.
+
+Revision 1.1  2009/09/28 16:56:09  kbrown
+job:dts0100620570
+Nearly complete implementation note.

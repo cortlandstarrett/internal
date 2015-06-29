@@ -1,0 +1,368 @@
+========================================================================
+
+File:      $RCSfile: dts0100712772.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Migrating JUnit tests to Generic Packages
+
+
+1. Abstract
+-----------
+Upgrade existing selected JUnit test suites to use Generic as opposed to 
+specialized packages. 
+
+2. History
+----------
+none
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100712772
+[2] ClearQuest DEI dts0100631941
+    Migrate away from specialized packages
+[3] dts0100631941.ant 
+[4] ClearQuest DEI dts0100734085
+    "Do not use copies of test models to implement generic package tests"
+[5] dts0100712772.ant    
+[6] ClearQuest DEI dts0100760173 
+    " Implement  a new unit test to not allow specialized packages inside 
+    components when the component is  in a generic package."
+[7] ClearQuest DEI dts0100760175
+    "dispose() Operation in some model classes logs error in the Log file"
+[8] ClearQuest DEI dts0100760176
+    "When a userDataType gets deleted, the elements pointing to it 
+     gets reverted to Orphaned instead of the default types int/void"
+[9] ClearQuest DEI dts0100760258
+    "Migrate Debug - Verifier Test  to Generics"
+[10] ClearQuest DEI dts0100760259
+     "Migrate IO MDL Tests  to Generics"
+[11] ClearQuest DEI dts0100760257
+     "Migrate Parser test suite to Generics"
+[12] ClearQuest DEI dts0100760312
+     "Modify arc files of test files that were generated, and manually updated 
+     for generic generics"
+
+4. Background
+-------------
+[5]
+
+5. Analysis
+-----------
+5.1  As stated in the Analysis Note section (5.3)[5] this issue targets 
+     migration of some tests to generics and these tests
+     are :
+     - Core tests
+       - Core Test Suite
+       - Core Test 2
+       - Core Test - Workspace Setup
+       - Core Test - Existing Projects
+     - Parser test suite     [11]
+     - Debug - Verifier Test [9] 
+     - IO MDL Tests          [10] 
+     Core Test Suite was Promoted as part of the generics work for 
+     the generics issue [2].
+     The Scope of This note is the following:
+       - Core Test 2
+       - Core Test - Workspace Setup
+       - Core Test - Existing Projects
+     The Remaining tests will be addressed in separate design notes.
+      
+5.1.1 For Parser test suite :
+      The big Part of work done for this test was included in the big promotion
+      for generics issue [2].
+      [11] This issue keeps trak of the rest of the parser test changes 
+      
+5.2 For test files that were generated, a copy was made then modified for 
+    generics context as a first step in migration.
+    The arc files could be modified later for generating the tests for generics.
+    Places where the files are copied from originally generated files then 
+    modified manually foe the scope of this note are :
+    5.2.1 RenameTestGenerics.java 
+    The Rest of these tests are listed in [12]
+     - DisposeTest
+     - AcionTest
+     - ReameTest
+     - DeleteTest
+     - FormalizeUnformalizeTest
+    
+    
+
+6. Design
+---------
+6.1  Steps to migrate a JUnit test suite
+6.1.1 Copy the existing test suite and rename it to <TestSuiteName>Generics. 
+6.1.2 Modify the internal behavior of each function to be compatible with 
+      Generic package architecture.
+6.1.3 Modify the test code to support generic packages, create and update int
+      for this issue, and finally re-execute till the suite successfully passes.
+               
+6.2  Update the "Unit_test_template.txt" and add the new generics test suites 
+     to be run along with specialized tests.
+
+
+7. Design Comments
+------------------
+7.1 Changes in plugin com.mentor.nucleus.bp.core:
+ 
+7.1.1 A new method is added to the class OoaofooaUtil, The method getClass()
+      has two parameters a package and a class name, it returns the model class 
+      instance in that package that has the passed name. 
+   
+7.1.2 In the Communication Link class, actionFilter() operation 
+       select many assocs related by pkg->PE_PE[R8000]->R_REL[R8001];
+      is  replaced by
+       select many assocs related by pkg->S_SYS[R1405]->EP_PKG[R1405]
+                                                   ->PE_PE[R8000]->R_REL[R8001];
+      so as to enable formalizing the communication link on associations that
+      exist in other packages in the system. 
+   
+7.1.3 The relation R4 between Subsystem and Association classes is changed to be 
+      conditional on the Subsystem side because Association could exist in the 
+      generic package without being related to Subsystem. This change is made to
+      to fix a consistency check error.
+
+7.1.4 When a userDataType gets deleted, the elements pointing to it gets
+      reverted to Orphaned instead of the default types int/void. 
+      When this userDatype exists under generics and there's 
+      a parameter, a return value, etc. is set to this datatype, 
+      then this dataType gets deleted, those elements get Orphaned instead of 
+      reverting back  to the default datatypes.  Because system level 
+      data type package could not be resolved 
+      For fixing this problem the system level DataType package gets related to 
+      the  dataType being deleted across R39 so as the default dataTypes could
+      be resolved through it and then later on deleting the datatype transaction
+      it gets unrelated from this package. 
+      This fix is added to Two Locations :
+      
+7.1.4.1. Operation Dispose() in PackageableElement Class :
+         At the beginning of the operation dispose get the systemLevel Datatype
+         package of the system containing that packageable element
+         and if that packageable element being disposed is a datatype relate 
+         it to the system level datatype package across R39.
+         i.e. 
+...
+>       	 select one pckg related by self->EP_PKG[R8000]; 
+>              select one sysModel related by pckg->S_SYS[R1405];
+>                 select any datatypePkg related by sysModel->S_DPK[R4400];
+>                   select any datatypeInPkg related by datatypePkg->S_DIP[R39];
+....
+....
+             select one dt related by self->S_DT[R8001];
+               if (not_empty dt)
+>                 if  ((not_empty datatypePkg )and (not_empty datatypeInPkg))
+>                    relate dt to datatypePkg Across R39 using datatypeInPkg;
+>                  end if;
+                     unrelate dt from self across R8001;
+                  dt.dispose();
+                 end if;
+ ....
+                    
+         
+          
+7.1.4.2  Operation Dispose() in Package model class       
+         In case of deleting the package containing the user datatype  the 
+         packageable element gets unrelated from its containing package before 
+         it gets disposed, So the system level data type package can't be 
+         resolved in the operation Dispose() of the class packageableElement. 
+         For fixing that, the  system Level Datatype Package of the system 
+         is related to the packageable element under the package being disposed 
+         across R39 if that packageable element is a datatype.
+i.e.
+...
+>   select one sysModel related by self->S_SYS[R1405];
+>    select any datatypePkg related by sysModel->S_DPK[R4400];
+>     select any  datatypeInPkg related by datatypePkg->S_DIP[R39];
+...
+...                            
+     // dispose Packagable Elements
+     select many pes related by self ->PE_PE[R8000];
+     for each pe in pes
+        select one dt related by pe->S_DT[R8001];
+>         if ( (not_empty dt) and  ((not_empty datatypePkg )and (not_empty datatypeInPkg)) )
+>                 relate dt to datatypePkg Across R39 using datatypeInPkg;
+>         end if;	 
+       unrelate self from pe across R8000;
+       pe.dispose();
+     end for;
+...
+...
+7.1.4.3 The issue referenced [8]is raised to highlight this solution.        
+  
+7.1.5 Modifying the context menu entry functions 
+      MSG_SM_GenericPackageFunctionFormalize() and 
+      MSG_SM_GenericPackageCommunicationFunctionFormalize
+      to select messages related to already formalized packages.    
+
+Before :
+ if (isInGenericPackage)
+   select one pkg related by pp->SQ_P[R930]->PE_PE[R8001]->EP_PKG[R8000];
+   if(not_empty pkg)
+
+After :
+ if (isInGenericPackage)
+>  select one pkg related by pp->EP_PKG[R956];
+  if(not_empty pkg)
+
+
+7.1.6 Modifying both operations actionFilter() in classes Asynchronous Message
+      and Synchronous Message. The following select statement is updated as 
+      shown below 
+      
+     select one packageableElem related by self->MSG_M[R1018]
+                                                    ->SQ_P[R1007]->PE_PE[R8001];
+became
+     select one packageableElem related by self->MSG_M[R1018]->PE_PE[R8001];
+
+7.2 Changes in plugin com.mentor.nucleus.bp.ui.canvas:
+    In Cl_c java class operation Getinstancefromooa_id() an entry for resolving
+    package participant instance is added.
+
+7.3 com.mentor.nucleus.bp.ui.explorer:
+    In file UITree.pei.sql the following two entries were added 
+    to connect messgas to package participant
+INSERT INTO T_TPS VALUES (84, 33, '->SQ_P[R930]->MSG_M[R1007]->MSG_SM[R1018]');
+INSERT INTO T_TPS VALUES (84, 48, '->SQ_P[R930]->MSG_M[R1007]->MSG_R[R1018]');
+
+
+7.4 Changes in plugin com.mentor.nucleus.bp.ui.graphics
+    plugin.xml file is modified to enable the package participant drawn on 
+    canvas to get messages drawn to and from it.     
+
+
+7.5  Changes in plugin com.mentor.nucleus.bp.test
+7.5.1 In BaseTEst.java a new class Package_by_name_c that searches
+      for package having the same name passed to the function
+      and returns that package entity.
+7.5.2 CanvasTestUtils.java got added two new methods 
+      openPackageCanvasEditor() and getPackageCanvasEditor().
+
+7.6   Changes in plugin com.mentor.nucleus.bp.ui.canvas.test
+       CanvasTestUtilities.java got added new method getModelPKGShape()
+       and class findModelPKGByName that implements ClassQueryInterface_c.
+      
+
+
+7.7 In the dispose() Operation of the following model classes  
+         Activity.xtuml
+         Communication.xtuml
+         Data Type Package.xtuml
+         Sequence.xtuml
+         Use Case Diagram.xtuml
+     
+     
+     Case One:
+            delete object instance self;       
+             // we must dispose the supertype after the
+             // subtype to allow access to the id through
+             // the supertype
+             if(not_empty specPkg)
+               unrelate self from specPkg across R1402;
+               specPkg.dispose();
+             end if;
+             
+     Case Two :
+           if(not_empty specPkg)
+            unrelate self from specPkg across R1402;
+            specPkg.dispose();
+           end if;
+           delete object instance self;
+                      
+    For CaseOne when the deletion of object instance self is done before 
+    disposing the specialized package instance there's an error entry in the log  
+    file corresponding to the instance being disposed showing null pointer 
+    exception
+    
+    For Case Two where the deletion of self instance is done before  the
+    disposing of the specialized package instance it doesn't show an error log 
+    entry But Only in case of specialized packages created at system level 
+    when they get deleted it deletes first the instance leaving the canvas 
+    with a white blank square instead of the instance then another delete 
+    should be done to remove the empty square.
+    This doesn't happen for the instances created under domain or package 
+    just for system level instances . 
+    This point is addressed in a separate issue [7].
+     
+     
+7.8 This point is addressed in a separate issue[6] 
+ 
+7.9 Investigating dts0100734085 [4] and see if we can resolve it with the 
+    others changes made for this task.
+    - This point could not be resolved as part of this work.
+    
+8. Work Required
+----------------
+Stated in the Design and Design comments sections.
+
+
+9. Unit Test
+------------
+7.1 Core tests
+7.1.1 _- Run Core Test Generics
+      R- 0 Errors , 0 Failures
+
+7.1.2 _- Run Core Test 2Generics
+      R- 0 Errors , 0 Failures
+
+7.1.3  _- Run Core Test - Workspace SetupGenerics
+      R- 0 Errors , 0 Failures
+ 
+7.1.4  _- Run Core Test - Existing ProjectsGenerics
+      R- 0 Errors , 0 Failures
+
+
+7.2  _- Run Parser test suite
+      R- 0 Errors , 0 Failures
+
+
+7.3 Run all the JUnit tests 
+    _- Tests pass
+    
+End
+---
+
+$Log: dts0100712772.dnt,v $
+Revision 1.9  2011/03/30 13:12:46  hkhaled
+job:dts0100712772
+put headlines for issue numbers listed in the refrences section
+
+Revision 1.8  2011/03/28 13:13:27  hkhaled
+job:dts0100712772
+update dnt
+
+Revision 1.7  2011/02/28 15:01:10  hkhaled
+job:dts0100712772
+updating dnt
+
+Revision 1.6  2011/02/21 15:07:45  hkhaled
+job:dts0100712772
+updating dnt
+
+Revision 1.5  2011/02/21 12:40:17  hkhaled
+job:dts0100712772
+updating dnt
+
+Revision 1.4  2010/12/15 16:55:35  hkhaled
+Job: dts0100712772
+analysis note modifications
+
+Revision 1.3  2010/11/30 16:49:37  rmulvey
+job:dts0100712772
+I updated this note after promotion of the dts0100631941-08b branch.  From this point forward we will no longer use a single working branch for dts0100631941.   We shall follow standard process and breakout the remaining tasks into separate CQ issues.  The purpose of the issue described by this note is to define the new unit tests required to pass before the generic package feature (dts0100631941) can be released.
+
+Revision 1.2  2010/11/29 14:12:43  hkhaled
+job:dts0100631941
+moving the the comment 6.2 from the dts0100631941-08.int note to the dts0100712772.dnt
+
+Revision 1.1  2010/08/31 12:26:07  gbahig
+job:dts0100712772
+Initial dnt draft for issue dts0100712772 : Migration to generic package testing
+

@@ -1,0 +1,145 @@
+========================================================================
+
+File:      $RCSfile: i1489.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Handle transactions gracefully on early exit
+
+Abstract
+--------
+This note describes the changes required to handle the case where a transaction
+can not complete due to early exit.
+
+History
+-------
+final - i1489-012706-01.rvm
+
+Document References
+-------------------
+[1] Issue 1489
+
+Background
+----------
+Currently if a transaction fails, either due to an exception or an early return,
+the transaction is never cancelled or ended.
+
+Analysis
+--------
+Considering the fact that an exception could cause an exit from the flow of
+control within a given transaction, all transactions shall be surrounded by a
+try catch clause.  The clause shall catch all exceptions and cancel the
+transaction if one is caught.
+
+In the case of an early return the transaction shall be cancelled.
+
+Design
+------
+1. Modify calls to startTransaction
+
+All places that startTransaction is called are modified so that the transaction
+is started before any changes are made.  All calls are surrounded by a try catch
+clause according to the analysis.
+
+The one exception is within the canvas project.  Since the calls to the
+startTransaction method are done through the Cl_c.startTransaction bridge
+operation the whole transaction cannot be surrounded by a try catch clause as
+described in the analysis.
+
+Currently all transactions started in the canvas model are cancelled as
+necessary.
+
+2. Modify early return methods
+
+Any place that the USER::warning() bridge is called shall be modified to cancel
+the transaction after throwing the warning.
+
+3. Fix error message in Cl_c.Starttransaction
+
+The error message logged when a TransactionException occurs shall have "started"
+appended to it.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+1. Modify calls to startTransaction
+
+The changes are made to the following files:
+
+core/arc/function_body.inc
+core/arc/wizard.inc,
+properties/arc/BuildPropertySource.arc
+text/src/.../ModelElementPropertyStorage.java
+
+2. Modify early return methods
+
+The changes are made to ui_processing.inc.
+
+3. Fix error message in Cl_c.Starttransaction
+
+The changes are made to bp.ui.canvas/src/.../Cl_c.java
+
+Unit Test
+---------
+
+- Tests an early return with a wizard
+
+- Try to Remove an attribute from an identifier that is used in an association
+R The warning dialog is shown
+- Click Ok
+R The transaction started was cancelled
+
+- Tests an early return without a wizard
+
+- Try to delete an attribute that is referenced elsewhere
+R The warning dialog is shown
+- Click Ok
+R The transaction started was cancelled
+
+- Tests an early exit due to an exception in the properties view
+
+- Force a property change on a null element
+R The transaction started was cancelled
+
+Note: There was no way found to force an exception in the following cases:
+
+- ui.text setPropertyValue
+- core wizard transaction and non-wizard transaction
+
+End
+---
+
+$Log: i1489.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.28.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/01/27 17:45:50  tlondon
+Job: 1489
+
+Fixed according to review
+
+Revision 1.1  2006/01/26 19:48:21  tlondon
+Job: 1489
+
+Initial
+

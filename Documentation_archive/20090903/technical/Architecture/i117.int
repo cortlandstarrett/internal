@@ -1,0 +1,179 @@
+========================================================================
+
+File:      $RCSfile: i117.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+MC-Java Implementation Note
+Only declare variable once
+
+Abstract
+--------
+This note describes the changes to MC-Java to only declare a 
+transient variable once.
+
+History
+-------
+
+final i117-021204-01.rvm
+
+Document References
+-------------------
+
+Bugzilla issue 117
+
+Background
+----------
+
+See issue for a long description of exactly what happens.
+
+The following OAL: 
+
+select any link from instances of D_D;
+select any start_link from instances of D_D;
+link = start_link;
+
+translates correctly, but the generated bpi instances
+for the last assignment statement generate an extra
+declaration of the link variable.
+
+Design
+------
+
+The extra declaration is due to the assignment to 
+transient fragment not checking the 'is_implicit' flag
+before outputting the variable declaration.
+
+i117.1  Always check is_implicit 
+
+The following fragment functions must have a check added for
+is_implicit being true before outputting the variable
+declaration information:
+
+stmt_assign_transient_var
+stmt_create_evt_obj_inst
+stmt_create_evt_assigner
+stmt_create_evt_creation
+stmt_create_evt_ext_entity
+
+All other fragment functions with an is_implicit parameter
+already check the value before outputting the variable
+declaration.
+
+Work Required
+-------------
+
+i117.1  Always check is_implicit 
+
+In fragment.inc, add the check for is_implicit being 
+true to the functions listed in the design.
+
+Implementation Comments
+-----------------------
+
+- Removed the gratuitous conversion to string of the
+is_implicit parameter. That is, the following
+
+  .if ("$l{p_is_implicit_decl}" == "true")
+
+was changed to 
+
+  .if (p_is_implicit_decl)
+  
+everywhere in the file fragment.inc.
+
+- Fixed syntax errors in stmt_create_evt_assigner,
+stmt_create_evt_creation and stmt_create_evt_ext_entity.
+
+- The schema, ooa_schema.sql, had the following keyletter changes:
+
+E__CEC  -> E_CEC
+E__GEC  -> E_GEC
+
+to make the schema consistent with the archetype code.
+
+Unit Test
+---------
+
+- Rebuild core project
+R All .java files unchanged
+R No compilation errors.
+
+- Rebuild als project
+R All .java files unchanged
+R No compilation errors.
+
+- In odms2, add a creation transition to state 1 of the
+  Disk Request object caused by the D_DQ1 event.
+  Add the event qp11 to the QP external entity.
+  
+- Translate the following code in odms2:
+
+select any link from instances of D_D;
+select any start_link from instances of D_D;
+link = start_link;
+create event instance ev1 of D_D1 to link;
+create event instance ev1 of D_D1 to link;
+
+create event instance aev1 of D_DO_A1 to D_DO assigner;
+create event instance aev1 of D_DO_A1 to D_DO assigner;
+
+create event instance cev1 of D_DQ1 to D_DQ creator;
+create event instance cev1 of D_DQ1 to D_DQ creator;
+
+create event instance eeev1 of qp11 to qp1;
+create event instance eeev1 of qp11 to qp1;
+
+R Odms2.bpi.sql generated
+- Examine odms2.bpi.sql
+R Only one V_VAR instance for link, ev1, aev1, cev1, eeev1
+- Code generated
+R Code for ACT_AT and instance event generated correctly.
+R NO code generated for creation, assigner, or EE events.
+    Opened issue 118 in bugzilla
+    
+Code changes
+------------
+
+TinyJava/fragment.inc
+Initial version:  1.6   Final version: 1.7
+
+TinyJava/ooa_schema.sql
+Initial version:  1.7   Final version: 1.8
+
+
+End
+---
+
+$Log: i117.int,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.166.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/02/12 17:32:47  greg
+Job: 117
+Update from review
+
+Revision 1.1  2004/02/12 15:47:29  greg
+Job: 117
+Initial introduction
+
+
+
+

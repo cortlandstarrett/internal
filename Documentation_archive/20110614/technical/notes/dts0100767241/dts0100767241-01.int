@@ -1,0 +1,139 @@
+========================================================================
+
+File:      $RCSfile: dts0100767241-01.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Fix Multi-Level Hierarchy Polymorphics in MC-3020
+
+1. Abstract
+-----------
+Multi-level polymorphic events are not being delivered.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100767241 - Multi-level polymorphic events not working
+[2] ClearQuest DEI dts0100698353 - Translation in MC3020 of OAL fails when
+    generating a polymorphic event
+    [1] is a follow-on to [2]
+[3] <svn doc_repository>Models/polycalc/
+
+4. Background
+-------------
+Polymorphic events allow an event targeted at a supertype instance to
+be received and handled in a subtype instance state machine.  Present
+code supports this functionality for 2-level super/sub hiearchies.
+However, 3 or more levels of hierarchy in which "pass-through" events
+occur do not work.  "Pass-through" events are events defined at a supertype
+but received in a subtype more than 1 level below the supertype.  Intermediate
+subtypes have no record of the polymorphic or non-local event instances.
+This note describes the change made to deliver polymorphic events past
+the intermediate subtypes to the lower-level subtypes meant to receive them.
+
+5. Design
+---------
+5.1   Propagate events directly from the supertype state machine to the subtype
+      state machine.  Remove the step-by-step "percolation" through the
+      intermediate subtypes.
+5.2   Recursively descend the subtype hierarchy in the model compiler to find
+      the delivery targets for the polymorphic events directly from the highest
+      level supertype (having the polymorphic events).
+
+6. Implementation Comments
+--------------------------
+6.1   An ugly bug was uncovered in the testing of this issue.  Selection
+      from supertype to subtype was not checking the type of subtype.
+      It would simply access the instance reference pointer and supply it
+      as a result regardless of the type of subtype linked.  For example:
+      
+    R1 /---B
+A <|---|
+       \---C
+       
+      create object instance a of A;
+      create object instance b of B;
+      relate a to b across R1;
+      select one c related by a->C[R1];
+      if ( not_empty c )
+        // Error!  c found to exist, but it is actually an instance of B!
+      end if;
+6.2   The above error was fixed by adding a check for the proper subtype
+      before supplying the foreign instance reference pointer.
+6.3   Some merges from SystemC are included in this branch.
+6.4   Merged in AUTOSAR fix for casting Rte_Instances.
+
+7. Unit Test
+------------
+7.1  Compile [3] ensuring that you are compiling the deeptest test.
+7.2  Run the compiled code and get "success" (and no "failure").
+
+8. Code Changes
+---------------
+Branch name:  R329CDS768362 
+mc/arc/m.component.arc - adding from SystemC branch
+mc/arc/m.system.arc - adding from SystemC branch
+mc/arc/q.class.poly.arc - This routine was changed a lot.  It now delivers
+polymorphic events from the supertype directly to the subtype dispatcher
+without posting events to the event queue.  Pass-through events were broken
+but now the pass-through subtypes are basically skipped in the generated code.
+This is accomplished by recursively drilling through the subtype hierarchy in
+the model compiler instead.
+mc/arc/q.class.sem.arc - Remove the return code from the poly propagate.
+We now dispatch directly and do not need return codes.
+mc/arc/q.mc_metamodel.populate.arc - merge SystemC general functionality
+mc/arc/q.oal.act_blk.arc - esthetic skipping of blank line
+mc/arc/q.parameters.arc - merge from SystemC general
+mc/arc/t.class.idispatch.c - remove PolyInflight macros (no longer needed)
+mc/arc/t.component.port.isr.c - added from SystemC
+mc/arc/t.component.ports.isr.c - added from SystemC
+mc/arc/t.component.regdefs.h - added from SystemC
+mc/arc/t.smt_sr.declare_ref.c - Zero out the declare ref storage.  It may
+get compared to zero.
+mc/arc/t.sys_events.h - remove PolyInFlight macros (no longer needed)
+mc/arc/specialized/q.component.arc - merge from SystemC/autosar
+mc/arc/specialized/q.components.arc - merge from SystemC/autosar
+mc/arc/specialized/q.mc3020.arc - add register file
+mc/arc/specialized/q.smt.generate.arc - This was a bug.  Check the subtype
+number before selecting across the association.
+mc/arc/specialized/t.component.ports.c - added from SystemC/autosar
+mc/arc/specialized/t.smt.c
+mc/arc/specialized/t.smt_sr.declare_ref.c - initialize handle to 0 (empty)
+mc/arc/specialized/t.sys_events.c - remove PolyInFlight check (not needed)
+
+<svn>/Models/polycalc/ - added multi-level hierarchy testing
+
+
+End
+---
+
+$Log: dts0100767241-01.int,v $
+Revision 1.5  2011/05/29 00:28:59  cstarret
+job:dts0100767241
+missed one file in note, picked it up
+
+Revision 1.4  2011/05/29 00:17:41  cstarret
+job:dts0100767241
+small autosar merge in 3 existing files
+
+Revision 1.3  2011/05/28 23:38:26  cstarret
+job:dts0100767241
+file list update
+
+Revision 1.2  2011/05/27 22:07:22  cstarret
+job:dts0100767241
+mostly recording the cleanup of PolyInFlight
+
+Revision 1.1  2011/05/27 16:31:29  cstarret
+job:dts0100767241
+polys running doing more testing, this is rev1 int

@@ -1,0 +1,203 @@
+========================================================================
+
+File:      $RCSfile: dts0100878659.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Problems with Verifier and delegations
+
+
+1. Abstract
+-----------
+Currently, models with delegation to nested components fails to work in 
+verifier. This issue to fix it.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100878659- Problems with Verifier and delegations
+
+4. Background
+-------------
+None.
+
+5. Requirements
+---------------
+5.1 The following specify the runtime channel setup from satisfaction and 
+	delegation :
+1) For a satisfaction wire 'from' required port 'to' provided port.
+2) For a delegation wire 'from' inner required port 'to' outer required port.
+3) A port at the 'to' end of a wire is playing a provider role.
+4) A port at the 'from' end of wire is playing a requirer role.
+5) When viewed from the outside of its component a required port plays a 
+	requirer role.
+6) When viewed from the outside of its component a provided port plays a 
+	provider role.
+7) When viewed from the inside of its component, a port switches role (as 
+	defined by 5 and 6).
+8) All wires must run in the same direction, end to end, across both 
+	satisfactions and delegations.
+
+6. Analysis
+-----------
+6.1 For a model with a delegation to nested components running in verifier, when
+	  a message is sent through a delegation, the message gets consumed by the 
+	  outer component.
+
+6.2 Delegation was first introduced in BP.2.2.0. There was suspicion that 
+	  delegation was working properly previously and got broken later. 
+	  Delegation was tested in the following BP releases and it was not working:
+	- BP2.2.0
+	- BP3.0.2
+	- BP3.3.0
+	- BP3.3.2
+	- BP3.4.0
+
+6.3 Components in Verifier are wired together using Runtime Channel instances. 
+	  One of these is created at startup for each satisfaction in the model 
+	  being run.
+
+6.4 During verifier launching the Runtime Channels are created for both 
+	  Satisfactions and Delegations. While the model is executing, Verifier just 
+	  traverses the channels that have been created.
+
+6.5 During model execution, Verifier has no concept of delegation, just wired 
+	  runtime channels, it just traverses the channels following R2973 until it 
+	  gets to the end. The component at the end is the one that has the message 
+	  delivered to it.
+
+6.6 As satisfactions have direction, delegations also do. Since a delegation is
+    a connection between 'same gender' interface references, and the verifier
+    does not distinguish between delegation and satisfaction, the direction
+    of the message through the runtime channel that represents delegation needs 
+    to be defined in the correct direction whether the message is going out from 
+    an inner component to an outer component or going in. 
+    
+    What currently happens, if the direction of the satisfaction is going to
+    the outer component, the direction of the delegation is also coming from
+    the nested component to outer component,
+      i.e. 
+                     satisfaction 						    delegation
+                     channel direction                    channel direction
+  AnotherComponent --------------------> OuterComponent <-------------------- nested component
+  or 
+  					    satisfaction 					    delegation 
+  					 channel direction 					channel direction
+  AnotherComponent <------------------- OuterComponent -------------------> nested component
+  
+  While it should be : 
+                     satisfaction 						    delegation
+                     channel direction                    channel direction
+  AnotherComponent --------------------> OuterComponent --------------------> nested component
+  or 
+  					    satisfaction 					    delegation 
+  					 channel direction 					channel direction
+  AnotherComponent <------------------- OuterComponent <------------------- nested component 
+   
+
+
+7. Design
+---------
+7.1 In com.mentor.nucleus.bp.debug.ui.model.BPDebugTarget.wireChannel(
+		NonRootModelElement, boolean, ComponentInstance_c, ComponentInstance_c, 
+		RuntimeChannel_c):
+		The setup of the direction of the delegation runtime channel to be as
+		described in 6.6
+
+
+8. Design Comments
+------------------
+None
+
+9. Work Required
+----------------
+9.1 The work is fully outlined in design section.
+
+
+10. Unit Test
+------------
+10.1 Only re-run Verifier tests.
+10.2 Create a delegation Verifier automated test with two levels nested 
+	   components.
+
+	Model Structure : 
+	 - System Model
+	   - Package
+	      - FirstDelegationInterface
+	      - SecondDelegationInterface
+	      - TestDriverComponent
+		  - MostOuterComponent
+		    - LevelOneDelegationComponent
+		    - NestedComponent
+		      - LevelTwoDelegationComponent
+		  
+		  - MostOuterComponentReference
+		    - LevelOneDelegationComponentReference
+		      - LevelTwoDelegationComponentReference
+	  
+	 MostOuterComponent is connected with TestDriverComponent. MostOuterComponent
+	 delegates its connection to LevelOneDelegationComponent
+	  
+	 NestedComponent is connected with LevelOneDelegationComponent.
+   NestedComponent delegates its connection to LevelTwoDelegationComponent
+	 
+	 - Use similar test structure but use component references instead of
+     components.
+	 - Apply delegation for both required and provided ports in similar test
+	   structures.
+	  
+	   
+	Test Action :
+	- send interface operation (with and without return value) 
+	  and signal through delegation
+	- Print LogFailure for unexpected message consumption, and LogSuccess for
+	  expected one.
+				
+	Tests Pass if : 
+	- The LevelTwoDelegationComponent consumes the message in each case. This is
+	  verified by comparing Console view output with an expected transcript. 
+
+
+End
+---
+
+$Log: dts0100878659.dnt,v $
+Revision 1.7  2012/04/18 18:24:40  nmohamad
+job:dts0100878659
+Update requirement section and 6.6
+
+Revision 1.6  2012/04/16 11:36:11  nmohamad
+job:dts0100878659
+Addressing reiview minutes
+
+Revision 1.5  2012/04/12 15:33:09  rmulvey
+job:dts0100878659
+Corrected grammar
+
+Revision 1.4  2012/04/11 13:24:44  campbell
+Job:dts0100878659
+Adjust for clarification.
+
+Revision 1.3  2012/04/11 13:06:12  nmohamad
+job:dts0100878659
+Enhancing test model
+
+Revision 1.2  2012/04/11 12:54:19  nmohamad
+job:dts0100878659
+Update analysis and test section based on Campbell request.
+
+Revision 1.1  2012/04/10 16:44:00  nmohamad
+job:dts0100878659
+Create
+

@@ -1,0 +1,401 @@
+========================================================================
+
+File:      $RCSfile: i1307.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:23:21 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Support simple undo/redo
+
+Abstract
+--------
+This note describes the changes necessary for supporting a simple version of
+undo/redo.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 1307
+
+Background
+----------
+It was determined that once the multiple file persistence work was complete some
+type of undo/redo would be required.  The support is necessary when running the
+application in a pessimistic environment.  The use of the team interface and the
+local history was originally intended to be used in place of undo/redo.  During
+work on the multiple file persistence it was realized that the various
+"Replace with" and "Restore from" functionality was overly cumbersome to use
+correctly when a change was made to a file that could not be persisted.
+
+Analysis
+--------
+All transactions are potentially undoable.  If a transaction is completed it
+shall be placed on an undo stack.  If that same transaction is undone, it shall
+be placed on the redo stack.
+
+The redo stack shall be cleared if a new transaction is completed.  This is
+necessary as there is no way to keep a consistent redo stack.  This is explained
+by the following example:
+
+_- Draw a shape (placed in the undo stack)
+_- Delete the shape (placed on the undo stack)
+_- Undo the deletion (Removed from the undo stack and placed on the redo stack)
+_- Delete the shape (placed on the undo stack)
+_- Redo the transaction left on the redo stack
+	(redo tries to delete the already deleted shape)
+
+In order to successfully revert a transaction, each delta contained in a
+transaction shall be processed in reverse order.  There are four types of model
+changes, deletion, creation, association, and attribute value setting.  Each
+type shall be reversed when encountered.
+
+The undo/redo functionality shall maintain an undo and redo stack for each
+model-root.
+
+Design
+------
+
+1. Create revertTransaction method
+
+A new method is created which shall process each delta in a given transaction in
+reverse order.  For deletions only, each transaction will contain deltas from 
+all model-roots affected by the transaction.
+
+The necessary work for reversing each type of delta is shown below:
+
+Deletions - Place the stored instance back in its instance list, if the instance
+	is an instance of ActivePoller_c it's re-registered.
+
+Creations - The NonRootModelElement instance is deleted.
+						
+Associations - Construct the relate/unrelate string representing the method,
+	from the data in the delta.  The resulting method is the reverse
+	of the actual method called, i.e, relate becomes unrelate.  Call
+	the resulting method using reflection.
+							 
+Attibute Values - Construct the set string representing the method from the
+	data in the delta.  Call the resulting method using reflection
+	and passing the old value stored in the delta.
+
+A wrapper method is written which will determine, based on the number of deltas
+found, if a ProgressMonitorDialog is required.  This is required for long
+running reverts.  Currently the delta limit is fixed at 200.
+
+2. Modify endTransaction to populate undo/redo stacks
+
+The logic explained in the Analysis section is used to populate the undo/redo
+stacks in the endTransaction method.
+
+3. Create method setUndoRedoActionsState
+
+The new method is created to change the enablement of the undo/redo actions.
+The enablement is determined by the presence of transactions in the stacks and
+is called in endTransaction after the logic in section 2.
+
+4. Define undo/redo actions
+
+The actions are defined in the TransactionManager class.  Each model-root shall
+have a TransactionManager instance and therefore shall posess its own
+undo/redo stacks.  The defined actions shall call the method
+revertLastTransaction, which gets the last transaction added to the
+corresponding stack and calls revert on that transaction.
+
+The actions are defined in new methods, getUndoAction and getRedoAction.
+
+5. Add actions to views
+
+The following views have the new actions defined:
+
+CanvasEditor
+Outline View
+
+For the CanvasEditor class, the model-root of the represented ooaofooa class is
+used to get the undo/redo actions from the model-root's TransactionManager.
+
+For the Outline View, the model-root is retrieved from the model element 
+instance that is associated with that view.
+
+6. Add support for non-undoable transactions
+
+The Transaction class is modified to have a flag that can be set when a
+transaction should not be undoable.  The transaction created in the
+NewDomainWizard class is marked as non-undoable, since the user will most often
+delete the model if unwanted.  Changes to model element descriptions 
+and activities are also non-undoable since the Eclipse text editor has
+its own undo/redo functionality that the user is expected to employ.
+
+7. Remove cached instance list in NonRootModelElement
+
+During the prototyping of this work, there was an issue with an incorrect
+instance list being found during the restoration of a deleted element.  This was
+due to the fact that instance lists are created as needed and removed when not
+needed.  Therefore the cached value was obsolete.
+
+The class is changed to cache the model-root instead of the instance list.  All
+accessors are changed to used the model-root's getInstanceList method.
+
+8. Modify ModelRoot to contain a TransactionManager
+
+The ModelRoot constructor is modified to create a new TransactionManager
+instance and cache it in a field.
+
+[The following points are added by Jeff, who is continuing Travis's work
+on the issue.  These points document work done by Travis.]
+
+9. 
+In core/create_global_action.arc, the delete action is special-cased to 
+perform its work within a transaction that may operate over multiple 
+model-roots.
+
+10.
+In core/function_body.inc, the delete action is special-cased to not have
+a transaction generated for its work, as the special case in point 9 above
+now takes care of that.  Additionally, the transaction generated for other 
+actions is modified to also collect deltas from the graphics-root associated 
+with the model-root involved.
+
+11.
+In core/wizard.inc, the performFinish() method generated for the wizard is 
+modified to retrieve the transaction manager associated with the model element
+that is the wizard's context, rather than simply using the default 
+transaction manager instance.
+
+12.
+In the ooaofooa, the Attribute.dispose() operation is modified to more 
+correctly update the linkage of preceding/succeeding attributes following
+the callee's removal from its class's attributes.
+
+13.
+In core.common.AttributeChangeModelDelta, equals and setNewValue methods are
+added.  In core.common.ModelRoot, code is added to the doFirePrework method
+that makes use of these new methods to determine if a delta for a given 
+attribute has already been stored in the active transaction, in which 
+case the newer value is simply set into the older delta, rather than adding
+the newer delta to the transaction.  This allows (for instance) a mouse drag 
+of a graphical element to be stored as one delta in the drag's transaction, 
+which avoids the performance problems that would occur if every step of the 
+drag was recorded individually within the transaction.
+
+14.
+core.common.BaseModelDelta is modified to store the source model-element's 
+position in its model-root's instance list prior to the delta.  This allows 
+an undo of a deletion to place the element back into its instance
+list at the right position.
+
+The gen_delete_instance_statements and gen_delete_instance_statement 
+functions of MC-Java's statement.inc are modified to provide the position
+of a deleted element within its instance list as part of the model-delta
+that is reported for the deletion.
+
+15.
+In ui.canvas.Cl_c, the startTransaction, endTransaction and cancelTransaction
+methods are modified to use the transaction manager for the model-root of 
+a given model element, rather than the default transaction manager instance.  
+The latter two methods have a model-element parameter added for this purpose.  
+The corresponding bridge operations and calls made to them in the ooaofgraphics
+are modified to include this parameter.
+
+16.
+In ui.properties/BuildPropertySource.arc, the setPropertyValue method 
+generated for the various property-source classes is modified to retrieve the 
+transaction manager associated with the model element whose properties are 
+being displayed, rather than simply using the default transaction manager 
+instance.
+
+17.
+In ui.text/ModelElementPropertyStorage, the setPropertyValue method is modified 
+to retrieve the transaction manager associated with the model element whose 
+text is being modified, rather than simply using the default transaction manager 
+instance.
+
+18. 
+In java.arc, the set... method generated for setting a model element's 
+attribute value is modified to check if the attribute already has the given
+value, in which case the method is exited early.  This prevents unnecessary
+attribute-change events from being issued, and also keeps their 
+associated no-change model-deltas from being added to the undo/redo stacks
+of the governing transaction manager.
+
+[The following points document work done by Jeff.]
+
+J1.
+In core.EclipseOoaofooa, the previously internal-use-only boolean field 
+shouldListenForResourceChangeEvents is changed to a more general-purpose 
+field called persisting, and a getter method is added for its value.  
+This lets clients determine whether the model is currently in the process
+of being persisted to a file.  
+
+The above-mentioned getter method (called isPersisting), as well as a method 
+getPersistenceFile (which returns an Object), are added to the base ModelRoot 
+class.  The latter method allows the TransactionManager to determine 
+whether a resource change of which it has been informed concerns the persistence
+file of the model-root for which it is managing transactions.  In such a
+case, if the change was not due to the file being saved by the tool, the
+manager clears its undo and redo stacks.  
+
+Overrides of both of these methods in ui.canvas.OoaofgraphicsBase are added 
+which defer to the same-named methods in the associated Ooaofooa instance.  
+
+J2.
+core.ui.Selection's removeFromSelection method is modified to exit early
+if the given element is null, which prevents a spurious selection-changed
+event from being issued.
+
+J3.
+In core.util.UIUtil, a redrawControl method is added that makes a redraw() 
+call on a given Control, on the UI thread.  This method is employed by 
+ui.canvas.CanvasEditorListener to get its canvas redrawn when it learns of an 
+attribute change to a graphics instance it is displaying.  This is necessary 
+because such a change can be programmatic (vs. UI-spawned), as in an undo of 
+a graphical element's repositioning or resizing, so no UI code is executed 
+that would normally tell the canvas to redraw afterwards.  A 
+modelElementAttributeChanged method override is added to CanvasEditorListener
+to issue the redraw, as the class's default processing of ModelChangeEvents 
+does not do so in such a case. 
+
+In ui.canvas.CanvasEditor, the editor's CanvasEditorListener is added as
+a model change listener to the graphics-root whose contents it is displaying,
+in addition to the associated model-root.  This lets the listener respond
+to graphics-only events, such as the moving of an element.
+
+J4.
+In java.arc, the equals() method generated for model elements is modified
+to check if the value of any (unique-id type) identifying attribute involved 
+is zero, which would likely be due to a supertype instance not yet being 
+properly related, in which case the given instance must be the same one as 
+the callee for the method to return true.  This method was previously 
+improperly returning true when supertype instances weren't yet properly related,
+as can happen during undos/redos of model element creations and deletions.
+
+J5. 
+In MC_Java's referring.inc, the (un-)relateAcrossR... methods generated 
+for model element classes are modified to exit immediately if the given 
+target element is null, which prevents a spurious relation-changed
+event from being issued.
+
+
+Work Required
+-------------
+
+1. Create revertTransaction method
+
+Changes are made in TransactionManager.java according to the design.
+
+2. Modify endTransaction to populate undo/redo stacks
+
+Changes are made in TransactionManager.java according to the design.
+
+3. Create method setUndoRedoActionsState
+
+Changes are made in TransactionManager.java according to the design.
+
+4. Define global undo/redo actions
+
+Changes are made in create_core_plugin_class.arc according to the design.
+
+5. Add actions to views
+
+The changes are made in CanvasEditor.java, and to ModelContentOutlinePage.java.
+
+6. Add support for non-undoable transactions
+
+Changes are made in Transaction.java, NewDomainWizard.java, and 
+ui.text.ModelElementPropertyStorage.java according to the design.
+
+7. Remove cached instance list in NonRootModelElement
+
+The changes are made in NonRootModelElement.java according to the design.
+
+8. Modify ModelRoot to contain a TransactionManager
+
+The changes are made in ModelRoot.java according to the design.
+
+
+Unit Test
+---------
+- open a subsystem in an existing model
+- delete a class which has both attributes and operations
+- right-click in the canvas, select 'Undo'
+R the class reappears on the canvas with its attributes and operations intact
+- right-click in the canvas, select 'Redo'
+R the class is deleted from the subsystem
+
+- delete an association between two classes in the subsystem
+- right-click in the outline view, select 'Undo'
+R the association reappears on the canvas with its text elements intact
+- right-click in the outline view, select 'Redo'
+R the association is deleted from the subsystem
+
+- drag a class some distance across the canvas
+- right-click in the canvas, select 'Undo'
+R the class is moved back to its original position
+- right-click in the canvas, select 'Redo'
+R the class is moved to its previous position
+
+- drag a class some distance across the canvas
+- right-click in the canvas, select 'Undo'
+R both 'Undo' and 'Redo' are enabled in the canvas's menu
+- right-click on the model in the model explorer,
+	select "Replace with->Latest from <X>"
+R both 'Undo' and 'Redo' are disabled in the canvas's menu
+
+[stress test:] 
+(is not automated)
+- open the domain package diagram for a copy of the ooaofooa model
+- delete the Subsystem subsystem from the diagram
+- right-click in the canvas, select 'Undo'
+R a progress dialog is shown, since so many model-deltas are involved
+R the Subsystem subsystem is brought back into existence with all of its 
+	descendent elements intact
+- right-click in the canvas, select 'Redo'
+R a progress dialog is shown, since so many model-deltas are involved
+R the Subsystem subsystem and its descendent elements are removed from the model
+
+End
+---
+
+$Log: i1307.dnt,v $
+Revision 1.1  2009/09/03 18:23:21  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:14:04  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.28.1  2008/12/31 16:11:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2006/02/26 22:09:19  jmather
+Job: 1307
+Addressed review comments.
+Added a non-automated stress test.
+
+Revision 1.4  2006/02/23 23:33:31  jmather
+Job: 1307
+Ready for review.
+
+Revision 1.3  2006/02/23 22:27:36  jmather
+Job: 1307
+Rough draft.
+
+Revision 1.2  2006/02/23 20:08:47  jmather
+Job: 1307
+Introduced.
+
+Revision 1.1.2.1  2005/12/16 22:19:50  tlondon
+Job: 1307
+
+Initial
+

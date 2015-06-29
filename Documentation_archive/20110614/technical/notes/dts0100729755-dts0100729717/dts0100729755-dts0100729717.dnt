@@ -1,0 +1,162 @@
+========================================================================
+
+File:      $RCSfile: dts0100729755-dts0100729717.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Instances of polymorphic events are left as artifacts in supertype from subtype
+NPE while deleting a subtype that contains polymorphic events
+
+1. Abstract
+-----------
+This document intends to resolve two Polymorphic event issues, one of them 
+NPE while deleting a subtype model class that contains orphaned events
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100729717 - Instances of polymorphic events are left as 
+	artifacts in superType from subType
+[2] ClearQuest DEI dts0100729755 - NPE while deleting a subtype model class that
+	contains orphaned events
+[3] SMA QA  dts0100759157 - Polymorphic events test
+
+4. Background
+-------------
+A polymorphic event is an event that has many potential receiving state machines 
+in a specialization hierarchy. For every specialization tree association there 
+is only one subType instance created and can receive this event. During model 
+execution, when polymorphic event is sent to the superType instance, it is 
+cloned, moved to subType instance associated with this superType instance,
+then delete the superType event and fire the subType event. note that it is
+possible to have more than one subType instance but in different specialization 
+hierarchy.
+
+The polymorphic event becomes orphaned if the superType event deleted first,
+at this point the subType event will not have an event to reference to and 
+become orphaned. 
+
+5. Analysis
+-----------
+5.1 Currently during model execution, when polymorphic event is sent to 
+	superType instance, it is cloned to the subType instance but it is not 
+	deleted from the superType instance in the session explorer view.
+    By digging in the implementation, I found that the superType polymorphic 
+    event is deleted properly, but what seems to the user that it did not 
+    because the polymorphic event is cloned for each subType classes and
+    assigned to superType instance initially then migrate it to the subType
+    instance when found. Since there is only one subtype instance and two 
+    subType classes, the clone function ends up with extra cloned polymorphic 
+    event assigned to the superType that should be deleted.
+    
+    Currently Instance::Delivereventtosubtypeinstance(..) return boolean value,
+    if it equals 'false' this means the code could not find subType instance for
+    certain subType class to be assigned to the last cloned polymorphic event. 
+    Unfortunately the implementation did not use use this boolean return value 
+    to handle the extra cloned polymorphic event and delete it, which should
+    happen.
+    
+5.2 When delete a model class that has orphaned event, the deletion process
+	did not complete because an NPE when tying an operation using empty 
+	model class instance. This model class instance is brought by an empty
+	polymorphic event instance due to the orphaned event 
+	
+	The problem gets worst because the user finds some parts (some events and 
+	state action) of the model class that are deleted before hit the NPE. This
+	cause the model to be even more corrupted.
+	
+	This raises the need to support a transaction roll back mechanism. Once a 
+	problem happened that prevents to completion a transaction properly, the 
+	roll back mechanism function is to undo everything that transaction did so 
+	far and return the model in state it was just before starting this 
+	transaction.
+	
+	All the transactions need to use this roll back mechanism feature not just 
+	the model class delete transaction.
+	
+	Also regarding the specific polymorphic event case addressed by [2], it 
+	does not need to roll back the transaction, and the delete process needs to 
+	handle the orphaned event gracefully and reports it the .log file.
+	
+     
+
+6. Design
+---------
+6.1 In Instance::Takeevent(..),  Use the return boolean value of Instance::
+	Delivereventtosubtypeinstance(..) to dispose the last cloned polymorphic 
+	event if it equals 'false'
+
+6.2 Builder Changes for roll back mechanism
+6.2.1 Support roll back mechanism 
+6.2.1.1 Overload TransactionManager.cancelTransaction() function to add 
+		Exception argument. This new method should invoke 
+		Transaction.revert(boolean) to roll back that transaction.
+6.2.1.2 Update Copy and Cut actions to enable model change listeners and 
+		use the roll back feature.
+6.2.1.3 Implements batch roll back mechanism. Code is added in TransactionUtil 
+		to cancel and revert all transactions in a group when an exception is 
+		hit.
+6.2.1.4 Update all location to use the new overload 
+		TransactionManager.cancelTransaction()
+6.2.1.5 The core DeleteAction should be modified to extract the delete code 
+		into a new method, outside of the try catch block. The DeleteAction.run() 
+		method should be changed to call the new method within the try catch 
+		block. The graphical delete action should be modified to call the new 
+		method so that exceptions can be caught by the graphical delete action.
+		
+		If the exception is not caught by the graphical delete action the 
+		transaction can never be canceled as the core DeleteAction catches the 
+		exception but did not start the transaction.
+
+6.2.2 Gracefully delete the orphaned event
+6.2.2.1 If model class under deletion contains orphaned event, the transaction
+		should not roll back. delete transaction should complete and reports
+		the orphaned event in the .log file. The required changes needs to 
+		go into ModelClass::Disposelowernonlocalevents(..) operation
+		
+		A new bridge logError(message) is added to Utilities external entity
+		in bp.core::ooaofooa model. This bridge shall be used to add an entry
+		into log file.
+		
+		
+		   
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is fully outlined in design section. 
+
+9. Unit Test
+------------
+9.1 Perform the manual test [3]
+
+End
+---
+
+$Log: dts0100729755-dts0100729717.dnt,v $
+Revision 1.3  2011/03/24 17:23:56  nmohamad
+job:dts0100729755
+Addressing review minutes
+
+Revision 1.2  2011/03/22 20:25:20  nmohamad
+job:dts0100729755
+Addressing Travis feedback
+
+Revision 1.1  2011/03/22 12:48:53  nmohamad
+job:dts0100729755
+create
+

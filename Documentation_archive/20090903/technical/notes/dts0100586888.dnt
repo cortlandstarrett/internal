@@ -1,0 +1,345 @@
+========================================================================
+
+File:      $RCSfile: dts0100586888.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+=======================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+=======================================================================
+
+BridgePoint Project Design Note
+Domain marking files are not created for formalized components when models are 
+imported
+
+1. Abstract
+-----------
+The domain-marking files are not created for models that have components 
+formalized to domains.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100586888
+http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=a1e26533-aaec-480e-a5c8-932262ae9d9f
+
+[2] Bugzilla issue 1687
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=1687
+    Support formal modeling of component diagrams
+
+[3] Bugzilla issue 2614 design note
+    Update MC plugins to use stream model export
+    Documentation/internal/technical/archive/20080109/i2614.dnt
+    
+4. Background
+-------------
+The ability to formalize a component to a domain was implemented in BridgePoint
+version 1.5.0 [2].   Since that time the problem called-out by this issue
+has been present.  
+
+The mc3020 plugin's default-manifest.xml specifies 3 marking files that are 
+created on a "per-domain" basis.  They are:
+_class.mark
+_domain.mark
+_event.mark
+
+The model change listener (MC3020ResourceListener.java) has code that 
+prepends the domain name to these marking files as domains are added, and 
+renamed.  The MC3020ResourceListener also removes these marking files when 
+domains are removed.  This MC3020ResourceListener is implemented as a 
+IResourceChangeListener.  It is notified based on changes to the file system.
+The change events it receives contain file-system information, and the code
+that handles domain changes relies on the location of domains in the model 
+(it takes advantage of the fact that domains are always directly under the
+System Model).   With the introduction of formalized domains [2] the domain
+information is no longer directly under the SystemModel.  When a domain is
+formalized to a component, the domain.xtuml file is removed and the fact that
+the component is formalized to domain is not apparent without querying the 
+meta-model information from each component.  Additionally, components are 
+located in Component Packages (CP_C) or in Containers (PKG_C).  Additionally,
+components may be nested inside of other components or inside Component
+Packages or Containers.
+
+In addition to the MC3020ResourceChangeListener described above, the MC3020 
+Model Compiler plugin utilizes 3 eclipse builders: 
+	XMI Export builder
+		Used to export selected model elements to an XMI compatible format.
+	Model Compiler Prebuilder
+	    This builder was introduced to perform an model export prior to a 
+	    build.  This builder produces a single-file model that is used as input 
+	    to the next builder (Model Compiler Builder).  Of course this means the 
+	    order the builders run in is critical.  This order is currently 
+	    controlled by the order the builders are defined in the ".project" file 
+	    of a xtUML project.
+	Model Compiler Builder
+	    This builder simply calls xtumlmc_build.exe and passes in the command-
+	    line that was built by the MC3020ResourceChangeListener.
+
+The ordering of the builders in the ".project"  of a xtUML project is what 
+currently guarantees sequencing of the builders.
+
+5. Analysis
+-----------
+The goal is to support marking of formalized domains.  In addition, if it is 
+possible to take this opportunity to simplify the MC3020 plugin we should do 
+so.  Following are options for resolving this issue that were investigated and
+discussed.  
+
+5.1 Modify the MC3020ResourceListener.java to be able to locate formalized
+    components.
+    
+5.1.1 In the current implementation we rely very heavily on the physical 
+    location of the model files.   Following is an example.  The following
+     routine is currently key in determining when a domain change has been 
+     made.  Note that the comment describes how it relies on domain file 
+     placement.
+    
+	private void processModelChange(IResourceDelta[] modelDelta, IProject modifiedProject) {
+		for (int i = 0; i < modelDelta.length; i++) {
+			IResource affRes = modelDelta[i].getResource();
+
+			// If it is a folder than this may be a multi-file model.  The
+			// structure of multi-file project is:
+			//			+-+ projectname
+			//			  |
+			//			  +-+ models
+			//			    |
+			//				+-+ projectname
+			//				  |
+			//				  +-+ domain_name
+			//                | |
+			//                | + domain_name.xtuml
+			//				  |
+			//                projectname.xtuml(system data)
+			//				  ...
+			if (affRes.getType() == IResource.FOLDER
+					&& affRes.getName().equals( modifiedProject.getName() )) {
+
+				// This is a multi-file model.
+				IResourceDelta[] mfpDelta = modelDelta[i].getAffectedChildren();
+
+				 for (int j = 0; j < mfpDelta.length; j++) {
+					 // The folder we are about to look for represents the domain
+					 IResource domainRes = mfpDelta[j].getResource();
+					 if (domainRes.getType() == IResource.FOLDER) {
+						 // Now we look for the "domain_name.xtuml" file
+						 IResourceDelta[] domainDelta = mfpDelta[j].getAffectedChildren(IResourceDelta.ADDED|IResourceDelta.REMOVED);
+						 for (int k = 0; k < domainDelta.length; k++) {
+							 processFileChange(domainDelta[k], modifiedProject);
+						 }
+					 }
+				 }
+			}
+		}
+	}
+	
+5.1.2 To modify the code described above to continue to find domains and 
+      create the marking files the following changes would need to be made.
+      
+5.1.2.1 The code can no longer utilize a relative location in the model.
+5.1.2.2 The code would have to search deeper into the model tree.  It would 
+        have to search every element under each of the elements in the 
+        IResourceDelta to locate potential formalized domains.
+5.1.2.3  The code that currently checks a model element to see if it is a domain
+      needs to be modified to account for formalized components.  To do this,
+      when a component is encountered, it would look to see if the component
+      is formalized and if it is, assure that the proper domain marking
+      files are created for it.
+5.1.2.4 Update the handleModelRename function to account for formalized 
+        components.
+5.1.2.5 Update the handleModelAdd function to account for formalized 
+        components.
+5.1.2.6 Update the handleModelDelete function to account for formalized
+        components.
+     
+5.2  One domain.mark, class.mark and event.mark File for Whole System
+5.2.1  Instead of using a separate set of domain-level marking files for each
+       domain, we could have a single instance of each file for the whole
+       system.
+5.2.2  Change the domain-level (including class and event) marking functions
+       to take an additional argument representing the name of the domain
+       being marked.
+5.2.3  Allow "*" to mean "all domains".
+5.2.4  Modify xtumlmc_build to deal with this single-marking-file per system
+       approach.
+5.2.5  Modify the mc3020 plugins to deal with this single-marking-file per
+       system approach.
+
+5.3 Remove the MC3020ResourceChangeListener and move it's functionality into
+    the MC pre-builder.
+
+5.3.1 Note that this has been investigated before , not with the prebuilder,
+    but with the ExternalToolBuilder (the builder that runs xtumlmc_build).    
+    We shall consider using the prebuilder to create the xtumlmc_build
+    command-line now.
+
+5.3.1.1 The option to move the functionality that is currently performed by 
+    the MC3020ResourceChangeListener into the MC pre-builder will not work
+    for us.  If we took this option, the marking files wouldn't come into 
+    existence until after the build was requested. Therefore the user wouldn't 
+    see them, or be able to modify them until after a build was requested
+
+5.3.1.2  If option 5.2 is selected, then the work of maintaining the marking
+    files no longer needs to happen in the MC3020ResourceChangeListener.
+    Therefore, if 5.2 is selected we may move the funcality needed to 
+    build the xtumlmc_bild command-line into the MC prebuilder and 
+    eliminate the MC3020ResourceChangeListener.
+
+5.3.2 Utilize a builder that allows us to call our Java plugin instead of 
+     calling xtumlmc_build.
+     
+5.3.2.1 We currently use an external tool builder as the Model Compiler builder,
+        org.eclipse.ui.externaltools.ProgramBuilderLaunchConfigurationType to 
+        call xtumlmc_build and pass arguments to it.  Our model compiler 
+        prebuilder could perform this task allowing us to 
+        eliminate the Model Compiler builder.  The
+        MC pre-builder would then perform the following tasks:
+            - update the markings and command-line as needed
+            - export using the stream builder
+            - launch xtumlmc_build
+
+        This allows us to get by with 1 builder.  This option in combination
+        with 5.2 allows to remove the needed for the 
+        MC3020ResourceChangeListener.  All marking files would be created during
+        new project creation.
+
+6. Design
+---------
+Given the ideas outlined in the analysis section.  We shall take an approach 
+that combines 5.2 and 5.3.
+6.1 Make the modifications outlined in section 5.2 to have a single set of
+    domain-level marking files.  These shall be created with the system-
+    level marking files when the project is created.
+6.2 Remove the MC3020ResourceChangeListener.java
+6.2.1 The MC3020ResourceChangeListener contains code that is used to check 
+    MC3020 projects to assure they have a model compiler prebuilder and 
+    add one when one is not present.  This code shall be removed at this time.
+6.2.2 There was discussion about adding a "button" to validate the builder setup 
+    and update it if needed, but this option was dismissed.   The concensus is
+    that the prebuilder has been in place long enough now that update should
+    not be a problem.     
+6.3 Create the marking files during new project creation.  Note that this is 
+    only place we now need to manage marking files.   We do not even have to
+    deal with them during model import, because during import the user is
+    importing into an existing xtUML project.
+6.4 Modify the MC prebuilder to setup the xtumlmc_build command-line arguments    
+6.5 We have decided to leave the 2 builders in place at this time.  Though
+    we believe it will now be possible to have only 1 builder, there is a 
+    concern about how existing projects would be upgraded and by leaving the
+    two builders in place we eliminate that concern.
+    
+6.5.1 Though we have decided to leave the two builders, if we had decided to
+    remove one of them the follow describes how it could be done.  This is 
+    here simply for future reference.    
+6.5.1.1 Modify the model compiler prebuilder to make it the only builder used by
+    the model compiler. 
+6.5.1.2 Rename the prebuilder from "export builder" to "model_compiler_builder"
+6.5.1.3 Modify the model_compiler_builder to build the xtumlmc_build
+        command-line.
+6.5.1.4 Modify the model_compiler_builder to call xtumlmc_build.exe and pass the
+        command-line built in 6.4           
+
+7. Design Comments
+------------------
+None
+
+8. Work Required
+----------------
+All work required is called out in the design section.
+
+9. Unit Test
+------------
+Testing these changes is a matter of creating building different types of 
+models.  The following types of models shall be built:
+-Single domain models
+-Multiple domain models
+-Models with only formalized components
+-Models with a mixture of formalized components and domains.
+
+9.1 Build after new project creation
+    _- Repeat the following for each of the types of models above
+    _- Create the model
+    _- Build the model
+    _R Successful build
+    
+9.2 Build after model import
+    _- Repeat the following for each of the types of models above
+    _- Import the model
+    _- Build the model
+    _R Successful build
+
+9.3 Test marking single domain
+    _- Repeat the following for each of the types of models
+    _- Mark a single domain
+    _- Translate the model
+    _R Marking was applied
+
+9.3 Test marking all domain
+    _- Repeat the following for each of the types of models
+    _- Use the "*" to mark all domains
+    _- Translate the model
+    _R Marking was applied
+
+9.4 Test marking multiple domains
+    _- Repeat the following for each of the types of models with 
+       multiple domains
+    _- Mark more then one domain by specifying the marking multiple times and
+       passing a different domain name.
+    _- Translate the model
+    _R Marking was applied to each domain specified and was NOT applied to 
+       domains that were not specified.
+
+End
+---
+
+$Log: dts0100586888.dnt,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/05/12 14:46:00  rmulvey
+job:dts0100586888
+Updated after review.
+
+Revision 1.9  2009/05/12 12:55:13  rmulvey
+job:dts0100586888
+Addressed review observations.
+
+Revision 1.8  2009/05/11 19:17:41  rmulvey
+job:dts0100586888
+Changed the order of options in the analysis section and added a proposed solution to the design section.
+
+Revision 1.7  2009/05/11 19:17:07  rmulvey
+job:dts0100586888
+Changed the order of options in the analysis section and added a proposed solution to the design section.
+
+Revision 1.6  2009/05/11 17:47:19  rmulvey
+job:dts0100586888
+Added another option for the removal of MC3020ResourceChangeListener
+
+Revision 1.5  2009/05/11 17:39:00  cstarret
+job:dts0100586888
+added analysis section to provide alternative that uses singleton
+domain, class and event.mark files
+
+Revision 1.4  2009/05/11 17:17:46  rmulvey
+job:dts0100586888
+Using the prebuilder to update the xtumlmc_build command-line won't work (at least not by itself), elaborated...
+
+Revision 1.3  2009/05/11 17:11:17  rmulvey
+job:dts0100586888
+Another idea added
+
+Revision 1.2  2009/05/11 17:02:52  rmulvey
+job:dts0100586888
+There is a workaround for this issue.  The workaround is to simply unformalize and reformalize the components after the import.  The unformalize operation causes our resource change listener to see the domain and create the marking files.  When the components are re-formalized  the change listener doesn't remove the the marking files.
+
+Revision 1.1  2009/05/11 16:53:20  rmulvey
+job:dts0100586888
+Introduced a design note with an analysis that describes the problem and possible fixes.  One potential fix is described in detail.
+

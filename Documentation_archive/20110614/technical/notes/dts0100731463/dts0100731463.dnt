@@ -1,0 +1,197 @@
+========================================================================
+
+File:      $RCSfile: dts0100731463.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support signal resolution during paste
+
+1. Abstract
+-----------
+This note describes the changes required to allow signal resolution for pasted
+transitions, which otherwise were being left as orphaned.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100731463
+[2] ClearQuest DEI dts0100682647
+
+4. Background
+-------------
+The paste infrastructure has support for calling resolution methods, which allow
+for resolving referred to elements that may not have been copied.  Transitions
+currently have support for local event resolution, but are missing support for
+signal event resolution.  Currently, when copying a transition that has a signal
+assigned the user is left with an orphaned assignment when pasted.  This is due
+to the fact that the signal event instance is copied, but its referred to signal
+is not.
+
+5. Analysis
+-----------
+Support for signal resolution shall be added for transitions when pasted.  This
+is only necessary when the associated signal is a proxy which tells us that the
+signal was not part of the copy.  Signals may only be assigned to class based
+transitions.
+
+The rules to match a signal in the destination are as follows:
+
+1. By name
+2. By argument name
+3. By argument type
+4. At least as many arguments (if destination has a matching signal according to
+   1,2, and 3 above but more arguments the match is made)
+
+If no match can be found the transition shall become unassigned.  A list of
+transitions that could not find matching signals during the paste shall be
+presented to the user with the following message:
+
+Matching signals for the following were not found in the destination.
+
+PortName::SignalName (ArgumentName:ArgumentType)
+OtherPortName::OtherSignalName (ArgumentName:ArgumentType)
+...
+
+6. Design
+---------
+6.1 Add resolution operation
+
+A new operation is added to the Transition class.  The operation is named
+updateAssignedSignal.  The operation is written to locate all interfaces
+associated with the containing Component, and try to match the interface
+according to the rules in the analysis.  If no match is found the operation will
+add a message to the paste problem list, which is automatically displayed at the
+end of the paste operation.  This will give the user the chance to undo or
+proceed with the change.
+
+Another operation is added to the Transition class.  The operation is named
+updateAssignedEventOrSignal.  This operation is called by
+State Machine.pasteTransition() in place of the Transition.updateAssignedEvent()
+operation.  This operation determines the event type (local or signal) and calls
+the appropriate operation, updateAssignedEvent or updateAssignedSignal.
+
+6.2 Extend data copied with transition
+
+In order to provide the necessary data for signal resolution, the stream pei
+data is modified to add some alternate export paths for a Transition.  When
+exporting a Transition, we additionally export proxies for the Signal,
+Interface, and Port.  This provides us with enough data to resolve signals and
+report to the user when resolution has failed.
+
+6.3 Fix panning storage issue
+
+During QA testing [4] an issue was uncovered where a scroll change due to
+panning was sometimes lost when reopening the editor.  This was caused by the
+way we were locating the editor to store the data with.  We were using the
+current edit part that the mouse was over and assuming it was a DiagramEditPart.
+This is not true when the mouse is over a symbol on the diagram, and in this
+case the editor could not be found so the changes were not persisted.
+
+The code in GraphicalPanningSelectionTool is modified such that we get the
+editor from the associated edit domain, rather than the current edit part the
+mouse is over.
+
+In addition to this the code to store the changes are moved from the mouse move
+event to the mouse up event.  This allows us to only store the data when the
+user lets up on the mouse.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design section.
+
+9. Unit Test
+------------
+9.1 Test signal resolution where resolvable by name
+
+_- Copy a state and its reflexive transition
+_- Paste the state in the same location
+_R The pasted transition has the proper signal assigned
+
+9.2 Test signal resolution where unresolvable by name
+
+_- Copy a state and its reflexive transition
+_- Paste the state in a location that has no signal with a matching name
+_R A dialog is shown listing the unresolvable event
+_- Click proceed
+_R The transition is unassigned
+
+9.3 Test signal resolution where unresolvable by argument name
+
+_- Copy a state and its reflexive transition
+_- Paste the state in a location that has a matching signal by name, but has an
+   argument that does not match by name
+_R A dialog is shown listing the unresolvable event
+_- Click proceed
+_R The transition is unassigned
+
+9.4 Test signal resolution where unresolvable by argument type
+
+_- Copy a state and its reflexive transition
+_- Paste the state in a location that has a matching signal by name, and has an
+   argument that matches by name but not type
+_R A dialog is shown listing the unresolvable event
+_- Click proceed
+_R The transition is unassigned
+
+9.5 Test signal resolution where unresolvable by argument
+
+_- Copy a state and its reflexive transition (assigned signal must have an
+   argument)
+_- Paste the state in a location that has a matching signal by name, with no
+   arguments
+_R A dialog is shown listing the unresolvable event
+_- Click proceed
+_R The transition is unassigned
+
+9.6 Test signal resolution where resolvable (more arguments)
+
+_- Copy a state and its reflexive transition (assigned signal should have no
+   arguments)
+_- Paste the state in a location that has a matching signal by name, with one
+   argument
+_R The pasted transition has the proper signal assigned
+
+9.7 Test signal resolution where resolvable (from provision to requirement)
+dts0100682647
+
+_- Copy a state and its reflexive transition (assigned signal should be
+   provided)
+_- Paste the state in a location that has a matching signal by name, from a
+   requirement
+_R The pasted transition has the required signal assigned
+
+9.8 Test signal resolution where resolvable (from requirement to provision)
+
+_- Copy a state and its reflexive transition (assigned signal should be
+   required)
+_- Paste the state in a location that has a matching signal by name, from a
+   provision
+_R The pasted transition has the provided signal assigned
+
+End
+---
+
+$Log: dts0100731463.dnt,v $
+Revision 1.2  2010/11/30 16:33:48  tlondon
+Job: dts0100731463
+
+Address according to review minutes
+
+Revision 1.1  2010/11/19 18:12:41  tlondon
+Job: dts0100731463
+
+Add note
+

@@ -1,0 +1,126 @@
+========================================================================
+
+File:      $RCSfile: dts0100760257.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Migrate Parser Test Suite to Generics
+
+1. Abstract
+-----------
+This note describes the changes required to have the BridgePoint OAL parser test
+suite run with models that have been converted to the new generic package
+format.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100760257 - Migrate Parser test suite to Generics
+[2] ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+[3] ClearQuest DEI dts0100765790 - Test the OAL parser using specific instance
+    reference data types
+[4] ClearQuest DEI dts0100760259 - Migrate IO MDL Tests  to Generics
+
+4. Background
+-------------
+Migration to generic packages was done under another issue[2]. This note covers
+the work required to fully test the parser operation in a generic package
+environment.
+
+5. Design
+---------
+A new test suite, was already added by the work for [2]. Each existing OAL test
+was duplicated and systematically renamed to <oldname>_Generics. The new tests
+were modified to load the existing test model, but to convert it to generic
+packages prior to starting the tests. An exported copy of the OAL test model was
+added to the test model data to support this requirement.
+
+5.1 Parser does not find required data types
+There were initially many test failures due to the parser being unable to find
+required model elements. This was traced to the model import code which was
+lacking an enhancement to set the type for created Packageable Elements,
+specifically in the case of Package subtypes. The search infrastructure relies
+on this type attribute to descend packages looking for required elements. The
+necessary type information is inserted at 7 locations in the ImportHelper class
+in bp.io.core.
+
+5.2 Resolve remaining test failures
+Once the import upgrade code is fixed there remain two tests failures in the
+modified test suite:
+
+- TestCRUD_Generics.testObjectKeyletterFound
+- TestCRUD_Generics.testObjectKeyletterFoundNoVar
+
+In both cases, this is found to be because the test selects the required model
+instance by a hard coded offset into the instance extent. The fact that the
+model instance population is in a different order is nothing to do with parser
+operation, so it is safe to adjust the offsets so that the tests find the
+correct instances.
+
+6. Implementation Comments
+--------------------------
+6.1 New test model
+The original work introduced a new test model that substituted specific instance
+references (e.g. inst_ref<Disk>) for the original generic form
+(inst_ref<Object>) This was causing a few more test failures and exposed some
+differences in parser behavior. Parser behavior with specific instance
+references does need to be tested, so this original model file (testOAL1G.xtuml)
+is left in place and a separate issue raised to track the creation of tests for
+it[3]. A new model which uses generic instance references is introduced by this
+work (testOAL1GNoIRDT.xtuml). OALParserTest_Generics.java is modified to load
+this new version of the model.
+
+6.2 Inter-issue dependency
+During this work it was found that an NPE would occur during import, because the
+generic package models contain no Domain (S_DOM) instance. This NPE can only
+occur in the case where a legacy Specifc Data type package exists at the system
+level within an otherwise fully generic model. The fix for this is to navigate
+directly to the system level without relying on the existence of a Domain. This
+fix is applied in the work for[4]. Hence this work SHOULD NOT BE PROMOTED until
+after [4].
+
+Note also that the issue identified in 5.1 above is also addressed in the work
+for[4]. The delta to io.core is included in this branch for completeness, but
+this change should already be promoted.
+
+7. Unit Test
+------------
+Since these changes pertain only to the parser behavior, only the parser test
+suites need to be rerun.
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100760257
+
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    OalParserTest_Generics.java
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestCRUD_Generics.java
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/testOAL1GNoIRDT.xtuml
+
+com.mentor.nucleus.bp.io.core/src/com.mentor.nucleus.bp.io.core/
+    ImportHelper.java  DO NOT PROMOTE (see 6.2 above).
+
+End
+---
+
+$Log: dts0100760257.int,v $
+Revision 1.2  2011/04/20 11:09:32  campbell
+Job: dts0100760257
+Ready for review.
+
+Revision 1.1  2011/04/20 09:51:13  campbell
+Job: dts0100760257
+Introduced.

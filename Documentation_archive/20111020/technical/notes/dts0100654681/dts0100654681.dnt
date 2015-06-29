@@ -1,0 +1,1051 @@
+========================================================================
+
+File:      $RCSfile: dts0100654681.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Request support for inter-project component references
+
+1. Abstract
+-----------
+This note describes how we will implement the ability to refer to components
+declared in other projects.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100654681 - Request support for inter-project component
+    references.
+[2] <CVS>:Documentation/technical/notes/dts0100654681/dts0100654681.ant
+[3] http://www.osgi.org/javadoc/r2/org/osgi/service/prefs/package-tree.html
+    Api documentation for the osgi preferences node.
+[4] ClearQuest DEI dts0100615538 - Parser enumerator binding policy incorrect
+[5] Clearquest DEI dts0100740568 - Extend the Visibility feature to cover all
+    model elements.
+[6] Clearquest DEI dts0100803616 - Visibility adornments not shown correctly on
+    some symbols.
+[7] Clearquest DEI dts0100804167 - Review BridgePoint preferences with a view to
+    giving them project scope.
+[8] Clearquest DEI dts0100631941 - Migrate away from specialized packages.
+[9] Clearquest DEI dts0100804169 - Update model compilers for compatibility with
+    interproject references and global data types.
+[10]Clearquest DEI dts0100804173 - Plan migration to global types.
+[11]Clearquest DEI dts0100804817
+    Run all UseGlobals Unit Tests
+[12]Clearquest DEI dts0100804819
+    Inter-project references manual test
+[13]Clearquest DEI dts0100804821   
+    Create a workspace preference for 'Show elements in all projects' 
+    
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Enhance UI code
+The reference chooser wizard shall be special cased for Component Reference
+instances to add a system wide search for target components. The existing
+interface filtering infrastructure shall still be used to only show compatible
+components. The Data Type reference chooser wizard shall be similarly enhanced.
+For Interfaces, a new reference chooser wizard is required to replace the
+existing generated Formalize dialog.
+
+6.1.1 A new check box, 'Show elements in all projects' is required on the
+chooser wizards to only show system wide elements on request. Operation shall be
+analogous in behavior to the existing 'Use visibility' checkbox. This setting
+shall be persistent and default to local project only so that new users are not
+overloaded with too many choices.
+
+6.1.2 System level elements shall be presented in the same list box as local
+elements. The path column shall make it obvious which elements are local and
+which are in other projects. The existing sorting and filter behavior in the
+chooser wizard allows easy location of the required element, even when a system
+wide element population is being viewed.
+
+6.1.3 Introduce BridgePoint project level preference support
+To add project level preferences we leverage the Eclipse Preferences Node infra-
+structure[3]. When run, the setProjectPreferencesAction adapts the selected
+System instance to an instance of IProject. It uses this value to obtain an
+instance of IScopeContext for the current project and from there obtains an
+instance of the BridgePoint specific preferences node. Once this is obtained,
+a Preferences Dialog may be created, passing in a Preference Manager initialized
+from the preferences node. This infrastructure is completely generalized and may
+be expanded to add other unrelated project scope preferences. We may wish to
+consider whether some our existing workspace wide preferences would be better
+applied at the individual project level, but that is outside of the scope of
+this document. An issue is raised[7] to track the review needed for this.
+
+6.1.3.1 Add a new Set Project Preferences action
+This requires a new plugin declaration entry. The action is declared as a
+contribution to the system nodes. Since this provides a future home for other
+generic preferences that make sense at a finer grain than the workspace, no
+filtering is proposed.
+
+6.1.3.2 New preference handling classes
+A new BridgePointProjectPreferences class is added to handle the layout of
+the preference pane. This works in an identical manner to existing pages defined
+for use at the workspace level. It declares a single checkbox, with the label;
+"Allow inter-project model references". The checkbox is only enabled if the user
+has previously upgraded the project to use global variables, see below[6.1.4].
+Another new class BridgePointProjectReferencesPreferenceNode, inserts the inter-
+project reference preference page entry into the side bar of the preferences
+dialog. Finally, CorePlugin has a new method getProjectPreferencesManager which
+creates a new BridgePointProjectReferencesPreferenceNode and attaches it to the
+root of a new PreferenceManager instance before returning it.
+
+6.1.4 Support upgrading projects to use Global data types
+With the help of end users, the global built in type strategy is selected from
+the alternatives presented in the analysis[2, 5.4.1].
+6.1.4.1 Add Upgrade action
+A new action class is added, UpgradeToGlobalsAction. A new contribution is added
+added to the BridgePoint System tree node. It is filtered so that the entry only
+appears on System roots that have not yet been upgraded. The action shows a
+dialog with the following message:
+
+"This action will ready the model for use with inter-project references.
+
+It will move all element data type references to refer to global
+types. Redundant system level data types and empty data type packages
+will be removed.
+
+For Team controlled projects, this will mark multiple elements in the
+project as modified."
+
+The dialog offers OK and Cancel buttons. If the user elects to proceed, their
+old style built in data types are erased and their data typed model elements
+migrated to refer to the new global ones. The upgrade is carried out using the
+GlobalsUtil class described below[6.1.4.2]. The action class wraps the upgrade
+in a transaction. This takes care of persisting the changes and also means undo
+works if the user decides they don't like the result.
+
+6.1.4.2 Create class to handle the upgrade
+A new class, GlobalsUtil, is created. It offers a method, upgradeToGlobals,
+which takes an instance of System. It first finds all the global data types then
+finds all the data types under the system whose name matches a global type.  For
+each data type matched, it finds all model artifacts associated with it and
+migrates them to reference the new data type. The old data type is then
+disposed. Finally, after all data types are upgraded, all system level data type
+packages are examined to see if they are empty. If found to be empty, they are
+themselves disposed.
+
+The typed element upgrade process is performed by a method generated by
+traversing the ooaofooa metamodel. This has two advantages; it guarantees that
+no model elements are omitted, and also ensures that if the metamodel is
+modified in the future to add new typed elements, they will be added to the
+upgrade utility automatically. A new arc file, generate_globals_util is added to
+core and a make target is added to build from it.
+
+6.1.5 New ChooserPropertyDescriptor
+With the expansion in the number of potential elements, the drop down list
+feature of the Properties window is no longer adequate for selecting data types.
+Instead, a button is shown that summons the chooser wizard. To reduce the need
+to hit the button accurately, the entire field area is made sensitive to a mouse
+double click. This behavior is handled by a new descriptor named as above. The
+BuildPropertySource.arc file is enhanced to use this descriptor for data type
+properties fields.
+
+6.2 Enhance infrastructure for inter-project references
+6.2.1 Enhance the InstanceList.getGlobal() to add the extra level of identifier
+      resolution.
+Add the following logic just before the return statement:
+
+    if the element is still not found
+      get all systems in the default model root
+      for each system using global types (except the system previously searched)
+        get all roots under the system 
+        for each root
+          search for element under the root using get(key)
+          if element is found, stop iterating
+        end for each root
+      end for each system
+    end if element still not found
+
+6.2.2 Modify OoaofooaBase to allow roots under system to be found by name
+Cut all but the first line of the OooaofooaBase.getInstancesUnderSystem() method
+and paste these lines into a new method, getInstancesUnderSystem(String). Call
+the new method from the old. This new method is used by the pseudo code above
+[6.2.1].
+
+6.2.3 CorePlugin has new infrastucture support added in the form of a new method
+loadGlobals. This does what might be expected from the name. It locates and
+loads the global data elements when it is first started so that they are always
+present when a system is loaded, even in the presence of early lazy loading.
+
+6.3 OAL based model management
+Subject to the limitations of the getGlobal() identifier resolution
+mechanism[2], model management code in OAL must exclusively select the parent
+Packagable Element for the required metamodel elements to be found and the
+required associations established. These required changes may be obsoleted by
+the completion of the work for [2].
+
+6.4 Built in types
+6.4.1 New Globals subsystem
+This added to the meta-model, it contains Packageable Element and System Model
+as imported classes and adds a new link class, Global Element in System (G_EIS).
+Global elements are associated with the System Model across new association
+R9100. The upgrade procedure discussed above[6.1.4] links global types to the
+system model across this association. The advantage of drawing the association
+to Packageable Element and not Data Type is that any Packageable Element sub-
+type may be made a global. This allows for future expansion of the technique if
+there is demand for it.
+
+6.4.2 New useGlobals flag
+A new boolean attribute called useGlobalsis is added to System Model. This is
+used to capture the fact that the System has been upgraded to use global data
+types. This was found to be necessary because it is difficult to reliably
+determine from the state of a model whether it has been upgraded to use global
+data types or not. Since whether to use global elements needs to be decided in
+many places, not least in the parser where performance is critical, recomputing
+this from the state of the model every time would be an unacceptable performance
+penalty.
+
+6.4.3 New system level visibility infrastructure
+System has a new operation, collectVisibleElementsForName, added and the
+duplicated logic for finding system level elements is moved from Package and
+Component into here. This operation is enhanced to search for global built in
+types across R9100 if the useGlobals attribute is true.
+
+Nothing in the Globals subsystem is persisted. Instead, CorePlugin ensures the
+built in elements are loaded at startup (see [6.2.3]). In addition, ImportHelper
+in io.core has a new convenience method, setUpGlobals, that gets called from
+finishComponentLoad when a System Model instance is loaded. The setUpGlobals()
+method creates the built in R9100 association instances between the newly
+loaded System Model instance and the built in elements. The change to
+finishComponentLoad is made in io.core gen_import_java.inc.
+
+6.5 Verifier modifications
+6.5.1 Allow Verifier to launch models that contain only component references.
+No change was found to be necessary to enable this behavior. The analysis note
+called out this modification in error.
+
+6.5.2 Source lookup
+In BPSourcePathComputerDelegate.computeSourceContainers(), Component References
+are converted to Components before starting the process of setting the source
+lookup members. This ensures that models from other projects can be found when
+using inter-project references.
+
+6.6 Persistence changes
+6.6.1 Schema
+The only change to the schema is the addition of the useGlobals boolean
+attribute in System Model[6.4.2]. Accordingly, in io.core, gen_import_java.inc
+and import_functions.inc are modified to provide silent data upgrade with false
+being the default value.
+
+6.6.2 Globals data
+The file containing the default built in globals is located in the folder
+bp.pkg/globals. The file name is Globals.xtuml. In theory, a user could extend
+this file with built in defaults of their own. However, since they can now
+achieve the same result by creating such types in a version controlled Library
+project, it is not anticipated that such modifications will be needed.
+
+6.6.3 Data upgrade
+A convenience method is added to io.core.ImportHelper. This method is called
+from the BridgePoint data import infrastructure from finishComponentLoad.
+Because this method is generated, the actual change is made in io.core to
+gen_import_java.inc. For more detail, see [8.6].
+
+6.6.4 New projects
+In line with recent BridgePoint development policy, this initial release of the
+inter-project reference feature is not enabled by default in new projects. For
+this release, new projects are identical in content and behavior to the previous
+release. To enable inter-project references, a user must first perform the
+following steps on projects that must refer to each other.
+
+  - Upgrade the project to use global data types[6.1.4]
+  - Enable inter-project references[6.1.3]
+  - Convert the projects to generic packages[8]
+
+An issue [10] is raised to establish a road map for when new projects will
+progressively have the above actions already taken.
+
+6.7 Test and other infrastructure fall out
+Several tests programmatically created System Model instances. They are modified
+to add the extra boolean parameter for useGlobals.
+
+7. Design Comments
+------------------
+7.1 Handle unexpected parser errors
+Early testing of the design detected some sub optimal parser behavior. When
+inter-project references are enabled, the parser can easily find multiple
+instances of elements referred to by name or number. The parser treats these as
+errors and does not compile an OAL instance tree for the affected action.
+
+Without additional action, the only workaround is to close projects that contain
+the duplicate named elements. This is too inconvenient even for an initial
+release of the feature, so the parser must be modified to select the most local
+element and use it without reporting an error.
+
+Parsing the following model elements can result in these errors:
+
+- Class (found by key letter)
+- Association (found by R number)
+- Event (found by label)
+- Function (found by name)
+- External Entity (found by key letter)
+- Bridge (found by name)
+- Operation (found by name)
+- Parameter (found by name)
+- Interface (found by name)
+- Port (found by name)
+- Enumeration (found by name)
+
+A discussion of each of these element types follows together with a conclusion
+section that calls out the design chosen for this work:
+
+7.1.1 Class
+This needs to be amended to use the most local element found.
+
+7.1.2 Association
+This also needs to be amended to use the most local element found, however, the
+search must begin from the package containing the classes being related, not
+the package containing the action being parsed as is the normal case. In
+addition, both classes need to be traversed, because the association may be
+anywhere. If imported classes are in use, the association may possibly not be in
+the same project as the either of the declared classes. This means that the
+current place this validation is done is no longer suitable, since it does not
+have visibility of the participating classes.
+
+7.1.3 Events
+These are already found by traversal from the owning state machine. A duplicate
+found in this context is a real error, so no change is required.
+
+7.1.4 Function
+This needs to be amended to use the most local element found.
+
+7.1.5 External Entity
+This needs to be amended to use the most local element found.
+
+7.1.6 Bridge
+These are already found by traversal from the owning external entity, so no
+change is required.
+
+7.1.7 Operation
+These are found by traversal from the owning class, so no change is required.
+
+7.1.8 Parameter
+These are found by traversal from the owning element (operation, function,
+bridge, event etc.) so no change is required.
+
+7.1.9 Interface
+This needs to be amended to use the most local element found.
+
+7.1.10 Port
+These are already found by traversal from the owning component, so no change is
+required.
+
+7.1.11 Enumeration
+This needs to be amended to use the same type as that for the other side of
+the assignment/binary operation. See also a similar issue[4] that shows that the
+problem is not specific to inter-project support. This should be fixed in the
+same way at the same time.
+
+7.1.12 Conclusion
+Fortunately, the current job specifies only inter-project operation with
+components, interfaces and data types, so of the elements above only interfaces
+and enumerations need be considered here. Since these specific elements should
+not typically be duplicated in a well managed workspace, we will leave the
+behavior as it is pending user feedback.
+
+For all other elements, the parser is modified to not traverse beyond the
+current project when looking for name bound matches. Since it is anticipated
+that a greater number of element types will be required to support inter-project
+references in the future, an issue is raised[5] to provide a robust, permanent
+solution giving the required parser behavior for all elements listed above.
+
+A new argument is added to the collectVisibleElementsForName infrastructure to
+specify if traversal is to extend beyond the current project. This affects the
+following meta-model elements: Packageable Element, Package, Component,
+Component Reference, Interface Reference, System Model, OAL Validation
+Functions, OAL Validation Utility Functions, Imported Class. function_body.inc
+is also modified to supply the new argument to collectVisibleElementsForName.
+
+7.2 Visibility adornments
+It was noticed during testing that a number of model elements display the
+visibility adornment incorrectly. The affected elements are:
+
+- Structured Data Type (adornment shows in front of the data type stereotype).
+- Enumeration (adornment shows in front of the data type stereotype).
+
+The get_compartment_text() operations in these classes are easily modified to
+place the adornment in the correct position. However, this causes many expected
+results to change and it is felt this issue is large enough already. An issue[6]
+is therefore raised to track this fix.
+
+7.3 Interface visibility
+It was further noted that the Interface model element does not offer the user
+the opportunity to modify its visibility setting. This should probably be one of
+the first elements to be enhanced under[5].
+
+7.4 Automated Global upgrade for testing
+In order to maximize reuse of existing automated test collateral, an extension
+is made to the BastTest class. A new boolean flag testGlobals is added which is
+set by a new testClass GlobalsTestEnabler added in the bp.test project. When
+this is set, model upgrade to reference global elements is performed through the
+normal user interface described above [6.1.4]. This action is initiated for
+global tests at the end of the ensureAvailableAndLoaded test convenience method.
+
+This works well for most tests, however a few tests perform piecemeal loading
+or late manipulation of required model elements. This causes upgrade to either
+not happen completely or for setup portions of tests to not execute correctly.
+For this reason, an additional boolean, delayGlobalUpgrade is added that stops
+the automated upgrade at the start of the tests. Tests which set this must
+explicitly initiate the upgrade action when testing globals. Those tests which
+require this delay are called out in the following Work Required section.
+
+7.5 Component.pastePackage
+During development of the final test procedure, a defect in the Component
+pastePackage operation was noted. Unlike the equivalent operation in Package,
+this operation does not associate the root package being pasted with the system
+across R1405. Two additional lines of OAL are added to obtain the system and
+relate it as required.
+
+7.6 Paste and import infrastructure
+It was found that when pasting and importing, global elements were not being
+resolved. This was traced to the generated batchRelate methods, which only look
+outside the current model root if directed to do so by an argument. During
+paste and import, this argument is set to disable relating instances outside
+the model root because id's are not static during this time. Since global
+element identifiers are immutable and are the same for all workspaces and all
+systems within those workspaces, it is safe to batch relate these elements, even
+though they are outside the current model root. A change is made to MC-Java
+in java.arc to provide the required additional search regardless of the state of
+the controlling argument, just before checking other model roots (if the passed
+argument permits).
+
+8. Work Required
+----------------
+This section provides more detail on the high level design presented in sections
+6 and 7. It is broadly ordered to follow the content of the Eclipse Synchronize
+view so that cross referencing during promotion will be easy.
+
+8.1 com.mentor.nucleus.bp.als.oal.test
+The following classes are added to enable globals based testing as described
+above[7.4]:
+    OALGlobalsTestSuite_Generics
+    OALGlobalsTestSuite
+	com.mentor.nucleus.bp.als.oal.test/OalParserGlobalsTest_Generics
+	com.mentor.nucleus.bp.als.oal.test/OalParserGlobalsTest
+
+The following test classes contain a delta that is already applied in HEAD in a
+slightly different way. These changes are therefore obsolete and need not be
+applied:
+
+    com.mentor.nucleus.bp.als.oal.test/ArrayBaseTest_Generics
+	com.mentor.nucleus.bp.als.oal.test/ArrayBaseTest
+	com.mentor.nucleus.bp.als.oal.test/ParseAllInDomain (layout change made
+	to facilitate debugging only)
+
+8.2 com.mentor.nucleus.bp.compare.test
+The following classes are added to enable globals based testing as described
+above[7.4]:
+    CompareGlobalsTestSuite
+	com.mentor.nucleus.bp.compare.test.cases/CompareGlobalsTest
+
+This test was modified to allow for more deltas in the compare result than
+previously expected. This is because the result now correctly shows that the
+system level data types have been removed by the upgrade. This test is also
+modified to use the delayed global upgrade policy as described in 7.4.
+	com.mentor.nucleus.bp.compare.test.plcm/CVSOperationsTest
+
+8.3 com.mentor.nucleus.bp.core
+8.3.1 OoaofooaBase
+This class is modified to expose a new version of getInstancesUnderSystem
+passing the system name as opposed to the model root. This is needed in the
+final phase of InstanceList.getGlobal() as described above [6.2.2]
+
+8.3.2 com.mentor.nucleus.bp.core.common/InstanceList
+This is modified as described in the design [6.2.1]
+
+8.3.3 Preferences
+The following classes are introduced to support the requirements described in
+the design [6.1.3.2].
+
+	com.mentor.nucleus.bp.core.ui/SetBPProjectPreferencesAction
+	com.mentor.nucleus.bp.core.ui/UpgradeToGlobalsAction
+	com.mentor.nucleus.bp.core.ui.preferences/BridgePointProjectPreferences
+	com.mentor.nucleus.bp.core.ui.preferences/
+                                 BridgePointProjectReferencesPreferenceNode
+
+8.3.4 Additional visibility infrastructure argument
+A new argument, collectGlobally, is added to the collectVisibleElementsForName
+operations on the Package, PackageableElement and Component meta-model classes.
+A value of false suppresses elements from remote projects being collected see
+[7.1.12].
+
+8.3.4.1 The class com.mentor.nucleus.bp.core.ui.dialogs/ElementSelectionFlatView
+is modified to pass false by default.
+
+8.3.4.2 Meta-model changes
+The meta-model classes, Component, Component Reference, Interface Reference,
+Packageable Element, Imported Class
+
+8.3.4.3 Parser Validation
+The following parser validation functions are modified to pass the new argument
+described above[8.3.4]:
+Parser Validation Functions
+Object_keyletters_validate
+Relationship_validate
+Ee_keyletters_validate
+Identifier_validate
+Invocation_function_validate
+Enum_data_type_validate
+data_types_compatible
+is_valid_bridge
+
+8.3.5 cvsignore
+The file com.mentor.nucleus.bp.core.util/.cvsignore has GlobalsUtil added
+to it since this is generated. The archetypes create_selection_dialog_action.inc
+and function_body.inc are modified to reuse the refactored archetype code
+extracted to chooser_elements_provider.inc 
+
+8.3.6 Archetype changes
+8.3.6.1 chooser_elements_provider.inc
+Introduced to generate the code which obtains the elements to present to the
+user in a chooser dialog. It is extracted from already existing archetype code
+in the archetype file function_body.inc. 
+
+8.3.6.2 create_core_plugin_class
+This archetype is modified to generate code to automatically load globally
+defined elements see [6.2.3].
+
+8.3.6.3 create_core_plugin
+The archetype, create_core_plugin.inc is modified to declare the menu
+contributions for setting project preferences [6.1.3] and for upgrading a
+project to use global elements [6.1.4].
+
+8.3.6.4 generate_globals_util
+This archetype is introduced to generate the GlobalsUtil class. See [6.1.4.2].
+
+8.3.7 generate.xml
+This is enhanced to automatically generate source code for the GlobalsUtil
+class. Also included as a dependency for the cme_menus target is
+chooser_elements_provider.inc so that changes to it will automatically cause
+this part of the project to rebuild.
+
+The project level preference classes are added to the cvs_java_files property
+so that they are not removed by a project clean.
+
+8.3.8 getCoreTypeId
+This convenience operation has always been present in the System Model meta-
+model class. To provide more fan in and centralize changes when searching for
+global elements, the use of this operation is significantly extended. The
+following meta-model classes are systematically modified to use it:
+
+8.3.8.1 Interface Operation
+The affected operations are: initialize, changeReturnType, resolveDataType.
+
+8.3.8.2 Property Parameter
+The affected operations are: initialize, resolveDataType, canUseDataType.
+
+8.3.8.3 Symbolic Constant
+Affected operations: setToDefaultDatatype, resolveDatatype.
+
+8.3.8.4 Bridge
+Affected operation: initialize.
+
+8.3.8.5 Bridge Parameter
+Affected operation: initialize.
+
+8.3.8.6 Data Type
+Affected operation: dispose.
+
+8.3.8.7 Data Type Package
+Affected operation: newDattype
+
+8.3.8.8 Domain
+Affected operation: resolveDataTypeRelativeToSelf
+
+8.3.8.9 Function
+Affected operation: initialize
+
+8.3.8.10 Function Parameter
+Affected operation: initialize
+
+8.3.8.11 Structure Member.resolveDataType
+
+8.3.8.12 User Data Type
+Affected operations: changeCoreType. resolveCoreDatatype
+
+8.3.8.13 Package.newDattype
+
+8.3.8.14 State Machine Event Data Item.initialize
+
+8.3.8.15 Attribute
+Operations: initialize, isAllowedType
+
+8.3.8.16 Model Class.create_sm
+
+8.3.8.17 Operation.initialize
+
+8.3.8.18 Operation Parameter.initialize
+
+8.3.8.19 Referential Attribute.setDatatype
+
+8.3.8.20 Parser Validation
+The following parser validation functions are modified to call getCoreTypeId:
+Local_variable_validate
+Create_event_statement_end
+Return_statement_end
+Event_label_validate
+Function_function_validate
+Terminal_tok_fraction_validate
+Terminal_tok_number_validate
+Terminal_tok_string_validate
+String_literal_true_validate
+String_literal_false_validate
+Member_access_end
+Member_access_loop11_end
+binary_operator_create
+unary_operation_validate
+array_length_validate
+is_valid_message
+sender_validate
+connect_inst_ref_var_to_datatype
+
+8.3.8 Resolving system level data types
+There were a few places where data types are located based on their identifier.
+In these cases, getCoreTypeId cannot be used because it expects a name argument.
+In all places where the R4402 and R4401 are traversed to find a data type by id,
+an additional search is made across R9100. The following meta-model elements are
+affected by this systematic change:
+
+8.3.8.1 Interface Operation.canUseDataType
+
+8.3.8.2 Literal Symbolic Constant.canUseDataType
+
+8.3.8.3 Bridge
+Operations: resolveDatatype and canUseDatatype.
+
+8.3.8.4 Bridge Parameter
+Operations: resolveDatatype and canUseDatatype.
+
+8.3.8.5 Domain
+Operations: associateChildrenWithSystemCoreTypes,
+            associateChildrenWithSystemBuiltInTypes
+            associateChildrenWithSuppressedDatatypes
+
+8.3.8.6 Function
+Operations: resolveDatatype, canUseDataType
+
+8.3.8.7 Function Parameter
+Operations: resolveDatatype, canUseDataType
+
+8.3.8.8 Structured Data Type.newMember
+
+8.3.8.9 Structure Member
+Operations: resolveDatatype, canUseDataType
+
+8.3.8.10 User Data Type
+Operations: resolveCoreDatatype, canUseDataType
+
+8.3.8.11 Value in Stack frame.coerceTo
+
+8.3.8.12 State Machine Event Data Item
+Operations: resolveDatatype, canUseDataType
+
+8.3.8.13 Attribute
+Operations: resolveDatatype, canUseDataType
+
+8.3.8.14 Operation
+Operations: resolveDatatype, canUseDataType
+
+8.3.8.15 Operation Parameter
+Operations: resolveDatatype, canUseDataType
+
+8.3.8.16 Parser Validation functions
+The following parser validation functions are modified to additionally traverse
+R9100:
+Enum_data_type_validate
+Enumerator_validate
+Enumerator_access_end
+data_types_compatible
+
+8.3.9 Meta-model changes
+8.3.9.1 System Model
+System has a new boolean attribute, useGlobals added as specified above[6.4.2].
+The value of this attribute is not visible to the user. It is set by the upgrade
+process [6.1.4].
+
+System Model also gets a new operation, collectVisibleElementsForName, as
+specified in [6.4.3].
+
+System Model.dispose() is extended to dispose the link class instances across
+R9100.
+
+8.3.9.2 Package
+collectVisibleElementsForName is extended to accept and pass on the boolean
+argument collectGlobally [8.3.4]. In addition a large part of this operation is
+extracted and moved to the System Model implementation of this operation, see
+[8.3.9.1] above.
+
+8.3.9.3 Utilities External Entity
+The native bridges isAllowedReturnType and isAllowedParameterType are extended
+to look for global data types if useGlobals[8.3.9.1] is true.
+
+8.3.9.4 Preferences External Entity
+This EE has additional imports specified in the description to support accessing
+the new project level preferences[6.1.3].
+
+A new bridge, getSystemBoolean is introduced to allow the project level
+preference to be read in OAL.
+
+8.3.9.5 The Globals package and Global Element in System link class are added as
+specified in the design[6.4].
+
+8.3.9.6 Packageable Element
+Dispose is extended to unrelate and dispose the Global Element In System
+instances across R9100.
+
+8.3.9.7
+
+           Domain.associateChildrenWithSuppressedDatatypes
+Structure Member.resolveDataType
+
+8.3.9.8 Parser Validation Functions
+8.3.9.8.1 Object_keyletters_validate
+Some additional OAL was added here to locate Model Class instances which may no
+longer be guaranteed to be found in the local model root. This new OAL searches
+for the element using the Packageable Element supertype instance extent, thereby
+guaranteeing that the getGlobal infrastructure will be used.
+
+8.4 com.mentor.nucleus.bp.debug.ui
+The BPSourcePathComputerDelegate class has its computeSourceContainers method
+extended to find and return the project folders of all components participating
+in a simulation. This enables Verifier to locate and open OAL editors when
+breakpoints and other reasons to halt are encountered in remote project OAL.
+
+8.5 com.mentor.nucleus.bp.debug.ui.test
+The following classes are added to enable globals based testing as described
+above[7.4]:
+    VerifierGlobalTestSuite
+	com.mentor.nucleus.bp.debug.test/VerifierGlobalTest
+
+8.6 com.mentor.nucleus.bp.io.core
+8.6.1 ImportHelper
+Since global elements are no longer persisted, a permanent data upgrade action
+is required to attach global elements to new systems as they are loaded. A
+convenience method is added to the Import Helper class to accomplish this. 
+
+8.6.2 Archetypes
+8.6.2.1 export_functions.inc
+The generated write*sql methods log an error if the Persistable Model Component
+cannot be found. Globally declared elements are not persistable, so this
+archetype is modified so that it does not log an error if and only if the
+element for which write*sql is called is also a global element. This currently
+only functional for Data Type elements.
+
+8.6.2.2 gen_import_java.inc
+This is modified to generate low level data upgrade code for models that do not
+have a value for the System Model.useGlobals attribute.
+
+8.6.2.3 import_functions.inc
+This is modified to generate helper declarations to support the code added
+above[8.6.2.2]. In addition, there were two places in finishLoad where a null
+pointer error was thrown when loading the global element data. These were
+happening because this code assumed it would find a domain in the loaded data
+and for the global elements file including one would be redundant and
+undesirable. Since the functionality required by accessing the domain is also
+unneeded when load the global elements, the generated code is modified to check
+for a non null domain before attempting to access it.
+
+8.7 com.mentor.nucleus.bp.io.mdl
+The ant script, generate.xml is modified to include the delete_gen target to
+ensure that generation files are properly removed when cleaning.
+
+8.8 com.mentor.nucleus.bp.io.mdl.test
+The following classes are added to enable globals based testing as described
+above[7.4]:
+    IOMdlGlobalsTestSuite
+    IOMdlGlobalsTestSuite2
+    IOMdlGlobalsTestSuite2Generics
+    IOMdlGlobalsTestSuiteGenerics
+    PkgCMGlobalsTestSuite
+    PkgCMGlobalsTestSuiteGenerics
+	com.mentor.nucleus.bp.io.mdl.test/IOMdlGlobalsTest
+	com.mentor.nucleus.bp.io.mdl.test/IOMdlGlobalsTestGenerics
+	com.mentor.nucleus.bp.io.mdl.test/IOMdlIIGlobalsTest
+	com.mentor.nucleus.bp.io.mdl.test/IOMdlIIGlobalsTestGenerics
+	com.mentor.nucleus.bp.io.mdl.test/PkgCMGlobalsTest
+	com.mentor.nucleus.bp.io.mdl.test/PkgCMGlobalsTestGenerics
+
+8.8.1 ImportVersion7_0ModelsTestGenerics
+This test previously just grabbed the first system instance in the extent. Due
+to the way loading now occurs, this fails to locate the correct instance. The
+setup code is replaced by some which locates the correct system by name.
+
+8.8.2 Extra argument for System Model constructor
+Some tests directly create a System Model instance during setup. The constructor
+calls must be slightly modified to supply a false initial state for the new
+System Model attribute useGlobals. This is later set to true if the test is
+exercising globals functionality otherwise it is left in the false state. The
+following tests create a System Model instance and hence require modification in
+this way:
+	IOMdlNestedTest
+	IOMdlTestSuiteI and IOMdlTestSuiteIGenerics
+	IOMdlTestSuiteII and IOMdlTestSuiteIIGenerics
+	IOMdlUnicodeTest
+	
+8.8.3 Delayed globals upgrade
+The infrastructure for this was discussed above[7.4]. The following tests
+require this delay:
+	IOMdlTestSuiteII
+	SpecificationPackageUpgradeTests
+
+8.8.4 Expected test result changes
+    models/canvastestGenerics.xtuml
+    models/InteractionDiagramUpgradeTestsGenerics.xtuml
+    models/nested_testGenerics.xtuml
+    models/odmsGenerics.xtuml
+    odmsGenerics.exp
+    odmsGenerics.imp
+    odmsGenerics.xtuml
+    specification_package_upgrade_results1.txt
+    specification_package_upgrade_results2.txt
+    testOAL1_poi.xtuml
+    testOAL1.xtuml
+
+8.9 com.mentor.nucleus.bp.pkg
+This project has the global model elements file globals/Globals.xtuml added to
+it as discussed above[6.4].
+
+8.10 com.mentor.nucleus.bp.test
+8.10.1 GlobalsTestEnabler
+This is the class that turns on global testing infrastructure as discussed above
+[7.4]. Classes derived from it are placed at the beginning of each globals
+enabled test suite. These are otherwise identical copies of the non global test
+suite of the same name. This dummy test simultaneously turns on globals testing
+and because it is the first test assures that a distinct test log is recorded
+for globals tests.
+
+8.10.2 TestUtil
+A small change to the dismissDialog method is made so that it finds and
+dismisses the global upgrade message dialog.
+
+8.10.3 com.mentor.nucleus.bp.test.common/BaseTest
+8.10.3.1 enableGlobals
+This method uses TestingUtilities.upgradeToGlobals to perform the upgrade when
+required.
+
+8.10.3.2 resolveGlobalDTsFor
+This method is used to upgrade models which are loaded late by some of the
+tests. It is used to assure that test models are fully upgraded before running
+tests in a global element context.
+
+8.10.3.3 getSystemModelInternal
+This private method is extracted from the previously existing ones and provides
+a new private convenience method for obtaining the required system model.
+
+8.10.3.4 Setting model roots
+When attempting to test in a globals context, several tests were failing because
+they were unable to locate the various model roots or because the model roots
+became stale during test setup.
+
+This was fixed by adding calls to set the model root in various places in
+BaseTest. These locations were:
+8.10.3.4.1 ensureAvailableAndLoaded, where domains and packages get relocated
+under a new system instance.
+
+8.10.3.4.2 associateInterfacePackageWithSystem and
+                                             associateComponentPackageWithSystem
+Both of these methods are called from ensureAvailableAndLoaded
+
+8.10.3.5 getTypeID_Generic
+This test method assumed it would find data types under a system level data type
+package found related to the system across R1405. Once upgrade to globals is
+performed, they are no longer there, so this method is extended to additionally
+look for them across R9100.
+
+8.10.4 com.mentor.nucleus.bp.test.common/TestingUtilities
+This class has a new method, upgradeToGlobals, added for setting up and invoking
+the UI action which performs the upgrade to use globally defined elements.
+
+8.11  com.mentor.nucleus.bp.ui.canvas.test
+8.11.1 New test classes
+The following classes are added to enable testing in a global element context:
+    CanvasCCPGlobalsTestSuite
+    CanvasGlobalsTestSuite
+	com.mentor.nucleus.bp.ui.canvas.test/CanvasCCPGlobalsTest
+	com.mentor.nucleus.bp.ui.canvas.test/CanvasGlobalsTest
+	
+8.11.2 CanvasTest
+This test was using the value of the BaseTest static field m_sys as its system
+model. Because it is static, it can become stale and its access should be
+discouraged. It is replaced with a call to getSystemModel which uses the current
+projectName to obtain the system instance.
+
+8.12 com.mentor.nucleus.bp.ui.explorer.test
+8.12.1 AlphaSortingTest
+A call to set up the project correctly was added.
+
+8.12.2 New test classes
+The following classes are added to enable testing in a global element context:
+	ExplorerGlobalsTest
+	ExplorerGlobalsTestSuite
+
+8.12.3 ExplorerTest
+This class had a number of modifications made to prevent test artifact failures
+when testing in a globals context.
+8.12.3.1 Expected item count
+there were two tests which expected a number of items to be found in the
+Explorer tree. Since upgrading to globals removes the system level data types
+package, this expected number is one less than for the regular test environment.
+A small if test is added in each test to adjust the expected value when testing
+in a global element context.
+
+8.12.3.2 Test independence
+A number of explorer tests relied upon the state left by a previous test. While
+this is poor practice, it never caused a failure in the past. However globals
+testing needs to have access to the system level and to all its contents at set
+up time. These tests were modified to ensure that all model contents were in
+place at the beginning of each test regardless of the state of a previous test.
+The tests were rerun in both global and non global contexts to assure that the
+tests still work as intended in both environments.
+
+8.13 com.mentor.nucleus.bp.ui.properties
+
+8.13.1 ChooserPropertyDescriptor
+This class is introduced to satisfy the requirements set out above[6.1.5].
+
+8.13.2 BuildPropertySource.arc
+Three changes are made here, one is to add a false boolean argument to the
+collectVisibleElementsForName infrastructure as discussed above[8.3.4]. Another
+is to extend the code generated to locate the data types for presentation to the
+user. This enhancement adds an additional step to traverse R9100 looking for
+suitable elements to add to the list. Finally, the new property descriptor
+discussed in 8.13.1 uses a name to address its elements as opposed to an integer
+used previously. There are two places where changes are made to accommodate this
+change.
+
+8.13.3 generate.xml
+ChooserPropertyDescriptor is added to the cvs_java_files property so that the
+class source file is not cleaned.
+
+8.14 com.mentor.nucleus.bp.ui.properties.test
+The following classes are added to enable globals based testing as described
+above[7.4]:
+    PropertiesGlobalsTestSuite
+    PropertiesGlobalsTest
+
+8.14.1 Test generation
+Much of the Properties test is generated. The file, create_view_test.arc is
+modified to expect a ChooserPropertyDescriptor as opposed to an EnumDescriptor
+for data type property entries.
+
+8.14.2 generate.xml
+This is modified to add the globals test classes (see [8.14]) to the
+cvs_java_files property to prevent them being cleaned.
+
+8.15 com.mentor.nucleus.bp.ui.text.test
+The following classes are added to enable globals based testing as described
+above[7.4]:
+    UITextGlobalsSuite
+    UITextGlobalsTest
+
+9. Unit Test
+------------
+9.1 JUnit
+As discussed above[7.4], the existing Junit tests have been extensively extended
+to assure that inter project reference behavior does not regress existing
+functionality. However, these tests double the number of JUnit tests. It doubles
+both the classic and generic package tests, so that there would now be four
+times the number of tests there were a few months ago. It is felt this would
+increase the daily 'per promotion' automated test burden too much and would not
+provide good return on defects found per hour spent testing.
+
+Accordingly, all the extended test set is run for this job, but is henceforth
+only rerun as part of a SMA QA test cycle [11].
+
+The globals tests that are worth running 'per job' are those that make heavy use
+of data types. The following tests are therefore proposed as to be run per job:
+
+    ParseAllTestGlobals
+    Debug - Verifier Test Globals
+    Properties Test Globals
+
+For this work, all JUnits, including all new ones introduced above, must pass.
+The unit_test_checklist.chk file is modified to indicate which of the Globals 
+tests are to be rerun per promotion and the folder
+
+\Documentation\internal\process\templates\launch_configs
+
+has the relevant launches added. The remainder of the globals test classes are
+checked in, ready for use in a future end of development cycle QA test.
+
+9.2 Inter-Project references manual test
+See [12]
+
+End
+---
+
+$Log: dts0100654681.dnt,v $
+Revision 1.14  2011/10/05 03:40:26  rmulvey
+job:dts0100654681
+Addressed several, but not all,  of the review observations.
+
+Revision 1.13  2011/10/02 21:33:38  campbell
+Job: dts0100654681
+Address review observations.
+
+Revision 1.12  2011/09/30 12:58:25  campbell
+Job: dts0100654681
+Add details of MC-Java change for batch relate.
+
+Revision 1.11  2011/09/30 11:49:15  campbell
+Job: dts0100654681
+Document unexpected paste bug. Complete test procedure.
+
+Revision 1.10  2011/09/29 18:06:21  campbell
+Job: dts0100654681
+Manual Verifier test section outstanding.
+
+Revision 1.9  2011/09/29 13:55:56  campbell
+Job: dts0100654681
+Final test section outstanding.
+
+Revision 1.8  2011/09/29 13:43:02  campbell
+Job: dts0100654681
+First pass complete.
+
+Revision 1.7  2011/09/29 13:11:59  campbell
+Job: dts0100654681
+Updated with work in progress.
+
+Revision 1.6  2011/09/28 18:04:00  campbell
+Job: dts0100654681
+Commit work in progress.
+
+Revision 1.5  2011/08/05 10:33:37  campbell
+Job: dts0100654681
+Check in work in progress.
+
+Revision 1.4  2011/08/03 15:51:08  campbell
+Job: dts0100654681
+Add description of Project level preferences and data upgrade process. Replace raw java listing with pseudo code.
+
+Revision 1.3  2011/06/30 14:48:18  campbell
+Job: dts0100654681
+Ready for review.
+
+Revision 1.2  2011/06/29 11:07:47  campbell
+Job: dts0100654681
+Move design details to design note. Add requirements for core types.
+
+Revision 1.1  2011/06/14 14:46:21  campbell
+Job: dts0100654681
+Introduced work in progress.
+

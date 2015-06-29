@@ -1,0 +1,147 @@
+========================================================================
+
+File:      $RCSfile: i4034.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Errant PROXY data in exported model file
+
+
+1. Abstract
+-----------
+Recent changes to BridgePoint caused V_VAL_PROXY statements to be written to
+exported single-file models.  This note describes the fix to stop exporting
+these proxies in single-file models while still "exporting" them to the
+clipboard when the user cuts or copies model elements from the canvas.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 4034
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=4034
+
+4. Background
+-------------
+The V_VAL_PROXY statements in the export file are due to the addition of
+datatype paste RGO resolution.  When cutting and pasting a datatype, BridgePoint
+uses the proxies to hook the datatype back up to the pasted V_VAL instances.
+
+Engineering discussions have concluded that the best solution is to use know-
+ledge inside the ExportModelStream to only call the
+export_DataType_c_RGO_Proxies() method during cut/copy and not file export.
+
+5. Design
+---------
+5.1 Add a flag to ExportModelStream that allows the creator of the stream to
+    indicate if the stream is for single-file export or cut/copy use.
+  5.1.1 Modify callers who create the stream to pass in the "export in progress"
+        flag appropriately.
+
+5.2 Modify the archetype function gen_export_methods to wrap the generated RGO
+    proxies method's import in an if block keyed off the boolean flag specified
+    in 5.1.
+
+5.3 Add JUnit test
+  5.3.1 The new test imports a model using the new model import mechanism with
+        parse on import on.  Then export the the model and verify no
+        V_VAL_PROXY statements exist.  Run this test on the HEAD branch to
+        verify the V_VAL_PROXY statements do exist without the fix in place.
+
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+7.1 Start BridgePoint
+7.2 Create a new xtUML Project "d"
+7.3 Select "d", Use the context menu to import a BridgePoint Model
+  7.3.1 The import file is: <cvsroot>/Models_SF/dogs.xtuml
+  7.3.2 Check Parse on import box
+7.4 Open Window > Preferences
+  7.4.1 Select BridgePoint > Model Export
+  7.4.2 Select "No" in the Export OAL group
+7.5 Select "d", Use the context menu to export a BridgePoint Model
+  7.5.1 The export file is: <Desktop>/dogs_ex.xtuml
+7.6 Open <Desktop>/dogs_ex.xtuml in a text editor
+  7.6.1 Search for "V_VAL", verify no matching statements exist
+  7.6.2 Search for "V_VAL_PROXY", verify no matching statements exist
+
+7.7 Run all JUnit tests.
+
+8. Code Changes
+---------------
+This code is in branch: R2_1_1-SKB-i4034
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui/
+AbstractStreamExportFactory.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui/CopyCutAction.java
+
+com.mentor.nucleus.bp.io.core/arc/export_functions.inc
+
+com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl/
+ExportStreamFactory.java
+com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl.wizards/
+ModelExportWizard.java
+com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl.wizards/
+ModelImportPage.java
+com.mentor.nucleus.bp.io.mdl/arc/gen_stream_export.arc
+
+com.mentor.nucleus.bp.io.mdl.test/src/com.mentor.nucleus.bp.io.mdl.test/
+OALPersistenceTests.java
+com.mentor.nucleus.bp.io.mdl.test/expected_results/testOAL1_poi.xtuml
+com.mentor.nucleus.bp.io.mdl.test/models/testOAL1_poi.xtuml
+
+com.mentor.nucleus.bp.mc.mc3020/src/com/mentor/nucleus/bp/mc/mc3020/
+ExportBuilder.java
+
+com.mentor.nucleus.bp.test/src/com.mentor.nucleus.bp.test.common/
+TestingUtilities.java
+
+
+End
+---
+
+$Log: i4034.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.2.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2008/12/08 19:05:24  rmulvey
+Job:4034
+Added mc3020/ExportBuilder.java to the list of modified files.  It was modified because it performs
+an export and the call to do so needed to be changed to pass "true" for the new " boolean
+fileExportInProgress" parameter to prevent the proxies from being written to single-file model used
+by the model compiler..
+
+Revision 1.3  2008/12/05 19:53:52  kbrown
+Job:4034
+Updated int.
+
+Revision 1.2  2008/12/05 18:56:46  kbrown
+Job:4034
+Updated int and test results so far.
+
+Revision 1.1  2008/12/05 16:27:35  kbrown
+Job:4034
+Completed implementation note.

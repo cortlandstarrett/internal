@@ -1,0 +1,182 @@
+========================================================================
+
+File:      $RCSfile: dts0100656084.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Fix Canvas C/C/P JUnit tests
+
+
+1. Abstract
+-----------
+Fix Canvas C/C/P JUnit tests
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100656084
+[2] ClearQuest DEI dts0100679294
+[3] /Documentation/internal/technical/notes/dts0100631941/dts0100631941.tnt
+
+4. Background
+-------------
+From the Unit test template:
+---------------------------------
+17) This issue has failures introduced with the promotion of the 
+    package specialization work.  This issues have not yet been
+    fully investigated.  3 errors and 7 failures
+
+The model recreate tests are removed as part of the promotion of
+530766-534114-652640-654624-671746-673096 per Travis input. 
+He intends to put them back shortly.
+
+Step 1: Comment out tests with expected failures
+Step 2: Fix tests with expected failures.
+
+5. Analysis
+-----------
+
+6. Design
+---------
+6.1 For canvas CCP Test there are 
+6.1.1 CanvasCCPTestsSuite  
+        all pass
+
+6.1.2 CanvasCutTests
+        all pass
+
+6.1.3 CanvasCopyTests
+6.1.3.1 testCopyAllClasses() 
+        is resolved by updating expected results
+6.1.3.2 testCutCopyNotAllowedOnBuiltInUDT()
+         will be restored when the canCopy routines support 
+         generic packages.[3]
+         
+6.1.4 CanvasCopyPasteTests 
+6.1.4.1 testCopySSWithNonSimpleAssociations()
+        is resolved by updating expected results        
+6.1.4.2 testCopyNotAllowedWhenSelectionContainsDefaultDataTypePackage()
+        is resolved by updating expected results
+6.1.4.3 testCopyClassesWithoutSelectingAssociationBetween()
+        is resolved by updating expected results
+6.1.4.4 testUndoRedoRestoresPastedElements()
+        sometimes shows not empty log file  
+        This involves the new PE subsystem added for the generic package work
+        and work that is ongoing in branch dts0100631941-06 [3]
+             
+6.1.5 CanvasStateMachineCopyPasteTests
+6.1.5.1 testPasteSubtypeWithoutSupertype()
+        The function export_Transition_c() when it's called the parameter
+        exportAlternateChildren should be true for all the calls for that
+        function.  
+        When pasting a SubType class without the SuperType, where the
+        SubType inherits an event, a warning dialog is shown.  That dialog 
+        should contain the name of the inherited event.
+        Before when the exportAlternateChildren was passed as false, the name of 
+        the inherited event couldn't be resolved correctly, instead it's name 
+        was orphaned.
+        That's why exportAlternateChildren should sent as true so that the
+        inherited event gets exported correctly and it's name could be resolved 
+        in the warning dialog. 
+6.1.5.2 testPasteSubtypeAndSupertypeWithoutAssociation()
+        is resolved by updating expected results
+6.1.5.3 testPasteSubtypeAndSupertypeWithAssociation()
+         is resolved by updating expected results
+6.1.5.4 testPasteSubsystemWithImportedSupertypeWhereSupertypeCanBeResolved()
+        is resolved by updating the function findImportedSupertypeClass()
+        in ModelClass.  If the expectedSuperClass is empty, it should 
+        look in the objects of O_IOBJ with the supertypeClassId. 
+        Then get the expectedSuperClass related with that imported class 
+        across the relation R101.          
+        After that the expected results were updated.
+6.1.5.5	testPasteSubsystemWithImportedSupertypeWhereSupertypeCanNotBeResolved() 
+        is resolved by updating expected results.
+        
+6.1.6 ModelRecreationTestSuite
+      all pass but "LengthOperator", "ArrayDimensionsTest" and
+      "Constant_SessionExplorer_Test" 
+      models are added to the excluded list
+      those models have persistence version: 7.1.5
+      since these models use a newer persistence version it won't 
+      import properly and must be excluded.
+
+7. Design Comments
+------------------
+7.1 [6.1.3.2] Is commented out will be restored when the canCopy routines 
+              support generic packages.[3]6.29
+7.2 [6.1.4.4] will be revisited when  dts0100631941-06 is done. [3]6.28
+
+8. Work Required
+----------------
+8.1 Change the entry in the stream.pei.sql file of the project 
+    com.mentor.nucleus.bp.io.mdl.test the entry's seventh parameter should be 
+    set to true instead of false
+    -- export any event that is assigned to this transition and it's children
+    INSERT INTO AEP VALUES ( '3.7', '3.5',		'->SM_NSTXN[R507]->
+    SM_SEME[R504]->SM_SEVT[R503]->SM_EVT[R525]', 'one', true, false, true);
+    
+8.2 Update the oal code for the function findImportedSupertypeClass()
+    in "Model Class"
+Before :
+// for each supertype of the given class
+ select any expectedSuper from instances of O_OBJ
+ 	where selected.Obj_ID == param.supertypeClassId;
+
+   
+After : 
+// for each supertype of the given class
+ select any expectedSuper from instances of O_OBJ
+ 	where selected.Obj_ID == param.supertypeClassId;
+if(empty expectedSuper)
+   select any expectedImportedSuper from instances of O_IOBJ
+ 	where selected.Obj_ID == param.supertypeClassId;
+ 	  if(not_empty expectedImportedSuper)
+ 	  select one expectedSuper related by expectedImportedSuper->O_OBJ[R101];
+ 	  end if;
+end if;
+ 
+
+
+9. Unit Test
+------------
+9.1 _- Run CanvasCCP test
+    R- 0 Errors 0 Failures 
+
+End
+---
+
+$Log: dts0100656084.dnt,v $
+Revision 1.6  2010/05/24 17:07:02  hkhaled
+job:dts0100656084
+dnt and int updated
+
+Revision 1.5  2010/05/19 14:26:38  hkhaled
+job:dts0100656066
+committing modifications to dts0100656066.dnt
+
+Revision 1.4  2010/05/18 15:54:12  hkhaled
+job:dts0100656084
+committing modifications to the design note
+
+Revision 1.3  2010/05/18 14:44:07  hkhaled
+job:dts0100656084
+committing a design note
+
+Revision 1.2  2010/05/18 14:22:20  hkhaled
+job:dts0100656084
+committing a design note
+
+Revision 1.1  2010/04/29 15:11:20  hkhaled
+job:dts0100656084
+committing a design note
+

@@ -1,0 +1,236 @@
+========================================================================
+
+File:      $RCSfile: i1666.ant,v $
+Version:   $Revision: 1.7 $
+Modified:  $Date: 2009/01/01 23:12:57 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Instance reference datatype
+
+1. Abstract
+-----------
+This note defines what changes are needed to the tool to support instance
+reference data types.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 1666
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1666
+[2] Bugzilla item 477
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=477
+[3] Bugzilla item 478
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=478
+[4] Bugzilla item 530
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=530
+[5] Bugzilla item 1684
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1684
+
+4. Background
+-------------
+Many customers have asked for instance reference passing. Providing instance
+reference data types is less work and goes one step further and allows for
+instance reference attributes and arrays (with [2]) etc.
+
+5. Analysis
+-----------
+5.1 Metamodel changes
+    A new subtype of Data Type is added, 'Instance Reference'. It has a
+    conditional one to unconditional one association with Model Class.
+    'Variable' in the Value subsystem will be reworked so that the subtype
+    associations R818, R819 and R821 are replaced with a single supertype
+    association.
+
+5.2 Canvas changes
+    The Model class display is changed to show a '+' character to the left of
+    the class name. This will appear when a class is public and references of
+    this type can be specified at the component or domain level.
+    
+5.3 Add new menu entries
+    New mutually exclusive menu entries for Model Class instances; 'Publish' and
+    'Withdraw' are added. Selecting 'Publish' will add two new entries to the
+    datatypes dropdown list; inst_ref<classname> and inst_ref_set<classname>.
+    'Withdraw' performs the opposite function and removes these data types and
+    reverts all model elements that are declared as instance references to the
+    class in question to integer or void as appropriate.  So, for example, in
+    the ODMS sample model it will be possible to create data types such as
+    inst_ref_set<Drive> and inst_ref<Qualified Process>. This naming convention
+    is designed to fit in with BridgePoint's existing 'special' data types.
+    However, no generic type is implied or shall be implemented for
+    inst_ref<Object> or inst_ref_set<Object>.
+
+5.4 Properties
+    In all places where a data type is selected, the new inst_ref<classname> and
+    inst_ref_set<classname> types also appear for those classes that have been
+    published.
+
+5.5 Parser changes
+    Changes to the parser grammar for member attribute access has already
+    been made for the Structured Data Types work[3]. However, any syntax
+    previously legal on instance reference or instance reference set lValues
+    may now potentially be done to parameters, event data items and attribute
+    values. The parser must be modified to permit these operations. Variables of
+    type inst_ref<classname> shall be compatible with and assignable from the
+    products of select statements.
+    
+    Due to the proposed changes to the Variable subtype tree, Instance Reference
+    data types will need be created for the parser to hook up selects on those
+    classes which are not published. A mechanism for keeping these internal data
+    types hidden from the user must be designed.
+
+    While we are modifying the parser in this area, we should enable the set
+    operations '+' and '-' on inst_ref_set values (also inst_ref_set '+' and
+    '-' inst_ref to allow individual instances to be added and removed from a
+    set). See [4,5].
+
+5.6 Verifier changes
+    The necessary changes shall be made to Verifier so that it honors the
+    execution semantics specified or implied above. Though not especially
+    technically challenging, there are many places where changes will have to
+    be made.
+
+6. Work Required
+----------------
+6.1 Metamodel changes
+    Add the new data type subtype and association with Model Class. Research
+    alternatives for capturing the data type of a variable. Consider
+    alternatives to replacing R818 and R819. Make appropriate fallout changes to
+    the OAL required by any changes made to R818, R819 and R821.
+    
+    Add operations to Model Class to publish and withdraw class instance
+    references. 'publish' will create the two instance reference data type
+    instances, initialize their names and relate them to self across the new
+    association. 'withdraw' must dispose the same data types and revert all
+    referring instances to 'void' if the reference is a return type or otherwise
+    to 'integer'.
+    
+    Extend the Model Class action filter to support enabling these menu entries
+    depending on the state of the class.
+
+6.2 Canvas changes
+    This is not actually a change to the canvas plugin, but a change to the
+    'Model Class'.get_entries operation to add the '+' under the specified
+    conditions.
+    
+6.3 Add new menu entries
+    Add the CME build database entries in context_menu.pei.sql to add entries
+    on Model Class for Publish and Withdraw. Add action filter declarations so
+    that the menu entries get turned on appropriately.
+
+6.4 Properties
+    No changes are anticipated to support the specified functionality.
+
+6.5 Parser changes
+    No grammar changes are needed. Modify the validation functions to check for
+    the element being accessed (parameter/event data/attribute value) being an
+    instance reference type, validate the member accessed and instantiate the
+    proper Value subsystem instances.
+    
+    Depending on the outcome of the research specified in 6.1, modify the
+    Variable (V_VAR) instantiation patterns.
+    
+    Depending on the outcome of the research specified in 6.1, a design for
+    filtering the data type instance population may be required.
+    
+    Extend binary operator validate to allow inst_ref_set and inst_ref types to
+    occur on either side of the  operators '+' and '-'. The result is always of
+    type inst_ref_set.
+
+6.6 Verifier changes
+    Perform the necessary changes to allow Verifier to execute instance
+    reference passing. The local subsystem will have to be substantially
+    reworked, since it currently assumes that local values, for example
+    parameter values, cannot be instance references. A by reference versus by
+    value behavior must also be established and implemented. This work is of
+    sufficient complexity that it should be done as a separate job from enabling
+    instance reference passing itself. 
+ 
+6.7 Persistence
+    Add the new data type subtype to the file_io.pei.sql and stream.pei.sql
+    files. Extend ooa_hierarchy.pei.sql to cover the new subtype of data type.
+    The io_sql plugin must be modified to revert instance reference datatypes
+    as user defined types of core type 'integer'. 
+
+7. Acceptance Test
+------------------
+- Check that a class can be published.
+- Check that the type of an attribute can be set to a published class
+  reference. *
+- Check that the return type of an operation can be set to a published class
+  reference. **
+- Check that the published class appears as an inst_ref and inst_ref_set type.
+- Check that the name of a published class is prefixed with a '+' on the class
+  diagram.
+- Check that a published class can be withdrawn.
+- Check that a reference type attribute reverts to integer when the class is
+  withdrawn. *
+- Check that a reference operation return type reverts to void when the class is
+  withdrawn. **
+- Check that attributes, including structured data type and inst_ref attributes
+  of inst_ref type instances can be accessed as expected*.
+- Check that Mathematically Derived Attributes may be of type inst_ref and
+  inst_ref_set.
+- Check that inst_ref_set types may be used in for each loops.
+- Check that inst_ref types may be used as a loop variable in for each loops.
+- Check that sets can be subtracted from and added to each other
+- Check that an instance can be subtracted from and added to a set.
+- Build a test matrix that covers all instance reference and set behavior.
+- Check that it parses correctly.
+- Check that Verifier executes it correctly.
+- Check that published classes are still shown as published ('+') after a tool
+  restart.
+- Check that instance reference data types for a published class are still
+  available after a tool restart.
+- Check that element data types that have been set to an instance reference
+  data type are still set to the same instance reference data type after a tool
+  restart.
+
+* Repeat for parameters, event data items
+** Repeat for bridge and function return.
+
+End
+---
+
+$Log: i1666.ant,v $
+Revision 1.7  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2007/10/25 20:36:26  campbell
+Job: 1666
+Fix typos.
+
+Revision 1.5  2007/10/24 23:09:52  campbell
+Job: 1666
+Remove references to 'Recall' functionality.
+
+Revision 1.4  2007/10/24 22:53:45  campbell
+Job: 1666
+Complete Work Required and Acceptance test sections.
+
+Revision 1.3  2007/10/18 19:06:47  campbell
+Job: 1666
+Requirements reworked after conversation with CSS.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.1  2007/02/02 17:14:21  campbell
+Job: 1666
+Introduced.
+

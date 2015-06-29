@@ -1,0 +1,225 @@
+========================================================================
+
+File:      $RCSfile: dts0100586888.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Domain marking files are not created for formalized components when models are 
+imported
+
+1. Abstract
+-----------
+The domain-marking files are not created for models that have components 
+formalized to domains.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100586888
+http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=a1e26533-aaec-480e-a5c8-932262ae9d9f
+
+[2] dts0100586888.dnt
+
+4. Background
+-------------
+See design note [2]
+
+5. Design
+---------
+5.1 [2, 6.1] Changes to use a single-set of Domain-level marking files.
+5.1.1 sys_functions.arc needed to be moved up earlier in sys.arc.
+	  Otherwise, a query tried to call it before it was defined.
+	  This was a bug detected by a model that used methods defined in
+	  sys_functions.arc.
+5.1.2 Made marking functions backwards compatible.  Did this by leaving the
+	  existing Tag* marking function entry points.  These entry points call
+	  new entry points beginning with Mark*.  The Mark* entry points now
+	  expect a string domain name as their first argument.  The old entry
+	  points get this domain name by selecting the te_dom that is marked as
+	  currently_active.
+5.1.3 Modified xtulmc_build to allow processing of both old-style and new-style
+      marking files.
+5.1.3.1 Removed xtumlmc_dom_init, ROX_InstallLeafNode, and 
+      ROX_InstallDomainColorTemplates.
+5.1.3.2 Modifed the model pre-processing to leave the ".sql" produced by the 
+      mc3020 plugin alone and make modifications only to the "_system.sql"
+5.1.3.3 If there is more then one model file on the command-line give an error
+5.1.3.4 Removed $tempSNGLfile variable that was no longer being used
+5.1.3.5 Copy the single-file marking files into the code_generation folder.  If
+      domain-level marking files are present then we currently copy them into 
+      the code-gen folder.
+5.1.3.6 Create empty marking files in the code_generation folder before 
+      looking at what marking files we actually have.  After empty marking 
+      files are created concatenate any existing marking files into these 
+      working copies in the code_generation folder.  If they are "old-style" 
+      markings that have a domain name specified then we concatenate a select 
+      statement first to allow the archetype to know which domain the mark 
+      applies to.  If it is a new-style marking file this select statement is 
+      not needed because new-style marks specify the name of the domain to 
+      associate the mark to.
+5.1.3.6 Removed the relocatables substitution from xtumlmc_build.  Doing so 
+        allowed the removal of a temporary file the was being used to process 
+        the model.    
+    
+5.2 [2, 6.2] Remove the MC3020ResourceChangeListener
+5.2.1 Removed MC3020ResourceChangeListener.java
+5.2.2 After exporting the model the ExportBuilder calls 
+	  MCBuilderArgumentHandler.setArguments() to setup the variables in the 
+	  MC-3020 Model Compiler.launch file in preparation for that builder to 
+	  run.
+5.2.3 In ModelCompiler.java:earlyStartup() the call made to add the 
+	  MC3020ResourceChangeListener to the project was removed.
+5.2.4 There is code in ModelCompiler.java:earlyStartup() that checks to make 
+	  sure the projects with a MC3020 nature have a prebuilder and if they do
+	  not, it asks the user if they would like to update.  This code was NOT
+	  removed.  There was a place in the MC3020ResourceChangeListener that 
+	  made this same check, and since the MC3020ResourceChangeListener was 
+	  removed it no longer exists.  This simply means if the tool is launched
+	  with closed mc3020 project(s) and those project are then opened, there
+	  will be no warning about a missing prebuilder.  This was discussed in the
+	  design review [2].
+5.3 [2, 6.3] Create all marking files during new project creation
+5.3.1 Moved the default-manifest from the mc3020 plugin's manifest folder to 
+	  the plugin's mc3020 folder where it is currently expected in a project.  
+	  This default-manifest.xml previously existed in 2 places:
+	        model_compilers/mc3020/default-manifest.xml
+	        com.mentor.nucleus.bp.mc.mc3020/manifest/default-manifest.xml
+	
+	  It is used by the mc3020 plugin, but the copy used is the one that 
+	  lived under the mc3020 plugin's mc3020 folder (where model compiler are).  
+	  The default-manifest.xml now lives only in the mc3020 plugin's mc3020
+	  folder.  The copies have been deleted.
+	            
+5.3.2 The domain-level marking files were moved into the "system" section of
+	  the manifest and the "_" in their names was removed.  The models section 
+	  of the manifest was removed.      
+5.4 [2, 6.4] Modify the MC prebuilder to setup the xtumlmc_build command-line 
+    arguments
+5.4.1 Introduced MCBuilderArgumentandler.java to setup the MC-3020 Model 
+	  Compiler.launch variables.  This includes the command-line passsed to
+	  xtumlmc_build.  The Model Compiler prebuilder calls on this class to 
+	  after it exports the single-file model. BridgePoint sequences the 
+	  builders in the .project files so the prebuilder always runs first.
+5.5 [2, 6.5] Leave both builders (prebuilder and MC3020 builder) in place
+    No action to take.
+         
+6. Implementation Comments
+--------------------------
+6.1 During testing an observation was made that modifying the MC3020 arc folder
+    did not cause the xtumlmc_build licensing parameter to change as expected. 
+    Since the prebuilder now completely controls the command line it should 
+    have changed. 
+6.1.1 Investigation determined the license check was being done during the
+    Model Compiler plugin's initial startup, and the licensing string was being
+    cached at that time and not checked again.  
+6.1.2 When the license check was implemented, there was not prebuilder and 
+    therefore the only reasonable place to check the license was at startup.
+    In the prior versions, this meant that a customer switching from source
+    to binary license had modify their project and their restart the tool to
+    make the switch from binary to source MC (or visa-versa).
+6.1.3 The license string cache has been removed and the license is now 
+    checked by the prebuilder at the time the xtumlmc_build command-line is
+    setup.
+6.1.4 The BridgePointLicenseManager was modified to allow checking of the 
+    MC licenses.  The logic in it was simplified.  Given a license to check
+    it checks the given license first, and for some license (system licenses)
+    it checks a second and in some case a third license if the first one(s)
+    are not available.
+6.2 Fixed a bug with events being passed to timers causing a compiler
+    warning.  Added the needed cast.
+    
+7. Unit Test
+------------
+See design note [2]
+
+8. Code Changes
+---------------
+The work is in branch Review-0100586888.
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.util/
+    BridgePointLicenseManager.java
+
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ExportBuilder.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020Nature.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020ResourceListener.java   (Removed, and good riddance :))
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MCBuilderArgumentHandler.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ModelCompiler.java
+com.mentor.nucleus.bp.mc.mc3020/manifest/default-manifest.xml (moved, see below)
+com.mentor.nucleus.bp.mc.mc3020/mc3020/.cvsignore
+com.mentor.nucleus.bp.mc.mc3020/mc3020/default-manifest.xml   (moved here)
+
+com.mentor.nucleus.bp.mc.mc3020.test/src/com.mentor.nucleus.bp.mc.mc3020.test/
+    TestProjectAndModelOperations.java
+
+model_compilers/mc3020/default-manifest.xml (removed)
+model_compilers/mc3020/arc/dts0100564015      (NOTE!! do NOT promote this file)
+model_compilers/mc3020/arc/m.class.arc
+model_compilers/mc3020/arc/m.domain.arc
+model_compilers/mc3020/arc/m.event.arc
+model_compilers/mc3020/arc/MCissues.txt       (NOTE!! do NOT promote this file)
+model_compilers/mc3020/arc/q.mc_metamodel.populate.arc
+model_compilers/mc3020/arc/q.val.translate.arc
+model_compilers/mc3020/arc/sys.arc
+model_compilers/mc3020/schema/colors/class.mark
+model_compilers/mc3020/schema/colors/datatype.mark
+model_compilers/mc3020/schema/colors/domain.mark
+model_compilers/mc3020/schema/colors/event.jap
+model_compilers/mc3020/schema/colors/event.mark
+(removed a note that was misleading)
+model_compilers/mccommon/bin/xtumlmc_build
+
+
+End
+---
+
+$Log: dts0100586888.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/05/15 18:17:12  cstarret
+job:dts0100586888
+updated int with changes made during testing/promotion
+
+Revision 1.7  2009/05/14 15:47:14  rmulvey
+job:dts0100586888
+Added 5.1.3 to discuss the changes made to xtumlmc_build.
+
+Revision 1.6  2009/05/14 15:20:41  rmulvey
+job:dts0100586888
+typo
+
+Revision 1.5  2009/05/14 15:13:04  rmulvey
+job:dts0100586888
+Updated the note based on the final changes made.
+
+Revision 1.4  2009/05/14 01:50:50  cstarret
+job:dts0100586888
+added my code changes
+
+Revision 1.3  2009/05/13 22:21:19  cstarret
+job:dts0100586888
+documented my implementation comments for the archetypes
+
+Revision 1.2  2009/05/12 20:42:56  rmulvey
+job:dts0100584008
+Described the changes made
+
+Revision 1.1  2009/05/12 14:50:20  rmulvey
+job:dts0100586888
+Introduced

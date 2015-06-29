@@ -1,0 +1,282 @@
+========================================================================
+
+File:      $RCSfile: i518.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:19 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Design Note
+Dispose associations for imported classes correctly
+
+Abstract
+--------
+This note describes the changes to deletion of imported classes that prevent
+associations from being improperly deleted.
+
+History
+-------
+
+final i518-120204-01.rvm
+final i518-121604-01.rvm
+
+Document References
+-------------------
+Issue 518
+
+Background
+----------
+
+When an imported class is used as a subtype or link class, if the imported
+class is deleted, the association is deleted.  The expected behavior for
+subtypes is that only the class and the subtype connector is deleted.  The
+expected behavior for a link class is that the imported class is deleted, and
+the association is changed to a simple unformalized relationship.  There
+are tests missing from the deletion tests where imported objects are
+related in a linked association.
+
+Design
+------
+
+1.  Add check for imported class's role in association
+
+In the operation Imported Class.dispose, a call to isEssentialToAssoc is
+added.  If the class is essential, then the association is deleted, otherwise
+only the ClassInAssociation instance is deleted.  The new code would be:
+
+  if not_empty assoc
+    if realObj.isEssentialToAssoc(id: assoc.Rel_ID)
+      assoc.dispose();
+    else
+      oir.dispose();
+    end if;
+  else
+    oir.dispose();
+  end if;
+
+where realObj is the Model Class that the Imported Class refers to. The 
+unrelate statement across R202 following this code is moved to the
+Class in Association.dispose() operation.  This statement didn't make sense, 
+because the Class in Association instance (i.e., the oir variable) had already 
+been deleted by the time the statement was reached.
+
+2. Update unit tests
+
+The core unit tests currently allow the incorrect behavior.  The expected
+results for those tests are updated to check for the correct behavior.  
+The following additional tests for deletion of link classes are added:
+
+Link Class		One Class	Other Class
+---------------------------------------
+Imported         Regular 		Imported
+Imported         Imported 		Imported (not allowed by BP)
+Regular          Regular 		Imported
+Regular          Imported 		Imported (not allowed by BP)
+
+3. Additional changes
+
+The following changes were made due to errors found during testing.
+
+3.1  Imported Link Class connection incorrect
+
+When an imported class is used as a link class, association R202 is not
+instantiated. The operation Subsystem.newAssociative() is changed to check
+for an imported class as the link class:
+
+if (param.fromTypeIsImportedClass)
+  simp.migrateToLinked(using: fromClass.Obj_ID, imported_id: param.from);
+else
+  simp.migrateToLinked(using: fromClass.Obj_ID, 
+     imported_id: GD::NULL_UNIQUE_ID());
+end if;
+
+The operation parameter fromType (integer) is changed to fromTypeIsImportedClass
+(boolean) to remove the dependency on the enumeration values in the 
+ooaofgraphics model.  The following operations have similar changes made:
+
+Subsystem.newAssociation()
+Subsystem.newAssociative()
+Subsystem.newSupertype()
+Subsystem.newSubtype()
+InstanceStateMachine.newTransition()
+InstanceStateMachine.newCreationTransition()
+ClassStateMachine.newTransition()
+ClassStateMachine.newCreationTransition()
+Association.get_connector_text()
+ClassAsLink.get_connector_text()
+ClassAsSubtype.get_connector_text()
+Transition.get_connector_text()
+
+The changes in the signatures of these operations forces a change to the
+following bridge operations in the ooaofgraphics model:
+
+CL::getConnectorText()
+CL::createConnector()
+
+The glue class Cl_c.java is also changed to handle the new signature.
+
+The ooaofgraphics model has changes made to the following activities to
+conform to the new bridge signatures:
+
+Connector Tool.Creating Element (state)
+Connector.draw()
+ElementInResize.finish()
+
+The operation SimpleAssociation.migrateToLinked() is changed to add the 
+parameter imported_id (type unique_id), and the following code is added:
+
+if ( param.imported_id != GD::NULL_UNIQUE_ID() )
+  // link class is an imported class
+  select any imp_class related by fromClass->O_IOBJ[R101] 
+        where selected.IObj_ID == param.imported_id;
+  relate imp_class to oir across R202;
+end if;
+
+3.2  Link Class removal incorrect
+
+When a Link Class is removed from an association, the metamodel instances 
+were not updated correctly.
+
+3.2.1 In the operation Linked Association.migrateToSimple(), the instance of 
+Class As Link was not deleted.  The following is added to the operation:
+
+//
+// select the assr, unrelate from this (to prevent its dispose from
+// calling this function), and delete
+select one assr related by self->R_ASSR[R211];
+unrelate self from assr across R211;
+select one assr_oir related by assr->R_RGO[R205]->R_OIR[R203];
+assr_oir.dispose();
+
+3.2.2 When an instance of Attribute Reference in Class (O_REF) is deleted, the 
+instance of Referred To Identifier Attribute (O_RTIDA) related to it should be 
+deleted as well.  The O_REF.dispose() operation is changed to find the related
+O_RTIDA and delete it using the following OAL:
+
+    select one rtida related by self->O_RTIDA[R111];
+    select one rgo related by self->R_RGO[R111];
++   select one rto related by rtida->R_RTO[R110];
++   select one oida related by rtida->O_OIDA[R110];
+    unrelate rtida from rgo across R111 using self;
++   unrelate rto from oida across R110 using rtida;
++   delete object instance rtida;
+    delete object instance self;
+
+where (+) indicates the new code.
+
+3.3  Adding a subtype to a formalized association
+
+When a subtype is added to an association that is already formalized, the
+referential attributes are not copied into the subtype.  The following
+OAL is added to the operation Subsystem.newSubtype():
+
+          if ( toAssoc.isFormalized() )
+            // add referential attributes
+            unused_oid = fromClass.findUnusedIdentifier();
+            select one sup_rto related by subsup->R_SUPER[R212]->R_RTO[R204];
+            select many oida_set related by sup_rto->O_ID[R109]->O_OIDA[R105];
+            for each oida in oida_set
+              oida.addReference(rel_id: toAssoc.Rel_ID,
+                  rto_obj_id: sup_rto.Obj_ID, rto_oir_id: sup_rto.OIR_ID, 
+                  rgo_obj_id: rgo.Obj_ID, rgo_oir_id: rgo.OIR_ID,
+                  id: unused_oid);
+            end for;
+          end if;
+
+where fromClass is the new subtype, and toAssoc is the association.
+
+
+Work Required
+-------------
+
+1.  Add check for imported class's role in association
+
+The change is made to the ooaofooa model as described in design.
+
+2. Update unit tests
+
+The core.test expected results are updated.  The new tests are added to
+DeleteTestModel.sql. The DeleteTestModel is converted to a .mdl file, and
+gen_delete_test.arc is changed to generate code that opens an mdl file.
+
+3. Additional changes
+
+3.1  Imported Link Class connection incorrect
+
+The changes are made to the ooaofooa model as described in design.
+
+3.2  Link Class removal incorrect
+
+The changes are made to the ooaofooa model as described in design.
+
+3.3  Adding a subtype to a formalized association
+
+The change is made to the ooaofooa model as described in design.
+
+
+Unit Test
+---------
+
+- All tests run as before
+- New DeleteTestModel tests run without error (covers 3.1)
+
+Test for 3.2
+
+- Delete the dashed line for a formalized Linked Association
+- Redraw dashed line
+- Open context menu for association
+R 'Formalize ...' is present in menu (previously 'Unformalize...' was shown)
+
+Test for 3.3
+
+- Draw a subtype line to a class from a formalized Sub/Sup association
+R Referential identifying attributes are added to subtype class
+
+
+
+End
+---
+
+$Log: i518.dnt,v $
+Revision 1.1  2009/09/03 18:21:19  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.70.1  2008/12/31 16:10:17  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2004/12/18 00:10:00  greg
+Job: 518
+Changes from second review
+
+Revision 1.5  2004/12/15 20:12:01  greg
+Job: 518
+Add additional work found during testing
+
+Revision 1.4  2004/12/03 23:30:48  greg
+Job: 518
+Changes from review
+
+Revision 1.3  2004/11/30 17:37:19  greg
+Job: 518
+Add unit test section
+
+Revision 1.2  2004/11/20 19:55:17  greg
+Job: 518
+Clarify new tests cases
+
+Revision 1.1  2004/11/20 17:49:34  greg
+Job: 518
+Initial introduction
+

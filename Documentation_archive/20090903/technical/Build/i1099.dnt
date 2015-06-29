@@ -1,0 +1,262 @@
+========================================================================
+
+File:      $RCSfile: i1099.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:23 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Support Eclipse version 3.1
+
+Abstract
+--------
+This note describes the changes required for supporting the latest release of
+Eclipse, 3.1.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 1099
+
+Background
+----------
+The current version of Tiger does not work with Eclipse 3.1.
+
+Analysis
+--------
+Tiger, as well as Tiger's development environment, must be supported in Eclipse
+3.1 and will not remain compatible with eclipse 3.0.
+
+A new development environment shall be setup using Eclipse 3.1.  All steps shall
+work as before.
+
+Tiger shall be built using Eclipse 3.1.  After building no errors shall exist
+and all junit tests shall pass.
+
+Design
+------
+1. Update exported preferences
+
+In Eclipse 3.1 the project separator in the build order preference changed from
+a colon to a back-slash.  Each colon shall be replaced by a back-slash
+character.
+
+2. New eclipse builders
+
+In Eclipse 3.1 the builder support changed to allow a target to be called during
+a clean instead of just before or after.  This causes all Tiger projects to be
+completely cleaned each time a change is made while build automatically is
+turned on.  All cleaners shall be removed, and each project shall have its
+builder configured so that the project's clean target is called during a clean.
+
+3. Fix deprecated calls
+
+All original and newly introduced deprecated calls shall be examined to see if
+they can be fixed.  If they can they shall be fixed.
+
+4. Modify CanvasDummyIFile to implement required methods
+
+Eclipse 3.1 expects the following method implementations for the IFile
+interface:
+
+	getCharsetFor(Reader reader)
+	getResourceAttributes()
+	revertModificationStamp(long value)
+  setResourceAttributes(ResourceAttributes attributes)
+
+The methods, revertModificationStamp and setResourceAttributes, are implemented
+to do nothing because the modification stamp nor the resource attributes shall
+not change.  The getCharsetFor method is written to return the workspace's
+default charset.  The getResourceAttributes method is written to return a 
+ResourceAttributes field that has the following values set:
+
+archive = false
+readonly = true
+executable = false
+
+5. Fix canvas.test I835OpenDiagramEditorWithSearchView
+  
+The class TextSearchScope no longer exists in Eclipse 3.1.  The class is
+replaced by SearchScope which contains static methods for creating a new search
+scope.  The creation of TextSearchScope is replaced with a call to
+SearchScope.newSearchScope.  The created scope does not contain a method
+addExtension which is what was used to determine the files to search in.  It is
+replaced with a call to the method addFileNamePattern.
+
+6. Fix path resolution in 3020 plugin
+
+The 3020 plugin currently locates the plugin path by getting the default bundle
+location and removing 8 characters from the start.  It was designed this way so
+that the "update@/" would be removed.  Eclipse 3.1 uses relative paths starting
+from the eclipse installation folder which now means the 8th character shouldn't
+be removed.  For instance if the workspace path was located at c:\test\workspace
+the bundle path would be update@../test/workspace assuming eclipse was installed
+at c:\eclipse.  When passed through the existing getPluginPath implementation
+the returned result would be ./test/workspace which is not the correct workspace
+location.
+
+The getPluginPath method is changed to replace the first occurence of update@
+with an empty string.
+
+7. Fix welcome plugin to support multiple code builders
+
+The GettingStartedAction expects the New xtUML Project page to allow a finish
+after adding only a project name.  This is fine for field releases at this point
+because there is only one code builder.  Internally we have a test builder setup
+which causes the wizard to not allow a finish because the code builder must be
+selected first.  Once we add more code builders this same problem will arise.
+
+The GettingStartAction is changed to get the next page in the wizard.  If it
+finds the code builder selection page it selects the entry named "Nucleus EDGE
+Code Builder" and sets the page as finished.  This allows for the wizard to
+finish.
+
+8. Modify new-start checklist
+
+The new start checklist shall be modified to reflect the new setup procedures
+if any.
+
+9. Create unit test plugin for bp.welcome
+
+A new test plugin is added to test the MicrowaveOven project creation in the
+bp.welcome plugin.
+
+10. Fix feature plugins
+
+Eclipse 3.1 does not allow the body of the license XML element to be empty.
+Eclipse 3.0 did not care.  The %license value will place the contents of the
+file given in the url argument.  The body of the license XML is therefore
+modified to include the %license value.
+
+11. Update compile targets for new plugin versions
+
+All compile targets are updated to match the new version numbers of the eclipse
+plugins.
+
+12. Install 3.1 on nightly build server
+
+The eclipse 3.1 plugins and features are installed on the nightly build server.
+
+Design Comments
+---------------
+
+The method implementation getCharsetFor is required by eclipse 3.1 and is
+therefore added to the PlaceHolderEntry class' IFile implementation.
+
+Work Required
+-------------
+1. Update exported preferences
+
+The file, core/tools/eclipse_settings/preferences.epf, is modified according to
+the design.
+
+2. New eclipse builders
+
+All "Clean Builders" are removed.  All other builders are changed according to
+the design.
+
+3. Fix deprecated calls
+
+All deprecated calls that can be fixed are fixed.
+
+4. Modify CanvasDummyIFile to implement required methods
+
+The new methods are implemented in CanvasDummyIFile.java according to the
+design.
+
+5. Fix canvas.test I835OpenDiagramEditorWithSearchView
+
+The test is modified to use the new methods from Eclipse 3.1.
+
+6. Fix path resolution in 3020 plugin
+
+The file, ModelCompiler.java, is modified according to the design.
+
+7. Fix welcome plugin to support multiple code builders
+
+The file, GettingStartedAction.java, is modified according to the design.
+
+8. Modify new-start checklist
+
+The file, new-start.chk, is modified according to the design.
+
+9. Create unit test plugin for bp.welcome
+
+The plugin com.mentor.nucleus.bp.welcome.test is added to the CVS repository.
+
+10. Fix feature plugins
+
+The changes are made to the feature.xml file in both bp.pkg-feature and
+bp.suite.pkg-feature.
+
+11. Update compile targets for new plugin versions
+
+The changes are made to each project's generate.xml ant script.
+
+12. Install 3.1 on nightly build server
+
+The eclipse 3.1 plugins and features are installed on the nightly build server
+at c:\eclipse.
+
+Unit Test
+---------
+_- Run all existing unit tests
+_R All unit tests pass
+
+_- Perform steps in new-start.chk
+_R A development environment is setup
+_R The environment has all imported preferences
+
+_- Open Tiger
+_- Create a new xtUML project
+_- Create a new xtUML model
+_R All 3020 files exist in the project
+
+_- Run the getting started action
+_R The MicrowaveOven project is successfully created
+
+End
+---
+
+$Log: i1099.dnt,v $
+Revision 1.1  2009/09/03 18:22:23  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:00  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.30.1  2008/12/31 16:10:03  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/09/12 21:32:23  tlondon
+Job: 1099
+
+Fixed according to review minutes
+
+Revision 1.3  2005/09/09 23:23:14  tlondon
+Job: 1099
+
+Added section for fixing feature plugins
+
+Revision 1.2  2005/09/09 17:56:37  tlondon
+Job: 1099
+
+Added item for bp.welcome unit test creation
+
+Revision 1.1  2005/09/09 16:50:08  tlondon
+Job: 1099
+
+Intial
+

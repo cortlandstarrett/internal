@@ -1,0 +1,128 @@
+========================================================================
+
+File:      $RCSfile: dts0100622819.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Fix slow running timers.
+
+1. Abstract
+-----------
+This note describes a fix for slow running timers.
+
+2. History
+----------
+  final - dts0100622819.rvm
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100622819 - Timers run very slightly slow
+[2] ClearQuest DEI dts0100621356 - Support Instance Reference passing.
+[3] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+                                                                 Models/Test/gps
+4. Background
+-------------
+While checking that the work for [2] did not cause Verifer regression problems,
+it was noticed that the gps model timing function lost about 1 second per
+minute. This note covers a fix that vastly improves this behavior.
+
+5.Analysis
+----------
+The reason for this lies in the Timer.tick() operation.
+
+It deducts the actual elapsed time from the time the timer has left before
+firing thus:
+
+  if (not_empty ee and ee.Running and not_empty stack and
+                                        stack.runState == RunStateType::Running)
+    self.time_left = self.time_left - param.interval;
+  end if;
+
+  if (self.time_left < 0 )
+    self.fire();
+  end if;
+
+The problem lies in the  if (self.time_left < 0 ) test. This means that at best,
+the timer will fire exactly on time, but more likely it will fire slightly late.
+In fact up to 30mS late (the Verifier timer resolution). Assuming a random
+distribution of time intervals, we would expect the timer to run about 15mS slow
+on a 1s requested timer interval.
+
+Over 1 minute and with a 1 second timer, we expect almost 1 second to be lost
+(60 x 15 = 900mS). This is very close to what is observed.
+
+Longer timeouts will show this effect much less than short ones.
+
+6. Design
+---------
+The fix is to change the test to:
+
+ if ((self.time_left - param.interval / 2) < 0 )
+
+An additional change is made to the TIM.java realized external entity. In the
+run method of the Timer thread, the elapsed time is computed using:
+
+intervalUs = (int)((currentTime - startTime)/ 1000);
+
+The cast has the effect of truncating the long result of the computation to an
+integer. Java does this by discarding the least significant bits. This makes the
+timer work as if slightly less time has passed than actually has, contributing
+to the observed slow wall clock time.
+
+The cast is replaced with a call to Math.round() which (over multiple calls)
+eliminates this accumulated error:
+
+intervalUs = Math.round((currentTime - startTime)/ 1000);
+
+These two changes together allow a timer to fire slightly early as often as it
+fires late. Tests with this fix in place show no noticeable deviation from wall
+clock time over a 20 minute period.
+
+7. Implementation Comments
+--------------------------
+None.
+
+8. Unit Test
+------------
+8.1 Run all Verifier unit tests.
+
+8.2 Test with GPS demo model[3]. No deviation from wall clock time should be
+observable over a significant (~5 minute) period.
+
+9. Code Changes
+---------------
+com.mentor.nucleus.bp.core/src/lib/TIM.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Timer/Timer.xtuml
+
+End
+---
+
+$Log: dts0100622819.int,v $
+Revision 1.5  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.4  2009/10/08 09:21:13  campbell
+Job: dts0100622819
+Finalized document.
+
+Revision 1.3  2009/10/07 13:06:02  campbell
+Job: dts0100622819
+Added missing param keyword.
+
+Revision 1.2  2009/10/05 13:48:02  campbell
+Job: dts0100622819
+Provided Abstract previously omitted in error. Remove unwanted default text.
+
+Revision 1.1  2009/10/05 13:15:00  campbell
+Job: dts0100622819
+Introduced.

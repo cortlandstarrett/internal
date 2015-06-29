@@ -1,0 +1,127 @@
+========================================================================
+
+File:      $RCSfile: i1706.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add expression evaluator
+
+Abstract
+--------
+This note describes the changes needed to support an expression evaluator.
+
+History
+-------
+
+final i1706.dnt-032106-01.rvm
+
+Document References
+-------------------
+[1]  BZ issue 1706
+[2]  Documentation/internal/technical/Verifier-Debugger/i1706.ant
+
+Background
+----------
+See ref [2]
+
+Analysis
+--------
+See ref [2]
+
+Design
+------
+
+1. Add parser API for parsing expressions
+
+The class ExprParser is created as described in [2]. The pseudo-code 
+implementation of parseExpression(String expr, StackFrame_c sf) is:
+
+    create object instance ee of ExprParser;
+    select one blk related by param.sf->ACT_BLK[R923];
+    select one act related by blk->ACT_ACT[R601];
+    select one old_scope related by act->ACT_BLK[R699];
+    relate act to blk across R699;
+    ee.set_current_context(act.Action_id);
+    expr_id = ee.expr(param.expr);   // do the actual parse
+    unrelate act from blk across R699;
+    if not_empty old_scope
+      relate act to old_scope across R699;
+    end if;
+    if expr_id != 0 
+      select any val from instances of V_VAL 
+         where selected.Value_id == expr_id;
+      if ee.result == ""
+        ee.value = val;
+      else 
+        // there was an error during the parse...clean up any leftover
+        if not_empty val
+          val.Dispose();
+        end if;
+      end if;
+    end if;
+    return ee;
+
+The rest of the class's implementation follows directly from ref [2].
+
+Design Comments
+---------------
+
+The V_VAL.Value derived attribute didn't handle the Enumerated value case.
+This was fixed.  The operation Literal Enumerator.getValue() was also created
+to support this change.
+
+The Create.dispose operation was changed to always unrelate from the V_VAR
+instance, and only dispose the instance if is_implicit is true.
+
+Work Required
+-------------
+
+No additional work is required.
+
+Unit Test
+---------
+
+The class com.mentor.nucleus.bp.als.oal.test.ExpressionParseTest is created.
+The class implements the tests described in [2].
+
+The ParseAllInDomain class was changed to make parseAction() public and static
+for use by ExpressionParseTest.  The setUp function was changed to not parse
+the actions on import (since they are parsed again by the test).
+
+End
+---
+
+$Log: i1706.dnt,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.24.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/03/21 18:34:59  greg
+Job: 1706
+Address observations
+
+Revision 1.2  2006/03/17 15:36:22  greg
+Job: 1706
+Ready for review
+
+Revision 1.1  2006/03/17 00:42:32  greg
+Job: 1706
+Introduce
+

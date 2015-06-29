@@ -1,0 +1,232 @@
+========================================================================
+
+File:      $RCSfile: dts0100752106.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Complete the Deterministic Verifier implementation
+
+1. Abstract
+-----------
+In this section, give a summary of the design that this note aims to
+describe.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100752106
+[2] ClearQuest DEI dts0100643767
+    Handle determinism in verifier behavior
+[3] dts0100643767.ant
+    This note is the analysis for this issue.  
+[4] svn://phoenix.azt.mentorg.com/arch1/products/tiger/doc_repository/trunk/Models/Test/CFMon
+    This is the test model used to help reproduce problems observed by Saab.
+[5] ClearQuest DEI dts0100752970
+    Verifier Execution Deadlock and Event Flooding test
+    Note: This is an SMA QA test that uses the CFMon test model [4] to
+          test problems seen by Saab.
+[6] ClearQuest DEI dts0100697641    
+    Places where Pref_c.GenericsEnabled() is used must be removed
+[7] ClearQuest DEI dts0100727885          
+    Execute long running bp.welcome test
+[8] ClearQuest DEI dts0100619047
+    Files not always checked-out when needed in Serena Dimensions/BridgePoint 
+	environment.
+[9] ClearQuest DEI dts0100765897
+    Support navigation from Component Reference to assigned Component
+[10] ClearQuest DEI dts0100769023
+     Verify deterministic behavior
+[11] ClearQuest DEI dts0100769024
+     Test BridgePoint with a SCM system that uses pessimistic locking
+     
+4. Background
+-------------
+This issue was raised separate from [2] because the solution for [2] was put 
+in a patch and sent to a customer.  However, that solution was delivered in a 
+way that allowed verifier to execute only in deterministic mode.  The non-
+deterministic mode was removed.   This issue is raised to promote the solution 
+from [2] to head.  This requires that the option for non-deterministic execution
+be made available via preferences as outlined in the analysis note for [2].
+
+    
+5. Analysis
+-----------
+See [3]
+
+6. Design
+---------
+See [3]
+
+7. Design Comments
+------------------
+7.1 
+When we incorporated the synchronous timer, the CFMon approximation model 
+stopped running as expected.
+ 
+In that model there are two separate threads of control (all running in a 
+single java thread of course).
+ 
+One TOC outputs log messages that increment 0 through 9 and then back to 0. 
+The other logs a continuously incrementing integer that never resets.
+ 
+In the case in question, the second TOC never showed any progress until the 
+model was paused and resumed.
+
+The standard product execution policy is to first look for incoming inter-
+component messages and service them. In the standard multi threaded mode, each
+component has its own thread, so each thread runs continuously executing actions
+until the incoming unsolicited event stream is exhausted or the execution is
+paused. In these cases the thread enters a wait state. A waiting thread is
+notified by the UI if the user resumes execution or manually executes a new
+activity. A waiting thread is notified by another component when it sends a new
+inter-component message.
+
+In the single threaded approach, a single thread execution resource is
+dispatched to share the thread between all running components. The execution
+interleaving policy is that a single activity is executed to completion before
+moving to the next component.
+
+Investigation showed that the reason for one thread not executing was that the
+OAL kicks off  TOC1, followed by TOC2, but once TOC1 was initiated it bombarded
+the first executing component with so many incoming messages that there was
+always at least one message waiting to be serviced. Thus, the component never
+progressed its own initializing TOC and so it never reached the code to launch
+TOC2. Once  suspended, the bombardment stopped and the component was able to
+launch TOC2 before halting.
+ 
+It was decided that we should therefore reverse the execution priority policy 
+and only service incoming messages once the local thread of control was 
+complete. This resolved the execution issue with the test model.
+
+The alternate patch release still uses a separate timer thread and the old 
+execution priority mechanism.
+
+7.2 Add a new preference, Run Deterministically, and enable it by default.
+7.2.1 The new preference shall be added to the UI with the other Verifier 
+      preferences in VerifierPreferences.java.  It shall be added as a checkbox
+      at the end of the current preferences.
+7.2.2 This new attribute shall be added to BridgePointPreferencesModel.java 
+      so it can be persisted with other BridgePoint preferences.
+7.2.3 The default of true (enabled) shall be set in 
+      BridgePointPreferencesStore.java::loadModel.
+
+7.3 Issue dts0100697641 [6] has been addressed in this branch.  The issue was 
+    already previously addressed to a large extent, but 1 reference to 
+    Pref_c.GenericsEnabled() remained.  It was a comment in ImportHeler.java
+    that warned of a problem that would recur when generic packages were 
+    re-enabled.  I tested this issue to verify that it does NOT recur. 
+    Furthermore, there is a SMA QA test, [7], that was written to 
+    assure this problem does not recur.   Therefore, I removed the comment.
+    There are no additional references Pref_c.GenericsEnabled(). Therefore,
+    this issue should be marked resolved when this branch is promoted.
+
+7.4 Files not always checked-out when needed in Serena Dimensions/BridgePoint 
+    environment [8]
+7.4.1
+	In core/common/TransactionManager.java::checkIfTransactionCanComplete() 
+	when we are iterating over the changes in the transaction and call 
+	getPersistableComponent() to find the file associated with the model 
+	element, we must pass true into getPersistableComponent() to force a load 
+	if needed.  The reason is that in a pessimistic SCM system the model may 
+	not be loaded yet and when we were passing false we were therefore not 
+	properly checking out all the files.	
+7.4.2
+	In core/common/TransactionManager.java::endTransaction(), in the case 
+	where a transaction is not completed, after we call transaction.revert(), 
+	we now call fireTransactionCanceled() so all transaction listeners have a 
+	chance to clean up from the reverted transaction.
+7.4.3
+    In GraphicsEditorListener.java::transactionCancelled Overrode the 
+    transactionCancelled() function to refresh the canvas following a 
+    transaction that has been reverted.
+
+7.4.4 
+	In ui/canvas/CanvasTransactionListener.java::runReconciler() I removed the 
+	code that disables the graphics change collection.  This changes causes the 
+	graphics to be persisted.  This change is being made to make element 
+	creation consistent across the tool.  Before this change, graphics were not 
+	persisted via CME entries, but they are via the canvas (the palette).	
+
+7.5 Support navigation from Component Reference to assigned Component [9]
+
+	Introduced the ability to navigate from a component reference to the 
+	assigned component.  When a component reference if double-clicked,  
+	the component diagram shown for the assigned component is shown.
+	
+	Added ComponentReference_c to core/util/EditorUtil.java::getElementToEdit().
+    We call into getElementToEdit() recursively for this new 
+    ComponentReference_c case because we do not necessarily always want to open 
+    the assigned component.  For example, in specialized packages, if this is a 
+    formalized component we will open the domain package diagram of the domain 
+    this component is formalized to.
+				
+	
+8. Work Required
+----------------
+
+9. Unit Test
+------------
+9.1 Verify that verifier is running deterministically [10]
+9.2 Verify that BridgePoint functions properly when a model is stored in a 
+    SCM that uses pessimistic locking. [11]
+9.3 Existing verifier tests pass in both deterministic and non-deterministic 
+    mode.    
+9.3.1 Done manually
+	_- bp/debug/ui/model/BPDebugTarget.java::125 
+	   Change the default value of isDeterministic to either true or 
+	   false (based on which you want to run)
+	_- comment out line 125 of the same file:
+    	isDeterministic = config.getAttribute(ILaunchConfigConstants.ATTR_ENABLEDETERMINISM, false);
+    	Note: This prevents the option from being changed.
+    _R All tests should pass in both situations with the exception of 1 
+       timer test which doesn't work in simulated time (deterministic execution)
+       because it checks to see if the wall-clock has changed.
+9.3 All existing unit tests pass
+
+
+End
+---
+
+$Log: dts0100752106.dnt,v $
+Revision 1.8  2011/05/05 22:23:05  rmulvey
+job:dts0100752106
+Added detail to one of the tests
+
+Revision 1.7  2011/05/05 19:51:50  rmulvey
+job:dts0100752106
+Updated the background
+
+Revision 1.6  2011/05/05 18:56:07  rmulvey
+job:dts0100752106
+Added references to new manual tests.
+
+Revision 1.5  2011/05/05 18:44:57  rmulvey
+job:dts0100752106
+Updated to add more detail to the change for dts0100765897 (support navigation from component reference) and to remove the reference to dts0100732624 (wired outbound interefaces with a return type should not report an error when they have no OAL) because it was removed from this branch.
+
+Revision 1.4  2011/05/03 20:00:01  rmulvey
+job:dts0100752106
+Introduced development notes
+
+Revision 1.3  2011/04/04 14:00:20  rmulvey
+job:dts0100752106
+Added information about the new preference that controls deterministic behavior.
+
+Revision 1.2  2011/03/13 20:52:44  campbell
+Job: dts0100752106
+Add more detail to the execution interleaving policy description.
+
+Revision 1.1  2011/03/11 20:28:28  rmulvey
+job:dts0100752106
+Introduced
+

@@ -1,0 +1,136 @@
+========================================================================
+
+File:      $RCSfile: dts0100856831.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support refresh of name on all shown property parameters
+
+1. Abstract
+-----------
+This note describes an implementation that will address a limitation in the
+eclipse decorating providers.  The limitation is that when showing an element
+more than once in a tree a rename only updates the text for the first created
+TreeItem.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100856831
+[2] https://bugs.eclipse.org/bugs/show_bug.cgi?id=386588 - 
+    DecoratingLabelProvider does not support updating an element shown more than
+    once in the tree
+
+4. Background
+-------------
+Property Parameter elements are shown under the Interface Operation/Signal and
+any Provided/Required Operations/Signals.  Renaming is supported on any of
+these.  When a rename is executed only one of the Property Parameter occurrences
+will have its text updated.
+
+5. Requirements
+---------------
+5.1 A Rename on a Property Parameter shall be reflected against all occurrences.
+
+6. Work Required
+----------------
+6.1 Add wrapper class to any element who may be shown more than once
+
+[2] was raised with Eclipse to allow them to fix it properly.  Even if the
+eclipse developers do fix the issue it may not be applied to the current version
+we are releasing with.  Also there is no telling how long it will take them to
+resolve.  Considering these points the following workaround solution will be
+implemented at this point.
+
+The main problem in [2] is that the classes involved are using Maps to determine
+those elements that have been updated.  When you show an element more than once
+the Maps tell the class that the element has already been updated which prevents
+updating of the other occurrences.  We work around this by wrapping the real
+element in a new class, MultipleOccurrenceElement.  This class is then the
+instance shown in the Tree.  To support labeling and hierarchy the
+create_content_provider.inc and create_label_provider.inc archetypes are
+modified to set the current element as the real element when dealing with
+instances of the MultipleOccurrenceElement class.  This allows the label and
+content providers to produce the same results as they did previously.
+
+The MultipleOccurrenceElement class implements the IAdaptable interface.  This
+allows us to adapt the MultipleOccurrenceElement to a NonRootModelElement using
+the standard eclipse adaptation framework.  This allows support for context menu
+items like Set Type..., Delete, and Rename.
+
+To support creating these wrapper classes the Tree_Node_Specification class in
+the UITree model is modified to add a new boolean attribute,
+occursInMultipleLocations.  This boolean attribute is then checked in
+create_adapters.inc, where if its true instead of adding the real element to the
+list we wrap it in a MultipleOccurrenceElement instance.
+
+UITree.pei.sql is modified to configure the Property Parameter T_TNS entry as
+showing in multiple locations. 
+
+7. Implementation Comments
+--------------------------
+
+8. Unit Test
+------------
+_- Create two projects that use globals and have IPRs enabled
+_- In one project create an interface with an operation and signal that each
+   have a parameter
+_- In the other project create a provision and requirement that point at the
+   created interface
+_- In Model Explorer expand so that each property parameter instances is shown
+_R All occurrences show the same text and have proper icons
+_- Rename any of the property parameters
+_R All occurrences have their text updated
+_- Right click on any of the occurrences
+_R The Set Type..., Cut, Copy, Delete, and Rename menu items are present
+_- Delete the occurrence that is under the Interface
+_R All occurrences are removed
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100856831
+
+com.mentor.nucleus.bp.test/src/com/mentor/nucleus/bp/test/common/
+	ExplorerUtil.java
+
+com.mentor.nucleus.bp.ui.explorer/src/com/mentor/nucleus/bp/ui/explorer/
+	MultipleOccurrenceElement.java
+com.mentor.nucleus.bp.ui.explorer/arc/create_adapters.inc
+com.mentor.nucleus.bp.ui.explorer/arc/create_content_provider.inc
+com.mentor.nucleus.bp.ui.explorer/arc/create_label_provider.inc
+com.mentor.nucleus.bp.ui.explorer/sql/UITree.pei.sql
+
+com.mentor.nucleus.bp.ui.explorer.test/src/com/mentor/nucleus/bp/ui/explorer/
+	test/ExplorerTest.java
+	
+com.mentor.nucleus.bp.ui.tree/models/com.mentor.nucleus.bp.ui.tree/UITree/
+	UITree/Tree_Node_Specification/Tree_Node_Specification.xtuml
+	
+End
+---
+
+$Log: dts0100856831.int,v $
+Revision 1.3  2012/08/04 15:35:47  tlondon
+Job: dts0100856831
+
+Add change to support explorer tests
+
+Revision 1.2  2012/08/04 15:27:58  tlondon
+Job: dts0100856831
+
+Remove note about sorting, the sorters work without the change and the change breaks non multiple occurrence sorting.
+
+Revision 1.1  2012/08/03 18:23:41  tlondon
+Job: dts0100856831
+
+Add implementation note

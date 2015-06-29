@@ -1,0 +1,123 @@
+========================================================================
+
+File:      $RCSfile: i2645.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Make long running actions look better
+
+1. Abstract
+-----------
+We need to give control back to the UI immediately for all functions that loop
+for a significant time.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 2645
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2645
+
+4. Background
+-------------
+Executing the Sudoku model 'solve' function causes the Eclipse UI to freeze up
+while it is running. This is true of all functions that loop for a significant
+time. We need to give control back to the UI immediately.
+
+
+5. Design
+---------
+- The code to run the Function execute action uses ActiveWorkbenchWindow.run()
+- This call passes true to the 'fork' argument of this call, but it does not
+  seem to be honored by Eclipse, at least not in the way expected. It is turned
+  into a ShowBusyIndicator blocking call.
+
+Fix:
+
+- We don't need to run this under the workbench. Instead we will run as a
+  java thread in the same way BPThread.startModel already does.
+- Replace the body of ExecuteAction.run() with:
+
+Runnable r = new Runnable() {
+  public void run() {
+    IStructuredSelection selection =
+               (IStructuredSelection) Selection.getInstance().getSelection();
+    execute(selection);
+  }
+};
+Thread runner = new Thread(r, "Verifier user invocation");
+runner.setPriority(Thread.MIN_PRIORITY);
+runner.start();
+
+6. Implementation Comments
+--------------------------
+It was found that even after the proposed changes, the Debug View was slow to
+show that execution had resumed when Verifier was very busy running a
+synchronous function.
+
+An invocation of the workbench readAndDispatch() method was added in the resume
+handler of BPThread to allow the UI to catch up before fully relaunching the
+execution. Because the BPThread.resume() method is not run in the Eclipse UI
+thread, it was necessary to run this synchronously with a workbench call.
+
+The following is placed just before the ExecutionEngine_c.notify() call:
+
+	  PlatformUI.getWorkbench().getDisplay().syncExec(new Runnable() {
+		  public void run() {
+			  while(PlatformUI.getWorkbench().getDisplay().readAndDispatch());
+		  }
+	  });
+
+7. Unit Test
+------------
+Until i2630[2] is addressed, Verifier must be manually tested. The Sudoku model
+is run to assure that Verifier continues to work correctly. The model will be
+run in two ways;
+
+- Run to completion.
+- Interrupted during execution and resumed.
+- Hit a breakpoint and resume.
+
+In each case, the solution will be examined to confirm that the computation
+completed correctly.
+
+8. Code Changes
+---------------
+\\com.mentor.nucleus.bp.debug.ui\src\com\mentor\nucleus\bp\debug\ui\actions\
+                                                              ExecuteAction.java
+\\com.mentor.nucleus.bp.debug.ui\src\com\mentor\nucleus\bp\debug\ui\model\
+                                                                   BPThread.java
+
+End
+---
+
+$Log: i2645.int,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.10.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/01/23 23:49:50  campbell
+Job:2645
+Ready for review.
+
+Revision 1.1  2007/01/23 23:43:20  campbell
+Job:2645
+Introduced.

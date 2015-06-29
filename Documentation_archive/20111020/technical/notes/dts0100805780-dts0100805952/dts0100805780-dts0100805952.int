@@ -1,0 +1,114 @@
+========================================================================
+
+File:      $RCSfile: dts0100805780-dts0100805952.int,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Bp Model Import and Referential Properties issue
+
+1. Abstract
+-----------
+This note describes how these problems will be addressed.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100805780 - Model import is not working properly.
+[2] Clearquest DEI dts0100805952 - BP is unable to show the properties view
+    after creating a derived attribute.
+[3] Clearquest DEI dts0100777594 - GPS Watch Example - Mode switch fails
+    (derived attribute execution is not working properly).
+[4] Clearquest DEI dts0100679021 - Manual Test : testing  length operator for
+    all kind of arrays.
+
+4. Background
+-------------
+These issues were raised as a result of the SMA QA tests for the BridgePoint
+3.4.0. release.
+
+5. Analysis
+-----------
+5.1 Model Import issue
+The fix for [3] was to add a new association R3312, between Attribute Value and
+Runtime Value. Normally this could not affect persistence since both of these
+classes are considered to be Verifier runtime elements. However, one use case
+for the model compilers allows for Attribute Value instances to be saved and
+loaded to support pre-existing instances. A file that has been created for this
+purpose can contain I_AVL instances. Thus, when the modification was made, old
+files containing these instances became incompatible with the tool, resulting in
+a load time error.
+
+One possible fix is to add data upgrade code to the archetypes in io.core.
+Another is to specify that the new referential is not persisted.
+
+5.2 Properties View
+A late change was made to the properties support to avoid needlessly populating
+an array of data type elements to support an obsolete combo box implementation.
+One reference to this array was left in place where a special case for
+referential attributes was handled. This caused a Array Out of Bounds Exception.
+
+6. Design
+---------
+6.1 Model Import issue
+Since the model compiler cannot possibly ever need access to a starting value
+for a derived attribute, marking the attribute as non persistent is the selected
+course of action. The association R3312 is also marked with Persistent:false in
+its description.
+
+6.2 Properties view referential handling
+The obsolete array referred to above [5.2], was populated by calling Attribute
+isAllowedType inside a for loop during creation of the properties sheet.
+Examination of this operation shows that for referentials, the only value
+permitted was the entry for the data type of the base attribute found across
+R113. Accordingly, the code which returned the first element of the obsolete
+array is replaced with code which traverses R113, R106 and R114 to obtain the
+name of the data type directly.
+
+7. Implementation Comments
+--------------------------
+None.
+
+8. Unit Test
+------------
+8.1 Model Import test
+SMA QA Manual Test : testing length operator for all kind of arrays[4] must
+pass.
+
+8.2 Properties view 
+_- Check out the following model:  <BP SVN>/trunk/Models/Test/OAL_HOME
+_- In ME navigate to OAL_Home > testOAL > Odms > Disk
+_- Open the properties view and make sure it is in the foreground
+_- Select the attribute next_id2
+_R Property sheet shows Type as unique_id.
+_R No Array Out Of Bounds is reported in the error log.
+
+8.3 Existing unit tests must pass
+
+9. Code Changes
+---------------
+Branch name: Review-805780-805952
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+                                  Instance/Attribute Value/Attribute Value.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+                                               Runtime Value/Runtime Value.xtuml
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+
+End
+---
+
+$Log: dts0100805780-dts0100805952.int,v $
+Revision 1.1  2011/10/10 19:39:50  campbell
+Job: dts0100805780
+Introduced.

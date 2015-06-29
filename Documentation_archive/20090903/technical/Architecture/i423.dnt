@@ -1,0 +1,145 @@
+========================================================================
+
+File:      $RCSfile: i423.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Allocating unique ids separately for each model root
+
+Abstract
+--------
+This note describes how the allocation of unique ids is made independently
+for each model root.
+
+History
+-------
+
+Document References
+-------------------
+[1]Bugzilla issue 175
+[2]Bugzilla issue 423
+
+Background
+----------
+The work for implementing the compare features[1] left the allocation of
+unique_id values global to all models. Since clearing a model database sets the
+unique id assigner to 0, this caused corruption of the model after a comparison
+was run. This note describes the changes to rectify this defect by allocating
+(and clearing) id assigners separately for each model root.
+
+Design
+------
+i423.1   Declare a mapping between the current unique id and the model to which
+         the value applies
+i423.1.1 Replace the long m_unique_id member with an instance of HashMap with
+         the same name. The modelRoot shall be used as the key and the unique_id
+         assigner value shall be the value obtained with this key.
+i423.1.2 Create accessor functions to clear, set and obtain a new unique id.
+         The methods to set and get the unique id assigner value already exist
+         and are replaced. A new clear method is added. All of these shall take
+         a modelRoot argument to indicate in which root to modify the id
+         assigner state. The model root shall be used as the key to the HashMap.
+
+i423.2   All references to m_unique_id are replaced with the appropriate
+         accessor call (set, get, clear). The call to set the unique id in
+         gen_import_java.arc and the call to obtain a unique id value in the
+         class constructor are both changed to pass a model root argument. A
+         call to clearUniqueId is used to replace the code that explicitly
+         cleared the value in the generated method, clearInstances.
+
+Design Comments
+---------------
+Note that no attempt is made to keep the id assigner unique across multiple
+model roots, so two elements in two different models could have the same value.
+This will not have any detrimental effect on the tool features available at this
+time. The issue of non-unique ids in different models must to be solved to
+support functionality such as paste and import. The issue of unique ids shall be
+considered when this functionality is scheduled.
+
+An issue is raised to document the fact that the changes made to the SQL server
+persistence mechanism for i175 will cause corruption of the persistent model.
+This is because data is written to the server without any indication as to which
+model root is being written. This has a corrupting effect on both the model
+instances and the persistent id assigner values, since values from all models
+are being persisted regardless.
+
+The only anticipated uses of alternate model roots are for one time, short
+duration, operations. Therefore only the main model needs to be persisted at
+all, so support for other model root persistence is in any case not required.
+The recommended solution to the issue above is therefore that all persistence
+activity is limited to the default model root. This decision also improves the
+performance of the persistent version of the tool, since short operations like
+paste do not try to hit the SQL server.
+
+Work Required
+-------------
+i423.1.1   In java.arc, declare the m_unique_id HashMap instance.
+i423.1.2.1 In java.arc, replace the setUniqueId accessor function.
+i423.1.2.2 In java.arc, replace the uniqueId (get) accessor function.
+i423.1.2.3 In java.arc, create the clearUniqueId accessor function. The body is
+           based on the part of the method clearInstances that resets the
+           unique id.
+
+i423.2.1   In gen_import_java.arc the generated calls to setUniqueId in 
+           the processValue method are changed to pass a model root argument.
+i423.2.2   In the same file, the method 'processValue' is changed to take a
+           model root argument.
+i243.2.3   In sql_insert.g, the calls to processValue are modified in two places
+           to pass the model root (which is already in scope in the methods
+           generated from this file).
+i423.2.4   In java.arc, change the default class constructor to pass a model
+           root argument with the uniqueId call.
+i423.2.5   In java.arc, replace the code that used to clear the id_assigner with
+           a call to clearUniqueId.
+
+Unit Test
+---------
+_- Open ODMS
+_- Open Disk.ISM.Waiting for Slot
+_- Place a space in the first Assign keyword.
+_R Two syntax errors are shown (one for each half of the keyword)
+_- Revert the activity or repair the syntax error and save.
+
+_- Perform a Compare > With Each Other on two different versions
+   of ODMS.
+
+_- Open Disk.ISM.Waiting for Slot again.
+_- Place a space in the first Assign keyword.
+_R Two syntax errors are still shown
+
+End
+---
+
+$Log: i423.dnt,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.152.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/10/06 21:52:44  campbell
+Job: 423
+Address review meeting minutes.
+
+Revision 1.2  2004/09/29 23:09:47  campbell
+Job: 423
+Added work required section, documented issue to be raised.
+
+Revision 1.1  2004/09/29 22:37:34  campbell
+Job: 423
+Introduced.

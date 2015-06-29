@@ -1,0 +1,168 @@
+========================================================================
+
+File:      $RCSfile: i890.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Loading templates with the same name as an existing model
+
+Abstract
+--------
+This note describes the defect associated with using a template file that
+has the same name as an existing xtuml model.
+
+History
+-------
+
+final i890-050305-01.rvm
+
+Document References
+-------------------
+Issue 890
+
+Background
+----------
+
+The issue describes the following scenario:
+
+_- Create new Model (MicrowaveOven) using 
+     bp.welcome/sample-project/MicrowaveOven.xtuml as template 
+_- Create new Model (testMod) using 
+     bp.welcome/sample-project/MicrowaveOven.xtuml as template 
+_R MicrowaveOven domain is replaced by testMod 
+
+Analysis
+--------
+When a model is created using a template file, the template file is imported
+into a model root named with the model name chosen by the user.  After the
+template file is imported the Domain (S_DOM) instance Name attribute is changed
+to the model name specified in the New Model wizard.  When the Domain.Name
+attribute is changed, a change event is fired, and all listeners are notified.
+One of these listeners is ResourceUpdaterModelChangeListener, which notices
+that a domain name has changed, so it renames the existing file (corresponding
+to first model created in the example above) to the new name.   Since the 
+existing MicrowaveOven.xtuml file matches the initial value for the S_DOM.Name 
+attribute in the template file, the model file is renamed.
+
+Design
+------
+
+The model change listener code ignores the initialization of the Domain.Name
+attribute (i.e., if the previous value was the empty string, nothing is done).
+
+There are several alternatives to consider:
+
+- Change the resource and model root listeners to not rename the files or change
+the model root id for this case.   The listeners are changed to check if the
+new domain name is different from the domain name in the model root identifier.
+This works because the model root for the new model was created with the 
+eventual name.  If there is no difference, then no changes are made.
+  
+- Specify that the S_DOM.Name attribute in template files must be the empty 
+string.  This way the listeners will consider the domain name change as 
+an initialization, and ignore it.
+
+- Change the import code to clear the S_DOM.Name attribute during import.
+
+The first alternative works, but it adds another special case to the listeners,
+which may not be true in the future.  The second alternative is prone to error,
+as the user can forget to clear the attribute in template files that they 
+create.  The third alternative is chosen as the simplest, as well as the
+most consistent with the current design.
+
+1. Import clears Domain.Name attribute
+
+The import code is changed to ignore the value of the S_DOM.Name attribute
+in the import file (either xtuml or sql).  The attribute value is set to the
+empty string.   
+
+Design Comments
+---------------
+
+During testing, the compare tests failed due to the Domain.Name attribute
+begin different between the loaded model and another model where the 
+Name was cleared by the import code.  To fix this, a boolean data member
+m_templateFile was added to CoreImport, and the generated code changed to:
+
+    m_templateFile ? "" : removeTics((String) parms.elementAt(${col_num}))\
+
+The constructors and factories for the import classes were changed to add 
+a boolean parameter to initialize the m_template data member.  The NewDomain
+wizard was changed to pass true for this parameter.  All other places were
+changed to pass false.
+
+Work Required
+-------------
+
+1. Import clears Domain.Name attribute
+
+The change is made to gen_import_java.inc, in the section where special cases
+for imported data are handled.  The following code is added:
+
+      .elif ((table.Key_Lett == "S_DOM") and (col.Name == "Name"))
+        .//
+        .// this column is special, the import code will set the domain name.
+        .// The initial value needs to be the empty string to prevent
+        .// change listeners from responding to the import code setting 
+        .// the domain name
+           ""\
+
+Unit Test
+---------
+
+_- Create new Model (odms) using 
+     com.mentor.nucleus.bp.io.mdl.test/models/odms.xtuml as template 
+_R odms model is present
+
+_- Create new Model (odms1) using 
+     com.mentor.nucleus.bp.io.mdl.test/models/odms.xtuml as template 
+_R odms model is present
+_R odms1 model is present
+
+_- Create new Model (odms2) using 
+     com.mentor.nucleus.bp.io.sql.test/models/odms.sql as template 
+_R odms model is present
+_R odms1 model is present
+_R odms2 model is present
+
+End
+---
+
+$Log: i890.dnt,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.34.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/05/04 16:26:40  greg
+Job: 890
+Update Design comments
+
+Revision 1.3  2005/05/03 22:32:59  greg
+Job: 890
+Addressed observations
+
+Revision 1.2  2005/05/03 20:12:20  greg
+Job: 890
+Fix typos
+
+Revision 1.1  2005/05/03 18:58:37  greg
+Job: 890
+Introduce
+

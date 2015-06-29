@@ -1,0 +1,241 @@
+========================================================================
+
+File:      $RCSfile: phase_2_matlab_editor.ant,v $
+Version:   $Revision: 1.1 $
+Modified   $Date: 2009/09/03 18:25:39 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+BridgePoint Matlab Editor Extension
+
+1 Abstract
+----------
+This document discusses how editing Matlab m-files will be implemented
+for the Eclipse based BridgePoint toolsuite.
+
+2 History
+---------
+
+3 Document References
+---------------------
+[1]  bp.core/doc/internal/technical/Matlab Interface/phaseI_demo.txt
+[2]  bp.core/doc/internal/technical/Matlab Interface/phase_1_report.ant
+[3]  bp.core/doc/internal/technical/Matlab Interface/active_x.ant
+
+4 Background
+------------
+Lockheed Martin has a requirement to run BridgePoint in close
+integration with the Mathworks Matlab product. This note describes how
+m-file editing will be supported in BridgePoint.
+
+5 Analysis
+----------
+The requirements for this project are based on those developed for the
+technology demonstration project of phase I [1].
+
+This integration shall be built on top of the Tiger BridgePoint Builder
+replacement project deliverables.
+
+This work will allow the user to mark State Actions, functions, bridges
+and operations as being specified in Matlab m-language. For action
+semantics marked in this way, BridgePoint automatically launches an
+editor specialized for editing m-files when the user performs an open
+operation. Metamodel action semantics attributes marked as m-files
+contain a path to the m-file specified, so that the architecture can
+pass the m-file location (or open and pass the contents of the file)
+to the Matlab code generator.
+
+6 Advantages and Disadvantages
+------------------------------
+This is the minimum viable work item set. Omitting this work would
+effectively preclude integration between the tools.
+
+There are two alternate editors proposed, they each have their
+advantages and disadvantages.
+
+The external editor (see 7.1.2 below) has the following advantage:
+- m-file editing takes place in the familiar Mathworks editor 
+  environment.
+
+However the external editor has the following drawbacks:
+- A local installation of Matlab is required for each seat that has
+  a need to edit in this way.
+- The time between opening the action semantics element and having the
+  editor available is increased, particularly for the first time the
+  editor is launched.
+- The standard BridgePoint bookmarking and task features are un-
+  available.
+- The editor appears in a separate window which means that it is likely
+  to be obscured every time an interaction with BridgePoint is required.
+- Changes to the m-file made with the internal editor cannot
+  automatically cause the external editor to refresh.
+
+The internal editor (7.1.1 below) offers the following advantages:
+- No local Matlab installation needed.
+- Faster startup.
+- Bookmarking and Task annotations available.
+- The editor integrates with the rest of the BridgePoint tool, giving
+  the user the same flexibility of presentation options.
+
+The disadvantages are:
+- No Matlab syntax highlighting or command completion.
+
+Both editors are provided in this work package because they are both
+seen as being useful in different environments and to different
+developer roles. Note that the work package to embed Matlab inside the
+BridgePoint interface [3] contributes features that further harmonize
+these complementary editor features.
+
+7 BridgePoint Builder Required Behavior
+---------------------------------------
+The user experience shall be as follows:
+  7.1 The Matlab plugin registers two additional editors:
+    7.1.1 The Internal Matlab (BridgePoint) editor.
+    7.1.2 The External Matlab (Mathworks proprietary) editor.
+  7.2 When either of these editors is opened, the metamodel attribute 
+      containing the action semantics is scanned for a valid path. The
+      possible behaviors are:
+    7.2.1 If the path is valid, either the internal matlab editor, or
+          the external matlab editor shall be launched.  The standard
+          BridgePoint editor open policy will define which editor is
+          activated.
+    7.2.2 External editor activation shall be achieved using using 
+          ActiveX protocol.
+    7.2.3 If the path is invalid or no path is found, a file chooser
+          shall be presented to the user to locate the m-file to be used
+          to represent the action semantics of the model element being
+          edited.
+    7.2.4 The path last visited shall be remembered, even between tool
+          invocations.
+  7.3 Both Matlab editors shall insert the path to the m-file to be
+      edited in an action language comment into the top of the action
+      semantics attribute. The string for the comment shall be a user
+      preference (on a Matlab preference page) and can be changed from
+      the default value of '//'.
+  7.4 Both Matlab editors shall scan the Matlab file (when found) for a
+      function signature. 
+    7.4.1 This signature shall be used to determine the name and number
+          of the arguments. Note that because Matlab is weakly typed,
+          it is not possible to obtain the type of m-language parameters
+          without parsing the entire m-file.
+    7.4.2 Default all new parameters to BridgePoint data type, 'real'.
+    7.4.3 If the user modifies the data type of an argument or return
+          type in BridgePoint, the data type will not be reset each time
+          the model data is synchronized. Note that it is the users
+          responsibility to see that parameter types manually modified
+          in BridgePoint are compatible with the corresponding usage in
+          the m-file. Failure to do this will result in compile time
+          errors when translating the model or loss of data precision.
+    7.4.4 This information shall be used to set the name of the 
+          corresponding parameter model elements.
+    7.4.5 If the m-file specifies a single return value, this shall be
+          used as the operation return value.
+    7.4.6 For obvious reasons, m-files specifying state action semantics
+          shall have their return types ignored.
+    7.4.7 If the m-file specifies return values enclosed in square
+          brackets, then each return value so specified shall be
+          converted into a BridgePoint reference argument. Note that
+          this overrides 7.4.3 in as much as a single return value in
+          square brackets shall be treated as a void return with a
+          reference argument.
+    7.4.8 If a return value bears the same name as an input parameter,
+          the same by reference parameter shall be used for both input
+          and output.
+
+8 Required User Preferences
+---------------------------
+  8.1 There shall be a sub tree under the 'BridgePoint|Activity Editors'
+      preference entry called 'Matlab'.
+  8.2 The 'Matlab' sub tree item shall select a single page with a text
+      field for specifying the comment to use when inserting the m-file
+      path into the top of the file.
+
+9 Effort Required (man days except where specified)
+-----------------
+                                     Develop   Test    Comment
+7.1.1  Internal Editor                  3       2
+7.1.2  External Editor                  3       2
+7.2.1  Invoke an editor when OAL        3       2
+       contains a valid path
+7.2.2  Use Active X to invoke external  5       3    This needs to be
+       editor                                        completely reworked
+                                                     to remove need for
+                                                     jacob utility (see
+                                                     [1]).
+7.2.3  Present a file chooser.          1       1
+7.3    Insert the m-file path into      1       1
+       the action semantics attribute
+       value
+7.4    Scan for function signature      1       1
+7.4.1  Determine number and names of    1       1
+       m-file function arguments
+7.4.2  Default all new parameters to
+       'real'.                        0.5    0.25
+7.4.3  Do not change parameter types
+       modified by the user.          0.5    0.25
+7.4.4  Synchronize m-file function      1     0.5
+       parameters with model 
+       parameters
+7.4.5  Synchronize return type if       1       1
+       m-file function returns a 
+       single value
+7.4.6  Ignore return type in case of    1       1
+       state actions
+7.4.7  Synchronize multiple return      2       1
+       values as by reference
+       parameters
+7.4.8  Combine in and out parameters    1       1
+
+8.1    Contribute Matlab preference     1       1
+       page
+8.2    Add text field                   0.5     0.5
+
+Total                                   26.5    19.5   =  46 Man days
+
+End
+---
+
+$Log: phase_2_matlab_editor.ant,v $
+Revision 1.1  2009/09/03 18:25:39  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:49  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.166.1  2008/12/31 16:11:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2003/12/01 16:36:09  campbell
+Job: 91
+Clarified that typing policy applies to return type too.
+
+Revision 1.5  2003/11/24 19:13:44  campbell
+Job: 91
+Updated for review comments.
+
+Revision 1.4  2003/11/13 17:21:53  campbell
+Job: 91
+Modifier per comments from WGT.
+
+Revision 1.3  2003/11/12 22:19:26  campbell
+Job: 91
+Minor adjustments to layout and estimate.
+
+Revision 1.2  2003/11/12 22:14:57  campbell
+Job: 91
+Removed requirements satisfied by standard product.
+Added work estimates.
+
+Revision 1.1  2003/11/12 21:47:10  campbell
+Job: 91
+Introduced.

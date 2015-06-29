@@ -1,0 +1,199 @@
+========================================================================
+
+File:      $RCSfile: dts0100634417.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Implement simulated real time in Verifier
+
+
+1. Abstract
+-----------
+This note describes the implementation required to support simulated real time
+for model verification.
+
+2. History
+----------
+N/A
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100634417
+[2] dts0100634417-01.ant
+
+4. Background
+-------------
+4.1 For the wall clock time implementation (original verifier behavior), the
+timer thread wakes up every 30 ms and "ticks" all the running timers. Every
+running timer decreases its remaining time by 30 ms. If
+((getTime_left() - p_Interval / 2) < 0) (where the p_interval is the 30 ms), the
+timer event will fire.
+
+4.2 A model being verified will have a number of application threads running.
+Each application thread keeps running until its done processing and has no
+pending events. If these two conditions are satisfied, the application thread
+and its execution engine will "wait". The thread will continue execution when it
+is "notified" that a new event is being sent to its execution engine.
+
+4.3 The first step to simulate real time in verifier is the implementation of
+simple discrete event simulation as mentioned in the "work required" section of
+[2].
+
+5. Design
+---------
+5.1 To achieve discrete event simulation, the timer thread should advance to the
+next (closest to firing) timer event when all application threads are idle. When
+it advances, it should decrease all other timers by the time advance made (which
+equals the time left for the firing timer event).
+
+5.2 In its current form, a running application thread (thread 1) will run until
+it finish its processing which may include posting an event to another "idle"
+application thread (thread 2). Since thread 1 has finished its processing it
+will request its execution engine to "wait" and thread 1 will go "idle". Since
+thread 2 gets a posted event, it is "notified" of the event presence and goes
+"busy" to serve the event.
+
+5.3 To satisfy (5.1), the timer thread class has to be notified when the second
+thread has gone "busy" _before_ the first thread goes "idle". Otherwise, it
+might happen that at a certain moment before the second thread goes "busy" that
+both threads are "idle".
+
+5.4 A static variable will be added to the Timer thread class to switch between
+the wall clock time and the simulated real time implementation. The default is
+set to wall clock time.
+
+5.5 The Timer thread class will have two separate initialization methods, one
+starts the wall clock timer thread and the other starts the simulated real time
+thread.
+
+5.6 The timer thread class will maintain two arrays; one holds the current
+running execution engines and the other holds an indicator of whether the
+execution engine is idle or busy.
+
+5.7 The timer thread will have two static methods; one represents an idle
+notification from an application thread and the other represents a busy
+notification. A call to any of these methods modifies the idle/busy array
+mentioned in (5.6).
+
+5.8 A call to the idle notification method "notifies" the running timer thread
+when all threads are idle. On this notification, the timer thread leaves its
+waiting state and advances to the closest timer event.
+
+5.9 Synchronization
+5.9.1 Real time verifier
+A single synchronized block is used inside the clock thread. This block obtains
+the lock for the TIM class to obtain the object's monitor and calls
+"wait(TIMER_RESOLUTION_MILLISECS)".
+
+5.9.2 Simulated time verifier
+5.9.2.1 The static methods "idle notification" and "busy notification" and the
+simulated time thread are all synchronized on a idleBusyLock Object.
+5.9.2.2 The clock thread's synchronized block only releases the object lock on 
+calling clock.wait()
+
+5.10 When the verifier is suspended, the TIM class is notified. On this
+notification, the simulated time thread will skip advancing to the next timer
+until all other threads wake up i.e. the verifier session is resumed. 
+
+6. Implementation Comments
+--------------------------
+6.1 Model changes
+6.1.1 Timer_c (I_TIM)
+Modify the Tick operation fire check
+if ((self.time_left - param.interval / 2) < 0 )
+    self.fire();
+to be "<=" instead of "<"
+
+The reason for the change is that for simulated real time, the timer advances
+in discrete steps equal to the time left for the closest timer event. So for the
+closest timer, the time_left will equal to the interval. And to make the event
+fire, the check has to be modified as indicated.
+
+6.1.2 ExecutionEngine_c (I_EXE)
+Modify the notify operation to call the busy notification static method of the
+timer thread class.
+
+7. Unit Test
+------------
+7.1 Run the verifier unit test.
+A new model "SimTimeTest" has been added to the JUnit Test specially for
+testing the real verifier time vs simulated time.
+
+7.2 Re-running the whole verifier unit test while simulated time is enabled.
+Note that this test is not automated due to an issue with reloading the same
+test twice (an issue will be raised).
+
+7.3 Test with the SeatHeater model.
+_- Manually modify the SimTime static variable in TIM class to true
+_- Execute the SeatHeater model
+_- Try to suspend and resume several times.
+_R Successful fast execution of the model
+
+8. Code Changes
+---------------
+R3_0_3-HK-dts0100634417 (Branch)
+
+com.mentor.nucleus.bp.core/src/lib/TIM.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Execution Engine/Execution Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Timer/Timer.xtuml
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPDebugTarget.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPThread.java
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+	BPStackFrame.java
+
+com.mentor.nucleus.bp.debug.ui.test/src/(default package)/
+    VerifierTestSuite.java
+com.mentor.nucleus.bp.debug.ui.test/src/com.mentor.nucleus.bp.debug.engine/
+    SimTimeTest.java
+com.mentor.nucleus.bp.debug.ui.test/expected_results/verifier/
+    SimTimeTest.result
+com.mentor.nucleus.bp.debug.ui.test/models/SimTimeTest.xtuml
+
+End
+---
+
+$Log: dts0100634417.int,v $
+Revision 1.6  2010/01/21 16:16:34  hkashif
+job:dts0100634417
+Adding suspension and resume details
+
+Revision 1.5  2010/01/21 16:07:52  hkashif
+job:dts0100634417
+Slight modification to unit tests
+
+Revision 1.4  2010/01/21 15:59:19  hkashif
+job:dts0100634417
+Addressing review minutes, updating synchronization, unit tests and code changes
+
+Revision 1.3  2010/01/18 14:29:14  hkashif
+job:dts0100634417
+Addressing synchronization details
+
+Revision 1.2  2010/01/05 04:32:09  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.1  2009/12/23 18:38:33  hkashif
+job:dts0100634417
+Moving to the issue's folder
+
+Revision 1.2  2009/12/23 14:33:04  hkashif
+job:dts0100634417
+fixing a few typos
+
+Revision 1.1  2009/12/21 19:28:43  hkashif
+job:dts0100634417
+starting note

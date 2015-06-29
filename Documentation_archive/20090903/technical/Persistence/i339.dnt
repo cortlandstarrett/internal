@@ -1,0 +1,475 @@
+========================================================================
+
+File:      $RCSfile: i339.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Native .mdl Persistence
+
+Abstract
+--------
+This note describes the changes necessary for allowing Tiger to make the initial
+move to its own native mdl format.
+
+History
+-------
+
+final i339-100704-01.rvm
+
+Document References
+-------------------
+
+[1] Issue 339
+[2] com.projtech.bp.core/doc/internal/technical/Persistence/i339.ant
+
+Background
+----------
+
+Document [2] calls for Tiger to work with Tiger specific models.  These models
+will have an extension of .mdl.
+
+This note describes the changes needed to achieve this goal.
+
+Design
+------
+
+i339.1 Extract common parts from io.sql
+
+A new plugin project is created, com.projtech.bp.io.core.  This project contains
+all common parts between the existing io.sql project and the new project that is
+to be created.
+
+i339.1.1 Extract common archetype
+
+The archetype language used for generating the import and export code is common
+except for BridgePoint 6.1 fixup code.  Therefore the two files are copied into
+the io.core project.  The files are renamed to have an inc extension.
+
+The archetype language which generates the import code in gen_import_java.inc is
+changed to be a function, gen_import, which takes the calling projects name and
+the expected class name as an argument.
+
+The archetype contained some generic values outside of the newly created
+function.  In order for those values to be accessible to the gen_import function
+they are placed inside of a new function, sourceVariables.  A call to this
+function is added to the gen_import function.
+
+All of the BridgePoint 6.1 fix up code is surrounded by if tests which check
+that the calling project is io.sql.  If the project is io.sql the archetype is
+processed, otherwise it will be excluded.
+
+gen_import_java.arc of io.sql is changed to set the class name equal to
+"ImportBPSql" and call the gen_import function created above.
+
+The archetype language responsible for generating the export code is changed to
+be contained in a function named gen_export.  This new function takes four
+arguments, preExpCall, postExpCall, callingProject, and expected class name.
+The preExpCall and postExpCall are string values which generate code that calls
+Ooaofooa.Tigertobpgraphics and Ooaofooa.Bptotigergraphics before and after an
+export.  The callingProject and expected class name arguments represent the same
+values as the ones found in gen_import_java.inc.  io.sql's gen_export_java.arc
+file is changed to set the class name equal to ExportBPSql.  It is also changed
+to call the new gen_export function, passing the calls to the BridgePoint fixup
+methods.
+
+The export archetype contained some generic values outside of the newly created
+function.  In order for those values to be accessible to the gen_export function
+they are placed inside of a new function, sourceVariables.  A call to this
+function is added to the gen_export function.
+
+io.sql uses an archetype for renaming BridgePoint classes to the new names used
+in Tiger.  The archetype runs itself and is called by including it in the
+gen_import_java.inc archetype.  Since the new models will contain the correct
+names the include call for that archetype is moved inside of an if test.  The
+archetype will only call it if the calling project is io.sql.
+ 
+The archetype responsible for generating insert statements to populate Sql Table
+and Column classes for the io_file model is needed by both file projects.  It is
+therefore moved to the io.core project.
+
+i339.1.2 Extract common build data
+
+The file_io model is common between both projects and is moved to the io.core
+project.
+
+The antlr grammar file used to define the sql insert statements is common
+between both projects and is therefore moved to io.core.
+
+The following ant targets are common and therefore moved to io.core's
+generate.xml.
+
+sql.depends
+sql
+schema.depends
+schema
+compile_grammar
+clean_sql
+clean_schema
+clean_antlr_files
+
+io.sql's build script is changed to use the class2table archetype found in
+io.core.  
+
+i339.1.3 Extract common import/export wizard/page code
+
+All code from BPSQLImportPage.java is moved to a new class in io.core,
+CoreImportPage.java. BPSQLImportPage is changed to extend CoreImportPage and
+set m_fileExtension equal to ".sql".
+
+All code from BPSQLImportWizard.java is moved to a new abstract class in
+io.core, CoreImportWizard.java.  BPSQLImportWizard is changed to extend
+CoreImportWizard and set m_windowTitle equal to "Import Sql".  In order to have
+the code which actually runs an importer common, an abstract method is created
+in CoreImportWizard named createImportProcessor.  BPSQLImportWizard is changed
+to implement this method.  The method creates and returns an io.sql importer.
+For CoreImportWizard to create the correct import page an abstract method is
+created, createImportPage.  BPSQLImportWizard is changed to implement this
+method.  The method creates an import page using BPSQLImportPage and sets the
+title to "BridgePoint 6.1 SQL Import".
+
+All code from BPSQLExportPage.java is moved to a new abstract class in io.core,
+CoreExportPage.java.  BPSQLExportPage is changed to extend CoreExportPage.
+BPSQLExportPage sets the page title to "Export to BridgePoint 6.1 SQL".  The
+allowed file extension is set to .sql.  The code for creating the export with
+graphics checkbox is not always common for all export wizards.  The code is
+therefore kept in BPSQLExportPage.
+  
+All code from BPSQLExportWizard.java is moved to a new abstract class in
+io.core, CoreExportWizard.java.  BPSQLExportWizard is changed to extend
+CoreExportWizard and set m_windowTitle equal to "Export Sql".  In order to have
+the code which actually runs an exporter common, an abstract method is created
+in CoreExportWizard named createExportProcessor.  BPSQLExportWizard is changed
+to implement this method.  The method creates and returns an io.sql exporter.
+For CoreExportWizard to create the correct export page an abstract method is
+created, createExportPage.  BPSQLExportWizard is changed to implement this
+method.  The method creates an export page using BPSQLExportPage and sets the
+title to "BridgePoint 6.1 SQL Export".
+
+In order for common wizard code to use the correct import and export code each
+project's import and export classes must extend io.core's corresponding abstract
+class.
+
+Two new abstract classes are created in io.core, CoreImport.java and
+CoreExport.java.  CoreExport is an empty class.  CoreImport has two abstract
+methods processValue and processStatement.  These methods are created to support
+common calls in the SqlParser class.  The common archetype file
+gen_import_java.inc is changed to have the generated import class extend
+CoreImport.  The common archetype file gen_export_java.inc is changed to have
+the generated export class extend CoreExport.
+
+i339.2 Add required ant targets to io.core
+
+The following missing ant targets are required in a tiger project.
+
+compile
+format_java
+clean_classes
+
+The ant targets are therefore added to io.core.
+
+i339.3 Create new file io project
+
+A new plugin project is created, com.projtech.bp.io.mdl.  This plugin is
+responsible for importing and exporting the new Tiger model format.
+
+i339.3.1 Create new archetypes for generating import/export code
+
+Two archetypes are created, gen_import_java.arc and gen_export_java.arc.  The
+gen_import_java archetype sets the expected class name to ImportModel and calls
+the gen_import function in io.core's gen_import_java.inc.  The gen_export_java
+archetype sets the class name to ExportModel and calls the gen_export function
+found in io.core's gen_export_java.inc.
+
+i339.3.2 Create method for setting graphical represents values
+
+The BridgePoint fixup code found in gen_import_java.inc is generated in a method
+named fixUpGraphicalData.  There is some code which is used to set up graphical
+represents values on import in this method.  This code is extracted from the
+fixUpGraphicalData method and placed in a new method named
+setGraphicalRepresents.  The new method is common between each project and is
+therefore generated for both.
+
+i339.3.3 Create file_io.pei
+
+In io.sql, file_io.pei.sql is responsible for determining what is exported.
+This file is copied to io.mdl and modified to export all tiger specific model
+parts.  The tiger specific model parts include, all new packages, all new
+nested packages, all the diagrams which represent these packages, and nested
+subsystems.  All the entries that existed previously are renamed to reflect the
+new Tiger naming scheme.
+
+i339.3.4 Use bp.core and ui.canvas models for pre-existing instances
+
+io.sql used copies of the ooaofooa and ooaofgraphics models which were
+modified to support BridgePoint specific data.
+
+Since io.mdl uses the same data that is found in tiger's ooaofooa and
+ooaofgraphics models the build script is modified to generate the pre-existing
+instances from bp.core/sql/ooaofooa.sql and bp.ui.canvas/sql/ooaofgraphics.sql.
+
+The ooaofooa model found in bp.core has extra spaces at the end of the names for
+the following entries:
+
+Referential Attribute
+New Base Attribute
+Class Identifier Attribute
+Referred To Identifier Attribute
+
+This extra space causes an error during generation.  The extra spaces are
+removed from entries in the ooaofooa model.
+
+i339.3.5 Add import/export wizard/page code
+
+The four hand written classes from io.sql that are responsible for the
+import/export pages and wizards are recreated in io.mdl as ModelImportPage.java,
+ModelImportWizard.java, ModelExportPage.java, and ModelExportWizard.java.  Like
+the classes in io.sql these new classes extend io.core's abstract classes.
+These classes set the file extension to work on as .mdl and set all appropriate
+window titles.  The differences between io.sql's classes and io.mdl's classes
+are that BridgePoint 6.1 is changed to Nucleus BridgePoint for io.mdl in all
+places and SQL is changed to Model in all places.  The abstract methods created
+to return the correct importer, import page, exporter, and export page are
+implemented by the new classes.
+
+i339.3.6 Create build script
+
+io.sql's generate.xml is copied to io.mdl and modified to use io.mdl's files.
+
+i339.4 Modify MC-Java to support new packages
+
+The ooa schema found in MC-Java shall have entries for all the new tiger
+packages and nested packages.
+
+The analysis [2] called for a script to be written which would strip out
+graphical data from a model before building with it.
+
+To avoid writing another script the ooa schema in MC-Java is modified to support
+graphical data, removing the need for such a script.  
+
+i339.5 Modify compare project to work on .mdl files
+
+The compare project is modified to work with .mdl files instead of .sql files.
+The plugin.xml file is modified to set the allowed extensions equal to mdl
+instead of sql and bak.  In order for this to work the call to ImportBPSql in
+ModelCacheManager.java is changed to use ImportModel.
+
+i339.6 Modify import process to correctly initialize all graphical elements
+
+The import process sets the represents value of each graphical element.  It uses
+a method found in com.projtech.bp.ui.canvas.Cl_c named Getinstancefromooa_id to
+get the corresponding instance of the element.  This method must contain an
+entry for every supported graphical element.  Entries are added for all the new
+packages.
+
+In the BridgePoint import fixup code for io.sql, where the new packages are
+created, the ooa_type for each package's model instance was not being set.  The
+archetype is modified to set the ooa_type for each package.
+
+The BridgePoint import fixup code sets the ooa_id for each association.  There
+was no code for setting the ooa_id for subtype connectors.  The archetype is
+modified to set the ooa_id of subtype connectors equal to the subtype connectors
+Obj_id.
+
+The get_ooaid method of ClassAsSubtype, returns the Rel_id.  This is incorrect
+as the Rel_id is not unique to the subtype connector, it is shared among the
+whole relationship.  ClassAsSubtype class is modified to return the Obj_id.
+
+i339.7 Modify class2table to not generate table entries for current_state
+
+Since the current_state attribute does not need to be saved the class2table
+archetype is modified to ignore it.
+
+An if test is added, which checks for an attribute name of current_state.  If it
+finds one the archetype is stepped over and nothing is generated.  A separate if
+test is added which checks that the next attribute's name equals current_state,
+if it does then the field entry for the following attribute is left blank.   
+
+i339.8 Modify GD_MD.initialize to set ooa_type
+
+In order for imported package graphics, ie. Datatype Packages, to be accessible
+the ooa_type must be set during creation.  Currently the ooa_type is set to a
+default of 0 when a package is created.
+
+The operation GD_MD.initialize is changed to select a model specification
+related by the current GD_MD instance.  If the selected model specification is
+not empty all instances of element specification are selected.  Then each
+element specification's represents value is tested to see if it is equal to the
+model specification's represents value.  If this is true the operation sets the
+model instance's ooa_type equal to the element specification's ooa_type.
+
+
+As soon as more than one element can represent the same client model entity this
+fix will not work.  An issue is created to revisit this fix.
+  
+Work Required
+-------------
+
+i339.1   Extract common parts from io.sql
+
+i339.1.1 Extract common archetype
+ 		
+The common archetype is extracted to io.core/arc/gen_import_java.inc and
+io.core/arc/gen_export_java.inc.  The changes made to io.sql are made on
+io.sql/arc/gen_import_java.arc and io.sql/arc/gen_export_java.arc.
+
+i339.1.2 Extract common build data
+
+The changes are made according to the design.
+
+i339.1.3 Extract common import/export wizard/page code
+
+The changes are made according to the design.
+
+i339.2 	 Add required ant targets to io.core
+
+The ant targets are added to generate.xml.
+
+i339.3 Create new file io project
+
+i339.3.1 Create new archetypes for generating import/export code
+
+The new archetype files, arc/gen_import_java.arc and arc/gen_export_java.arc,
+are created according to the design.
+
+i339.3.2 Create method for setting graphical represents values
+
+The archetype, gen_import_java.inc, is modified to create the method.
+
+i339.3.3 Create file_io.pei
+
+The changes are made according to the design.
+
+i339.3.4 Use bp.core and ui.canvas models for pre-existing instances
+
+The changes are made to io.mdl/generate.xml and ooaofooa.bak according to the
+design.
+
+i339.3.5 Add import/export wizard/page code
+
+The following classes are introduced according to the design,
+ModelImportPage.java, ModelImportWizard.java, ModelExportPage.java,
+ModelExportWizard.java.
+
+i339.3.6 Create build script
+
+The build script is created according to the design.
+
+i339.4 Modify MC-Java to support new packages
+
+The schema file ooa_schema.sql is modified as described in the design.
+
+i339.5 Modify compare project to work on .mdl files
+
+The changes are made to plugin.xml and ModelCacheManager.java as described in
+the design.
+
+i339.6 Modify import process to correctly initialize all graphical elements
+
+The changes are made to Cl_c.java, ooaofooa.bak, and gen_import_java.inc as
+described in the design.
+
+i339.7 Modify class2table to not generate table entries for current_state
+
+The changes are made to class2table.arc according to the design.
+
+i339.8 Modify GD_MD.initialize to set ooa_type
+
+The changes are made to ooaofgraphics.bak as described in the design.
+
+Unit Test
+---------
+
+Generate original test data
+
+_- Import all models found in com.projtech.bp.als.oal.test/mdl with BridgePoint 6.1
+_- Run an audit for each model
+_- Rename each ooa_audit.txt file to a name that corresponds with the model
+_- Import all models above with io.sql
+_- Export all models with io.mdl
+_- Copy all models from last step to io.mdl.test/expected_results/mdl
+_- Import all tiger models with io.mdl
+_- Export all tiger models with io.sql *
+_- Import all models from previous step with BridgePoint 6.1
+_- Run an audit for each model
+_- Rename each ooa_audit.txt file to a name that corresponds with the model
+
+Verify test data
+
+_- Run a diff on each model's audits
+_R There are no differences
+_- Copy all models from the test marked with * to io.mdl.test/expected_results/sql
+
+Unit tests
+
+_- Import all models found in com.projtech.bp.als.oal.test/mdl with io.sql
+_- Export all models above with io.mdl
+_- Compare each exported model with the ones under io.mdl.test/expected_results/mdl
+_- Import all models from last step with io.mdl
+_- Export all models with io.sql
+_- Compare each exported model with the ones under io.mdl.test/expected_results/sql
+_R There are no differences
+
+_- Import the io.mdl/mdl/nested_test.mdl model with io.mdl
+_- Export the model with io.mdl
+_- Compare the exported model with the imported model
+_R There are no differences
+_- Import the io.mdl/mdl/nested_test.mdl model with io.mdl
+_- Draw a new DT PKG on the nested datatype package named 'Test Nested DPK'
+_R A new DPK is drawn on the canvas
+_- Draw a new Function PKG on the nested function package named 'Test Nested FPK'
+_R A new FPK is drawn on the canvas
+_- Draw a new EE PKG on the nested external entity package named 'Test Nested EEPK'
+_R A new EEPK is drawn on the canvas
+_- Draw a new subsystem on the nested subsystem named 'Test Nested SS'
+_R A new subsystem is drawn on the canvas
+
+End
+---
+
+$Log: i339.dnt,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.152.1  2008/12/31 16:10:13  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2004/10/12 17:15:11  tlondon
+Job: 339
+
+Fixed according to review minutes
+
+Revision 1.4  2004/10/08 21:43:46  tlondon
+Job: 339
+
+Updated history
+
+Revision 1.3  2004/10/08 21:14:46  tlondon
+Job: 339
+
+Completed review minutes
+
+Revision 1.2  2004/10/06 23:47:55  tlondon
+Job: 339
+
+Updated to include model.initialize fix
+
+Revision 1.1  2004/10/06 22:48:21  tlondon
+Job: 339
+
+Introducing design note.
+

@@ -1,0 +1,136 @@
+========================================================================
+
+File:      $RCSfile: i280.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Improve OAL Parser responsiveness
+
+Abstract
+--------
+This note describes changes to improve the responsiveness of the parser
+while the user is typing, especially when typing rapidly.
+
+History
+-------
+
+final i280-062204-01.rvm
+
+Document References
+-------------------
+Issue 280
+
+Background
+----------
+
+The Activity Editor response time slows noticably when multiple
+characters are typed quickly.  For example. when the delete key is
+held down.
+
+The activity editor is designed so that each time a character
+is typed, the contents of the editor document is reparsed.  The
+editor also kills a parse that's running before starting the next parse.
+The reason that the editor becomes less responsive is because
+the parser thread ignores the interrupt signal, so the thread
+isn't killed.  This results in the activity editor waiting for
+the parse to complete each time a key is pressed.
+
+Design
+------
+
+When the activity editor attempts to kill the parse thread,
+it invokes interrupt() on the parse thread, and then waits
+for the parse thread to exit.  All interrupt() does is set
+the "interrupt status" for the thread.  The parser thread
+never checks interrupt status, so it always runs to completion.
+
+i280.1  Change parser to check interrupt status
+
+The parser is changed to check the interrupt status of the
+thread just before any validation function is called.  If the
+thread has been interrupted, then the InterruptedException 
+exception is thrown.  All code for handling the exception is
+already in place. This is seen as fine grained enough 
+checking, and is easily added.
+
+
+Work Required
+-------------
+
+i280.1  Change parser to check interrupt status
+
+In grammar_enhancer.arc, in each case where a validation
+function is about to be called, the following code is added:
+
+if ( Thread.interrupted() ) throw new InterruptedException();
+
+The cases where the interrupt check is added are:
+
+rule begin
+rule end
+loop begin
+loop end
+rule reference
+string literal
+terminal
+
+Implementation Comments
+-----------------------
+
+
+Unit Test
+---------
+
+- Run OalParserTest
+R Test passes
+- Run ParseAllInDomain test
+R Test passes
+- Start Tiger
+- Load odms, open initialize function, press and hold delete 
+   key in middle of action
+R Characters are deleted with a linear response time
+- Add the statement f = "";
+- Fill the "" string with characters as fast as possible
+R Characters are added with a linear response time
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version:  1.14  Final version: 1.15
+
+
+
+End
+---
+
+$Log: i280.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.162.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2004/06/22 19:35:02  greg
+Job: 280
+Changes from review
+
+Revision 1.1  2004/06/21 20:40:33  greg
+Job: 280
+Initial introduction
+

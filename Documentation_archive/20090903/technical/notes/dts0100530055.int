@@ -1,0 +1,294 @@
+========================================================================
+
+File:      $RCSfile: dts0100530055.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Verifier crash when wrong arg type passed. Should be caught by parser.
+
+1. Abstract
+-----------
+The parser is not properly enforcing conflicts that may occur when array 
+parameters are utilized.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100530055
+http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=9d0f82d2-d731-4104-b445-932262af9da0
+[2] Bugzilla issue 3085 (Establish fixed array lengths.)
+http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3085
+[3] ClearQuest DEI dts0100584455
+    The parser doesn't check for incompatible dimension size in all cases
+
+
+4. Background
+-------------
+
+5. Design
+---------
+Investigation determined that the root cause of this issue was a cut and
+paste error that happened when fixed-length arrays were introduced [2].  When 
+assignments of array values are made, the parser does correctly check for array
+depth and array OOB conditions and reports them as it should.  The OAL that 
+does this is found in OAL Validation Functions::Assignment_expr_end().  When
+fixed-length arrays were introduced [2] that was OAL copied and pasted to other 
+locations where array bounds needed to be checked, those places are:
+OAL Validation Functions:
+	Bridge_invocation_end
+	Function_invocation_end
+	Message_invocation_end
+	Return_statement_end
+	Transform_invocation_end (Parses operations, O_TFR)
+	
+OAL Validation Utility Functions:
+	is_valid_sm_event_data
+
+All of the above places with the exception of Return_statement_end() were
+detecting array parameter errors, but were not reporting them because of a 
+copy/paste error.  The problem was that an automatic variable was being set to 
+indicate that an error was seen and an error message was initialized, but this 
+error was not ever reported in these locations.
+
+
+6. Implementation Comments
+--------------------------
+6.1 The places called-out in the design section above are modified to report
+    the array depth and array out of bounds errors.  This error reporting is 
+    consistent with the array error checking and reporting done in 
+    OAL Validation Functions::Assignment_expr_end().
+
+6.2 While adding the new unit tests called-out by this issue, several 
+    problems were found that had to be addressed.
+6.2.1 Some of the array-test cases exercised in the Models/array_test model were
+    actually not good tests.   They have been fixed.
+6.2.1 This als.oal.test was using a stale, single-file model.  The multi-file 
+    model was corrupt.  This was fixed by recreating the multi-file model and 
+    modifying the test suite to use the multi-file model (the old single-file 
+    model was removed).
+6.2.1.1 When the multi-file model was fixed, a test suite (SDT-Tests) was 
+    enabled (it had been commented-out).  This led to finding and fixing some
+    problems in the SDT test model and in the tests themselves.
+6.3 There was a test model present that exercised good-syntax for arrays 
+    (Models/array_test).  However, before this issue no testing of error cases
+    had been done.  By introducing these problems in the array_test model were
+    found and fixed.
+6.4 The new unit tests introduced helped find a problem that array bounds 
+    were not being checked in assignments or in places where array values are 
+    passed and returned.  An operation named 
+    V_VAL.isElementCountCompatible(UUID rval) was introduced to fix this for 
+    assignment operations, but this issue is rasied to fix the other places.  
+    The places that need to be addressed are:
+	OAL Validation Functions:
+	_- Function_invocation_end
+	_- Transform_invocation_end
+	_- Message_invocation_end
+	
+	OAL Validation Utility Functions:
+	_- is_valid_sm_event_data
+
+	In  Assignment_invocation_end where the isElementCountCompatible() 
+	operation is used can be used as a guide to fix the other places.  However, 
+	they are slightly different in that the "lval" is not represented by a 
+	V_VAL instance.  What this means is that to have a similar check for these 
+	places we need to introduce a operation (or a group of operations) that can 
+	gives us a element count for a given dimension provided the model element 
+	that is associated with the S_DIM class.  We currently have an operation in
+    every class associated with S_DIM named getDimensionCnt() (for example 
+    S_BPARM.getDimensionCnt()), but we don't have such a helper operation to 
+    get the elementCount for a given dimension.  Issue dts0100584455 [3]
+    was raised to address this.
+
+6.4.1 The V_VAL.isElementCount*() operations now have descriptions that should 
+    be helpful when this issue is investigated. 
+    
+7. Unit Test
+------------
+7.1 Add to the unit tests to assure array parameter mismatches are reported
+    and that correct array-parameter matches are allowed.
+    These tests include checking for:
+     - incompatible array depth
+     - index out of bounds
+7.1.1 Add tests for bridges
+7.1.2 Add tests for functions
+7.1.3 Add tests for messages
+7.1.4 Add tests for operations
+7.1.4 Add tests for return statements
+
+Note: The AOOB tests were added, but a separate bug was found that causes them 
+      to fail [3].  These als.oal tests fail with an error telling us it is a 
+      known issue.  The message is: 
+      "Known issue. See CQ DEI dts0100584445"
+
+7.2 All existing unit tests pass.
+
+8. Code Changes
+---------------
+The changes are in branch: R2_1_3-RWM-dts0100530055.
+
+Models/models/Models/array_test/Test/Parenthood/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+
+com.mentor.nucleus.bp.als.oal.test/src/(default package)/OALTestSuite.java
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    OalParserTest.java
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestArray.java
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestEvent.java
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestInvocation.java
+com.mentor.nucleus.bp.als.oal.test/src/com.mentor.nucleus.bp.als.oal.test/
+    TestStructuredDataType.java
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Functions/Functions.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/_Test/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/_Test/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/_Test/_Test.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Disk/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Disk/Disk.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Disk Ownership/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Disk Ownership/Disk Ownership.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Disk Request/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Disk Request/Disk Request.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Disk Transfer/Disk Transfer.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Drive/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Drive/Drive.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Drive_Disk Assignment/ClassStateMachine/
+    ClassStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Drive_Disk Assignment/Drive_Disk Assignment.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Entry_Exit Port/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Entry_Exit Port/Entry_Exit Port.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Node/Node.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Offline Disk/Offline Disk.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Online Disk/Online Disk.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Online Location/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Online Location/Online Location.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Permanent Home in Library/Permanent Home in Library.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Qualified Process/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Qualified Process/Qualified Process.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Qualified Process Order/Qualified Process Order.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Robot/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Robot/Robot.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Slot/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Slot/Slot.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Slot_Disk Assignment/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Slot_Disk Assignment/Slot_Disk Assignment.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test/Test.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test Poly/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test Poly/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test Poly/Test Poly.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test Subtype/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Test Subtype/Test Subtype.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/Odms/Odms.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    testOAL1/testOAL1.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/com.mentor.nucleus.bp.als.oal.test/
+    com.mentor.nucleus.bp.als.oal.test.xtuml
+com.mentor.nucleus.bp.als.oal.test/models/testOAL1.bak
+com.mentor.nucleus.bp.als.oal.test/models/testOAL1.xtuml
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Utility Functions/
+    OAL Validation Utility Functions.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance/Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Timer/Timer.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+
+
+
+End
+---
+
+$Log: dts0100530055.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/04/30 16:25:04  rmulvey
+job:dts0100530055
+Updated to make it clear that 5 of the new tests will fail until CQ issue dts0100584455 is addressed.
+
+Revision 1.5  2009/04/30 16:16:44  rmulvey
+job:dts0100530055
+Updated the note to make it clear that some als.oal tess (new ones) fail witha message that reads: "Known issue. See CQ DEI dts0100584445"
+
+Revision 1.4  2009/04/29 18:05:33  rmulvey
+job:dts0100530055
+Updated the note to account for the changes made since the review (problems found/fixed while  testing).
+
+Revision 1.3  2009/04/22 14:32:44  rmulvey
+job:dts0100530055
+Updated note based on review comments.
+
+Revision 1.2  2009/04/14 13:30:48  rmulvey
+job:dts0100530055
+Typos
+
+Revision 1.1  2009/04/14 13:18:33  rmulvey
+job:dts0100530055
+Introduced

@@ -1,0 +1,161 @@
+========================================================================
+
+File:      $RCSfile: dts0100634417.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Implement simulated real time in Verifier
+
+
+1. Abstract
+-----------
+This note describes the implementation required to support simulated real time
+for model verification.
+
+2. History
+----------
+N/A
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100634417
+[2] dts0100634417-01.ant
+
+4. Background
+-------------
+4.1 For the wall clock time implementation (original verifier behavior), the
+timer thread wakes up every 30 ms and "ticks" all the running timers. Every
+running timer decreases its remaining time by 30 ms. If
+((getTime_left() - p_Interval / 2) < 0) (where the p_interval is the 30 ms), the
+timer event will fire.
+
+4.2 A model being verified will have a number of application threads running.
+Each application thread keeps running until its done processing and has no
+pending events. If these two conditions are satisfied, the application thread
+and its execution engine will "wait". The thread will continue execution when it
+is "notified" that a new event is being sent to its execution engine.
+
+4.3 The first step to simulate real time in verifier is the implementation of
+simple discrete event simulation as mentioned in the "work required" section of
+[2].
+
+5. Design
+---------
+5.1 To achieve discrete event simulation, the timer thread should advance to the
+next (closest to firing) timer event when all application threads are idle. When
+it advances, it should decrease all other timers by the time advance made (which
+equals the time left for the firing timer event).
+
+5.2 In its current form, a running application thread (thread 1) will run until
+it finish its processing which may include posting an event to another "idle"
+application thread (thread 2). Since thread 1 has finished its processing it
+will request its execution engine to "wait" and thread 1 will go "idle". Since
+thread 2 gets a posted event, it is "notified" of the event presence and goes
+"busy" to serve the event.
+
+5.3 To satisfy (5.1), the timer thread has to be notified when the second thread
+has gone "busy" _before_ the first thread goes "idle". Otherwise, it might
+happen that at a certain moment before the second thread goes "busy" that both
+threads are "idle".
+
+5.4 A static variable will be added to the Timer thread to switch between the
+wall clock time and the simulated real time implementation.
+
+5.5 The Timer thread class will have two separate initialization methods, one
+starts the wall clock timer thread and the other starts the simulated real time
+thread.
+
+5.6 The timer thread class will maintain two arrays; one holds the current
+running execution engines and the other holds an indicator of whether the
+execution engine is idle or busy.
+
+5.7 The timer thread will have two static methods; one represents an idle
+notification from an application thread and the other represents a busy
+notification. A call to any of these methods modifies the idle/busy array
+mentioned in (5.6).
+
+5.8 A call to the idle notification method "notifies" the running timer thread.
+On this notification, the timer thread leaves its waiting state and checks if
+all application threads are idle. If they are all idle, the timer thread
+advances to the closest timer event.
+
+6. Implementation Comments
+--------------------------
+6.1 Model changes
+6.1.1 Timer_c (I_TIM)
+Modify the Tick operation fire check
+if ((self.time_left - param.interval / 2) < 0 )
+    self.fire();
+to be "<=" instead of "<"
+
+The reason for the change is that for simulated real time, the timer advances
+in discrete steps equal to the time left for the closest timer event. So for the
+closest timer, the time_left will equal to the interval. And to make the event
+fire, the check has to be modified as indicated.
+
+6.1.2 ExecutionEngine_c (I_EXE)
+Modify the notify operation to call the busy notification static method of the
+timer thread class.
+
+7. Unit Test
+------------
+7.1 Tick
+	_- Start a new xtUML project and import the Tick model
+	_- Right click the project and choose to Launch Verifier
+	_- Initialize the components
+	_R The verification succeeds and is much faster than real time (due to the
+	   discrete advance of time)
+	_- Replace the TIM class in the lib package of the core plugin with another
+	   having the switching variable (SIM_TIME) set to false
+	_- Right click the project and choose to Launch Verifier
+	_R The verification succeeds and is in real time
+	
+7.2 SeatHeater
+	_- Start a new xtUML project and import the SeatHeater model
+	_- Right click the project and choose to Launch Verifier
+	_- Initialize the components and run the tests
+	_R The verification succeeds and is much faster than real time (due to the
+	   discrete advance of time)
+	_- Replace the TIM class in the lib package of the core plugin with another
+	   having the switching variable (SIM_TIME) set to false
+	_- Right click the project and choose to Launch Verifier
+	_R The verification succeeds and is in real time
+
+8. Code Changes
+---------------
+R3_0_3-HK-dts0100634417 (Branch)
+
+com.mentor.nucleus.bp.core/src/lib/TIM.java
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Execution Engine/Execution Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Timer/Timer.xtuml
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPDebugTarget.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPThread.java
+
+End
+---
+
+$Log: dts0100634417.int,v $
+Revision 1.3  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.2  2009/12/23 14:33:04  hkashif
+job:dts0100634417
+fixing a few typos
+
+Revision 1.1  2009/12/21 19:28:43  hkashif
+job:dts0100634417
+starting note

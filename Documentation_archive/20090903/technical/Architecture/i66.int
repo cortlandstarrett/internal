@@ -1,0 +1,474 @@
+========================================================================
+
+File:      $RCSfile: i66.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:34 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+MC-Java Implementation Note
+Support enumerated data types
+
+Implementation Comments
+-----------------------
+
+- arch_name.inc as designed
+- do_type.inc as designed
+- enums.inc as designed
+- ooa_schema.sql as designed
+
+- In Value.arc, in gen_binary_op_value, added a check for a string != 
+  operator.
+  
+-  Removed hardwired 'Ooaofooa' from statement.arc.  Changed Includes.inc 
+to pass class name in as needed.  Added function translate_all_oal to
+Includes.inc. Added call to translate_all_oal to Java.arc and validate_gen.arc.
+Added parameter output_change_messages to translate_all_oal and passed it
+on as needed.  Only output the fireModelChanged call if output_change_messages
+is true.
+
+- In Java.arc, replaced 'com.projtech.bp.core' with ${package.name} in
+four places.
+
+- In Java.arc, changed the poller and timer instances to be static data members
+of the class.  In shutdown(), added calls to halt() for the poller and timer
+instances.
+
+- In ooaofooa_package_spec.clr, renamed root_class_name to ui_root_class_name,
+and root_class_accessor to ui_root_class_accessor. Changed names in Java.arc
+and gen_import_java.arc 
+
+- In Java.arc, only generate the getRoot(), setRoot() and root data members
+if ui_root_class_name is not the empty string.  
+
+- In ooaofooa_package_spec.clr, added this line:
+
+  .assign attr_application_root_class = "Ooaofooa"
+
+Replaced all $Cr{domain.Name} with ${application_root_class}
+in Java.arc, referred_to.inc, referring.inc.
+
+- In ooaofooa_startsec.clr, made the following changes:
+
+    attr_rootname		->	attr_init_var_name
+    attr_root_class		->	attr_init_class
+    attr_root_stim		->	attr_init_stim
+    
+Changed the name references in Java.arc
+    
+- In Java.arc, test the package attribute is_eclipse_plugin before
+generating any code that is Eclipse dependent.
+
+- In Java.arc, if is_eclipse_plugin is false, generate a main() function.
+
+- In Fragment.arc, added do nothing implementations of the following 
+fragment functions:
+
+	stmt_assign_bridge_param
+	stmt_assign_synch_service_param
+	stmt_assign_transform_param
+
+- In pg_schema_gen.arc, ignore attributes of type state<State_Model>,
+rather than outputting a warning message.  If the state<State_Model>
+attribute is the last one, handle comma generation correctly.
+
+- In ooaofooa_package_spec.clr, add the following:
+
+  .assign attr_is_eclipse_plugin = true
+
+- The files TinyJava/package_spec.inc and TinyJava/startspec.arc are deleted.
+
+- Added implementation of the OAL statement 'control stop':
+
+    - Added the following to ooa_schema.sql:
+    
+    CREATE TABLE ACT_CTL (
+             Statement_Id	STRING,
+	     Command	STRING );
+
+CREATE ROP REF_ID R603 FROM 1C 	ACT_CTL 	( Statement_Id )
+		     TO 1  	ACT_SMT 	( Statement_Id );
+
+    - In Fragment.arc, added the following to function stmt_control:
+    
+      INSERT INTO ACT_CTL VALUES ('${attr_stmt_id}','${p_cmd}');
+    
+    - Added the following in statment.arc:
+    
+.//
+.// --------------------------------------------------------
+.// control statements
+.// --------------------------------------------------------
+.function gen_control_statements
+.param string main_class_name
+.select many control_statements from instances of ACT_CTL
+.for each control_statement in control_statements
+  .invoke result = gen_control_statement(control_statement, main_class_name)
+  .select one statement related by control_statement->ACT_SMT[R603]
+  .assign statement.buffer="${result.body}"
+.end for
+.end function
+.//
+.// --------------------------------------------------------
+.// control statement
+.// --------------------------------------------------------
+.function gen_control_statement
+  .param inst_ref statement
+  .param string main_class_name
+  .//
+  .// the only command defined is "STOP";
+${main_class_name}.shutdown();
+.end function
+
+    - In Includes.inc, added to following to the translate_other_statements
+      function:
+      
+  .invoke gen_control_statements(main_class_name)
+      
+Unit Test
+---------
+
+- Regenerate and rebuild all projects with persistence enabled
+R No errors
+- Run OalParserTest
+R No errors
+- Start Tiger Application, perform import, export tests
+R No errors
+
+- Regenerate and rebuild all projects with persistence disabled
+R No errors
+- Run OalParserTest
+R No errors
+- Start Tiger Application, perform import, export tests
+R No errors
+
+- Use the enum3 model from nextgen test suite.
+- Change the descriptions of the following bridges to be 
+Translate:native, with the following for action language:
+
+LOG::LogSuccess()
+	System.out.println("LOG: Success: " + Message );
+
+LOG::LogFailure()
+	System.out.println("LOG: Failure: " + Message );
+	
+- Create a project enum3
+- Save the domain to the file enum3/sql/enum3.sql
+- Copy the coloring files from core/color to enum3/color.
+- Change contents of enum3_package_spec.clr to:
+
+.function get_package
+  .assign attr_location = "src/enum3"
+  .assign attr_name = "src.enum3"
+  .assign attr_application_root_class = "Enum3"
+  .assign attr_threading_model = "polling"
+  .assign attr_is_persistent = false
+  .assign attr_is_eclipse_plugin = false
+  .assign attr_db_driver = "org.postgresql.Driver"
+  .assign attr_db_name = "jdbc:postgresql:ooa2"
+  .assign attr_db_user = "greg"
+  .assign attr_db_password = ""
+  .assign attr_ui_root_class_name = ""
+  .assign attr_ui_root_class_accessor = ""
+.end function
+
+- Change contents of enum3_startspec.clr to:
+
+.function define_startspec
+  .assign attr_init_type  = "event"
+  .assign attr_init_var_name = "init"
+  .assign attr_init_class = "InitializationObject"
+  .assign attr_init_stim  = "Go"
+  .assign attr_parameter1 = ""
+  .assign attr_parameter2 = ""
+.end function
+  
+- Create enum3/generate.bat 
+- Execute enum3/generate.bat
+R Code generated and compiles without error
+- Select enum3/src/Enum3.java
+- Select Run/Run...
+- Select run as Java application
+- Run Enum3
+R Application runs and exits.
+R The only test failures have to do with assignments to parameters
+  or MDA tests.
+  
+- Change enum3_package_spec.clr so that is_persistent = true
+- Execute enum3/generate.bat
+R Code generated and compiles without error
+- Exeucte enum3/generated_schema.bat
+R Schema created without error
+- Start psql, delete current tables, import sql/enum3_pg_schema.sql
+- Select enum3/src/Enum3.java
+- Select Run/Run...
+- Select Classpath tab, uncheck 'Use default', add postgresql.jar to classpath
+- Run Enum3
+R Application runs and exits.
+R The only test failures have to do with assignments to parameters
+  or MDA tests.
+
+Test Output
+-----------
+
+ Event dequeued: InitializationObject.Go in 0
+ Event dequeued: ObjectA.One in 0
+LOG: Success: Object A.one - color_one == color::black
+LOG: Success: Object A.one - color_two == color::blue
+ Event dequeued: ObjectA.Two in 0
+LOG: Success: Event OA2 - color_one == color::rouge
+LOG: Success: Event OA2 - color_two == color::green
+LOG: Success: Object A after Event OA2 - self.color_one == color::rouge
+LOG: Success: Object A after Event OA2 - self.color_two == color::green
+ Event dequeued: ObjectA.Three in 1
+LOG: Success: Object A.two - color_one == color::red
+LOG: Success: Object A.two - color_two == color::violet
+ Event dequeued: ObjectB.Go in 0
+LOG: Success: Event OB1 across objects - color_one == color::red
+LOG: Success: Event OB1 across objects - color_two == color::violet
+ Operation entered: ObjectB::Op1
+LOG: Success: Operation OB::op1 - param.color_one == color::black
+LOG: Success: Operation OB::op1 - param.color_two == color::orange
+LOG: Success: First Call: Operation OB::op1 - return_value == color::black
+ Operation entered: ObjectB::Op1
+LOG: Success: Operation OB::op1 - param.color_one == color::black
+LOG: Success: Operation OB::op1 - param.color_two == color::orange
+LOG: Success: Second Call: Operation OB::op1 - return_value == color::black
+ Operation entered: ObjectB::Op1
+LOG: Success: Operation OB::op1 - param.color_one == color::black
+LOG: Success: Operation OB::op1 - param.color_two == color::orange
+LOG: Success: Third Call: Operation OB::op1 - return_value == color::black
+ Operation entered: ObjectB::Op2
+LOG: Success: bridge1 - param.color_one == color::black
+LOG: Success: bridge1 - param.color_two == color::orange
+LOG: Success: First Call: Operation OB::op2 - return_value == color::black
+LOG: Failure: First Call: Operation OB::op2 - self.color_two != color::black
+ Operation entered: ObjectB::Op2
+LOG: Success: bridge1 - param.color_one == color::black
+LOG: Success: bridge1 - param.color_two == color::orange
+LOG: Success: Second Call: Operation OB::op2 - return_value == color::black
+LOG: Failure: Second Call: Operation OB::op2 - orange != color::black
+ Operation entered: ObjectB::Op2
+LOG: Success: bridge1 - param.color_one == color::black
+LOG: Success: bridge1 - param.color_two == color::orange
+LOG: Success: Third Call: Operation OB::op2 - return_value == color::black
+LOG: Failure: Third Call: Operation OB::op2 - orange != color::black
+ Operation entered: ObjectB::Op3
+LOG: Success: bridge1 - param.color_one == color::black
+LOG: Success: bridge1 - param.color_two == color::orange
+LOG: Failure: First Call: Operation OB::op3 - self.color_one != color::orange
+LOG: Failure: First Call: Operation OB::op3 - self.color_two != color::black
+ Operation entered: ObjectB::Op3
+LOG: Success: bridge1 - param.color_one == color::black
+LOG: Success: bridge1 - param.color_two == color::orange
+LOG: Failure: Second Call: Operation OB::op3 - black != color::orange
+LOG: Failure: Second Call: Operation OB::op3 - orange != color::black
+ Event dequeued: ObjectB.Next in 0
+LOG: Success: Event OB2 within objects - color_one == color::red
+LOG: Success: Event OB2 within objects - color_two == color::greent
+ Operation entered: ObjectC::Op4
+LOG: Success: Operation OB::op1 - param.color_one == color::red
+LOG: Success: Operation OB::op1 - param.color_two == color::green
+LOG: Success: First Call: Operation inst_obj.op4 - return_value == color::red
+ Operation entered: ObjectC::Op4
+LOG: Success: Operation OB::op1 - param.color_one == color::red
+LOG: Success: Operation OB::op1 - param.color_two == color::green
+LOG: Success: Second Call: Operation inst_obj.op4 - return_value == color::red
+ Operation entered: ObjectC::Op4
+LOG: Success: Operation OB::op1 - param.color_one == color::red
+LOG: Success: Operation OB::op1 - param.color_two == color::green
+LOG: Success: Third Call: Operation inst_obj.op4 - return_value == color::red
+ Operation entered: ObjectC::Op5
+LOG: Success: bridge1 - param.color_one == color::red
+LOG: Success: bridge1 - param.color_two == color::green
+LOG: Success: First Call: Operation inst_obj.op5 - return_value == color::red
+LOG: Failure: First Call: Operation inst_obj.op5 - self.color_two != color::red
+ Operation entered: ObjectC::Op5
+LOG: Success: bridge1 - param.color_one == color::red
+LOG: Success: bridge1 - param.color_two == color::green
+LOG: Success: Second Call: Operation inst_obj.op5 - return_value == color::red
+LOG: Failure: Second Call: Operation inst_obj.op5 - green != color::red
+ Operation entered: ObjectC::Op5
+LOG: Success: bridge1 - param.color_one == color::red
+LOG: Success: bridge1 - param.color_two == color::green
+LOG: Success: Third Call: Operation inst_obj.op5 - return_value == color::red
+LOG: Failure: Third Call: Operation inst_obj.op5 - green != color::red
+ Operation entered: ObjectC::Op6
+LOG: Success: bridge1 - param.color_one == color::red
+LOG: Success: bridge1 - param.color_two == color::green
+LOG: Failure: First Call: Operation inst_obj.op6 - self.color_one != color::green
+LOG: Failure: First Call: Operation inst_obj.op6 - self.color_two != color::red
+ Operation entered: ObjectC::Op6
+LOG: Success: bridge1 - param.color_one == color::red
+LOG: Success: bridge1 - param.color_two == color::green
+LOG: Failure: Second Call: Operation inst_obj.op6 - red != color::green
+LOG: Failure: Second Call: Operation inst_obj.op6 - green != color::red
+ Event dequeued: ObjectC.Go in 0
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: First Call: bridge1 - return_value == color::purple
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Second Call: bridge1 - return_value == color::purple
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Third Call: bridge1 - return_value == color::purple
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: First Call: bridge2 - return_value == color::purple
+LOG: Failure: First Call: bridge2 - self.color_two != color::purple
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Second Call: bridge2 - return_value == color::purple
+LOG: Failure: Second Call: bridge2 - b != color::purple
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Third Call: bridge2 - return_value == color::purple
+LOG: Failure: Third Call: bridge2 - b != color::purple
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Failure: First Call: bridge3 - self.color_one != color::blue
+LOG: Failure: First Call: bridge3 - self.color_two != color::purple
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Failure: Second Call: bridge3 - a != color::blue
+LOG: Failure: Second Call: bridge3 - b != color::purple
+ Event dequeued: ObjectD.Go in 0
+ Function entered: Function1
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: First Call: function1 - return_value == color::purple
+ Function entered: Function1
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Second Call: function1 - return_value == color::purple
+ Function entered: Function1
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Third Call: function1 - return_value == color::purple
+ Function entered: Function2
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: First Call: function2 - return_value == color::purple
+LOG: Failure: First Call: function2 - self.color_two != color::purple
+ Function entered: Function2
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Second Call: function2 - return_value == color::purple
+LOG: Failure: Second Call: function2 - b != color::purple
+ Function entered: Function2
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Success: Third Call: function2 - return_value == color::purple
+LOG: Failure: Third Call: function2 - b != color::purple
+ Function entered: Function3
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Failure: First Call: function3 - self.color_one != color::blue
+LOG: Failure: First Call: function3 - self.color_two != color::purple
+ Function entered: Function3
+LOG: Success: bridge1 - param.color_one == color::purple
+LOG: Success: bridge1 - param.color_two == color::blue
+LOG: Failure: Second Call: function3 - a != color::blue
+LOG: Failure: Second Call: function3 - b != color::purple
+ Event dequeued: ObjectD.Next in 0
+LOG: Failure: MDA - event item - param.color_one != color::blue
+LOG: Failure: MDA - event item - param.color_two != color::purple
+LOG: Failure: MDA - Object A - color_changer != color::black
+LOG: Failure: MDA - Object B - color_changer != color::violet
+LOG: Failure: MDA - Object C - color_changer != color::green
+LOG: Failure: MDA - Object D - color_changer != color::rouge
+
+Code Changes
+------------
+
+The project enum3 was added.
+
+
+com.projtech.bp.als/arc/validate_gen.arc
+Initial Version:  1.4   Final Version:  1.5
+
+com.projtech.bp.core/color/ooaofooa_package_spec.clr
+Initial Version:  1.2   Final Version:  1.3
+
+com.projtech.bp.core/color/ooaofooa_startspec.clr
+Initial Version:  1.1   Final Version:  1.2
+
+com.projtech.bp.io.sql/arc/gen_import_java.arc
+Initial Version:  1.4   Final Version:  1.5
+
+TinyJava/Fragment.arc
+Initial Version:  1.5   Final Version:  1.6
+
+TinyJava/Includes.inc
+Initial Version:  1.2   Final Version:  1.3
+
+TinyJava/Java.arc
+Initial Version:  1.17   Final Version:  1.20
+
+TinyJava/Value.arc
+Initial Version:  1.6   Final Version:  1.7
+
+TinyJava/arch_names.inc
+Initial Version:  1.4   Final Version:  1.5
+
+TinyJava/do_type.inc
+Initial Version:  1.2   Final Version:  1.4
+
+TinyJava/enums.inc
+Introduced initial Version: 1.1
+
+TinyJava/ooa_schema.sql
+Initial Version:  1.2   Final Version:  1.3
+
+TinyJava/package_spec.inc
+Deleted version: 1.1
+
+TinyJava/pg_schema_gen.arc
+Initial Version:  1.6   Final Version:  1.7
+
+TinyJava/referred_to.inc
+Initial Version:  1.5   Final Version:  1.6
+
+TinyJava/referring.inc
+Initial Version:  1.6   Final Version:  1.7
+
+TinyJava/statement.arc
+Initial Version:  1.10   Final Version:  1.11
+
+TinyJava/startspec.arc
+Deleted version:  1.1
+
+
+End
+---
+
+$Log: i66.int,v $
+Revision 1.1  2009/09/03 18:20:34  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.168.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2003/08/05 16:26:01  greg
+Job: 66
+Fixed typos
+
+Revision 1.1  2003/08/02 18:45:30  greg
+Job: 66
+Initial introduction
+
+
+

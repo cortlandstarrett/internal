@@ -1,0 +1,189 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2008-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support Actions on Transitions in Verifier
+
+1. Abstract
+-----------
+This note describes the design for supporting execution of Actions on
+Transitions in Verifier.
+
+2. History
+----------
+   final - i3418-031308-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 3418 Support Actions on Transitions
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3418
+[2] Bugzilla item 491 mealy state models - actions on transitions
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=491
+[3] Bugzilla item 3208 Relax Same Data
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3208
+[4] Bugzilla item 3434 Transition Activity names are too long
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3434
+
+4. Background
+-------------
+The work for [2] allowed the user to create and edit transition activities, but
+that job left out the work required to execute these activities. This note
+covers the additional work needed to add this capability.
+
+5. Analysis
+-----------
+To execute transition actions, they need to be executed before the target state
+action. The target state action is currently set up for execution in
+Instance.takeEvent() and Model Class.takeEvent(). We need to extend these
+operations to additionally set up a stack frame for the transition activity if
+necessary.
+
+In addition, there are multiple places in the debug.ui plugin where awareness of
+the different kinds of activities is required. Examples are in source code
+location, breakpoint setting etc. These are all extended to add awareness of the
+new navigations required for Transition Activities.
+
+6. Design
+---------
+6.1 Core changes
+6.1.1 Instance changes
+The change to Instance::Instance.takeEvent is performed as suggested in the
+analysis. The Transition Activity stackframe is added _after_ the State Activity
+stack frame, not before it. This is because the execution engine always looks
+for the most recently added stack frame when executing.
+
+6.1.2 Model Class changes
+Subsystem::Model Class.takeEvent() has the analogous change to that described in
+section 6.1.1.
+
+6.1.3 Block changes
+There is one minor change to the execution semantics required to support Actions
+on Transitions. The changes in 6.1.1 and 6.1.2 above potentially leave the stack
+with two frames on it rather than always one as previously. This is the case
+when both the state and the transition have activity statements. Usually, when
+there is more than one stack frame present, it is because a statement in one
+stack frame has invoked another activity (e.g. an Operation or Bridge call). In
+this new case however, the Transition Action is above the State Action in the
+stack, but no call between the two was made.
+
+In Body::Block.popUpBlock, the stack frame is adjusted when the outer block is
+reached. Previously, this behavior always included stepping to the next
+statement after the one pointed at by the stack frame becoming enabled. In this
+way, the calling statement was rendered 'spent' and execution continued. When
+entering a state entry activity after executing a transition activity, we
+(uniquely) do not want this to happen. The popUpBlock operation is refactored to
+check whether the activity it belongs to is a transition activity and if so,
+skips the statement stepping behavior.
+
+6.1.4 Body changes
+A minor change to the Body::Body class is made so that transitions get a good
+label for display in the Debug View.
+
+6.2 debug.ui changes
+6.2.1 ModelElementLocation
+The method getModelElementLocation() in this class is modified to add a clause
+to handle providing a human readable path string to identify the transition
+action.
+
+6.2.2 BPLineBreakpoint
+The methods, findStatementOnLine() and getNumLines() are modified with clauses
+to locate the appropriate data for Transition actions. The getActivityType()
+method is slightly extended to return a new Transiton action type enumerator.
+The enumerator itself is also added by his work.
+
+6.2.3 BPStackFrame
+The methods getActivityContainerElement() and getCharStart() are modified to add
+clauses to handle getting appropriate data for a transition activity.
+
+7. Design Comments
+------------------
+7.1 Unexpected parse failure
+It was discovered during this work that the change to relax the same data
+rule[3] broke access to event data in Transition Activity OAL. The fix was
+relatively small and is included in this work. This discovery also exposed the
+fact that the original AoT unit tests were not performing as intended. This work
+also fixes these tests so that future problems with Transition Activities are
+detected before promotion.
+
+7.1.1 event_root_validate
+This is extended to have separate processing for transitions. This fixes the
+parser behavior exposed during testing for this issue.
+
+7.1.2 oal.test
+OalParserTest is modified to declare some new transition activity type
+enumerators. The method populateStateActionInstances is extended to populate
+transition actions into their own action array entries.
+
+TestEvent is fixed to pass the enumerator value for the correct Transition
+action to the validateEvetParam() and validateEventParamError() methods.
+
+7.2 Unexpected path length problems
+One of the unit tests introduced failed with an NPE because the path length to
+the Transition Activity placeholder file was too long. This was fixed by
+shortening the name of a state. However it exposes the fact that transition
+activities are particularly prone to this kind of issue, because transition
+activites have long titles synthesized from the event and state names. An issue
+is raised[4] to get this name shortened.
+
+8. Work Required
+----------------
+The work required is fully detailed in the Design section.
+
+9. Unit Test
+------------
+All existing Unit Tests must pass. New tests must ensure that Verifier executes
+statements embedded in a transition activity and that breakpoints may be set and
+detected in a transition activity. These tests should be performed on transition
+actions in both a class and instance state model environment.
+
+The test class VerifierTransitionActionTests is added, which meets the
+requirements set out above. In addition, three new test result files are added
+to verify that the execution behavior is as required.
+
+A small change is made to the DebugTestUtilities.waitForBPThreads() method to
+test for the case where a thread is terminated. The new tests introduce this
+outcome.
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:19  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.4  2008/03/14 19:06:14  campbell
+Job: 3418
+Finalized.
+
+Revision 1.3  2008/03/14 19:00:09  campbell
+Job: 3418
+Review observations addressed.
+
+Revision 1.2  2008/03/13 19:43:52  campbell
+Job: 3418
+Finalized for review.
+
+Revision 1.1  2008/03/13 19:31:27  campbell
+Job: 3418
+Introduced.
+

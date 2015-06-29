@@ -1,0 +1,460 @@
+========================================================================
+
+File:      $RCSfile: dts0100887837.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Introduce nightly build support
+
+1. Abstract
+-----------
+This document describes the introduction of a feature to allow users to 
+build and execute models from the command-line.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100887837
+[2] dts0100887837.ant
+    Analysis note for introducing nightly build support.
+[3] http://cdt-devel-faq.wikidot.com/#toc3
+    This is the CDT FAQ.  It contains a lot of useful information about how to
+    programmatically access and manipulate the CDT build information.
+[4] http://eclipsesource.com/blogs/2007/11/12/hiding-the-window-in-rap-applications/
+    Explains ideas for hiding the workbench window    
+    
+4. Background
+-------------
+see [2]
+
+5. Requirements
+---------------
+see [2]
+
+6. Analysis
+-----------
+see [2]
+
+7. Design
+---------
+7.1 Introduce a new plugin, com.mentor.nucleus.bp.cli, that holds the entry-
+    point(s) for the BridgePoint CLI.
+
+	This new plugin was introduced.  The class contains 2 classes that act as
+	entry-points for command-line execution.  These are:
+	Build.java
+	Execute.java
+	
+	These new classes each extend the org.eclipse.equinox.app.IApplication
+	interface which provides executable entry points into an application.
+	The methods implemented are: 
+	
+7.1.1 public Object start(IApplicationContext context) throws Exception;
+	Starts the application with the given context and returns a result.  This 
+	method must not exit until the application is finished and is ready to exit.
+
+	The context parameter contains the command-line arguments.	
+	
+	While an applications can return any object it likes, currently the tool
+	does not return any useful value from the start function.  Start() returns
+	0 if no error in encounter.  If an error is encountered, the tool 
+	throws a BPCLIException. 
+	
+7.1.2 public void stop(); 
+	
+	This function is called by the eclipse platform to tell the running 
+	application to exit.  The start(IApplicationContext) function  
+	should already have exited or should exit very soon after this 
+	method exits.  This  provides a means to clean-up resources.
+	  
+7.2 Add a class to new plugin to manage the command-line arguments.
+
+	A class named BPCLIPreferecences.java was introduced to handle 
+	command-line processing.  This call simply holds static members that 
+	represent each of the available command-line option [2 - 6.1.2].  The only
+	command-line checking done by this class is to assure that no command-line
+	option appears more than one time.   All additional command-line checking
+	is deferred to the point in time that execution and/or build occurs.
+	
+7.3 Invoke the prebuilder using the provided command-line arguments. 
+7.3.1 Invoke model translation from the command-line.
+
+	The command-line tool currently invokes the builder that is setup on the 
+	given project.
+	TODO:
+		-We must given ability to disable all but the prebuilder to satisify
+		requirement [2 - 5.2.2].
+		
+7.3.1.1 Support capturing output to a file
+
+There are three types of output that occur.  These are standard output, standard
+error output and console output.  A new command line option is added to support
+capturing these to a file.  The command line is -output <fully qualified path to
+file>.  When this option is used the standard outputs will be captured and
+placed on both the standard command line output as well as into the file.  All
+interesting console output will also be added to the file.  When the output file
+option is not used the console output will be redirected to the standard command
+line output.  Below is an example of what the output will look like:
+
+Starting BridgePoint CLI Build
+Performing the build of project: <project 1 name>
+<output from gen_erate>
+<output from CDT>
+Performing the build of project: <project 2 name>
+<output from gen_erate>
+<output from CDT>
+Build complete. Exiting.
+
+7.3.1.1.1 Capturing launch console data
+
+External tool builders as well as verifier launches use the same type of
+console.  This console, Process Console, supports a stream listener.  Listeners
+registered will receive notification of any text that is written to the process
+stream.  To capture this console type's output we register two listeners, one
+for standard output and one for error output.  These listeners either append the
+stream for file writing or are forwarded to the command line.
+
+7.3.1.1.2 Capturing CDT console data
+
+The CDT console is unfortunately not designed in the same manner as the Process
+Console.  There is no support for listeners.  The only way to access the data
+that is required we have to get the document that is used for the console after
+a project build has completed.  With this approach we also have to temporarily
+disable console output limitations.
+
+7.3.1.1.3 Capturing standard command line output
+
+Java allows you to configure the system to use a custom stream for standard
+output and standard error output.  In order to write to the command line and
+capture the data into a file a new class added, ForwardingStream.  This class is
+a standard PrintStream implementation with the exception of forwarding the calls
+to write(byte[] buf, int off, int len) to the original standard output and
+standard error output.
+
+7.3.2 Refresh project after code generation
+
+	The new project wizard creates an external tool builder launch file.  This
+	file is pre-configured with the necessary defaults.  It configures the
+	refresh options such that only the selected resource is refreshed.  This can
+	result in a refresh not occurring on all required resources.  We need the
+	refresh to occur at the project level.  If the refresh does not occur the
+	CDT builder does not see the need to run.  To address this for new projects
+	the class AbstractNature from bp.mc is modified to configured the project as
+	the resource to refresh after build completion.
+	
+	For older projects that were created prior to this release the user can
+	modify this setting manually in the builder properties.  For convenience a
+	utility action, Upgrade Compiler Settings, is added to the BridgePoint
+	Utilities menu.  This action updates the refresh setting for any external
+	tool builder under the selected projects.
+
+7.4 Modify the Verifier launch config allow the user to choose an 
+    initialization function.
+    
+    TODO
+    
+7.5 Modify the Verifier launch config to allow the user to choose a execution 
+    timeout value.  Execution is terminated if the session runs longer than this
+    period.
+    
+7.5.1 A new field is presented to the user in the Verifier Launch configuration. 
+      This field is displayed as: Execution Timeout (seconds)
+7.5.2 The default value for this field is 0, which indicates that there is no 
+      timeout.
+7.5.3 This field allows positives integers from 0-999999999
+7.5.4 When a value greater then 0 is entered, upon launch a timer is started.
+      This timer is implemented in the new class named, BPExecutionTimer.java.
+      This timer is started in BPDebugTarget.init() when the value is greater 
+      then 0.      
+7.5.5 If the timer expires before execution terminates then termination is 
+      forced.  The timer calls BPDebugTarget.terminate() to terminate 
+      execution.
+7.5.6 If execution ends before the alloted time the timer is canceled.
+7.6   Allow the user to select an initializer in the Verifier launch 
+      configuration dialog.
+7.6.1 Introduced CheckStateListener.java.  This class is specific to the 
+      ModelCheckedTreeViewer that is used in the Verifier debug launch 
+      configuration (VerifiableElementComposite.java). The 
+      ModelCheckedTreeViewer class, which is defined in 
+      bp/core/ui/tree/ModelCheckedTreeViewer.java, is implemented such that all 
+      checked elements are  included in the tree selection.  The  new class 
+      allows us to maintain the list of elements to launch as well  as helps 
+      determine if an initializer has been selected yet or not.  This is being 
+      done because currently the initializer selection is coupled to the 
+      executable element selection and this coupling prevents a the user from 
+      having the freedom to select the initializer they wish because once more 
+      then one executable is selected, the multi-selection from 
+      ModelCheckTreeViewer prevents the initializer editor from opening because 
+      it thinks more than one element has been selected, and of course an editor 
+      will only open for a single selection.
+      
+7.6 Launch Verifier using the CLI.
+7.6.1 A class is introduced to support executing a specified launch
+      configuration from the command line.  This class is 
+      com/mentor/nucleus/bp/cli/Execute.java.
+7.6.2 Class Execute.java implements IApplication (as specified in 7.1).
+7.6.3 Class com/mentor/nucleus/bp/cli/ExecuteWorkbenchAdvisor.java is introduced
+      to define the functionality required to execute a specified launch 
+      configuration.  This class extends the common BPCLIWorkbenchAdvisor
+      class to inherit common functionality of all CLI operations.
+      It extends this functionality by overloading the postStartup() operation.
+      In postStartup() the specified launch configuration is executed and it
+      waits for the launch to terminate at which time it exits.
+
+7.7 Modify Verifier to invoke the provided termination function when one is
+    provided.
+
+7.7.1 The details of this implementation can be found in section 7.5 above.
+
+8. Design Comments
+------------------
+8.1 In the analysis it reads that command-line options shall be evaluated in the
+    order they appear on the command-line [2 - 6.1.1].   This is NOT true.
+    The reasoning for that statement in that analysis was it was thought we 
+    could allow users to specify the build and/or validate command-line option 
+    multiple times on a single command-line.
+    
+    During this design phase we realized that there is no real benefit to this,
+    and it unnecessarily complicates the implementation.  Therefore, 6.1.1 shall 
+    NOT be implemented.   
+    
+    Instead, each command-line option is allowed to appear at most 1 time on a 
+    single command-line.   This allows the user to build and execute a 
+    specified project/launch configuration.  To be clear the user may build and
+    execute with a single command-line.   If a user wants to build or execute 
+    multiple projects they must run the command-line tool a second time.
+    
+    
+
+9. Work Required
+----------------
+
+10. Unit Test
+------------
+10.0.1 Prepare the test workspace for build testing
+_- Delete the following from each of the projects in the workspace:
+   <model>/gen/code_generation
+   <model>/Debug/*
+   <model>/Release/*
+   <model>/src/*   
+
+10.1 Assure that a build can be invoked from the command-line
+   
+10.1.1 Test that the pre-build option only performs the pre-build and not the 
+      full build.
+_- Start with a workspace that contains the GPS Watch and MicrowaveOven
+   models from Getting Started
+      
+10.1.1.1 Test all project in the workspace      
+_- Prepare the workspace (see 10.0.1)      
+_- Execute the following bp.cli command:
+   BUILD -prebuildOnly
+_R For each of the projects in he workspace:
+_R gen/code_generation/<model>.sql exists
+_R gen/code_generation/<model>.sql is the only file in the code_generation 
+   folder
+_R <model>/Debug is empty
+_R <model>/Release is empty
+_R <model>/src is empty
+
+10.1.1.1 Test a specific project
+_- Prepare the workspace (see 10.0.1)      
+_- Execute the following bp.cli command:
+   BUILD -prebuildOnly -project "GPS Watch"
+_R GPS Watch/gen/code_generation/GPS Watch.sql exists
+_R gen/code_generation/<model>.sql is the only file in the 
+   GPS Watch/code_generation folder
+_R For all other projects in the workspace there is no code_generation folder   
+_R For each of the projects in he workspace (including GPS Watch):   
+_R <model>/Debug is empty
+_R <model>/Release is empty
+_R <model>/src is empty
+
+
+10.1.2 Test CLI build using MC-3020 binary
+_- Start with a workspace that contains the GPS Watch and MicrowaveOven
+   models from Getting Started
+   
+10.1.2.1 Test build of all projects
+_- Prepare the workspace (see 10.0.1)      
+_- Execute the following bp.cli command:
+   BUILD
+_R For each of the projects in the workspace:
+_R gen/code_generation/<model>.sql exists
+_R gen/code_generation/<model>/* contains a _ch folder that contains the 
+   generated files.
+_R <model>/Debug contains the debug binaries
+_R <model>/Release is empty
+_R <model>/src contains the generated source files.
+
+10.1.2.2 Test build of a single project
+_- Prepare the workspace (see 10.0.1)      
+_- Execute the following bp.cli command:
+   BUILD -project "GPS Watch"
+_R GPS Watch/gen/code_generation/GPS Watch.sql exists
+_R gen/code_generation/GPS Watch/code_generation contains a _ch folder that 
+   contains the generated files.
+_R GPS Watch/Debug contains the debug binaries
+_R GPS Watch/src contains the generated source files.
+   
+_R For all other projects in the workspace there is no code_generation folder   
+_R For all other projects in the workspace <model>/Debug is empty
+_R For all other projects in the workspace <model>/Release is empty
+_R For all other projects in the workspace <model>/src is empty
+
+10.1.3 Test CLI build using MC-3020 source
+_- Set up a workspace to contain a copy of GPS Watch and Microwave Oven that 
+   are configured to use the C source MC.
+_- Run the tests in 10.1.2.1
+_- Run the tests in 10.1.2.2
+
+10.1.4 Output tests
+_- Set up a workspace to contain a copy of GPS Watch and Microwave Oven.
+
+10.1.4.1 Test output to command line
+_- Delete the following from each of the projects in the workspace:
+   <model>/gen/code_generation
+   <model>/Debug/*
+   <model>/Release/*
+   <model>/src/*  
+_- Execute the following bp.cli command:
+   BUILD (without using the -output option)
+_R The command line prints something to the following affect
+   Starting BrigePoint CLI Build
+   Performing the build of project: GPS Watch
+   <code generation output here>
+   <CDT output here>
+   Performing the build of project: MicrowaveOven
+   <code generation output here>
+   <CDT output here>
+   Build complete. Exiting.
+   
+10.1.4.2 Test output to new file 
+_- Delete the following from each of the projects in the workspace:
+   <model>/gen/code_generation
+   <model>/Debug/*
+   <model>/Release/*
+   <model>/src/*  
+_- Execute the following bp.cli command:
+   BUILD (using the -output option to a file that does not exist which has a
+          parent folder that does not exist)
+_R The command line prints something to the following affect
+   Starting BrigePoint CLI Build
+   Performing the build of project: GPS Watch
+   Performing the build of project: MicrowaveOven
+   Build complete. Exiting.
+_R The specified file exists and contains something to the following affect:
+   Starting BrigePoint CLI Build
+   Performing the build of project: GPS Watch
+   <code generation output here>
+   <CDT output here>
+   Performing the build of project: MicrowaveOven
+   <code generation output here>
+   <CDT output here>
+   Build complete. Exiting.
+
+10.1.4.3 Test output to existing file
+_- Delete the following from each of the projects in the workspace:
+   <model>/gen/code_generation
+   <model>/Debug/*
+   <model>/Release/*
+   <model>/src/*  
+_- Execute the following bp.cli command:
+   BUILD (using the -output option to a file that exists)
+_R The command line prints something to the following affect
+   Starting BrigePoint CLI Build
+   Performing the build of project: GPS Watch
+   Performing the build of project: MicrowaveOven
+   Build complete. Exiting.
+_R The specified file is overwritten with something to the following affect:
+   Starting BrigePoint CLI Build
+   Performing the build of project: GPS Watch
+   <code generation output here>
+   <CDT output here>
+   Performing the build of project: MicrowaveOven
+   <code generation output here>
+   <CDT output here>
+   Build complete. Exiting.
+
+10.1.4.4 Test output when CDT console has limit
+_- Delete the following from each of the projects in the workspace:
+   <model>/gen/code_generation
+   <model>/Debug/*
+   <model>/Release/*
+   <model>/src/*  
+_- Configure the workspace setting Window > Preferences > C/C++ > Build Console
+   Limit console output (# of lines) = 10
+_- Execute the following bp.cli command:
+   BUILD (without using the -output option)
+_R The command line prints something to the following affect
+   Starting BrigePoint CLI Build
+   Performing the build of project: GPS Watch
+   <code generation output here>
+   <CDT output here>
+   Performing the build of project: MicrowaveOven
+   <code generation output here>
+   <CDT output here>
+   Build complete. Exiting.
+_R The command line contains all expected CDT output
+
+10.2 Test that Verifier can be invoked from the CLI.
+
+10.2.1 Test verifier output to command line
+_- Prepare a workspace that contains MicrowaveOven
+_- Execute the following bp.cli command:
+   EXECUTE (without using the -output option)
+_R The command line prints the execution of the TestSequence1 test
+
+TODO: Add detail      
+
+10.3 This issue has no affect on plugins outside of the new bp.cli plugin and
+     the bp.debug.ui plugin.  Therefore the only unit tests that shall be 
+     run are the new bp.cli tests and the verifier tests.
+
+code changes:
+bp.bld.pkg-features/feature.xml
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc [incoming change]
+com.mentor.nucleus.bp.core/tools/tag_bp_nb.sh [incoming change]
+com.mentor.nucleus.bp.core/tools/tag_bp.sh [incoming change]
+
+
+End
+---
+
+$Log: dts0100887837.dnt,v $
+Revision 1.6  2012/10/08 21:28:26  tlondon
+Job: dts0100887837
+
+Update note to account for logging feature
+
+Revision 1.5  2012/10/08 12:53:10  rmulvey
+job:dts0100887837
+Updated the note to explain the introduction of CheckStateListener.java.
+
+Revision 1.4  2012/10/04 18:30:42  tlondon
+Job: dts0100887837
+
+Update dnt to account for changes
+
+Revision 1.3  2012/10/04 00:41:30  rmulvey
+job:dts0100887837
+Added detail about the termination implementation.
+
+Revision 1.2  2012/10/03 21:56:49  rmulvey
+job:dts0100887837
+Added detail to the unit test section
+
+Revision 1.1  2012/07/02 15:04:56  rmulvey
+job:dts0100887837
+Updated the design note to reflect the current work in progress.
+

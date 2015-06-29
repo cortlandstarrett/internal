@@ -1,0 +1,224 @@
+========================================================================
+
+File:      $RCSfile: i845-i72-UT.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Unit tests for MFP that covers 'restore create' scenarios.
+
+Abstract
+--------
+This note describes the implementation of Unit tests for MFP that cover
+'restore create' scenarios.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla-mfp issue 72
+[2] /Documentation/internal/plan/R1_1_0/Pkg CM Test Matrix.txt
+[3] /Documentation/internal/technical/Persistence/i845-i62-UT.int
+[4] /com.mentor.nucleus.bp.io.mdl.test/Test_Readme.txt
+[5] /com.mentor.nucleus.bp.test/Test_Readme.txt
+Background
+----------
+MFP needs separate testing for the creation of components as per test matrix[2]
+in the restored status of tiger.
+
+Design
+------
+All multi file restore unit tests as per plan [2] follow a similar structure and
+design as described below.
+
+1. Restore test case structure.
+
+-  Each Restore test case should be executed twice, once to setup test 
+environment particular to the given test case such as opening the related and 
+affected editors. Second execution will execute desired post setup operations 
+and result verifications.
+
+- For each type of restore test, there is only one class with naming pattern 
+PkgCMRestore[TestType]Test that extends from corresponding PkgCM[TestType]Test
+containing non-restore tests of given type. For example; in case of 'restore 
+create' tests the name of the class is PkgCMRestoreCreateTest.
+
+- The structure and design of PkgCM[TestType]Test class is documented in design
+section of [3].
+
+- PkgCMRestore[TestType]Test class only overrides some functions to add 
+functionality related to restore tests. 
+
+a) initTest(...) 
+ This is the most important function that is overridden for restore tests. It 
+ sets up the workspace or initializes the test data upon restore. initTest() has 
+ different parameter signatures for each type of test.
+  
+b) setupProjectAndTestModel() 
+ This is used to override initialization of restored test project and model 
+ data (modelRoot, graphicsModelRoot, etc). static variables and variables
+ that last across more then one test should be loaded in this method.
+
+c) tearDown()
+ In this function static variables or variables that last across more than one 
+ tests are saved in a properties file.
+
+2. RestoreTest Launch utility design.
+
+A launch utility is written that automates execution of restore tests to reduce
+time and effort required to execute restore tests. This utility is included in 
+bp.test project so that it is installed in the developers environment according
+to instructions described in [5].
+
+2.1. Auto launch process.
+
+A new extension from org.eclipse.debug.core.launchConfigurationTypes extension
+point is created. This launch configuration has two important attributes.
+. base 'JUnit Plug-in Test launch configuration' name.
+. fully qualified testcase class name.
+
+For each testcase method in testcase class, this utility launches base 
+'JUnit Plug-in Test launch configuration' twice. The First with adding 
+-DSETUP_WORKSPACE=True to VM arguments, to setup workspace. And again with 
+-DSETUP_WORKSPACE=False to perform actual test.
+
+It is the responsibility of the test case implementer to interpret
+SETUP_WORKSPACE property and do either of setup or test execution.
+
+2.2. Restore Test launcher manipulation
+Restore Test launcher implements IDebugTarget which means standard debug view
+commands can be used to terminate launches. Currently only terminate command is
+supported. To terminate all testcases select 'Restore test' from Debug View and
+press terminate. To terminate only current testcase, select corresponding junit
+launch from Debug View and press terminate. Standard JUnit debug functionality
+is not effected by this plugin.
+
+2.3. Restore tests result file generation.
+
+Existing results file generation mechanism overrides result file for each test
+case, so it contains result for one testcase only i.e. the last one. Therefore
+new result file generation mechanism is created. A 'Junit Test Run Listener' 
+extension is created and the class is extended from TestResultLogger to reuse 
+existing code and output format.
+
+Note:
+All the succeeding UT notes related to issue 845(restore) will refer to the
+design described in this note instead of describing it again as it is common for
+all mfp restore unit tests.
+
+Test Sequence
+-------------
+Following is the sequence of the 'Restore Create' unit tests created under this
+issue for i845.
+
+_- Open Canvas editor (if applicable; i-e., component can be represented 
+   as graphical shape in a canvas editor).
+_- Restart tiger   
+_- Create one new child component of given type through restored canvas or
+   otherwise explorer.
+_R The contents of canvas editor are updated to show the shape for the new 
+   component(if canvas editor is applicable).
+_R Model Explorer shows tree entry for the new component.
+_R For ISM creation, Model Explorer shows tree entry for current_state 
+   attribute.
+_R Xtuml File for new component physically exists.
+
+Above sequence is repeated for all following components.
+                                   ME    CE
+1. System                          X      
+2. Domain                          X      
+3. Datatype Package in Package           X
+4. Subsystem                             X
+5. Subsystem in Subsystem                X
+6. Model Class                           X
+7. Instance State Machine          X     
+8. External Entity Pkg in Pkg            X
+
+Implementation Comments
+-----------------------
+- Restore tests uses same graphical data as used by normal scenarios. So their
+  is no expected results generation for restore tests.
+
+Unit Test
+---------
+Following unit test is intended to test the launch utility.
+
+Note: This test will be performed manually.
+_- Create Restore Test Launcher configuration as instructed in [4].
+_- Debug this configuration.
+R_ Html results file io-mdl-pkgcm-restore-PkgCMRestoreCreateTest-results.html
+   is generated in top-level Eclipse folder.
+R_ 'Test count' in the result file is double then test cases in suite.
+R_ For each test case there are two entries first with prefix setupWS:- and 
+   second with Running:-.
+
+Code Changes
+------------
+- com/mentor/nucleus/bp/test/common/BaseTest.java
+- com/mentor/nucleus/bp/io/mdl/test/pkgcm/PkgCMBaseTest.java
+- com/mentor/nucleus/bp/io/mdl/test/pkgcm/CreateTest.java
+- com/mentor/nucleus/bp/io/mdl/test/pkgcm/PkgCMCreateTest.java
+- com/mentor/nucleus/bp/io/mdl/test/pkgcm/restore/PkgCMRestoreCreateTest.java
+- com/mentor/nucleus/bp/io/mdl/test/pkgcm/CanvasEditorUtilities.java
+- com/mentor/nucleus/bp/io/mdl/test/pkgcm/EditorTestUtilities.java
+- com/mentor/nucleus/bp/io/mdl/test/pkgcm/restore/PkgCMRestoreTestSuite.java
+- Test_Readme.txt
+
+- com/mentor/nucleus/bp/test/launcher/restore/RestoreMainTab.java
+- com/mentor/nucleus/bp/test/launcher/restore/RestoreTestLauncherDelegate.java
+- com/mentor/nucleus/bp/test/launcher/restore/RestoreTestLauncherTabGroup.java
+- com/mentor/nucleus/bp/test/launcher/restore/RestoreTestResultLogger.java
+- com/mentor/nucleus/bp/test/TestResultLogger.java
+- com.mentor.nucleus.bp.test/plugin.xml
+- com.mentor.nucleus.bp.test/build.properties
+- com.mentor.nucleus.bp.test/icons/launcher.restore.gif
+
+End
+---
+
+$Log: i845-i72-UT.int,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.28.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2006/02/03 13:24:53  araza
+Job:845
+i72. Observation addressed.
+
+Revision 1.5  2006/01/19 12:56:04  babar
+Job:845
+Slight Rephrasing
+
+Revision 1.4  2006/01/19 06:42:39  araza
+Job:845
+Incremental check in .
+
+Revision 1.3  2006/01/18 14:58:13  araza
+Job:845
+Added RestoreTest Launcher design and code changes.
+
+Revision 1.2  2006/01/16 06:04:58  babar
+Job:845
+Incremental checkin
+
+Revision 1.1  2006/01/10 11:20:17  araza
+Job:845
+Initial draft.
+

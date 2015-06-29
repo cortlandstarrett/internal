@@ -1,0 +1,152 @@
+========================================================================
+
+File:      $RCSfile: i862.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:29 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Refactor OAL parsing code
+
+Abstract
+--------
+This note describes changes to remove redundancies in the OAL parsing code.
+
+History
+-------
+
+final i862-062805-01.rvm
+
+Document References
+-------------------
+Bugzilla Issue 862
+Bugzilla Issue 893
+
+Background
+----------
+There is code for parsing actions that is duplicated between the 
+ActivityEditor class and the AllActivityModifier class.  There is also 
+duplication between AllActivityModifier and PlaceHolderManager regarding
+updating markers in placeholder files.
+
+Design
+------
+
+1.  Unify OAL parsing code.
+
+1.1  Extract class in ActivityEditor
+
+In the ActivityEditor class, there is an anonymous class that implements the 
+Runnable interface.  This class is extracted to become the nested class
+ActivityEditor.ParseRunnable.
+
+1.2 Use ParseRunnable class in AllActivityModifier
+
+The code in AllActivityModifier.parseAction() that replicates the code in
+ActivityEditor.ParseRunnable is replaced.  The class creates an instance
+of ParseRunnable, sets the data member values, and executes the run() method.
+
+1.3  Add Suc_Pars read/write function
+
+The method AllActivityModifier.updateSuc_Pars() is renamed to 
+AllActivityModifier.accessSuc_Pars().  The method has a parameter writeValue
+(boolean) added.  The method is modified to write the Suc_Pars value if 
+writeValue is true, or return the Suc_Pars value if false.  The default return
+value is Parsestatus_c.OOA_UNINITIALIZED_ENUM.
+
+The ActivityEditor.ParseRunnable() class is changed to only parse the action
+if the Suc_Pars attribute is not equal to DoNotParse.  The AllActivityModifier.
+parseAction() method already did this test, so we need this to maintain
+current functionality.  This also fixes issue 893.
+
+2.  Unify marker update code
+
+The code in AllActivityModifier.parseAction() that updates markers is removed.
+All that is needed is a call to doSaveDocument().   The private utility methods
+hasMarkers() and isEditorOpen() are no longer needed and removed as well.
+
+DocumentProvider.doSaveDocument() is changed to only update the Suc_Pars value
+if the current value is not equal to Do Not Parse.
+
+Implementation Comments
+-----------------------
+
+- updateSuc_Pars() was changed to accessSuc_Pars() in DocumentProvider.java
+
+- In DuplicateRelationshipNumberParseAllTest.java, the expected file name of the 
+placeholder file is changed to match what the placeholder code outputs.
+
+- The changes to AllActivityModifier.parseAction() to always call 
+doSaveDocument() changed the expected results for files in internal.io.sql.test.
+Previously, doSaveDocument() wouldn't be called if there weren't any errors
+before or after the parse.
+
+Unit Test
+---------
+
+The ParseActivity test was changed to disable parses, and check that no 
+parsing was done when editor data changed.
+
+- Run all unit tests
+R All tests run successfully
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/cme1.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/ee_empty.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/err_ee2.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/oal1.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/oal2.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/os_ee2.imp
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+	DocumentProvider.java
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/
+	ActivityEditor.java
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/activity/
+	AllActivityModifier.java
+
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+	DuplicateRelationshipNumberParseAllTest.java
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/activity
+    ParseActivity.java
+
+End
+---
+
+$Log: i862.int,v $
+Revision 1.1  2009/09/03 18:24:29  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:41  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.30.1  2008/12/31 16:10:55  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/06/30 23:31:56  jmather
+Job: 862
+Added a couple of code changes entries.
+
+Revision 1.3  2005/06/30 00:07:57  greg
+Job: 862
+Ready for review
+
+Revision 1.2  2005/06/28 00:13:54  greg
+Job: 862
+Add change to doSaveDocument()
+
+Revision 1.1  2005/06/27 17:47:30  greg
+Job: 862
+Introduce

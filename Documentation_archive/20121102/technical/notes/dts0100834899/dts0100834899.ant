@@ -1,0 +1,115 @@
+========================================================================
+
+File:      $RCSfile: dts0100834899.ant,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Support generic packages in SystemC MC
+
+
+
+1. Abstract
+-----------
+We need to support generic packages (and specialized packages, probably) in the 
+System-C MCs.
+
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100834899 Support generic packages in SystemC MC
+[2] ClearQuest DEI dts0100839961 Prebuilder does not export all required OAL 
+                                 with Generic packages
+[3] ClearQuest DEI dts0100632984 Update MCs to work with proposed meta-model 
+                                 change (including generic package support)
+
+
+4. Background
+-------------
+In this section, outline the important points relating to this issue/bug that
+the reader would need to know in order to guide him/her to proceed with the
+design.
+
+
+5. Analysis
+-----------
+5.1 The MC-3020 model compiler was updated to support code generation for
+    generic packages models.  The SystemC model compilers needed to be modified
+    to support generic packages too.
+    Basically the model compiler files are modified to navigate the model using 
+    the generic packages context instances instead of the specialized context
+    ones for instances navigating trough component packages CP_CP is replaced by
+    navigating through package instances EP_PKG.
+    This was done by the help of comparing a branch for the work done for [3] 
+    with its root.
+    
+5.1 There is another related issue that emerged during this work and was fixed 
+    directly to head [2]. A customer reference model fails to translate properly 
+    when converted to generic packages.
+    Examination of the sql file exported by the prebuilder reveals a different 
+    number of ACT_BLK instances; 144 as opposed to 1386 for the specific package 
+    case.
+    The problem is located inbp.ui.text.AllActivityModifier, in the method 
+    initializeBodies(). This method does not account for the changes made for 
+    issue dts0100631941 to support parsing in generic packages.
+    The following changed initializeBodies() method addresses the problems:
+    In the File AllActivityModifier.java
+    Components within a package are now recursively visited, because they each 
+    have their own model root.  Calls were added to the 
+    Body.associateWithContainer() operation. 
+    If these are not made, some parsing validation that expects R640 to be 
+    present will fail and no OAL instances are output for the activity.
+    This change is went directly to head.  
+
+
+6. Work Required
+----------------
+6.1 There are two branches for SystemC model compilers, one is for midtronic's 
+   flavor of the SystemC and the Other is for Sony's flavor.
+   So the work plan is to have a separate branches for each flavor holding 
+   the migration changes related to it _basically the files that live in the 
+   specialized folder_.
+   
+6.2 The code generated for the generic package model should be identical to a 
+    similar specialized package one built with the specialized version of the 
+    model compiler. So this is assured by building simple models and compare the 
+    generated code for them.
+    Creating identical specialized and generic models then build each with their
+    corresponding set of arcs. Compare the generated files should be identical.
+ 
+6.3 The SystemC generated files can't be built correctly using the CDT builder 
+    integrated in the IDE,so they had to be built in a separate step.
+    After generating the code using the model compiler. Use cygwin then navigate 
+    to the src folder in the project and use the build command that include the
+    systemC library in the build process. Get the output a.exe and run it.
+    g++ -I. -I <path>/systemc-2.2.0/include/ -L. -c *.cpp; g++ *.o 
+    -L<path>systemc-2.2.0/lib-cygwin/ -lsystemc      
+ 
+7. Acceptance Test
+------------------
+The Test strategy basically depends on generating code for the generic version 
+ of the integrationModel and compare it with the generated code that's done
+ for the specialized version of the model using the specialized version of the 
+ modelCompiler. Both sets of generated code files should be the same.
+ Then build the generated files and get the output a.exe file and run it.
+ The behavior should be the same as that of the specialized one. 
+ 
+End
+---
+
+$Log: dts0100834899.ant,v $
+Revision 1.1  2011/12/16 15:28:30  hkhaled
+Job:dts0100834899
+moving the content from a design note to analysis note
+

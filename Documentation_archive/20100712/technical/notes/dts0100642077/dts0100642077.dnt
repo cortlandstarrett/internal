@@ -1,0 +1,251 @@
+========================================================================
+
+File:      $RCSfile: dts0100642077.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Fix interface operation parameter access failure when components are imported
+from different packages
+
+1. Abstract
+-----------
+This note describes the design for the fix that causes 'simple access...' errors
+when executing Verifier on component references from different component
+packages.
+
+2. History
+----------
+
+final - dts0100642077-20100528
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100642077 - Interface operation parameter access fails
+    when components are imported from different packages.
+[2] ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+
+4. Background
+-------------
+This error was seen in models which leveraged component references. in the last
+release, Verifier support for execution of component references was introduced.
+For the first time, this allows components defined in different packages to be
+executed together in Verifier. This exposes a problem when Verifier looks for
+runtime values using an identifier.
+
+5. Analysis
+-----------
+To work around OAL's early lack of support for instance reference passing,
+Verifier instead takes and returns instance identifiers. One such place in
+the Value subsystem is where Value.getRuntimeValue() is used to return an
+identifier for the Runtime Value instance associated with a static Value
+specification. The getRuntimeValue() operation takes a stack frame identifier to
+identify the context in which to look for the value.
+
+In the failure mode, the Value in question was a parameter value. More
+specifically, it was a parameter to an inter-component interface operation. To
+implement the parameter passing, Verifier computes the value of the argument and
+creates an instance of Runtime Value in the remote component to hold the result
+and places it as a value in the stack frame prepared for the invocation on the
+recipient components' stack.
+
+When the argument value is accessed in OAL in the recipient component, the
+Parameter Value.getRuntimeValue() operation is called. This correctly locates
+the Runtime Value created previously and returns its RuntimeValue_ID. This is
+returned to the body of Value.computeValue() where it is used in the statement:
+
+select any runtimeValue from instances of RV_RTV where 
+                                      selected.RuntimeValue_ID == returnedID;
+
+This is the moment of first failure. This select statement only considers
+instances in the local model root. The Runtime Value instance created by the
+invoking component in the scenario above is not present in the local model root.
+A selection of this type is made both in computeValue() and in the Runtime Value
+class in the operation copyValue(). Here it is used to obtain the source Runtime
+Value instance to copy a value from (copyFrom() is called on the target value).
+The user visible error message noted in the issue comes from the copyValue()
+operation, because the instance handle obtained is empty which is a can't happen
+situation in normal operation. The failure to obtain an instance in the
+computeValue() operation leads to a silent memory leak, because no runtime value
+instance is found to dispose.
+
+6. Design
+---------
+6.1 Replace select from instances with select related by
+Searching only the local model root was a known limitation of the select from
+instances of statement. However, select related by is not limited in this way.
+Accordingly, adding extra OAL to perform the necessary traversals was
+considered. This idea was rejected for the following reasons:
+
+- These traversals duplicate the existing, complex traversals already made in
+  getRuntimeValue(). This will cause double maintenance.
+- The traversals are expensive on CPU resource, so performance will suffer.
+- The addition of delegation (added as part of the work for [2]) further
+  complicates these traversals.
+- There were multiple known other places where additional traversals are
+  needed. It is highly likely that there are also multiple _unknown_ places
+  too. This will lead to poor reliability in the medium term as missed failure
+  cases are identified and fixed. 
+
+6.2 Modify the architectural implementation of select from instances where
+In this design alternative, the MC-Java code generator is modified so that if
+no instance is found in the local instance extent, all model roots in the
+project are searched in turn. The additional overhead on a 'select from
+instances where' when the instance is found locally is one additional
+'if not_empty' test. This is a very small price to pay for removing this
+potential failure mode for every meta model class in all situations (however,
+see below for one significant exception).
+
+The change is one extra block of code in the file statement.inc, in the
+function, gen_select_instance_where_statement:
+
+  .if(tgt_obj.Key_Lett == "S_SYS")
+v_${sel_inst_where.Variable_Name} = (${cn.body}) Ooaofooa.getDefaultInstance()
+                   ..getInstanceList(${cn.body}.class).get(${value}.toString());
+  .else
+v_${sel_inst_where.Variable_Name} = (${cn.body}) modelRoot.
+                     getInstanceList(${cn.body}.class).get(${value}.toString());
+if (v_${sel_inst_where.Variable_Name} == null) { // Instance not found locally
+  Ooaofooa[] roots = Ooaofooa.getInstancesUnderSystem(modelRoot);
+  for (int rootCount = 0; rootCount < roots.length; rootCount++) {
+    ModelRoot root = roots[rootCount];
+    if (root != modelRoot) { // Already searched this root
+      v_${sel_inst_where.Variable_Name} = (${cn.body}) root.getInstanceList(
+                            ${cn.body}.class).get(${value}.toString());
+      if (v_${sel_inst_where.Variable_Name} != null) {
+          break;
+      }
+    }
+  }
+}
+  .end if
+
+The first 6 lines and last line already exist in the function and are included
+for context. Note the call to Ooaofooa.getInstancesUnderSystem(). This returns
+only those model roots that share the same project as the current one. When we
+change to support inter-project references, this call will have to be changed to
+Ooaofooa.getInstances() (and we must expect a much more significant performance
+impact).
+
+There are two sub-optimal aspects of this solution that require highlight:
+
+- There are many places where:
+  select from instances of where selected.ID == GD::NULL_UNIQUE_ID()
+  
+  is used to effectively 'declare' an instance handle. The proposed change adds
+  processing overhead to this use case, because the new generated code will
+  search every model root before leaving the required empty handle. The overhead
+  is mitigated by the fact the InstanceList.get() method has an optimization
+  that avoids a hash computation for a null unique id and immediately returns a
+  null result. Additional code could be added to check for this before entering
+  the remote roots loop, but given the relatively small overhead, it is not
+  thought worth the additional complexity.
+
+- This change does not trigger lazy loading, so the technique of using select
+  from instances of where selected.ID == ID is safe only where instances are
+  known to already be in memory. Verifier fully meets this criterion, and so
+  does the other major user of this technique; the parser. Other places need to
+  use this statement type with care.
+
+Note that the outward search strategy may well be useful when we consider inter-
+project references.
+
+6.3 provide global model root search
+The solution in 6.2 has the drawback that it is not applied to handwritten code.
+An alternative is modify InstanceList.get() to always search other model roots
+if the passed id is not found in the local root. Unfortunately, this causes a
+lot of failed tests. In particular the persistence mechanism appears to get
+confused about where in the component hierarchy an element lives. This is a
+dangerous outcome and must be avoided. In addition, InstanceList extends Vector,
+and modifying the get() method breaks the programming contract provided by
+Vector in that the result of get() might not be consistent with contains() and
+other methods.
+
+Instead, we add a new method to InstanceList that is called in two cases:
+
+- From generated select from instances ... where statements in OAL as prescribed
+  in 6.2 above.
+- From those places in hand written code where access to a model element that
+  may be present in different model roots is required.
+
+This new method is called getGlobal() and has the following body:
+
+    public synchronized Object getGlobal(Object key) {
+      Object result = get(key);
+      // If we didn't find it in this model root, then 
+      // search all model roots.
+      if (result == null) {
+        ModelRoot firstRootSearched = this.getRoot();
+        Class<?> typeOfClass = this.getType();
+        Ooaofooa[] roots = Ooaofooa
+            .getInstancesUnderSystem(firstRootSearched);
+        for (int rootCount = 0; result == null && rootCount < roots.length; rootCount++) {
+          ModelRoot currentRoot = roots[rootCount];
+          if (currentRoot != firstRootSearched) { // Already searched this
+                              // root
+            result = currentRoot.getInstanceList(typeOfClass).instanceMap
+                .get(key);
+          }
+        }
+      }
+      return result;
+    }
+
+Note the similarity with the algorithm in 6.2. This approach has the advantage
+that it can be accessed where necessary from handwritten code.
+
+statement.inc is modified in the same place as prescribed in 6.2 to call
+getGlobal() instead of get(), thus:
+
+v_${sel_inst_where.Variable_Name} = (${cn.body}) modelRoot.
+               getInstanceList(${cn.body}.class).getGlobal(${value}.toString());
+
+Two places in com.mentor.nucleus.debug.ui are modified to allow the Variables
+View to show values passed by a remote component.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The hybrid code generator and handwritten code fix described in 6.3 offers the
+more comprehensive, lower maintenance and higher reliability solution. The work
+required is to insert the specified extra block of code into the code generation
+archetype file 'statement.inc'. Modify InstanceList to provide the supporting
+method, and modify two places in debug.ui as described in the design.
+
+9. Unit Test
+------------
+_- Run the reproduction model attached to the issue.
+_- No output of any kind is seen. Execution runs to completion.
+
+All other unit tests must pass.
+
+End
+---
+
+$Log: dts0100642077.dnt,v $
+Revision 1.4  2010/06/01 18:38:32  campbell
+Job: dts0100642077
+Finalized.
+
+Revision 1.3  2010/06/01 18:36:19  campbell
+Job: dts0100642077
+Address review issues.
+
+Revision 1.2  2010/05/26 14:40:14  campbell
+Job: dts0100642077
+Updated with details of final selected fix.
+
+Revision 1.1  2010/05/22 14:30:39  campbell
+Job: dts0100642077
+Introduced.
+

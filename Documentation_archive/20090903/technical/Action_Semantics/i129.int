@@ -1,0 +1,411 @@
+========================================================================
+
+File:      $RCSfile: i129.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement parameter read and write
+
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+reading and writing of invocation parameters.
+
+History
+-------
+
+final i129-030304-01.rvm
+
+Document References
+-------------------
+Issue 129
+action_semantics.dnt
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so that reading and writing of parameters to
+functions, bridges and operations are semantically validated.
+
+This work is part of implementing the action semantics 
+design (action_semantics.dnt), section AS1.4.3.
+
+The Tiger reduced parser (oal.bnf) has the following rules
+regarding these statements:
+
+param_data_access!
+  :
+  "param"
+  TOK_DOT
+  data_item
+  ;
+
+
+Design
+------
+
+i129.1  Changes to grammar
+
+i129.1.1  Add isLval to param_data_access rule
+
+A parameter can be both an l-value (byRef parameters) and
+an r-value(all parameters).  The parameter boolean isLval
+is added to the param_data_access rule.  Note that we also
+add exclamation points to the unneeded tokens.
+
+param_data_access[boolean isLval]
+  :
+  "param"!
+  TOK_DOT!
+  data_item
+  ;
+
+i129.1.2  Add param data access to assignment_expr rule
+
+The assignment_expr rule is augmented to add the param_data_access
+rule for assignments to byRef parameters.
+
+assignment_expr
+  :
+  (
+    (  local_variable[true] TOK_EQUAL )=>
+    local_variable[true]
+    TOK_EQUAL!
+    expr
+  |
+    (  attribute_access[true] TOK_EQUAL )=>
+    attribute_access[true]
+    TOK_EQUAL!
+    expr
+  |
+    param_data_access[true]
+    TOK_EQUAL!
+    expr
+  )
+  ;
+
+i129.1.3  Add param data access to bridge_statement rule
+
+The bridge_statement rule is augmented to add the param_data_access
+rule for assignments to byRef parameters.
+
+bridge_statement
+  :
+    "bridge"!
+    (
+	    (
+	      ( local_variable[true]
+	      | attribute_access[true]
+	      | param_data_access[true]
+	      )
+	      TOK_EQUAL!
+		    bridge_invocation[true]
+	    )
+	|   
+	    bridge_invocation[false]
+    )
+    
+  ;
+
+i129.2  Changes to ooa
+  
+i129.2.1  Change Parameter Value relationships
+
+The attribute Parameter Value.Parameter_Name is removed.
+Three relationships are added, R831, R832, and R833.  The
+relationships are from Parameter Value to, respectively,
+Bridge Parameter, Synchronous Service Parameter, and 
+Transformer Parameter.  All relationships are 0,1 - *.
+The Parameter Value represents the value of a parameter
+to either a Bridge, Synchronous Service, or Transformer.
+
+i129.2.2  Create assign to parameter statement class
+
+The class Assign To Parameter (ACT_ATP) is added to the 
+Action_Instance subsystem.  The class is a subtype of
+the Statement class.  The class has three relationships
+to the three different types of parameters, just as 
+described in section i129.2.1.  The class has a clear
+operation.
+
+i129.2.3  Clear operations
+
+The following clear operations are added:
+
+Parameter Value (V_PVL)
+
+The following clear operations are updated:
+
+Value.clear() - Add check for V_PVL
+Statement.clear() - Add check for ACT_ATP
+
+i129.2.4  Add Bridge as action
+
+The class Action Specification (ACT_ACT) has the relationship
+R688 added to the class Bridge (S_BRG).  This relationship 
+captures that the ACT_ACT 'specifies processing for' a Bridge.
+
+i129.3 Implement validation
+
+The following errors can occur when accessing
+invocation parameter data:
+
+- Trying to read or write a parameter that doesn't exist
+- Trying to write to a byVal parameter
+- Data type mismatch when reading a parameter
+- Data type mismatch when writing a byRef parameter
+- Passing a non-variable to a byRef parameter
+
+i129.3.1  Add utility function
+
+The utility function is_readonly_value() is created.
+It returns a boolean.  It is passed in the identifier of
+a V_VAL instance.  It returns true if the value is read-only.
+A read-write value would be a transient variable or an attribute.
+All other values are read-only.
+
+i129.3.2  Add parameter validation
+
+The validation function param_data_access_validate() is
+implemented.  The function determines the invocation that the
+parameter belongs to, and then determines if the parameter
+is defined for the invocation, and that only byRef parameters
+are used as l-values.  An error is raised if there is a problem.
+The function returns the Value id for r-values and the 
+Statement id for l-values.  The checking for data type compatibility
+is already present in the assignment validation functions.
+
+i129.3.3  Update other validation functions
+
+action_start() - This validation function has processing added
+for parsing bridges and operations.
+
+bridge_invocation_end() - A call to is_readonly_value is added
+to check that a read-write value is being passed to a byRef 
+parameter.
+
+function_invocation_end() - A call to is_readonly_value is added
+to check that a read-write value is being passed to a byRef 
+parameter.
+
+transform_invocation_end() - A call to is_readonly_value is added
+to check that a read-write value is being passed to a byRef 
+parameter.
+
+bridge_statement_end() - This function is modified to add processing
+for the parameter data write case.
+
+implicit_bridge_or_transform_statement_end - This function is changed
+to add the new parameters to bridge_statement_end().
+
+assignment_expr_end() - This function is modified to add processing
+for the parameter data write case.
+
+
+Work Required
+-------------
+
+i129.1  Changes to grammar
+
+i129.1.1  Add isLval to param_data_access rule
+
+The change is made to oal.bnf.  grammar_enhancer.arc
+is changed to add a check to output the '!' character
+for the literal "param" and the token TOK_DOT.  Normally
+the '!' character is not output by the archetype, but
+it is needed by this rule so that the correct token text
+is passed to the validation function.
+
+i129.1.2  Add param data access to assignment_expr rule
+
+The change is made to oal.bnf.
+
+i129.1.3  Add param data access to bridge_statement rule
+
+The change is made to oal.bnf.
+
+i129.2  Changes to ooa
+
+All changes are made to ooaofooa.bak
+  
+i129.2.1  Change Parameter Value relationships
+i129.2.2  Create assign to parameter statement class
+i129.2.3  Clear operations
+i129.2.4  Add Bridge as action
+
+i129.3 Implement validation
+
+All changes are made to function_import.sql
+
+i129.3.1  Add utility function
+i129.3.2  Add parameter validation
+i129.3.3  Update other validation functions
+
+Implementation Comments
+-----------------------
+
+- The unit tests for the return statement were updated 
+to test the statement for bridges and operations, as well
+as the current tests for functions.  
+
+- The validation function return_statement_end() was updated
+to add processing for bridges.
+
+- The unit test OalParserTest.java was refactored to add 
+arrays for the bridge, class-based and instance-based activities.
+static final ints were added to define each of the activity types,
+as well as the indexes into the array of activities. The method
+parseAction was extended to take both the activity type and the
+activity index. 
+
+Unit Test
+---------
+
+- Create the following test invocations as functions,
+bridges for the T external entity, class-based operations
+on the D_D class, and instance-based operations on the D_H
+class :
+    void paramVal ( i: integer byVal )
+    void paramRef( s: string byRef )
+    void paramValVal ( i: integer byVal, b: boolean byVal )
+    void paramValRef ( i: integer byVal, r: real byRef )
+    void paramRefRef ( s: string byRef, r: real byRef )
+    
+- Parse the following action language using the indicated function,
+bridge, instance-based or class-based operation:
+
+// testReadByValParam (paramVal)
+x = param.i;
+
+// testReadByRefParam (paramRef)
+x = param.s;
+
+// testRead2ByValParam (paramValVal)
+x = param.i; y = param.b;
+
+// testReadByRefByValParam (paramValRef)
+x = param.r; y = param.i;
+
+// testRead2ByRefParam (paramRefRef)
+x = param.s; y = param.r;
+
+// testWriteByRefParam (paramRef)
+param.s = "test";
+
+// testWrite2ByRefParam (paramRefRef)
+param.s = "test"; param.r = 2.2;
+
+// testInvocationPassVarToByRef
+x = "good"; ::paramRef( s: x );
+
+// testInvocationPassAttributeToByRef
+create object instance d of D_D; ::paramRef( s: d.string_attr );
+
+// testInvocationPassR2I
+::paramVal( i: 3.14 );
+
+// testInvocationPassI2R
+::paramValRef( i: 3.14, r: 2 );
+
+
+Error cases
+-----------
+
+// testReadNoSuchParam (paramVal)
+x = param.s;
+
+// testWriteNoSuchParam (paramVal)
+param.s = "bad";
+
+// testWriteByValParam (paramVal)
+param.i = 1;
+
+// testWriteByValParamMultParms (paramValRef)
+param.i = 1;
+
+// testWriteByValParamWrongType (paramVal)
+param.i = 2.1;
+
+// testWriteByValParamWrongTypeMultParms (paramValRef)
+param.i = 2.1;
+
+// testReadByValParamWrongType (paramVal)
+x = true;  x = param.i;
+
+// testReadByValParamWrongTypeMultParms (paramValRef)
+x = true;  x = param.i;
+
+// testReadByRefParamWrongType (paramRef)
+x = 2.1;  x = param.s;
+
+// testReadByRefParamWrongTypeMultParms (paramRefRef)
+x = 2.1;  x = param.s;
+
+// testWriteByRefParamWrongType (paramRef)
+param.s = 1.1;
+
+// testInvocationPassLiteralToByRef
+::paramRef( s: "bad" );
+
+// testInvocationPassExpressionToByRef
+::paramRef( s: "really " + "bad" );
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version:  1.10  Final version: 1.11
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version:  1.19  Final version: 1.20
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.11  Final version: 1.12
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.13  Final version: 1.14
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.15  Final version: 1.16
+
+
+End
+---
+
+$Log: i129.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/03/12 03:27:38  greg
+Job: 129
+Add refactoring changes to unit test description.
+
+Revision 1.2  2004/03/04 01:41:20  greg
+Job: 129
+Update from review
+
+Revision 1.1  2004/03/03 19:39:10  greg
+Job: 129
+Initial introduction
+
+

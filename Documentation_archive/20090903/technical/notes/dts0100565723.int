@@ -1,0 +1,185 @@
+========================================================================
+
+File:      $RCSfile: dts0100565723.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Events generated to self not handled prior to externally generated events
+
+
+1. Abstract
+-----------
+Component A sends two identical signals to component B. The state machine which
+handles the incoming signal in component B generates an event to self. The self
+directed event is not accelerated the way the OOA time and event rules specify
+it should. This note describes the correction of the defect that causes this
+problem.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest item dts0100565723
+	http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&queryID=33567853    
+[2] Bugzilla item 3405, Inter-component verification
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3405
+[3] svn://phoenix.azt.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+                                          Development/BugzillaData/dts0100565723
+4. Background
+-------------
+This issue was found during preparation of Autosar demonstration models.
+
+There were significant changes to the verifier after BP 2.0.3.  Specifically [2]
+added support for inter-component verification.
+
+The problem is not apparent if component A is stepped over the signal sends.
+This is because component B is still running and sees the first signal and
+responds to it and the ensuing self directed event before the user can step over
+the second signal generation statement.
+
+5. Design
+---------
+The problem is caused by a blind select of a stack in 'Event Specification
+Statement.relateToOriginatingInst()'
+
+Prior to the inclusion of Component based execution, this blind select was
+perfectly safe. However, once multiple components are being executed, each
+component has its own stack, so a blind select may or may not find the correct
+stack. Executing a single component or a domain will not show this problem.
+
+5.1 Modify Event Specification Statement.relateToOriginatingInst()
+This operation is modified to take an additional argument, stack_frame_id. The
+argument is used to locate the correct stack frame and hence the correct stack.
+
+5.2 Cascade changes
+The following subtypes of Event Specification Statement call this operation in
+a single place in their 'execute' operations:
+
+  Create Event to Class
+  Create Event to Creator
+  Create Event to Instance
+  Generate
+  Generate to Class
+  Generate to Creator
+
+They are each modified to pass the additional argument. All classes already had
+a suitable stack frame id value already computed in the execute operation.
+
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+7.1  Execute the test case provided by the developer[3].  It is also found in
+     the description in the original bug[1]. No Can't Happen error should be
+     reported, the state machine for ClassB in component domainB should end the
+     test in State 3. Repeat the same test with a created event and with a class
+     based state machine. No meaningful test is possible for the Event to
+     Creator statements. A new instance is always created in these cases, so
+     event to self cannot happen. To run the test, invoke the 'init' function on
+     each of the components, then run the 'sendTestMessage' function on domainA.
+
+     A correct execution console looks like this:
+
+Simulation started.
+User invoked function: init
+User invoked function: init
+User invoked function: sendTestMessage
+TestIntfRequired dequeueing. Event: Port1::testsig
+TestIntfRequired transition. New State: Test generate to instance Previous State: Idle
+TestIntfRequired dequeueing. Event: Port1::testsig
+TestIntfRequired transition. New State: Test Generate pre created event to instance Previous State: Test generate to instance
+2:ClassB dequeueing. Event: ClassB2: testMessageReceived
+2:ClassB transition. New State: State1 Previous State: State1
+2:ClassB dequeueing. Event: ClassB1: transitionTo2
+2:ClassB transition. New State: State2 Previous State: State1
+TestIntfRequired dequeueing. Event: Port1::testsig
+TestIntfRequired transition. New State: Test Self in Class State Machine Previous State: Test Generate pre created event to instance
+TestIntfRequired dequeueing. Event: Port1::testsig
+TestIntfRequired transition. New State: Test pre created event to class Previous State: Test Self in Class State Machine
+2:ClassB dequeueing. Event: ClassB2: testMessageReceived
+2:ClassB transition. New State: State2 Previous State: State2
+2:ClassB dequeueing. Event: ClassB3: transitionTo3
+2:ClassB transition. New State: State3 Previous State: State2
+2:ClassB dequeueing. Event: ClassB2: testMessageReceived
+2:ClassB transition. New State: State3 Previous State: State3
+2:ClassB dequeueing. Event: ClassB4: transitionTo4
+2:ClassB transition. New State: State 4 Previous State: State3
+2:ClassB dequeueing. Event: ClassB2: testMessageReceived
+2:ClassB transition. New State: State 4 Previous State: State 4
+2:ClassB dequeueing. Event: ClassB5: transitionTo5
+2:ClassB transition. New State: Passed Previous State: State 4
+ClassB dequeueing. Event: ClassB_A6: testMessageReceived
+ClassB transition. New State: State1 Previous State: State1
+ClassB dequeueing. Event: ClassB_A1: transitionTo2
+ClassB transition. New State: State2 Previous State: State1
+ClassB dequeueing. Event: ClassB_A6: testMessageReceived
+ClassB transition. New State: State2 Previous State: State2
+ClassB dequeueing. Event: ClassB_A3: transitionTo3
+ClassB transition. New State: State3 Previous State: State2
+ClassB dequeueing. Event: ClassB_A6: testMessageReceived
+ClassB transition. New State: State3 Previous State: State3
+ClassB dequeueing. Event: ClassB_A4: transitionTo4
+ClassB transition. New State: State 4 Previous State: State3
+ClassB dequeueing. Event: ClassB_A6: testMessageReceived
+ClassB transition. New State: State 4 Previous State: State 4
+ClassB dequeueing. Event: ClassB_A5: transitionTo5
+ClassB transition. New State: Passed Previous State: State 4
+
+Note that the test should be run twice with the components having 'init' invoked
+in alternate orders (domainA first and then repeated with domainB first). The
+results should be the same. This proves that it is not luck that selects the
+correct stack instance.
+
+7.2  Execute all JUnit tests.  Verify they work correctly.
+
+8. Code Changes
+---------------
+Changes are in branch R2_1_2-CDM-dts0100565723
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+                                                     Create Event to Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+                                                   Create Event to Creator.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+                                                  Create Event to Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+                                             Event Specification Statement.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+                                                                  Generate.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+                                                         Generate to Class.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+                                                       Generate to Creator.xtuml
+
+End
+---
+
+$Log: dts0100565723.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/02/19 15:46:09  campbell
+Job: dts0100565723
+Add detailed expected results.
+
+Revision 1.2  2009/02/19 15:01:52  campbell
+Job: dts0100565723
+Address review observations.
+
+Revision 1.1  2009/02/19 12:18:19  campbell
+Job: dts0100565723
+Introduced.
+

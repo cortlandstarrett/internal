@@ -1,0 +1,269 @@
+========================================================================
+
+File:      $RCSfile: uuid-i1554.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Use UUID standard for unique_id type
+
+Abstract
+--------
+This document describes the MC-Java unique Id design and the modifications for 
+backward compatibility with BridgePoint 6.1.
+
+History
+-------
+update uuid-i1554-032106-01.rvm
+final uuid-i1554-033006-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla Issue 1554
+[2] http://en.wikipedia.org/wiki/UUID
+[3] http://en.wikipedia.org/wiki/Globally_Unique_Identifier
+[4] [Leach-Salz variant] http://www.faqs.org/rfcs/rfc4122.html
+[5] [Java implementation] 
+    http://java.sun.com/j2se/1.5.0/docs/api/java/util/UUID.html
+[6] [C implementation] http://www.ossp.org/pkg/lib/uuid/
+[7] Bugzilla Issue 1309
+[8] [Java UUID implementation supporting version 1] 
+    http://jug.safehaus.org/Home
+
+
+Background
+----------
+A lot of work has been done toward the implementation of unique ids. However,
+none of these efforts were flawless, exposing the implementation in one way or 
+another to the user. It is therefore suggested that we use the UUID standard[4] 
+specified by OSF (Open Source Foundation).  UUID support has been available in 
+Java since release 1.5.   This issue will evaluate alternatives for the 
+implementation of a UUID or GUID, and will select an appropriate one.
+
+Analysis
+--------
+1. UUID Types
+
+A UUID is 128 bits long, and can guarantee uniqueness across space and time. 
+There are four basic types of UUID that can be potentially used for our 
+purpose.
+
+1.1 UUID version 1, which uses time and IEEE 802 MAC address or a randomly or 
+    pseudo-randomly generated value, where MAC address is not available. 
+1.2 UUID version 2, which is DCE security based.  
+1.3 UUID version 3 or 5, which are drawn using hashing from different types of 
+    distinguished names within a certain namespace such as domain names. 
+    Version 3 uses MD5 for hashing and version 5 uses DHA-1.
+1.4 UUID version 4, which uses randomly or pseudo-randomly generated value.
+ 
+2. UUID Internal Structure
+
+It is important to understand the format of UUID to really realize its 
+effectiveness, especially in version 4, which has a higher probability of 
+collision comparatively.
+
+At the abstract level a UUID has four fields. Out of these four fields, three 
+are important in the context of this discussion.
+
+                         Version 1      Version 3/5     Version 4
+                         ---------      -----------     ---------
+Timestamp - 60 bit       UTC            Name hash       Random            
+Clocksequence - 16 bit   Random/last+1  Name hash       Random
+Node - 48 bit            MAC/Random     Name hash       Random
+
+We cannot use UUID version 3 or 5 because as per RFC[4], two different UUID 
+instances created at different times using the same source name and namespace 
+will always be the same. By looking at the availability of names in our system,
+and considering it as model namespace, we could use the whole path of model file
+as a seed name, but still cannot guarantee the uniqueness of this path based 
+name seed. Even if we decide not to recreate UUID on renames this rule increases 
+the probability of collision for us.
+
+We can use version 4, though if we look at the 100% unique-ness, it still has a
+probability of collision for two different PCs.
+
+As far as version 1 is concerned, if a MAC address is available, it is 
+guaranteed to be unique. For systems without MAC address, it uses a random 
+number. This type of UUID with a fall back mechanism seems to be most suitable.
+Please note that the resolution of timestamp field should be nano-seconds as per 
+specification [4] and there is no method in Java that provides nano-second 
+precision until Java 1.5. Java 1.5 provides System.nanoTime() which can be used
+to create version 1 UUIDs to avoid time collision.
+
+The final decision of which version should be used shall be made at design 
+level.
+
+3.  Language support/API
+
+Java 1.5 provides built-in support of UUID through the class java.util.UUID. It
+has utility methods for creating type 3 and 4 UUIDs. For any other types, one 
+can call the constructor with two parameters: long mostSigBits and long 
+leastSigBits. This means that if we select any type other then version 3 and 4,
+we shall have to implement the creation of the UUID as per specification. The 
+java.util.UUID class however supports conversion to standard string 
+representation for UUID and vice versa. This will require upgrading of the BP 
+code-base to use Java 1.5.  Since Edge is already using Java 1.5, there should 
+not be any compatibility issues.  This move will however require us to 
+resolve any incompatibility issues with the java 1.5 compiler such as the use of 
+enum as an identifier which is a reserved word in Java 1.5. There is already an
+issue open for this upgrade. Please see BZ issue 1309 [7].
+
+Java does not provide any method to obtain MAC address. There are two ways to 
+find the MAC address. One is to write native code using JNI, which is not 
+favorable due to packaging requirements of different native shared libraries 
+with the BP plugins. Other method involves calling system command like ipconfig
+and parsing the output. Though for every system, we shall require writing 
+separate routine for parsing the output. Moreover newer version of ipconfig 
+utility may also break the parsing code. This maintenance problem can be reduced
+by maintaining a property file containing the regex expression to extract the 
+MAC address. This method is preferable since it is easily to implement. If MAC
+address is not available or the routine fails, fall back mechanism of using 
+random generator will be used.
+
+A third party library such as Safehaus[8] can be used, however we cannot use GPL
+or LGPL. It offers another license, for which we need to follow the legal 
+process evaluating the possible use.
+
+4. Format of UUID.
+
+UUID can be stored as types defined particularly for UUID in the chosen 
+libraries; for example, java.util.UUID uses a pair of longs.  On disk, a 
+standard hex-based string representation for UUID as defined in 
+RFC-4122[4] (ffffffff-ffff-ffff-ffff-ffffffffffff), can be used. However this
+will require the generator to be modified.  
+
+5. Characteristics of UUID
+
+The UUID will be created in the following cases.
+
+5.1 While creating new instances of model element from BP user interface. 
+5.2 When creating a domain using a template model file, UUIDs will be re-created
+    for all the model elements loaded from the template.
+5.3 While importing from the old formats that used 32 bit ids including old 
+    xtuml files, bp.io.sql and internal.io.sql.
+5.4 Although copy/paste is not yet implemented, it is discussed here in order to 
+    understand implication of using UUIDs on it. Since the copy/paste can take 
+    place within same parent, it will require creating new UUIDs for each of the 
+    cloned model element.
+5.5 This will also apply when BP will allow import of fragments of a model.
+
+This implies that the UUIDs will be retained only while loading the model.
+
+6. Adding UUID support to the Generator.
+
+The generator needs to maintain backward compatibility for the old 
+implementation of unique_id. Keeping this requirement in view, there can be two
+approaches for adding UUID support to the generator. 
+
+6.1 The first approach will require modifying the generator class 
+    I_unique_id_var to add support for 128 bit ids (structure of four unsigned 
+    longs). It can be modified so that it can parse the ids differently by 
+    identifying the type of id. It is easy due to specific characteristics of 
+    standard string based UUID representation. In case of old id type, it can 
+    use only first 32 bits or the first long as it does now and in case of UUID 
+    type, it can use all the four longs for storage and for the comparison.
+    
+6.2 The first approach requires modifying the generator, therefore a second
+    approach is considered. In this approach the schema generator can be 
+    modified to generate four fields of type unique_id. The export code will 
+    split the UUID into these four fields thus eliminating the requirement of 
+    changing the generator code. However after closer look, this approach is
+    rejected because generator expects the higher 4 bits out of 32 bits to be 
+    empty so that it can use it for domain code. This approach is preferable if 
+    possible.
+
+7. Support for old formats; bp.io.sql, bp.internal.io.sql.
+   Since BP6.1 version uses a 32 bit value for unique_id type, the two projects 
+   will require to be modified, so that for the import modules, it creates UUID 
+   value against each instance of unique_id type. 
+   
+   Although it was proposed to deprecate the export code but bp.io.sql export 
+   functionality is used by the customers for using the current verifier and 
+   hence it is required add export support for bp.io.sql. It is also required 
+   that import and subsequent export retains the old long based id. The reason 
+   of retaining the original long based ids is that BP 6.1 used id based 
+   mechanism for comparison. 
+
+Work Required
+-------------
+1.    Migrate the code base to support Java 1.5 compiler under issue 1309.
+2.    Redesign the IdAssigner class to contain the selected implementation of 
+      creating new UUIDs for the implementation of unique_id type.
+2.1   Research about java.util.UUID.randomUUID() to see if its algorithm ensures 
+      enough uniqueness (required for BP) to drop implementation of version 1.
+2.2   Create a function that would create version 1 UUID using the UTC, random 
+      number and mac address.
+2.2.1 Create a class to determine MAC address using a suitable method.
+3.    Modify MC-Java to translate unique_id as java.util.UUID.
+3.1   Modify any hand written code that currently uses long for unique_id.
+4.    Modify mdl Import and Export code to support java.util.UUID.
+5.    Add UUID support to the generator if needed.
+6.    Modify the unit tests to use UUIDs instead of longs.
+7.    Add support of old formats as specified in section # 7.
+
+Acceptance Test
+---------------
+1. Java based code.
+   
+   All existing unit tests pass.
+   
+2. Generator (If modified).
+
+   The model compiler should be able to translate both old and new models.
+   The model compiler test suite must pass
+
+End
+---
+
+$Log: uuid-i1554.ant,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.24.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2006/04/06 11:46:37  babar
+Job: 1554
+Address all observations except for one.
+
+Revision 1.7  2006/03/30 13:04:42  babar
+Job: 1554
+Added a minor explanation.
+
+Revision 1.6  2006/03/30 00:40:38  rmulvey
+Job:1554
+Fixed a typo.
+
+Revision 1.5  2006/03/30 00:15:24  babar
+Job: 1554
+Observations addressed.
+
+Revision 1.4  2006/03/21 13:01:01  babar
+Job:1554
+Addressing the pre-review comments by Campbell and Greg.
+
+Revision 1.3  2006/03/21 04:13:37  rmulvey
+Job:1554
+Corrected grammar and made small formatting changes.
+
+Revision 1.2  2006/03/20 19:28:16  babar
+Job:1554
+Capturing the discussion of Campbell and Babar.
+
+Revision 1.1  2006/03/20 17:12:15  babar
+Job:1554
+Introduced.

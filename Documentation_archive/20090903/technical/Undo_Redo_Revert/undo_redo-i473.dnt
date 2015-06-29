@@ -1,0 +1,357 @@
+========================================================================
+
+File:      $RCSfile: undo_redo-i473.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:23:21 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Undo/redo/revert
+
+Abstract
+--------
+This document describes the details of design laid down to provide support of 
+undo and redo actions all across tiger. 
+
+
+History
+-------
+
+Document References
+-------------------
+[1] Documentation/internal/technical/Undo_Redo_Revert/undo_redo_revert-i473.ant
+[2] Bugzilla issue 473
+[3] Bugzilla issue 865
+[4] Documentation/internal/technical/Architecture/i865.dnt
+[5] Bugzilla issue 1051
+
+Background
+----------
+Considering the complexity and vastness of foreseen changes required for the 
+solution to this issue, issue 865 [3] was raised to do the pre-work of this 
+issue i.e. incorporation of support of event batching, so that the batched 
+events can be reversed to perform the undo of a user action (which is termed as 
+a transaction. see i865.dnt [4] ). This issue just deals with the development of 
+undo/redo facility and design changes required for that.
+
+Design
+------
+i473.1   Make a new package com.mentor.nucleus.bp.core.undo_redo
+         As Undo-Redo is a major feature, classes related to it shall be put 
+         into a separate package 'com.mentor.nucleus.bp.core.undo_redo'.
+
+i473.2   Undo Mechanism
+
+i473.2.1  Create an interface IDeltaReverser which shall have a method 
+	      reverse(IModelDelta) declared in it. 
+	      This method shall perform the reverse fucntionality of the delta 
+	      passed to it.
+	      A separate delta reverser shall be written for each delta class.
+	      
+i473.2.2  Create a class TransactionType in bp.core.common package with the 
+          following members:
+          - protected String type
+          - protected String description
+          - a public parameterized constructor 
+          - public static final TransactionType DEFAULT 
+          
+          This class will be helpful in filtering transactions transactions
+          related to some particular view/editor and providing
+          specialized undo behavior for different types of transactions.
+          
+	      In the class Transaction add a data member 'type' of type 
+	      TransactionType. In addition, add a parameterized constructor to which
+	      a TransactionType object should be passed..
+	      
+i473.2.3  Create a class UndoRedoPerformer. This class shall provide a default 
+          mechanism to perform the reverse of a transaction.
+	      It shall provide the following methods:
+	      - undo(Transaction)
+	      - redo(Transaction)
+
+	      To perform the default reversal of a transaction, the following steps 
+	      shall be followed:
+	   
+	      -  Sort the array of all participating model roots of that 
+  	         transaction using the ModelRootOrderPolicy. 
+	         (see i473.2.4 for information about ModelRootOrderPolicy)
+	      -  Now start reversing the deltas related to each participating model 
+    	     root (using their corresponding delta reversers) in reverse order.   
+	      -  Before reversing the deltas related to a model root check that 
+	         if that model root is an instance of Ooaofooa then disable instant
+	         Model change listener. This is done because of the fact that if a 
+	         user action on a particular model in tiger produces graphical 
+	         changes then deltas of those changes would have been recorded also.
+	         After all deltas of the model root have been reversed, enable the 
+	         instant listeners. 
+	         (For enabling and disabling mechanism of instant listeners 
+	         see i473.4)
+	      -  After deltas of all participating model roots have been reversed, 
+	         persist all those models.
+	         
+i473.2.4  Create a class ModelRootOrderPolicy which shall implement the 
+          Comparator interface.
+          The implementation of 'compare' method in this class shall compare 
+          two model roots on the basis of their ids, This class shall ensure 
+          that Oaoofooa of a model preceeds its association graphics root.
+          
+          
+i473.2.5  Create a class UndoRedoManager, which shall implement a Transaction 
+          listener. This class shall keep record of all occcuring transactions 
+          in an undo-redo stack and handle the movement of transaction on the 
+          undo/redo stack when an undo/redo action is performed by the user. 
+          This class shall keep a map of UndoRedoPerformer for every 
+          TransactionType.
+          
+          This class shall have the following methods.
+          
+          - Transaction [] getUndoStackElements(ITransactionFilter )  
+            This method shall search and return the next transaction for undo 
+            based on the passed filter.
+          - private boolean isUndoable(Transaction)
+            This method shall determine whether a transaction is undoable or 
+            not, by calculating the size of deltas related to the transaction.
+            Transactions shall be added to the undo-redo stack based on the 
+            value returned from this method.
+          - public void undo() 
+            This method shall use the appropriate UndoRedoPerformer to undo a 
+            transaction, based on the transaction type.
+          - public void redo()
+            This method shall redo a transaction. Only that transaction will be 
+            re-done which has been un-done previously. 
+		  	
+i473.2.6  Modify views to have a global action for Undo, Redo.
+       -  Create a member instance of UndoRedoManager in CorePlugin class.
+       -  Create static Actions undo and redo in CorePlugin class. Make 
+          anonymous classes for these actions with overridden implementation of 
+          Action.run() method which should call the corresponding undo()/redo() 
+          method of UndoRedoManager.
+       -  In the initialization of ModelExplorer, register 
+          these actions as global action handlers.
+          
+          UndoRedoManager shall provide the functionality to provide filtered 
+          transaction based on editors.
+          
+i473.2.7  ITransactionFilter is an interface just like ClassQueryInterface, 
+          that has a method evaluate(Object candidate). 
+          This class will be used by UndoRedoManager to provide filtering of 
+          transactions.
+              
+i473.3  Change the NonRootModelElement class to maintain ordering of elements 
+        during Undo.
+       	Because the UndoRedoPerformer has to undo the deltas in reverse 
+       	order, therefore events are fired in the reverse order. Hence results 
+       	are produced in the reverse order as well, and order of elements in 
+       	instance list is not the same as it was before the transaction occured.
+       	To handle this problem, a data member 'oldIndex' has been 
+       	added in the NonRootModelElement class whose initial value is -1. 
+       	Its value is set to the index of the element removed from the instance 
+       	list. During an undo when an element is re-initialized, oldIndex is used 
+       	to add the element at the same index into the instance list where it 
+       	was before deletion. This strategy can produce a performance overhead 
+       	and is just an approach to solve this problem of ordering. There can 
+       	also be other methods for this.
+		This solution led to the identification of a new big in deletion at 
+		higher level. 
+		For details, see issue 1051 [5] comment # 6.
+       
+i473.4  CompoundDeltaCollector and UndoDeltaCollector 
+        -  An inner class NoDuplicatesList has been introduced in 
+           CompoundDeltaCollector class. This inner class restricts the 
+           insertion of one element more than once in the list.
+        -  Two methods have been introduced that are called from the constructor
+           .  protected ModelRoot[] getModelRoots(ModelElement[] modelElements)
+              This method retrieves model roots from the elements passed as 
+              parameter .
+           .  private void retrieveDeltaCollectorsFromModelRoots(ModelRoot [] 
+                                                                     modelRoots)
+              This method retrieves delta collectors from the passed roots. 
+              Moreover, keeps their reference in the deltaCollectors data 
+              member.
+              
+        -  SortedCompoundDeltaCollector class has been deleted. In its place a 
+           new class UndoDeltaCollector has been introduced.
+           This class overrides getModelRoots(ModelElement[] modelElements) 
+           method. In this method it adds the corresponding graphics root of 
+           every model element of the passed array that has Ooaofooa as its root
+           and finally sorts the roots.
+           
+i473.5  Canvas model change listeners react to every Ooaofooa change and can 
+        make changes in Ooaofgraphics model by firing its change events as 
+        well. When an undo is done graphics deltas are also undone. Thus if 
+        instant listeners are not disabled then some graphics change deltas are 
+        fired twice, which not only results in an improper undo but also 
+        corrupts the instance lists. To enable/disable the instant listeners 
+        modify the class EclipseOoaofooa as follows :
+        
+        - Add a method  ' void enableInstantListeners(boolean)'. This method 
+          shall enable/disable instant listeners.
+       
+i473.6  Interface ReInitilizable introduced. 
+        Whenever a transaction of deletion/creation of a model element is done 
+        it gets removed/inserted into the instance list and those 
+        NonRootModelElements that are active objects also unregister/register 
+        themselves from the ActivePoller.
+        At the time of undo , it is required to reverse that task also, but 
+        it is required that this thing should be generalized and undo/redo of a 
+        deletion/creation should not be a purely hard coded removal/insertion 
+        from the instance list or any such thing.
+        A new Interface ReInitilizable is introduced.
+        it has two methods
+        -  reInit()
+        -  isOrphaned()
+        NonRootModelElement and InstanceList implement this interface.
+        Code for reInit() for every model class that has a state machine 
+        associated with it, will be generated by MC-Java.
+        
+i473.7  Exception Handling in TransactionManager
+        It has been found that while a transaction is in progress and some 
+        exception occurs then that transaction never ends. To cater this problem
+        a try catch block shall be put on the method call 
+        'deltaCollector.startCollecting(activeTransaction)' in 
+        startTransaction method in TransactionManager, so that incase of any 
+        exception, the activeTransaction variable is set to null.
+
+i473.8  Relate and UnRelate Methods.
+        It has been found that during deletion there are many places in OAL 
+        where elements are being unrelated from null. Whenever this occurs 
+        Relationship change events are fired , which normally does not create 
+        any problems. However, when the associated delta reverser tries to 
+        reverse such a delta, a NullPointerException is encountered. Finding 
+        out such 'unrelated from null' type problems is an arduous and time 
+        taking task. So for the time being, no relationship change events are 
+        fired for a 'null' target.
+               
+i473.9  Changes in Unformalize() of SimpleAssociation
+        In unformalize() of SimpleAssociation, when 
+        RefferedToClassInAssociation has been unformalized, its related
+        ClassInAssociation object is re-related to it, while keeping in mind 
+        the assumption that it has got unrelated in the previous call to 
+        unformalize() which is not always true. Though in normal conditions this
+        relate does not have any affect, but during Undo process reverse of this
+        relate results an unrelate thus undo of Unformalize is not done 
+        correctly. To solve this problem, OAL is modified to relate 
+        ClassInAssociation object to RefferedToClassInAssociation object, only 
+        if they have been unrelated from each other.
+
+i473.10 Changes in dispose() of RefferentialAttribute
+        It has been observed that dispose method of every model element deletes 
+        itself and fires a deletion event, where as RefferentialAttribute does 
+        not do so. The absence of this delete statement creates problems during 
+        the undo operation. To solve this problem the statement "delete object 
+        instance self" has been added at the end of 
+        RefferentialAttribute.dispose() method.
+
+
+i473.11 During a transaction at some places in OAL, listeners are disabled 
+        before the firing of certain deltas. Due to which these deltas finally 
+        get missed and are not processed by any listener, but these deltas are 
+        required for Undo.
+        To handle this problem , make the following changes:
+
+        - Modify IModelDelta to have the following methods:
+           . boolean isSuppressed()
+           . void setSuppressed(boolean)
+        - Modify ModelRoot.doFirePrework(IModelDelta) to collect the passed 
+          delta of disabled event and marking them as suppressed.
+
+        - Modify ModelChangedEvent class as follows:
+          .  Remove getModelDeltas() from the ModelChangedEvent class.
+          .  Add an innerclass DeltaEnumeration which should implement the 
+             Enumeration interface.
+             In its hasMoreElements() method return true if there is a single 
+              un-suppressed delta in the ModelChangeEvent. 
+             In its nextElement() method return the next un-suppressed delta. 
+           . If there is no such delta return null.
+          .  Add a method Enumeration getModelDeltaEnumeration() which shall 
+             return a new DeltaEnumeration everytime it is called.
+        - Modify ModelChangeAdapter.modelChange(ModelChangeEvent)method to use 
+          getModelDeltaEnumeration() for getting deltas in an event.
+        
+Undo process is a time consuming task because of several reasons. One major 
+reason is that many non-required deltas that get created in a transaction, also 
+get deleted in the same transaction, hence producing no affect. A class may be 
+written to optimize a transaction by identifying and removing such deltas. 
+A separate issue shall be raised for it.
+
+
+Work Required
+-------------
+
+
+
+Unit Test
+---------
+
+End
+---
+
+$Log: undo_redo-i473.dnt,v $
+Revision 1.1  2009/09/03 18:23:21  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.13  2009/01/01 23:14:04  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.12.30.1  2008/12/31 16:11:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.12  2005/06/28 13:35:04  farrukh
+Job:473
+Wrote the simple name of classes for consistency.
+
+Revision 1.11  2005/06/28 13:30:53  farrukh
+Job:473
+Type fixing, rephrasing and minor corrections done.
+
+Revision 1.10  2005/06/27 14:30:40  farrukh
+Job:473
+minor corrections made throughout the document.
+
+Revision 1.9  2005/06/27 12:39:52  farrukh
+Job:473
+correction in design section i473.3
+
+Revision 1.8  2005/06/27 12:36:57  farrukh
+Job:473
+Design section modified.
+section i473.11 added.
+
+Revision 1.7  2005/06/24 11:33:34  farrukh
+Job:473
+Design Section Modified.
+
+Revision 1.6  2005/06/24 03:01:34  farrukh
+Job:473
+Correction in log section.
+
+
+Revision 1.5  2005/06/24 03:00:04  farrukh
+Job:473
+Inserted the $log  section that got missed in the previous revision.
+
+Revision 1.4  2005/06/23 18:30:12  farrukh
+Job:473
+Initial draft.
+
+Revision 1.3  2005/04/14 13:02:29  siddique
+Job:473
+Minor modifications.
+
+Revision 1.2  2005/04/08 13:21:26  siddique
+Job:473
+Incremental check-in
+
+Revision 1.1  2005/04/08 12:53:52  siddique
+Job:473
+Initial abstract.

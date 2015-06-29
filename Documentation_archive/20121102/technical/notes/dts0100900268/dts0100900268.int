@@ -1,0 +1,294 @@
+========================================================================
+
+File:      $RCSfile: dts0100900268.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Calling a function defined in a top-level package causes NullPointerException 
+in Verifier
+
+
+1. Abstract
+-----------
+Errors occur when attempts are made to invoke bridges and functions whose 
+action homes are directly under function packages, not inside a component. This 
+issue is raised to investigate and resolve this problem.
+
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100900268
+[2] dts0100900268.dnt
+
+4. Background
+-------------
+see [2]
+
+5. Requirements
+---------------
+see [2]
+
+6. Work Required
+----------------
+see [2]
+
+7. Implementation Comments
+--------------------------
+7.1 The code referred to as "dead code" in [2 section 8.1] was removed.  While
+    it is true that a launch configuration that contains a package with no
+    components is valid, the error message described in [2 section 8.1] is not
+    coming from the "dead code".  In fact, the code really is "dead", it is
+    executed.  The message about no elements to execute occurs before that code 
+    block is entered and thus that that is NEVER entered.
+7.2 The change made to cause AllActivityMonitor.java::initializeBodies that was 
+    called out in [2 section 7.2.4] did not work as planned.   The problem was
+    that we can not allow Body.initialize() to be called more then 1 time on
+    a given instance.  To do so actually cause that instance to be remove from 
+    not only R601/R666 (relationships used by model execution and model export), 
+    but also from R612/R650 (relationships used by the parser).  Therefore, 
+    the following changes were made to initialize the 'shared fragments'.
+7.2.1 bp.ui.text.activity/AllActivityModifier.java
+	Introduced initializePotentialSharedBodies().  This routine is called to 
+	force body instances whose parent is in a package but NOT under a component 
+	to be initialized (connected across R601/R666).  This routine checks to 
+	see is the shared bodies are already connected on R601/R666, and if they 
+	are if does not call body.initialize again because body.initialize can 
+	only be called 1 time on each body instance. If called more then once, the 
+	instance end-up being disconnected because body_c.initialize() unrelates 
+	the instance from R612/R650 as it relates in on R601/R666.
+7.2.2 In bp.core/ooaofooa/Body/Body/Body.xtuml 
+    Added a convenience function, isInitialized(), that examines R601 and R666 
+    to see if Body.initialize has been called yet.   This operation is used by 
+    BPDebugThread.java::launchElement to initialize 'shared bodies' (bodies 
+    that exist outside the element being launched).
+7.2.3 bp.debug.ui.launch/BPLaunchDelegate.java
+	In launch() I changed a catch statement to catch Throwable instead of 
+	CoreExecption so it will not miss any exception.   I did this because I 
+	encountered a situation while chasing a bug where a NPE was thrown that was 
+	not caught, and thus not logged, and this catch statement made it much more 
+	difficult to find then it should have.	
+7.2.4 bp.debug.ui.model/BPDebugTarget.java
+	In launchElement, I added a call to the new function 
+	AllActivityModifier.initializePotentialSharedBodies(comp) just after the 
+	call to AllActivityModifier.initializeBodies.   This new call walk 'up' the 
+	package hierarchy starting at the specified component and initialize all 
+	'shared bodies' that have not been initialized.    Before this change I 
+	experimented with simply passing the 'highest package containing OAL' to 
+	initializeBodies.  This does not work because in cases where verifier 
+	launches multiple components it ends-up call Body.initialize() multiple 
+	times on body instances and that can;t happen because it actually cause 
+	those elements to be disconnected on R601/R66.  The reason is that 
+	Body.initialize actually moves the elements from R612/R650 to R601/R666, so 
+	when called twice the element are no longer found on R612/R650 and thus can 
+	not be 'reconnected'.
+
+7.2.5 bp.debug.ui.test/src/(default package)/VerifierTestSuite.java
+	Moved the new VerifierExecuteFragmentTest test suite up a little in the 
+	order of execution just so I didn't have to wait so long while running 
+	tests to see its result.
+
+
+8. Unit Test
+------------
+see [2]
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100900268-01
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+    NonRootModelElement.java [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Association/Simple Association/Simple Association.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Block/Block.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Body/Body.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    For Stmt/For Stmt.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    If Stmt/If Stmt.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Statement/Statement.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    While Stmt/While Stmt.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Communication/Communication/Communication.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component/Component.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Component/Component Packaging/Component Package/
+    Component Package.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Bridge Parameter/Bridge Parameter.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Data Type/Data Type.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Domain/Domain.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Domain/
+    Function Parameter/Function Parameter.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event Statement/Create Event Statement.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Create Event to Instance/Create Event to Instance.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate/Generate.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate Event Statement/Generate Event Statement.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Event/
+    Generate Preexisting Event/Generate Preexisting Event.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In Engine/Class In Engine.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance/Instance.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Pending Event/Pending Event.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack/Stack.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Assign to Member/Assign to Member.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Create/Create.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Instance Access/Delete/Delete.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Interaction/Interaction Participant/Interaction Participant.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Bridge Invocation/Bridge Invocation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Function Invocation/Function Invocation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Interface Operation Invocation/
+    Interface Operation Invocation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Operation Invocation/Operation Invocation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Return Stmt/Return Stmt.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Signal Invocation/Signal Invocation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Local/
+    Local Value/Local Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Packageable Element/Packageable Element/Packageable Element.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Relate/Relate.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Relate Using/Relate Using.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Unrelate/Unrelate.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Relate And Unrelate/Unrelate Using/Unrelate Using.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Runtime Value/Runtime Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Runtime Value/Simple Value/Simple Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select/Select.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select From Instances/Select From Instances.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select From Instances Where/
+    Select From Instances Where.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Selection/Select Related Where/Select Related Where.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Sequence/
+    Sequence/Sequence.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/State Machine Event Data Item/
+    State Machine Event Data Item.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    State Machine/Transition/Transition.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Attribute/Attribute.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Operation/Operation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Operation Parameter/Operation Parameter.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Subsystem/Referential Attribute/Referential Attribute.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Array Element Reference/Array Element Reference.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Attribute Value Reference/Attribute Value Reference.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Binary Operation/Binary Operation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Bridge Value/Bridge Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Function Value/Function Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Handle/Instance Handle.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Reference/Instance Reference.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Set/Instance Set.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Instance Set Reference/Instance Set Reference.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Member Value Reference/Member Value Reference.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Message Value/Message Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Operation Value/Operation Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Parameter Value/Parameter Value.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Selected Reference/Selected Reference.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Transient Value Reference/Transient Value Reference.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Unary Operation/Unary Operation.xtuml [change]
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml [change]
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.launch/
+    BPLaunchDelegate.java [change]
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPDebugTarget.java [change]
+
+com.mentor.nucleus.bp.debug.ui.test/src/(default package)/
+    VerifierTestSuite.java [change]
+com.mentor.nucleus.bp.debug.ui.test/src/
+    com.mentor.nucleus.bp.debug.ui.test.execute/
+    VerifierExecuteFragmentTest.java [deletion]
+com.mentor.nucleus.bp.debug.ui.test/expected_results/verifier/
+    VerifierFragmentExecutionTesttestnestedFragment.result [deletion]
+com.mentor.nucleus.bp.debug.ui.test/expected_results/verifier/
+    VerifierFragmentExecutionTesttesttopLevelFragment.result [deletion]
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc [change]
+
+com.mentor.nucleus.bp.ui.text/src/com.mentor.nucleus.bp.ui.text.activity/
+    AllActivityModifier.java [change]
+
+
+End
+---
+
+$Log: dts0100900268.int,v $
+Revision 1.3  2012/08/16 18:50:51  rmulvey
+job:dts0100900268
+Updated the code changes section again to make sure nothing was missed.
+
+Revision 1.2  2012/08/16 18:48:52  rmulvey
+job:dts0100900268
+Updated the note's implementation comments to reflect the change made to properly initialize R601/R666 in in preparation for model execution.
+
+Revision 1.1  2012/08/13 17:28:28  rmulvey
+job:dts0100900268
+Introduced the change list

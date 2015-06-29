@@ -1,0 +1,164 @@
+========================================================================
+
+File:      $RCSfile: i748.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Ensure Project and Domain names are unique.
+
+Abstract
+--------
+Ensure that project and model names are unique, even if they differ by case and
+the underlying operating system cannot distinguish resources based on case
+differences.
+
+History
+-------
+
+Document References
+-------------------
+Bugzilla issue 748
+
+Background
+----------
+Tiger did not detect resource clashes with new projects and models when the
+names differed only in the upper/lower case settings. This allowed a resource
+exception to happen. This note addresses this problem.
+
+Design
+------
+1. Add additional tests that ignore case and report errors
+
+1.1   Rather than force all users to endure this restriction, a convenience
+      method that returns a boolean is added:
+
+      CorePlugin.osIsCaseInsensitive()
+
+      This is used to test whether the OS has this limitation before giving the
+      error message.
+
+1.2   Modify new Model validation
+      Since we want to give a specific error for names which match only if case
+      is ignored, we need to change the existing validation method.
+1.2.1 Add a boolean to WizardNewDomainCreationPage.validateDomainName
+      A boolean argument ignoreCaseIfOSDoes is added to validateDomainName. If
+      false, the previous exact match functionality is used. If true and the
+      underlying operating system cannot distinguish case, the same test as
+      before is performed after forcing the names to all lower case.
+1.2.2 Modify WizardNewDomainCreationPage.ValidatePage
+      The existing call to validateDomainName is modified to pass false to
+      the method, preserving the previous behavior. A new test is added that is
+      only performed if the existing test passes. This test makes the same call
+      passing a true value to the ignoreCaseIfOSDoes argument. If this test
+      fails, the message:
+      
+      Underlying operating system is case insensitive
+      Model name must be unique in this project, including case 
+      
+      is shown in the standard position for wizard problems.
+      
+1.3   Modify new Project validation
+      We need to introduce a new Wizard Page class, WizardNewSystemCreationPage,
+      because the existing new project wizard page used the default system one,
+      which did not catch this error (existing Eclipse wizards that use the
+      default page report this error after the user clicks Finish).
+1.3.1 The new class is added extending from the default new project page. It
+      adds a constructor that delegates to the supertype
+1.3.2 Override the validatePage method to first call the supertypes check, if
+      this fails then some other problem exists and we just exit. If it passes,
+      then we perform the case insensitive test by calling a new method to do
+      the work, validateSystemName().
+1.3.3 Add validateSystemName
+      This method tests the OS's ability to handle case and if it can't performs
+      the equivalence test after forcing the names to lower case. 
+
+Implementation Comments
+-----------------------
+Some inconsistent upper case labeling on the New Domain wizard was fixed.
+Added WizardNewSystemCreationPage.java to generate.xml. Updated
+create_core_plugin_class.arc to generate the osIsCaseInsensitive convenience
+method.
+
+Unit Test
+---------
+On Windows:
+_- Open the new project wizard and select Nucleus BridgePoint> xtUML Project
+_- Create a project called 'foo' and finish
+_- Open the new project wizard and select Nucleus BridgePoint> xtUML Project
+_- Create a project called 'foo'
+_R The error 'A project with that name exists . . .' is shown
+_R 'Finish' is disabled
+_- Change the name to 'fooo'
+_R The error message is removed and the Finish button is enabled
+_- Change the name to 'Foo'
+_R The error 'The underlying operating system . . .' is shown
+_R 'Finish' is disabled
+_- Change the name to 'Fooo'
+_R The error message is removed and the Finish button is enabled
+
+On another operating system (or by modifying the return value from the
+convenience method):
+_- Open the new project wizard and select Nucleus BridgePoint> xtUML Project
+_- Create a project called 'foo' and finish
+_- Open the new project wizard and select Nucleus BridgePoint> xtUML Project
+_- Create a project called 'foo'
+_R The error 'A project with that name exists . . .' is shown
+_R 'Finish' is disabled
+_- Change the name to 'fooo'
+_R The error message is removed and the Finish button is enabled
+_- Change the name to 'Foo'
+_R 'Finish' is still enabled
+
+- Repeat with New xtUML Model Wizard
+R Same behavior from New xtUML Model Wizard
+
+Code Changes
+------------
+com.projtech.bp.core/arc/create_core_plugin_class.arc
+com.projtech.bp.core/src/com/projtech/bp/core/ui/NewSystemWizard.java
+com.projtech.bp.core/src/com/projtech/bp/core/ui/
+                                        WizardNewSystemCreationPage.java [added]
+com.projtech.bp.core/src/com/projtech/bp/core/ui/
+                                                WizardNewDomainCreationPage.java
+com.projtech.bp.core/generate.xml
+
+End
+---
+
+$Log: i748.int,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.44.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2005/03/12 00:09:39  greg
+Job: 748
+Add more unit tests
+
+Revision 1.3  2005/03/11 22:04:41  campbell
+Job: 748
+Updated for final review.
+
+Revision 1.2  2005/03/11 01:23:39  campbell
+Job: 748
+Minor cosmetic changes.
+
+Revision 1.1  2005/03/11 01:10:15  campbell
+Job: 748
+Introduced.

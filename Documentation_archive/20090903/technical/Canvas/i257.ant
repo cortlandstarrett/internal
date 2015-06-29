@@ -1,0 +1,191 @@
+========================================================================
+
+File:      $RCSfile: i257.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Analysis Note
+Enabling Grab and Scroll during tool activation
+
+Abstract
+--------
+This note describes the requirements for enabling the canvas grab and scroll
+behavior during tool activation.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla Issue 257
+[2] bp.ui.canvas/mdl/ooaofgraphics.bak
+[3] Bugzilla issue 419
+
+Background
+----------
+Currently the grab and scroll behavior initiated by the space bar is unavailable
+when a canvas tool is enabled. This analysis note describes the required new
+behavior to allow the grab and scroll feature to be used during this time.
+
+Analysis
+--------
+
+Requirements
+- Grab and scroll behavior must be available whether a tool is selected or not.
+  Canvas scrolling is frequently needed during tool activation in order to find
+  the place at which additions are to be made on the diagram. 
+- Grab and scroll behavior must be disabled once drawing using a tool has
+  actually begun. If this isn't done, it will be impossible to assure that all
+  combinations of mouse up and down and space bar up and down do not interfere
+  with drawing and always leave the canvas tools and Model instance in a
+  consistent state.
+
+The grab feature is disabled because a state change in the 'Graphics Data'.Model
+class[2] away from the Idle state occurs when a tool is enabled (Model is the
+class in the current Graphics Domain representing the canvas on which models are
+drawn). The grab and scroll functionality is triggered by a 'Space Pressed'
+event in the Idle state. Since the Model instance is not in the Idle state when
+a tool is enabled, a 'Space Pressed' event is ignored and the feature is
+effectively disabled.
+
+We could add a transition from the 'Tool Active' state to the 'Waiting for Mouse
+Press to Slide Canvas' state, but we would require additional logic in OAL to
+ensure the canvas returns to the 'Tool Active' state and not to Idle. Returning
+to Idle would effectively disable the currently selected tool. Worse, the tool
+would still be enabled according to its own state model, leading to a situation
+where the tool and canvas states were inconsistent. This extra logic would need
+to run on entry to the Idle state, even though many possible transitions to Idle
+have nothing to do with tool activation or the grab and scroll feature. 
+
+We could duplicate the state cluster associated with grab and scroll, but this
+would cause additional maintenance and increase the complexity of an already
+complex state model.
+
+We could have the tools install themselves as separate mouse listeners and
+process their events separately from the canvas model. This would allow
+elimination of the tool event delegation state cluster from the canvas state
+model, but the canvas model would need additional replacement states to prevent
+the inappropriate processing of mouse events during tool activation. Failure to
+do this would, for example, make the canvas go into element selection mode
+during drawing of a new shape, an undesirable behavior.
+
+Alternatively, we could have both tools and canvas use the same mouse event
+listener and use some filtering logic to direct mouse events to a tool if it is
+enabled and to the canvas otherwise. This would allow the same simplification of
+the canvas state model as above. This approach would add more hand written code
+to the solution, which increases maintainance because it would be harder to
+understand and debug, particularly if the trend continued and the hand written
+code increased in size.
+
+A more radical alternative is a complete refactoring of the canvas state
+model so that selection and resizing behavior (about a half to three quarters of
+the current state model) is moved to the 'Selection Tool' state model. The
+'Selection Tool' is currently a quite trivial, bi-state model. The 'Selection Tool'
+would then be promoted to the status of other tools (currently, it just resets
+any other active tool and does nothing else). Since after this change, one tool
+would always be active, the canvas state model itself would be reduced to the
+tool event delegation state cluster and the grab and scroll cluster. The Model
+'Tool Active' and Idle states would be combined and the cursor setting behavior
+moved to the appropriate tool state models.
+
+This last approach has the advantage of capturing more functionality in state
+models while making the state models easier to comprehend by distributing the
+complexity more evenly. At the same time, the behavior factoring is improved,
+since the state models for each tool would reflect the behavior implied by the
+tool class names, this is particularly true of the Selection Tool.
+
+Yet another idea is to go a step further and combine two of these concepts.
+Refactor the state model complexity and in addition have both tools and canvas
+install separate mouse listeners.
+
+With most of the options presented above, additional protocol between the canvas
+tools and the canvas itself will be necessary to meet the requirement that grab
+and scroll and symbol drawing behavior do not interact to produce unexpected or
+undesirable behavior.
+
+Finally it is proposed that we refactor the grab and scroll behavior to be
+itself a model tool. There are design decisions to be made here about whether
+the canvas needs any state based behavior after this behavior is moved.
+
+Conclusions
+- We shall refactor the selection and resize behavior to the selection tool.
+- We shall refactor the grab and scroll behavior to a new subtype of model tool.
+- We shall retain the tool event delegation state cluster and pass all events
+  through the canvas, in case there may be a need for the canvas to react to
+  mouse events without a tool being involved (mouse gesture support is one
+  possible reason[3]).
+- It shall be left to the design phase to decide whether the canvas, individual
+  tools or a new tool policy class controls whether an individual tool resets,
+  suspends or works independently of other tools.
+
+Work Required
+-------------
+i257.1   Refactor the selection and resize behavior.
+i257.1.1 Delete the two existing states and transitions in the 'Selection Tool'
+         state model.
+i257.1.2 Move all states in the Model statechart to do with selection, hotspot
+         detection and resize to the Selection Tool.
+i257.1.3 Fix all OAL in the moved states so that it now parses in its new
+         context.
+i257.2   Refactor the grab and scroll behavior
+i257.2.1 Create the new subtype
+i257.2.2 Move the grab and scroll state cluster to the new tool subtype
+i257.2.3 Fix all OAL in the moved states so that it now parses in its new
+         context.
+i257.2.4 Either add the necessary delegation OAL to the Model Tool state model
+         or enhance MC-Java to support inherited (polymorphic) events and
+         instead obsolete the Model Tool state model.
+i257.2.5 Modify the behavior of CanvasEditorActionContributor.setActiveEditor
+         so that it implements a general solution for tools that do not create
+         new symbols (the selection tool is currently a special case).
+i257.3   Simplify the Model statechart
+i257.3.1 Remove the Model.Idle state.
+i257.3.2 Rename the 'Tool Active' state to Idle.
+i257.3.3 Renumber all remaining states.
+i257.4   Select and design the inter-tool co-ordination strategy.
+
+Acceptance Test
+---------------
+_- All existing canvas unit tests must continue to pass.
+
+_- The grab and scroll behavior is available when a drawing tool is selected.
+
+_- The grab and scroll behavior is disabled when actively drawing a shape or
+   connector (i.e after the first mouse down when graphics are being drawn by
+   the mouse on the canvas).
+
+End
+---
+
+$Log: i257.ant,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.152.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/10/18 19:12:00  campbell
+Job:257
+Addressed review issues.
+
+Revision 1.2  2004/10/15 22:30:54  campbell
+Job: 257
+Addressed pre-review comments.
+
+Revision 1.1  2004/10/15 16:41:23  campbell
+Job: 257
+Introduced.

@@ -1,0 +1,239 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Instance reference datatype
+
+1. Abstract
+-----------
+This note describes the design changes required  to support instance reference
+data types.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] Bugzilla item 1666
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1666
+[2] cvs://Documentation/internal/technical/notes/i1666.ant
+[3] Bugzilla item 3231
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3231
+
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Metamodel changes
+    6.1.1 Add the new data type subtype and association with 'Model Class' as
+          recommended in the analysis[2].
+    6.1.2 Temporarily remove R818 and R819, and promote R821 to V_VAR as
+          suggested in the analysis. Also temporarily remove the subtypes of
+          V_VAR, promoting the two subtype attributes specified in the analysis.
+    6.1.3 Perform a Parse All and fix all the errors by making appropriate
+          fallout changes to the OAL required by the changes made in 6.1.2
+          above.
+    6.1.4 Restore the deleted classes and associations for compatibility with
+          pre-upgrade models.
+    6.1.5 Modify the 'Model Class.initialize' operation to create and name the
+          two new data types. Follow the same design for the way SDTs, UDTs, etc
+		  are created.
+
+6.2 Parser changes
+    Note that these actions will actually get done as part of step 6.1.4 above.
+    This section is really just a placeholder to enumerate the changes that are
+    going to be needed.
+    6.2.1 Grammar changes
+          No action required.
+    6.2.2 Modify the validation functions to instantiate the new V_VAR patterns.
+          Check for the element being accessed (parameter/ event data/
+          attribute value) being an instance reference type, validate the member
+          accessed and instantiate the proper Value subsystem instances.
+    6.2.3 Modify the Variable (V_VAR) instantiation patterns for inst_ref and
+          inst_ref_set results of select statements.
+    6.2.4 Extend binary operator validate
+          Modify this function as suggested in the analysis[2].
+
+6.3 Verifier changes
+    An issue is raised to track this work separately[3].
+
+6.4 Persistence
+    6.4.1 Originally, we thought we would have to modify the build database sql
+          files as follows: Add an AEP instance that traverses to the S_DT from
+          O_OBJ, so O_OBJ->S_IRDT[Rxx]->S_DT[R17].  However, this is not
+          necessary as the file_io and stream persistence chains can effectively
+          persist S_IRDT instances.
+    6.4.2 Add another limb to the O_OBJ persistence hierarchy that persists the
+          new S_IRDT association across R123 and S_IRDTs supertype across R17.
+    6.4.3 Add ImportHelper upgrade code to 1) add instance reference subtypes
+          for every loaded class that does not have them already and 2) delete
+          all V_VAR subtype instances after moving their data and/or
+          instantiating the logically equivalent associations.
+
+6.5 Data Upgrade
+    6.5.1 Functionality will be required to "upgrade" existing models.  All
+          classes in existing projects or in imported models that do not have
+          corresponding instance reference datatypes will need to have them
+          added.
+    6.5.2 This is accomplished by updating the io.mdl ImportModel,
+          ImportModelComponent, and ImportModelStream classes to perform the
+          update in the function that finishes loading the data.
+
+7. Design Comments
+------------------
+TBD.
+
+8. Work Required
+----------------
+8.1 Order of work
+  x Add S_IRDT to Domain SS as subtype of Datatype
+  x Add imported S_IRDT association to O_OBJ in Subsystem SS
+
+  x TEST: Run als.oal JUnit tests
+
+  x Modify the 'Model Class.initialize'
+
+  x TEST: Create a sample model
+      x Add a new class
+	  x Rename the class, check the inst ref and inst ref set got renamed
+	  x Check that the type of an attribute can be set to a class inst ref
+	  x Check that the return type of an operation can be set to a class ref
+	  x Check that the parameter f an operation can be set to a class ref
+
+  x Add persistence code for instance references
+
+  x TEST: Using the sample model with attributes and params set to inst refs,
+    restart BridgePoint and verify the inst refs still exist and work properly.
+  x TEST: Run als.oal JUnit tests
+
+  x Add data upgrade code for inst refs
+
+  x TEST: Import a model "dogs" into BP.
+  x TEST: Check that the type of an attribute can be set to a class inst ref
+          of pre-existing class Dog.
+  x TEST: Check that the return type of an operation can be set to a class
+          inst ref set of pre-existing class Cat.
+  x TEST: Run als.oal JUnit tests
+  x TEST: Perform manual testing using deeply nested components
+
+  - Add new assoc. in Value SS between V_VAR and S_DT
+
+  - TEST: Run als.oal JUnit tests
+
+  - Find all relates and unrelates across R821 and add an additional
+    relate/unrelate across the new association.
+  - Find all relates and unrelates across R818 and R819 and add additional
+    relate/unrelate across the new association to the equivalent new reference
+	data type.
+
+  - TEST: Run als.oal JUnit tests
+
+  - Change ::data_types_compatible() to use the new association exclusively,
+    i.e. remove all references to R818, 819 and 821.
+
+  - TEST: Run als.oal JUnit tests
+
+  - Temporarily remove the subtypes of V_VAR.
+  - Perform a Parse All and fix all the errors by making appropriate
+  fallout changes to the OAL required by the changes made in 6.1.2 above.
+  - Restore the deleted classes and associations for compatibility with
+  pre-upgrade models.
+
+  - TEST: Run als.oal JUnit tests
+
+
+9. Unit Test
+------------
+The list below is a placeholder copy of the equivalent analysis note section. It
+needs to be expanded out to give full details of the required user interactions
+and/or replaced/augmented with a test matrix. TBD.
+
+- Check that the type of an attribute can be set to a class instance reference.*
+- Check that the return type of an operation can be set to a published class
+  reference. **
+- Check that attributes, including structured data type and inst_ref attributes
+  of inst_ref type instances can be accessed as expected.*
+- Check that Mathematically Derived Attributes may be of type inst_ref and
+  inst_ref_set.
+- Check that inst_ref_set types may be used in for each loops.
+- Check that inst_ref types may be used as a loop variable in for each loops.
+- Check that sets can be subtracted from and added to each other
+- Check that an instance can be subtracted from and added to a set.
+- Check that an appropriate error is given when mixed types are added to an
+  inst_ref_set.
+- Build a test matrix that covers all instance reference and set behavior.
+- Build a model based on this matrix.
+- Check that it parses correctly.
+- Check that element data types that have been set to an instance reference
+  data type are still set to the same instance reference data type after a tool
+  restart.
+- Open a pre-existing workspace that already contains a model.  Check that inst
+  refs and inst ref sets are avialable for the pre-existing model classes.
+
+* Repeat for parameters, event data items
+** Repeat for bridge and function return.
+
+
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:20  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.7  2008/01/17 21:11:50  kbrown
+Job:1666
+Updated design and int.
+
+Revision 1.6  2007/11/21 14:38:24  kbrown
+Job:1666
+A few more updates to the dnt before I step away from the issue for a bit.
+
+Revision 1.5  2007/11/07 21:35:10  kbrown
+Job:1666
+More updates based on input from Campbell in the Work required section.
+
+Revision 1.4  2007/11/07 19:41:54  kbrown
+Job:1666
+Updated design note to reflect the order that work will be done.
+
+Revision 1.3  2007/11/07 14:49:04  kbrown
+Job:1666
+Fixed typo.
+
+Revision 1.2  2007/11/07 00:33:21  campbell
+Job: 1666
+Updated and simplified in the light of the changes to the analysis note.
+
+Revision 1.1  2007/10/31 22:55:55  campbell
+Job: 1666
+Introduced.
+

@@ -1,0 +1,876 @@
+========================================================================
+
+File:      $RCSfile: dts0100638163.int,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Support CDT
+
+1. Abstract
+-----------
+Add support for CDT, remove EDGE, update sample projects to support CDT
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100638163
+
+4. Background
+-------------
+
+5. Design
+---------
+5.1  New plugin - com.mentor.nucleus.bp.cdt
+The approach discussed in 5.2.1 is used for the time being due its simplicity 
+and the approach discussed in 5.2.2 will be considered along with a new common 
+"New Project Wizard" for multiple modeling tools in the Envisage IDE.
+
+5.1.1 Create a new class for BridgePoint New Project Wizard that extend the 
+    class org.eclipse.cdt.ui.wizards.CDTCommonProjectWizard
+5.1.2 In the constructor, pass the new Title and Description for the NPW.
+5.1.3 Override the method  
+    IProject continueCreation(IProject prj)
+    and add any BridgePoint specific code there, like adding BrdigePoint
+    natures, and creating the initial system. Also the C or CPP Project Nature 
+    shall be added in this method.
+5.1.4 Override the method getNatures(), and return the project natures that was
+    added in 6.1.3
+5.1.5 Builders Order
+    The order of the builders is very important, as BridgePoint builders shall 
+    run before CDT builders, so some code shall be added to fix the builders 
+    order.
+5.1.5.1 Override the method boolean setCreated() and copy the implementation of 
+    the base class, and call the code that changes the builder order before
+    returning from the function.
+5.1.6 Removing CDT examples from BridgePoint NPW
+    a new Class that extends org.eclipse.cdt.ui.wizards.CDTMainWizardPage shall
+    be created, and the method "List filterItems(List items)" shall be overriden
+    to filter the elements that appear in the NPW, e.g. Hellow World example, 
+    New static library project, and the New dynamic library project shall be
+    removed from BridgePoint NPW.
+5.1.6.1  A follow-on issue [7] is added to provide some BridgePoint-specific
+         template projects. 
+     
+
+5.2 Locating MinGW in CDT
+    CDT has an algorithm to search for MinGW installation [5]. 
+        ---- SNIP
+        > 1. Look at the mingw directory in the platform install directory. 
+        >   CDT distributions like Wascana may distribute MinGW like that.
+        > 2. Try the directory above the install dir (another possible 
+        > distribution). 
+        > ...
+        > .
+        ---- END SNIP --
+        
+    MinGW will be moved in the install base on the build server from 
+    C:/BridgePoint_e3.5/BridgePointDeliverables/tools/mingw_5.1.3 to
+    C:/BridgePoint_e3.5/BridgePointDeliverables/MinGW .
+    
+    Update the post-install and pre-uninstall scripts to reflect this change.
+    
+  
+5.3  Put new plugin into CVS and integrate it into the nightly build.  A number
+     of changes are required for this:  
+5.3.1  Add CDT to build server eclipse 3.5 build base.  The CDT is already 
+       installed on the server.  We will back up the build base to 
+       \\wv\dfs\bridgepoint\backups\eclipse3.5.2_withCDT_backup_build_server so
+       it is available for recovery purposes if needed.
+5.3.2  Add the new CDT integration plugin to the BridgePoint model builder 
+       feature (com.mentor.nucleus.bp.bld.pkg-feature).  This controls the 
+       encapsulation of the plugin inside the BridgePoint eclipse hierarchy and
+       is used by the build server to know it must build the plugin.
+5.3.3  Add a generate.xml to the plugin for build server to use for build
+       settings.
+5.3.4  The BridgePoint process has a checklist of actions to take when adding a 
+       new plugin to the product.  Execute this and store it at [3].
+       
+5.4  Add information about upgrading a project from EDGE to CDT in the release
+     notes.  This will be covered in a separate issue [8].    
+    
+5.5  Remove EDGE from standard BP install
+5.5.1  Back up the install base containing EDGE to 
+       \\wv\dfs\bridgepoint\backups\BridgePoint_e3.5_install_base_w_EDGE_and_CDT.zip
+5.5.2  Remove EDGE/ folder under 
+       C:\BridgePoint_e3.5\BridgePointDeliverables\eclipse_extensions
+5.5.3  Remove link file for EDGE extension from 
+       C:\BridgePoint_e3.5\BridgePointDeliverables\extras\links
+5.5.4  Update post-install and pre-uninstall batch scripts to scrub references 
+       to EDGE.
+ 
+5.6 Update BridgePoint examples (Microwave Oven, and GPS) to BridgePoint/CDT 
+    projects    
+
+6. Implementation Comments
+--------------------------
+6.1 While updating sample projects and the unit tests that exercise these 
+    sample projects the way samples are stored has been modified to make it
+    easy to update existing sample projects and to add new ones.  We now store 
+    complete projects under the bp.welcome/models folder.  
+6.1.1 To edit one of these sample the developer shall:
+    _- Open the CVS repository view
+    _- Navigate to the bp.welcome/models/<folder of model to edit>
+    _- Check out the folder
+    _R Sample project is in the workspace under revision control
+    _- Follow process to make modification and check them in
+    
+6.1.2 The following is the procedure for adding new sample projects:
+
+	_- Create the new project
+	_- If the sample is currently stored in revision control check it out to 
+	   your workspace and disconnect it from source control.  If not in source 
+	   control simply move to the next step.
+	_- Open the Navigator view, select the project, Right Click (RC) > Move...
+	_- Select the following as the destination:
+	   <workspace>/com.mentor.nucleus.bp.welcome/models
+	_- Select finish
+	_- In the navigator view RC com.mentor.nucleus.bp.welcome and select refresh
+	_R com.mentor.nucleus.bp.welcome is marked dirty and the new model is now in
+	   <workspace>/com.mentor.nucleus.bp.welcome/models/<new model folder>
+	_- Open com.mentor.nucleus.bp.welcome\introContent.xml
+	_- Search for the section labeled:  <group id="page-links">
+	_R For every current sample there will be 2 lines that look similar to this:
+	        <link id="folder" label="Example Application - Microwave Oven" style-id="left" url="http://org.eclipse.ui.intro/runAction?pluginId=com.mentor.nucleus.bp.welcome&amp;class=com.mentor.nucleus.bp.welcome.gettingstarted.SampleProjectGettingStartedAction&amp;model=MicrowaveOven&amp;SingleFileModel=false">
+	          <text>Click here to create a project that includes a sample application model of a Microwave Oven.</text>
+	        </link>
+	_- Copy and paste those 3 lines from one of the existing sample projects 
+	   into the bottom of the <group id="page-links"> 
+	_- Modify the model=<name>, SingleFileModel=<true or false>, and text 
+	   fields for the new model
+	_- Check in the changes
+	_- Optional:
+	   If this new model needs a runtime description then simply create a 
+	   file named README and place it in this new projects root folder.  
+	   For example:
+	  <workspace>/com.mentor.nucleus.bp.welcome/models/<new model folder>/README
+	   
+	   NOTE: If a README file exists it will be opened when the project is 
+	          created.
+	   
+	_- Test by running and select the new project from the Getting Started screen.
+    
+7. Unit Test
+------------
+See DNT
+
+8. Code Changes
+---------------
+Branch name: R333-SKB-dts0100638163-01
+
+com.mentor.nucleus.bp.bld.pkg-feature/feature.xml
+
+com.mentor.nucleus.bp.cdt/src/com.mentor.nucleus.bp.cdt.wizards/BPMainPage.java
+com.mentor.nucleus.bp.cdt/META-INF/MANIFEST.MF
+com.mentor.nucleus.bp.cdt/.classpath
+com.mentor.nucleus.bp.cdt/build.properties
+com.mentor.nucleus.bp.cdt/plugin.xml
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui/
+    NewSystemWizard.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.ui.perspective/
+    BridgePointPerspective.java
+com.mentor.nucleus.bp.core/arc/create_core_plugin.inc
+com.mentor.nucleus.bp.core/tools/create_release_functions.sh
+com.mentor.nucleus.bp.core/tools/tag_bp_nb.sh
+com.mentor.nucleus.bp.core/tools/tag_bp.sh
+com.mentor.nucleus.bp.core/generate.xml
+
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ExportBuilder.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020NewProjectWizard.java
+com.mentor.nucleus.bp.mc.mc3020/plugin.xml
+
+com.mentor.nucleus.bp.welcome/src/com.mentor.nucleus.bp.welcome.gettingstarted/
+    GettingStartedAction.java
+com.mentor.nucleus.bp.welcome/src/com.mentor.nucleus.bp.welcome.gettingstarted/
+    GettingStartedLiveHelpAction.java
+com.mentor.nucleus.bp.welcome/src/com.mentor.nucleus.bp.welcome.gettingstarted/
+    GPSGettingStartedAction.java
+com.mentor.nucleus.bp.welcome/src/com.mentor.nucleus.bp.welcome.gettingstarted/
+    IGettingStartedConstants.java
+com.mentor.nucleus.bp.welcome/src/com.mentor.nucleus.bp.welcome.gettingstarted/
+    SampleProjectGettingStartedAction.java
+com.mentor.nucleus.bp.welcome/css/graphics/contentpage/background.jpg
+com.mentor.nucleus.bp.welcome/css/graphics/icons/ctool/arrow_blue.gif
+com.mentor.nucleus.bp.welcome/css/graphics/icons/etool/arrow_orange.gif
+com.mentor.nucleus.bp.welcome/css/graphics/rootpage/background.jpg
+com.mentor.nucleus.bp.welcome/css/root.css
+com.mentor.nucleus.bp.welcome/css/shared.css
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/Datatypes/
+    Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Functions/Functions.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Beeper/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Beeper/Beeper.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Door/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Door/Door.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Internal Light/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Internal Light/Internal Light.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Magnetron Tube/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Magnetron Tube/Magnetron Tube.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Oven/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Oven/Oven.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Turntable/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Turntable/Turntable.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Microwave Oven/Microwave Oven.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Test Subsystem/Test Sequences/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Test Subsystem/Test Sequences/Test Sequences.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/Test Subsystem/Test Subsystem.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    MicrowaveOven/MicrowaveOven.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/clock/clock.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/current_location/current_location.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/heart rate sample/heart rate sample.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/lap/lap.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/lap reset button/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/lap reset button/lap reset button.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/track log/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/track log/track log.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/trackpoint/trackpoint.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/workout session/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/workout session/workout session.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/workout timer/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/workout timer/workout timer.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    data aquisition/data aquisition.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Data Source/Data Source.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Initialization/Initialization.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/distance/distance.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/duration/duration.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/pace/pace.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/pulse/pulse.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/repeat step/repeat step.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/sequence step/sequence step.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/step goal/step goal.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/termination criterion/termination criterion.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/Workout Specification/Workout Specification.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/workout step/workout step.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Specification/Specification.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    test/GPS simulator/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    test/GPS simulator/GPS simulator.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    test/scenario1/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    test/scenario1/scenario1.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    test/test.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    UserInput/UserInput.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    Utility/Utility.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/tracking/
+    tracking.xtuml
+com.mentor.nucleus.bp.welcome/models/com.mentor.nucleus.bp.welcome/
+    com.mentor.nucleus.bp.welcome.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/.externalToolBuilders/
+    com.mentor.nucleus.bp.mc.xmiexport.XMIExportBuilder.launch
+com.mentor.nucleus.bp.welcome/models/GPS Watch/.externalToolBuilders/
+    MC-3020 Model Compiler.launch
+com.mentor.nucleus.bp.welcome/models/GPS Watch/Debug/Output/GpsWatch.exe
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    ARCH_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    ARCH_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    GuiBridge_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    GuiBridge_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_HeartRateMonitor_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_HeartRateMonitor_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    HeartRateMonitor_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_GPS_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_GPS_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Location_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    LOG_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    LOG_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/Makefile
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    object.lst
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_events.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_events.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_factory.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_factory.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_main.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_sets.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_sets.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_thread.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_trace.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_types.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_user_co.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    sys_user_co.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    TIM_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    TIM_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_Display_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_Display_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_HeartRateSample_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_HeartRateSample_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_LapMarker_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_LapMarker_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_TrackLog_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_TrackLog_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_TrackPoint_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_TrackPoint_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_WorkoutTimer_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    Tracking_WorkoutTimer_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_functions.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_functions.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_TestCase_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_TestCase_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_UI_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_ch/
+    UI_UI_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/_system.sql
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/bridge.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/class.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/datatype.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/domain.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/event.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/GPS Watch.sql
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/registry.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/
+    sys_functions.arc
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/code_generation/system.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/bridge.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/class.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/datatype.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/domain.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/event.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/GuiBridge_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/gen/system.mark
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/0_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/0_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/1_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/1_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/2_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/2_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/3_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/3_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/4_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/4_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/5_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/5_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/6_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/6_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/7_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/7_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/8_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/8_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/9_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/9_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/app_icon.gif
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/display_hover.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/
+    display_pressed.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/dots_large.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/dots_small.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/
+    lap_reset_hover.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/
+    lap_reset_pressed.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/light_hover.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/light_pressed.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/mode_hover.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/mode_pressed.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/
+    start_stop_hover.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/
+    start_stop_pressed.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/img/watch.png
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/GuiBridge.java
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/SetData.java
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/SetTime.java
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/SignalData.java
+com.mentor.nucleus.bp.welcome/models/GPS Watch/javasrc/lib/WatchGui.java
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Analysis/
+    Start Stop Reset/Start Stop Reset.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Analysis/
+    Analysis.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Datatypes/
+    Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/
+    HeartRateMonitorInterfaces/HeartRateProvider/HeartRateProvider.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/
+    HeartRateMonitorInterfaces/HeartRateMonitorInterfaces.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    HeartRateMonitor/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    HeartRateMonitor/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    HeartRateMonitor/HeartRateMonitor/HeartRateMonitor/ClassStateMachine/
+    ClassStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    HeartRateMonitor/HeartRateMonitor/HeartRateMonitor/HeartRateMonitor.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    HeartRateMonitor/HeartRateMonitor/HeartRateMonitor.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    HeartRateMonitor/HeartRateMonitor.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Location/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Location/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Location/Location/GPS/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Location/Location/GPS/GPS.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Location/Location/Location.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Location/Location.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/Display/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/Display/Display.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/HeartRateSample/HeartRateSample.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/LapMarker/LapMarker.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/TrackLog/TrackLog.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/TrackPoint/TrackPoint.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/WorkoutTimer/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/WorkoutTimer/WorkoutTimer.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking/Tracking.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Tracking/Tracking.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/
+    External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/
+    TestCases/TestCases.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/UI/
+    TestCase/InstanceStateMachine/InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/UI/
+    TestCase/TestCase.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/UI/
+    UI/ClassStateMachine/ClassStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/UI/
+    UI/UI.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/UI/
+    UI.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/UI/
+    UI.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/Library/
+    Library.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/
+    LocationDataTypes/LocationDataTypes.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/
+    LocationInterfaces/LocationProvider/LocationProvider.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/
+    LocationInterfaces/LocationUtil/LocationUtil.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/
+    LocationInterfaces/LocationInterfaces.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/System/
+    System.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/UIDataTypes/
+    UIDataTypes.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/UIInterfaces/
+    UI/UI.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/UIInterfaces/
+    UIInterfaces.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/models/GPS Watch/GPS Watch.xtuml
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/ARCH_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/ARCH_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/GuiBridge_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/GuiBridge_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/HeartRateMonitor_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/HeartRateMonitor_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/HeartRateMonitor_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/HeartRateMonitor_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/
+    HeartRateMonitor_HeartRateMonitor_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/
+    HeartRateMonitor_HeartRateMonitor_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/HeartRateMonitor_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/HeartRateMonitor_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_GPS_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_GPS_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Location_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/LOG_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/LOG_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_events.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_events.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_factory.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_factory.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_main.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_sets.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_sets.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_thread.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_trace.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_types.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_user_co.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/sys_user_co.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/TIM_bridge.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/TIM_bridge.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_Display_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_Display_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/
+    Tracking_HeartRateSample_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/
+    Tracking_HeartRateSample_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_LapMarker_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_LapMarker_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_TrackLog_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_TrackLog_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_TrackPoint_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_TrackPoint_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_WorkoutTimer_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/Tracking_WorkoutTimer_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_classes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_datatypes.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_dom_init.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_dom_init.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_functions.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_functions.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_ports.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_ports.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_TestCase_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_TestCase_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_UI_class.c
+com.mentor.nucleus.bp.welcome/models/GPS Watch/src/UI_UI_class.h
+com.mentor.nucleus.bp.welcome/models/GPS Watch/.classpath
+com.mentor.nucleus.bp.welcome/models/GPS Watch/.cproject
+com.mentor.nucleus.bp.welcome/models/GPS Watch/.project
+com.mentor.nucleus.bp.welcome/models/GPS Watch/README
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/.externalToolBuilders/
+    com.mentor.nucleus.bp.mc.xmiexport.XMIExportBuilder.launch
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/.externalToolBuilders/
+    MC-3020 Model Compiler.launch
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/Debug/Output/
+    MicrowaveOven.exe
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/gen/bridge.mark
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/gen/class.mark
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/gen/datatype.mark
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/gen/domain.mark
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/gen/event.mark
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/gen/system.mark
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/External Entities/External Entities.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Functions/Functions.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Beeper/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Beeper/Beeper.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Door/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Door/Door.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Internal Light/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Internal Light/Internal Light.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Magnetron Tube/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Magnetron Tube/Magnetron Tube.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Oven/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Oven/Oven.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Turntable/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Turntable/Turntable.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Microwave Oven/Microwave Oven.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Test Subsystem/Test Sequences/InstanceStateMachine/
+    InstanceStateMachine.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Test Subsystem/Test Sequences/Test Sequences.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/Test Subsystem/Test Subsystem.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven/MicrowaveOven.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/models/MicrowaveOven/
+    MicrowaveOven.xtuml
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/ARCH_bridge.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/ARCH_bridge.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/CP_bridge.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/CP_bridge.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_classes.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_datatypes.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_dom_init.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_dom_init.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_functions.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_functions.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_B_class.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_B_class.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_D_class.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_D_class.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_IL_class.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_IL_class.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_MT_class.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_MT_class.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_O_class.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_O_class.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_TRN_class.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_TRN_class.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_TS_class.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/
+    MicrowaveOven_MO_TS_class.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_ports.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/MicrowaveOven_ports.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_events.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_events.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_factory.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_factory.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_main.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_sets.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_sets.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_thread.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_trace.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_types.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_user_co.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/sys_user_co.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/TIM_bridge.c
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/src/TIM_bridge.h
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/.cproject
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/.project
+com.mentor.nucleus.bp.welcome/models/xtUML_Metamodel.xtuml
+com.mentor.nucleus.bp.welcome/.project
+com.mentor.nucleus.bp.welcome/generate.xml
+com.mentor.nucleus.bp.welcome/gps_project_contents.zip
+com.mentor.nucleus.bp.welcome/introContent.xml
+com.mentor.nucleus.bp.welcome/plugin.xml
+com.mentor.nucleus.bp.welcome/project_contents.zip
+com.mentor.nucleus.bp.welcome/README.txt
+
+com.mentor.nucleus.bp.welcome.test/src/com.mentor.nucleus.bp.welcome.test/
+    WelcomePageTest.java
+com.mentor.nucleus.bp.welcome.test/src/com.mentor.nucleus.bp.welcome.test/
+    WelcomePageTestGPS.java
+com.mentor.nucleus.bp.welcome.test/src/com.mentor.nucleus.bp.welcome.test/
+    WelcomePageTestMetamodel.java
+
+com.mentor.nucleus.internal.test/plugin.xml
+
+
+End
+---
+
+$Log: dts0100638163.int,v $
+Revision 1.6  2011/10/07 15:28:52  cstarret
+job:dts0100789569
+Fixed a numbering issue in the int having to do with updating welcome projects.
+
+Revision 1.5  2011/09/26 14:49:48  rmulvey
+job:dts0100638163
+Updated changed file list
+
+Revision 1.4  2011/09/26 14:15:52  rmulvey
+job:dts0100638163
+Added instructions for adding new sample projects and editing exiting ones.
+
+Revision 1.3  2011/09/26 14:06:47  rmulvey
+job:dts0100638163
+Updated the implementation note
+
+Revision 1.2  2011/09/08 15:52:37  kbrown
+job:dts0100638163
+Update INT.
+
+Revision 1.1  2011/09/08 15:52:09  kbrown
+job:dts0100638163
+Add INT.

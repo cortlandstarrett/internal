@@ -1,0 +1,259 @@
+========================================================================
+
+File:      $RCSfile: dts0100887796.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Static data in realized code classes can be lost
+
+1. Abstract
+-----------
+This note addresses an issue where when accessing the same realized class from
+different components, the values of the classes static variables appear to be
+lost.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100887796
+[2] \\wv\dfs\bridgepoint\field_data\dts0100877796
+
+4. Background
+-------------
+See Abstract.
+
+5. Requirements
+---------------
+5.1 Static data in java realized classes shouldn't be re-initialized every time
+    a call is made from another component.
+
+6.Analysis
+----------
+When successive realized bridge calls are made from the same component instance,
+all is well. However, if a call is made from different component instance, the
+value of any static variables declared by the class appear to have been lost.
+See 10.1.1 below for reproduction steps in a specific case.
+
+The values only appear to have been lost, however. The cause of the reported
+problem is that Java realized class cacheing is not being done correctly in
+Verifier.
+
+Each component constructs its own BPClassLoader instance, each with its own
+definitions cache. Each call to a realized bridge passes through the method,
+BPClassLoader.loadClass(). This calls findClassImpl() which looks in the
+definitions cache to see if the class was previously constructed. Because this
+cache is non-static, a call from a second component will find the required class
+is not present in the cache and will construct a new instance of the class,
+complete with new static variable space.
+
+As a result, when methods of the duplicate realized class are executed the
+static variables seem to have been reset. If another call is made from the first
+component, the original modified static variable values are seen again, because
+execution is now proceeding against the first created instance of the class.
+ 
+7.Design
+--------
+7.1 The class BPClassLoader has a map that caches the values of the java 
+    realized classes associated with their names. This map is named
+    "definitions". To effect a fix, this map is modified to become a static
+    member of the BPClassLoader class.
+
+7.2 Once it is made static there may be contention for access to this cache from
+    different component instances when not running in deterministic mode. For
+    the map to be thread safe an additional call to Collections.synchronizedMap
+    is made, passing the new Map instance when the static cache is first
+    constructed.
+
+8. Work Required
+----------------
+Fully described in the design.
+ 
+9. Implementation Comments
+--------------------------
+As a result of the change described in 6.1, it was noted that the class
+instances stored in it are not cleared between Verifier runs. This
+results in the values of the static variables in the realized java classes
+being carried over from session to session. 
+
+To resolve this, the class cache map will be cleared when a Verifier session
+terminates:
+
+9.1 Create static method resetClassLoader() that sets the BPClassLoader instance 
+     to null
+     
+9.2 Add a call to the method created above into the terminate() method of the 
+    Verifier. This method is located in the BPDebugTarget class.
+   
+9.3 In the method init() that is located in the BPDebugTarget class
+    the behavior of attaching processes to the launch instance is modified
+    to Add processes from all other projects.
+    This step is needed in case of launching two different components where 
+    each belong to a separate project.  The existing behavior was that only the 
+    processes from the first project gets related to the launch while the ones 
+    from the second where neglected hence they where not getting executed in the 
+    verifier session.
+    
+9.4  The second part for the fix mentioned above is added to the method 
+     getTargetForEngine() that is located in the BPDebugUtils class. The method 
+     is currently returning the debug target that has the same engine as the 
+     passed one. Its search scope was limited to only the default target, so
+     it's modified to search all the debug targets to retrieve the prober target
+     in case of having components belonging to different projects in the 
+     verifier session.      
+ 
+9.5 In case of having two two external entities with the same name of the java 
+    realized classes while having different implementations only one of them was
+    executed. For fixing this issue the key of the "definitions map" that is
+    located in the BPClassLoader, is modified to be the class URL instead of the
+    class name.
+
+9.6 A nuance of this failure mode was missed in the description in the issue[1].
+    While it is true that each running component has a different class loader,
+    the reproduction case provided in the issue always calls the realized EE
+    from the same component, so the final explanation note in the issue is
+    actually inaccurate.
+
+    The real reason the failure is being exhibited by the reproduction model is
+    that control passes between models in different projects. Each time any
+    realized EE is accessed from a model in a different project, the class
+    loader for that component is replaced. Thus, when control passes back to the
+    lib component in the reproduction model, the class loader is replaced when
+    the first call to LOG is made. It is this replacement that causes the class
+    loader to be replaced.
+
+    The fix described above does still address the problem because the loaded
+    class cache is now static, but the replacement of the class loader in this
+    way is redundant. This redundant behavior is therefore not user visible
+    after the promotion of this work and is going to be addressed by the work
+    for[2] in any case, so no additional action is proposed here.
+
+10. Unit Test
+------------
+The degrees of freedom for testing are as follows:
+
+There are always two components in each test, these are to arranged as:
+
+1a A Single Project
+1b A dual Project with wiring done in one project
+1c A dual project with the individual components launched but unwired (this is
+   not a realistic use case but is included as a boundary condition).
+
+2  Run each test case twice after an intervening restart of the verifier
+   session to assure that the values are reset.
+
+3  Test duplicate EE realizations are bound independently (only applicable to
+   cases 1b and 1c).
+
+Since EE realizations cannot currently be shared between models in different
+projects, no degree of freedom for this is required.
+
+10.1 The  following tests are to be automated and added to the debug.ui test suite
+10.1.1 Test that static values are not lost
+_- Get eeInstance.7z from the specified field data folder [2].
+_- Unzip the workspace and point BP at it.
+_- Launch Verifier using the New_Verifier_Configuration launch
+_- Execute lib::Components::Common::Functions::Init
+R- Last line shows MODIFIED.
+
+10.1.2 Test that static values are reset between sessions
+_- Restart the verifier 
+_- Execute lib::Components::Common::Functions::Init
+_R First line shows DEFAULT.
+
+10.1.3 Repeat the previous test by terminating the whole session and by
+terminating the Component instances individually.
+
+10.1.4 Test modifying the java source file modifications reflects in the new
+launched verifier session 
+_- Get eeInstance.7z from the specified field data folder [2].
+_- Unzip the workspace and point BP at it.
+_- Launch Verifier using the New_Verifier_Configuration launch
+_- Execute lib::Components::Common::Functions::Init
+R- First line shows Default data: DEFAULT
+_- navigate to CMP.java file 
+_- modify the default value "DEFAULT" to become "Source File Modified"
+_- Terminate verifier session and then launch it 
+_- Execute lib::Components::Common::Functions::Init
+R- First line shows Default data: Source File Modified
+
+10.2 This test is not to be automated yet because of an existing bug that 
+     bans the "Launch verifier Menu Item" in the source code in case of having 
+     multiple instances selected
+_- Create two xtuml Projects P1 and P2
+_- for each project create a root component C1 and C2
+_- for each component create Two packages  FunctionPackage and EEpackage
+_- for each create and external entity named EE 
+_- for each ee create a bridge operation named eeOp()
+_- create a java implementation for each external entity 
+_- each created java class will have the same name for the class EE.java
+_- the code implemented for each class is different 
+_- for each function package add one function that executes EE::eeOp()
+_- select both components C1 and C2 from the ME then launch verifier
+_- execute the function of each package 
+_- the console shows the implementation corresponding to each class
+
+
+10.3 Run Verifier JUnit tests.
+
+10.4 Since the changes are isolated to Verifier implementation rerunning the
+     rest of JUnit tests is not required.
+
+11. Code Changes
+---------------
+Branch name: R3_5_1-HKA-dts0100887796 (Branch)
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core/Vm_c.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.util/
+    BPClassLoader.java
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.launch/
+    BPDebugUtils.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPDebugTarget.java
+
+
+
+End
+---
+
+$Log: dts0100887796.int,v $
+Revision 1.8  2012/07/06 14:42:08  campbell
+Job: dts0100887796
+Added a design comment about a subtlety discovered in the failure mode. Added test matrix degrees of freedom.
+
+Revision 1.7  2012/06/28 19:14:13  nmohamad
+job:dts0100887796
+addressing review minutes
+
+Revision 1.6  2012/06/21 12:42:30  hkhaled
+job:dts0100887796
+update the int
+
+Revision 1.5  2012/06/18 15:05:03  hkhaled
+job:dts0100887796
+modify the int
+
+Revision 1.4  2012/05/16 17:16:33  campbell
+Job: dts0100887796
+Updated to clarify confusion caused by inaccurate issue description.
+
+Revision 1.3  2012/05/16 15:04:48  hkhaled
+job:dts0100887796
+int for the issue of Static data in realized code classes can be lost
+
+Revision 1.2  2012/05/16 14:55:30  hkhaled
+job:dts0100887796
+int for the issue of Static data in realized code classes can be lost
+
+Revision 1.1  2012/05/16 14:38:06  hkhaled
+job:dts0100887796
+int for the issue of Static data in realized code classes can be lost

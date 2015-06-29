@@ -1,0 +1,179 @@
+========================================================================
+
+File:      $RCSfile: dts0100910441.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Bind to user defined types
+
+1. Abstract
+-----------
+This note describes how Verifier will bind with realized user defined types.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100910441 - Support binding with realized user defined
+     types in Verifier
+[2]  cvs:\Documentation\internal\technical\dts0100831212\dts0100831212.ant
+[3]  ClearQuest DEI dts0100910433 - Throw exception for VIEC binding problems
+[4]  ClearQuest DEI dts0100910439 -  Use accessors on java realized structured
+     data types if provided by the user
+[5]  ClearQuest DEI dts0100910449 -  Support enumerated types in VIEC interface
+[6]  ClearQuest DEI dts0100910436 - Provide feature to verify VIEC realized code
+     bindings
+
+4. Background
+-------------
+VIEC users wish to optionally bind user defined types to their own realized
+implementations. If no binding is found, Verifier will default to mapping to the
+default java equivalents. This work will also address the need to bind to
+enumeration types[5] and to use accessors on realized structured data types if
+they are provided by the user[4].
+
+5. Requirements
+---------------
+See [2].
+
+6. Analysis
+-----------
+6.1 Binding policy
+These multiple issues are grouped into one note because they all require a very
+similar binding policy:
+
+6.1.1 Look for a provided realized type for an argument or return type based on
+      the naming information provided in the model.
+6.1.2 If found, bind only to interface methods that declare arguments using the
+      discovered realized type.
+6.1.3 If not found, fall back to a core type suitable for the data type being
+      handled.
+
+6.2 Extensions to Realized code binding audit
+The work for [6] is progressed and documented under a separate issue. This work
+shall extend that work by providing bind checks for all outstanding data type
+subtypes.
+
+7. Design
+---------
+When a piece of realized code is to be invoked, a discovery sequence shall be
+initiated. This sequence will either identify a new realized class to use, or it
+will identify the required core java type to use.
+
+7.1 marshallContentIn
+This existing method of VerifierInvocationhandler is extended to cover all
+possible subtypes of data type. These are:
+
+7.1.1 Structured Data Type
+      This is already handled by the VIEC implementation. However the binding
+      implementation will be extended to look for a user supplied public 
+      get<MemberName>() accessor. If this is found, it will be used instead of
+      directly accessing the realized field which may or may not be made private
+      by the user.
+7.1.2 Enumeration Data Type
+      The fallback policy described in the analysis section will be used to look
+      for a realized java enumeration. If one is found, binding to the supplied
+      user enumerators will be by name. If no user supplied binding is found, a
+      runtime error will be raised[3].
+7.1.3 User Data Type
+      The fallback policy described in the analysis section will be used to look
+      for a realized java data type. If one is found, the binding policy shall
+      depend on the base type to which the user data type resolves.  If it
+      resolves to a core data type then Verifier shall look for a user supplied
+      getValue() accessor, or if one is not found, to a public field named
+      'value'. If neither accessor nor public field is found, a runtime error
+      will be raised[3].  If the User Defined Type resolves to a Structured Data
+      Type or an Enumerated Data Type, the rules for those are followed, but
+      applied to the user realized class actually found.
+7.1.4 Core Data Type
+      This is already handled by the VIEC implementation, however while this
+      code is being visited, we will assure that all possible core types are
+      converted from appropriate java types.
+
+7.2 marshallContentOut
+This method, also found in VerifierInvocationHandler shall be extended in the
+same way as described in 7.1. It handles conversion of internal Verifier runtime
+values to java types.
+
+7.2.1 Structured Data Type
+      This is already handled by the VIEC implementation.  However the binding
+      implementation will be extended to look for a user supplied public 
+      set<MemberName>() accessor. If this is found, it will be used instead of
+      directly accessing the realized field which may or may not be made private
+      by the user.
+7.2.2 Enumeration Data Type
+      The fallback policy described in the analysis section will be used to look
+      for a realized java enumeration. If one is found, binding to the supplied
+      user enumerators will be by name. If no binding is found, a runtime error
+      will be raised[3].
+7.2.3 User Data Type
+      The fallback policy described in the analysis section will be used to look
+      for a realized java data type. If one is found, the binding policy shall
+      depend on the base type to which the user data type resolves. If it
+      resolves to a core data type then Verifier shall look for a user supplied
+      setValue() accessor, or if one is not found, to a public field named
+      'value'.  If neither accessor nor public field is found, a runtime error
+      will be raised[3]. If the User Defined Type resolves to a Structured Data
+      Type or an Enumerated Data Type, the rules for those are followed, but
+      applied to the user realized class actually found.
+7.2.5 Core Data Type
+      This is already handled by the VIEC implementation, however while this
+      code is being visited, we will assure that all possible core types are
+      converted to appropriate java types.
+
+8. Design Comments
+------------------
+
+9. Work Required
+----------------
+Fully described in the design section.
+
+10. Unit Test
+------------
+A new model, VerifierRealizedUDTTest, is added to the Test collateral in the
+Subversion repository. The following cases will be tested:
+
+    - a basic User Defined Type (UDT)
+    - a UDT that refers to a UDT (referred to as nested in the test source)
+    - a realized UDT with no accessors (public fields)
+    - a UDT that refers to a realized UDT with no accessors
+    - a realized UDT with accessors (private fields, public accessors)
+    - a UDT that refers to a realized UDT with accessors
+    - an enumeration
+    - a UDT that refers to an enumeration
+    - a Structured Data Type (SDT)
+
+    - test all of the above as SDT members
+    
+    - test the above passed as an interface operation argument
+    - test the above returned from an interface operation
+    - test the above as a signal argument
+    
+    - test the above being passed from Verifier to java
+    - test the above being passed from java to Verifier
+
+End
+---
+
+$Log: dts0100910441.dnt,v $
+Revision 1.3  2012/10/10 22:19:18  campbell
+Job: dts0100910441
+Address review obs.
+
+Revision 1.2  2012/10/10 19:39:35  campbell
+Job: dts0100910441
+Ready for review.
+
+Revision 1.1  2012/09/07 09:36:32  campbell
+Job: dts0100910441
+Introduced.
+

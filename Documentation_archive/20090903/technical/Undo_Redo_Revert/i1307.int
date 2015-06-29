@@ -1,0 +1,265 @@
+========================================================================
+
+File:      $RCSfile: i1307.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:23:21 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Supporting Simple Undo/Redo
+
+Implementation Comments
+-----------------------
+1.
+core.test.UndoTest was created with automated versions of the tests specified
+in the design note (except for the stress test, due to deadline constraints).  
+
+2. 
+core.util.test.OoaofooaUtil is moved to core.util, as its utility methods are 
+all useful outside of testing purposes.
+
+3.
+A new package ui.canvas.util was created.  Added to it were three new 
+utility classes, ConnectorUtil, GraphicalElementUtil, and GraphNodeUtil.
+These classes contain utility methods useful when dealing with graphics
+instances of those types.
+
+4.
+A boolean parameter called usesTransactions was added to the ui_blck_xlate 
+function in core's ui_processing.inc.  It allows the function to determine 
+whether to generate a block of code that cancels the current transaction 
+when a certain bridge operation is called.
+
+5.
+In core.test's ModelTransactionTest, the 
+testEarlyExceptionExitTransactionInProperties() test is modified to 
+pass in a null property value, rather than a null source model element,
+to the property source's setPropertyValue method, as the latter would 
+now cause a null pointer exception too early to caught by the method's try 
+block.
+
+The tests of the same class are also modified to retrieve the transaction
+manager from the model-root under test, rather than using the default
+transaction manager instance.  
+
+Also, tests were added to the class's setGenerateResults() method 
+that were previously missing.
+
+The expected results for ModelTransactionTest's tests were updated to:
+
+- include graphical changes
+- change the display name for attributes to jibe with how their capitalization
+	was changed for this issue
+- contain no changes to attributes that are being changed to the same value
+- contain no duplicate deletes
+
+6.
+In core.test's ModelChangeListenersBatchingTest, the test is updated to 
+account for the fact that the number of events for instant and batched 
+listeners is now different when there are duplicate attribute change deltas.
+
+7.
+In core.common.ModelRoot, a call to a new method dispatchPlatformEvents()
+was added to the DeltaCollector.endCollecting() method to prevent it from
+causing a deadlock while waiting for pending firings of events to occur. 
+A suitable override for dispatchPlatformEvents() was added to EclipseOoaofooa.
+
+8.
+In MC-Java's referring.inc, a check was added to the code that generates the
+relateAcrossR... methods for model element classes that exits the method early
+if the callee is already related to the given target element across the 
+specified relationship.  This prevents a spurious delta from being issued 
+in this situation.
+
+Likewise, a check was added to the code that generates the
+unrelateAcrossR... methods for model element classes that exits the method 
+early if the callee is not related to the given target element across the 
+specified relationship.  This prevents a spurious delta from being issued 
+in this situation.
+
+The above changes caused a couple of deltas to disappear from the expected 
+results for the testDeleteClassTransactionFromExplorer test in core.test's 
+ModelTransactionTest.
+
+9. 
+In the unformalize() operation of the ooaofooa's Simple Association class, 
+a relate statement was removed that was found to be unnecessary.  It presumed
+that an unformalize call just preceding it was unrelating the specified 
+elements; however, the call does not do that.  The corresponding unrelate 
+(to the removed relate statement) that occurs during an undo was causing a 
+bug that was the motivation for the above-mentioned changes to referring.inc.
+
+10.
+The internal.io.sql.test expected results files ee_empty.imp, err_ee2.imp,
+oal1.imp, oal2.imp, and os_ee2.imp were modified to remove log entries 
+for model element changes that no longer occur due to the change to the 
+generated set-attribute methods where they now exit early if the attribute
+already has the given value.
+
+11. 
+Unused private data members and functions were removed from some classes
+
+Unit Test
+---------
+See design note.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/arc/create_global_action.inc
+com.mentor.nucleus.bp.core/arc/create_object_action.inc
+com.mentor.nucleus.bp.core/arc/create_rename_action.inc
+com.mentor.nucleus.bp.core/arc/function_body.inc
+com.mentor.nucleus.bp.core/arc/ui_processing.inc
+com.mentor.nucleus.bp.core/arc/wizard.inc
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/OoaofooaBase.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    AttributeChangeModelDelta.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    BaseModelDelta.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/IdAssigner.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    NonRootModelElement.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    Transaction.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    TransactionManager.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/NewDomainWizard.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/ui/Selection.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/
+    OoaofgraphicsUtil.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/OoaofooaUtil.java
+	[added]
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/util/UIUtil.java
+
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    activity_editor_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    cancel_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    delete_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    formalize_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    shape_creation_transaction.exp
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    shape_move_transaction.exp
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    CreationTransitionEventReassignmentTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ModelChangeListenersBatchingTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    ModelTransactionTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    RenameInvolvingResourceTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/
+    UndoRedoTest.java [added]
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/consistency/
+    ConsistencyBase.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/util/
+    OoaofooaUtil.java [removed]
+com.mentor.nucleus.bp.core.test/generate.xml
+
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/ee_empty.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/err_ee2.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/oal1.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/oal2.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/os_ee2.imp
+
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasEditor.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    CanvasEditorListener.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/Cl_c.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/Gr_c.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    ModelContentOutlinePage.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    OoaofgraphicsBase.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/preferences/
+	CanvasEditorPreferences.java
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/util/
+    ConnectorUtil.java [added]
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/util/
+    GraphicalElementUtil.java [added]
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/util/
+    GraphNodeUtil.java [added]
+com.mentor.nucleus.bp.ui.canvas/generate.xml
+
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+	CanvasEditorInteraction.java
+com.mentor.nucleus.bp.ui.canvas.test/src/com/mentor/nucleus/bp/ui/canvas/test/
+    util/MouseUtil.java [added]
+
+com.mentor.nucleus.bp.ui.properties/arc/BuildPropertySource.arc
+
+com.mentor.nucleus.bp.ui.text/src/com/mentor/nucleus/bp/ui/text/
+    ModelElementPropertyStorage.java
+
+MC-Java/java.arc
+MC-Java/referring.inc
+MC-Java/statement.inc
+
+MC-Java.test/Delete_Check_test/src/deletecheck/common/NonRootModelElement.java
+
+
+
+End
+---
+
+$Log: i1307.int,v $
+Revision 1.1  2009/09/03 18:23:21  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:14:04  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.28.1  2008/12/31 16:11:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2006/03/04 04:12:56  greg
+Job: 1307
+Changes made during issue promotion
+
+Revision 1.7  2006/03/02 17:24:46  jmather
+Job: 1307
+Added some implementation comments.
+
+Revision 1.6  2006/03/01 21:48:04  jmather
+Job: 1307
+Added some implementation comments.
+
+Revision 1.5  2006/03/01 19:06:52  jmather
+Job: 1307
+Added some implementation comments.
+
+Revision 1.4  2006/03/01 00:23:47  jmather
+Job: 1307
+Removed an implementation comment which no longer applies.
+
+Revision 1.3  2006/02/28 21:31:13  jmather
+Job: 1307
+Added some implementation comments.
+
+Revision 1.2  2006/02/28 16:58:52  jmather
+Job: 1307
+Added some implementation comments.
+
+Revision 1.1  2006/02/27 04:32:20  jmather
+Job: 1307
+Introduced.

@@ -1,0 +1,124 @@
+========================================================================
+
+File:      $RCSfile: i4018-i4020.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Verifier hangs during inter-component signaling
+Pending events are not always being unlinked correctly
+
+1. Abstract
+-----------
+This note describes implementation of a fix to a race condition uncovered in 
+the Verifier's pending event queue.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 4018
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=4018
+[2] Bugzilla item 4020
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=4020
+[3] <cvs>Documentation/internal/technical/notes/i4018-i4020.dnt
+
+4. Background
+-------------
+See [3]
+
+5. Design
+---------
+See [3]
+
+6. Implementation Comments
+--------------------------
+6.1 Enhanced core/common/TraceLogger.java to print thread information with 
+    every statement.  The trace information is displayed as it previously was, 
+    but the following is prepended to it:
+    [<Thread ID>, <Thread Name>]
+6.2 In ACT_SGN.execute() call I_EXE.notify() after the call to 
+    pendingEvent.fire() to wake-up the I_EXE.  This fixes an off-by one  
+	race condition.  The problem was that ACT_SGN.execute() calls 
+	ACT_SGN.setupParameterValues() which calls 
+	ACT_ACT.createStackFrameForMessage() which creates a stack frame and calls 
+	I_EXE.notify().  Of course in this ACT_SGN case the message has not yet 
+	been posted to the queue, so the call to notify() happens to soon.  By 
+	adding the additional call to notify after the pendingEvent.fire() call 
+	we are assured that the event is in the queue before we signal the I_EXE to 
+	process it.
+6.3 Made 2 changes in BPThread.java
+	1) Added code to lock the event queues before accessing them.
+	2) After starting a new verifier thread wait give the thread a chance to 
+	   start-up before trying to use it.
+6.4 In MC-Java/ooa_schema.sql (the MC-Java meta-model) Added elements from 
+    the Element Packaging subsystem to the MC-Java meta model.
+     
+7. Unit Test
+------------
+See [3]
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Datatypes/Datatypes.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In Engine/Class In Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Event Queue Entry/Event Queue Entry.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Execution Engine/Execution Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance/Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Pending Event/Pending Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack/Stack.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Signal Invocation/Signal Invocation.xtuml
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/
+    TraceLogger.java
+
+com.mentor.nucleus.bp.debug.ui/src/com/mentor/nucleus/bp/debug/ui/model/
+    BPThread.java
+
+MC-Java/do_type.inc
+MC-Java/java.arc
+MC-Java/ooa_schema.sql
+
+
+
+End
+---
+
+$Log: i4018-i4020.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:07  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.2.1  2008/12/31 16:10:11  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2008/12/18 02:48:27  rmulvey
+Job:4018 4020
+Updated implementation note
+
+Revision 1.1  2008/12/17 03:43:43  rmulvey
+Job:4018 4020
+Introduced

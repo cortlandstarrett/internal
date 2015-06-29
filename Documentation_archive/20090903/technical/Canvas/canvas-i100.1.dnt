@@ -1,0 +1,835 @@
+========================================================================
+
+File:      $RCSfile: canvas-i100.1.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Canvas Functionality
+
+Abstract
+--------
+Eclipse based BridgePoint needs a canvas on which to show diagrams. This
+note defines the design chosen to render the canvas.
+
+History
+-------
+
+Document References
+-------------------
+[1] core/doc/internal/technical/Canvas/canvas.ant
+[2] canvas/mdl/ooaofgraphics.bak
+[3] The Java Developers Guide to Eclipse pp 352-353
+[4] core/mdl/ooaofooa.bak (to be introduced).
+ 
+Design
+------
+i100.1.1   Single canvas editor
+An existing project, com.projtech.bp.ui.canvas, is extended to support
+the required canvas behavior. The modeled subsystem, Graphics Domain[2]
+is removed from its current integration with the OOA of OOA and extended
+to specify the bulk of the required behavior in action language. This
+model is presented as an integral part of this review and should be read
+in conjunction with this note.
+
+MC-Java is modified to allow separate generation of java for each project
+that specifies a source model. The graphics model is exported from Builder
+and placed as a bak file in the project mdl folder. 'bak2sql' is then run
+on the file to create an sql file. This is then passed to MC-Java for code
+generation.
+
+Two hand written java classes are declared. One, 'CanvasEditorInput' is
+created to abstract the standard Eclipse editor opening behavior[3]. The
+other, 'CanvasEditor' provides the interface between the Eclipse SWT
+widget library and the generated code for the canvas. CanvasEditor
+encapsulates two key class instances. One is an instance of Canvas, a
+general purpose SWT widget on which graphics painting is done. The other
+is an instance of the java class generated from the Graphics Domain class
+'Model'.
+
+'Model' is used to manage painting, user interaction and bridging to the
+client domain (the ooaofooa or core). 'Canvas' is the surface on which the
+painting is done. 'IPaintListener.PaintControl' detects cases where Eclipse
+has determined that a window area must be repainted. This callback is
+installed by an 'Canvas.addListener' call to the encapsulated 'Canvas'
+instance. The body of this listener calls Model.Draw as described below.
+Later work adds mouse and key listeners that form the entry points for
+handling user interaction with the drawing canvas. These events, when
+implemented will also be passed to the Model instance.
+
+i100.1.1.1 Draw directly to an SWT Canvas drawing surface.
+Drawing behavior is captured as a series of operations on the Graphics
+Domain classes. The main entry point is Model.Draw. Note that Draw takes
+two arguments. The first, 'context', encapsulates an Eclipse Graphics
+Context (GC). This allows the low level graphics routines (see next section)
+to draw directly onto an SWT Canvas. The second, a boolean 'is_hard_copy'
+turns off the selection highlighting behavior (see i100.1.3) when printing.
+The Model.Draw method is called directly from the PaintListener callback
+interface after creating and initializing a Graphics Context. The listener
+implementation incorporates a double buffering mechanism to prevent display
+flicker.
+
+i100.1.1.2 Access all graphics routines through EE (GR).
+As specified in the high level design, all direct access to the GC is done
+in native methods declared exclusively on the EE, GR.
+
+i100.1.1.3 Map Bridge calls to native Java methods.
+Most bridges of the GR EE are colored as 'Translate:native'. This causes
+MC-Java to place their contents directly in the generated source. Since
+some bridges require references to existing external java classes, an
+'Import' keyword is added to the external entity and individual bridge
+descriptions. MC-Java uses this coloring to generate additional import
+statements. Some bridges are not marked as native. These bridges specify
+generic behavior expressible as BridgePoint action language.
+
+i100.1.1.4 Provide Scrolling behavior
+The 'Model' class contains a legacy attribute pair, 'ScrollPosnX' and
+'ScrollPosnY'. These values are used to cache the current scroll
+position. Scrollbars are added to the canvas class, when the user
+activates these bars, callback listeners are triggered. These adjust
+the value of the above attributes. All drawing (done through the GR
+EE) is first translated by the amount specified by the Scroll position
+attribute pair. This has the effect of scrolling the diagram under the
+control of the scrollbars.
+
+i100.1.2   Symbol Display
+The main entry point 'Model.Draw' (see above), selects the set of Graphic
+Entities (GD_GE) that make up the canvas. It first sets the background
+color and then iterates over each graphic entity instance, delegating the
+drawing responsibility to the individual entities. An graphical entity is
+either a Shape or a Connector. The supertype delegates the Draw call to the
+appropriate subtype. Each graphical entity caches the metamodel entity it
+represents in the 'represents' attribute. Each symbol calls operations on
+the metamodel entity to obtain the required basic symbol style and the
+text to show in the symbol.
+
+The basic shape styles are:
+
+  - Box, Folder, Round Box.
+  
+Further symbol styles shall be added as required. Connector styles fall
+into two categories; line styles and end styles. There are just two line
+styles:
+
+  - Broken and Solid
+
+The end styles are:
+
+  - BullsEye, Filled Circle, None, Open Arrow and Triangle.
+
+Further end styles will be added as needed. All the above styles are
+rotated as required to align with the connector segment to which they are
+attached. The represented entity returns one of the above styles when the
+'<entity>.getStyle' operation is called. This method is called using the
+Java reflection interface to minimize inter-domain coupling. Connectors
+query for a style at both ends. Shapes query only once for the style of the
+symbol as a whole.
+
+Text is obtained using a similar technique. Shapes query for the number of
+compartments, the number of entries per compartment and the left, right
+and centered text per entry. Centered text is truncated using ellipses
+(...) if the text will not fit inside the width of the shape.  Left and
+right justified text is considered together and both are truncated with
+ellipses as required. If one of the two text blocks will fit, the right
+justified one is dominant.
+
+Connectors query for fixed text at each end and for floating text at each
+end and at the center of the connector. Fixed text is designed to be small
+(such as cardinalities) and no attempt is made to justify it. Floating text
+is displayed with resize handles as necessary and is wrapped as required.
+Wrapping occurs only on whole word boundaries, even if a long word will not
+fit inside the bounding box. It is up to the user to place such text blocks
+so that they are readable.
+
+The Model and Graphical_Element attributes called 'represents' form the
+bridge between the Graphics Domain and its client. When first loaded,
+both the model and element instances have null represents values. The
+first time 'Draw' is invoked, the represents attribute value is tested and
+if it is null, it is initialized to the client instance by calling the
+Client bridge, 'getInstanceFromOOA_ID'. Because OOA_ID's may not be unique
+across different client instance extents, OOA_Type is also passed
+as an argument to this bridge.
+
+Model and Element specifications also contain 'represents' attributes, but
+these refer to the client classes their respective instances represent.
+They are initialized at canvas plugin startup from the plugin.xml file at
+the same time as the other default diagram data (see i100.1.6).
+
+i100.1.2.1 Draw to UML 2.0 standard wherever possible.
+The existing '<<Imported>>' markup is discarded in favor of the string
+'from: <Subsystem Name>'. Other UML 2.0 enhancements will be added as
+additional diagrams are supported.
+
+i100.1.2.2 All text shall be shown in a user selectable font.
+The Eclipse extension point 'org.eclipse.ui.fontDefinitions' is extended
+by the canvas project. This causes a new entry in the 'Preferences'|
+'Workbench'|'Fonts' dialog. This preference page lists all the fonts for
+the installation. A new entry appears here, named 'UML Diagram Text' with
+the comment, 'This is the font used on BridgePoint UML Diagram Editors'.
+This entry allows the user to select the font they wish to use for the
+diagram editors. The text editors already follow the tool selection for
+the 'Dialog Font' entry and so already integrate with the users preferences.
+
+i100.1.2.3 The user shall be able to specify the same display
+           options as offered by the existing BridgePoint tool.
+This requirement is deferred.
+
+i100.1.2.4 Clip text to the external dimensions of the symbol
+The Shape class uses the GR::clipTo bridge to turn clipping on before
+adding the text to a symbol and the GR::unClip bridge to turn it off after
+rendering of the symbol is complete. The clipTo interface takes four
+arguments, x, y, w, h. These specify the rectangle to clip to. Once executed,
+no graphics will be written outside this rectangle, even if a graphics
+command specifies it, until the unClip bridge is called. This meets the
+requirement that the canvas be kept free of text spilling over the symbol
+boundary.
+
+i100.1.2.5 Display text at a fixed offset from a connector.
+The rotation algorithms are employed to discover the angle of the connector
+line to which the text is attached. Based on this angle, a quadrant is
+selected and the direction of the fixed text offset is calculated so that
+possibility of overlap with the adjoining symbol is minimized. Future work
+enables the user to move floating text bodily to a different location.
+
+i100.1.3   Selection Highlighting
+i100.1.3.1 Selected symbols shall be shown with a bold outline.
+Symbols for whom 'isSelected' is true set the lineWidth to 2, otherwise a
+linewidth of 1 is used. Both these linewidths are further scaled by the
+Graphics subsystem so that extreme zooms show the symbol boundaries and
+connector segments clearly.
+
+i100.1.3.2 Show resize handles on writable canvas.
+Shapes for whom 'isSelected' is true also draw four resize handles around
+the extremities of the shape. Later work will enable the cursor to be used
+to change the size of the shape when the mouse is hovered over these
+handles.
+
+i100.1.3.3 Show a small circle at each line segment vertex.
+Connectors for whom 'isSelected' is true shall show their segments in bold
+as described in i100.1.3.1. They shall also draw small circles around each
+vertex. Future work shall also enable the user to bend lines at these
+vertices.
+
+i100.1.3.4 Show resize handles on connector text.
+Floating connector text blocks will also show these handles and will also
+be resizable in the same way as for shapes (see i100.1.3.2 above).
+
+i100.1.4   Diagram Printing
+A new hand written java class is added, CanvasPrintAction. This class
+provides a 'fan-in' point for the various ways of initiating hardcopy.
+
+i100.1.4.1 Provide print button.
+The CanvasEditor.createActions method is extended by hand to create the
+action. The hookActions method hooks up with the global, retargetable
+print button to the action.
+
+i100.1.4.2 Provide a print file menu entry.
+No action required, the print entry is pre-wired to activate the global
+action hooked up in the previous step.
+
+i100.1.4.3 Provide print hotkey (default is Ctrl + P).
+Again, no additional action required.
+
+i100.1.4.4 Allow the user to select a printer.
+A new method, CanvasEditor.handlePrint is created to manage the print
+dialog display and printing of the diagram. The first action in the
+method is to create and show the Eclipse standard widget, PrintDialog.
+The rest of the processing carried out by this method is described
+at i100.1.4.6 below.
+
+i100.1.4.5 Allows selection of either portrait or landscape mode.
+No additional action required. The predefined dialog already allows the
+user to set portrait or landscape mode, and the following step
+automatically scales the diagram to provide a best fit to the aspect
+ratio selected by the user. Rotation is performed automatically by the
+printing subsystem.
+
+i100.1.4.6 The diagram shall be automatically scaled to fit the page.
+The same scaling algorithm is used both for printing and for the
+'Zoom All' function (i100.1.5.3 below). Before the zoomAll method is
+invoked, both the print job and the page are begun. The printable area is
+obtained from the printer using the method 'getClientArea'. The resulting
+rectangle is passed to the 'zoomAll' method. Once scaling is complete,
+drawing is initiated passing the GC obtained from the printer. When
+drawing is complete, the page and print job are ended. These actions
+trigger the page throw from the printer.
+
+i100.1.5   Scaling
+The functions below are not global. Hence, a new handwritten class,
+'CanvasEditorActionContributor' is created. This class creates the
+toolbar buttons and registers them with the toolbar manager. This
+class also implements the 'setActiveEditor' interface. Eclipse calls
+this interface when the user switches between diagrams. The current
+editor is cached so that the button pushes are routed to the correct
+editor instance.
+
+i100.1.5.1 Zoom In.
+To maximize document readability, all zooming is done with respect to
+integral font sizes. The nominal 100% value uses 12 point text. As the
+Zoom In button is pushed, one point is added to font size. The diagram
+zoom factor is then calculated so that the graphics scale up to match
+the font size. Zoom in stops at 72 point font size, this is much larger
+than foreseeably required. Zooming (both in and out below) is performed
+with respect to the current center of the viewable canvas area.
+
+The Eclipse extension point 'org.eclipse.ui.commands' is extended to
+define key bindings that default to Ctrl-Shift Up as a keyboard 
+alternative to the Zoom In toolbar button. This key combination is
+reassignable in the 'Preferences'|'Workspace'|'Keys'|'BridgePoint
+Diagram Editor Commands' dialog page.
+
+i100.1.5.2 Zoom Out.
+This has the opposite effect to Zoom In. Zoom Out stops at 2 point text.
+The default key binding Ctrl-Shift Down is also defined using the same
+mechanism as described above.
+
+i100.1.5.3 Zoom All.
+Four action language operations for getting the maximum and minimum of
+the x and y axes of the diagram are defined on the modeled class 'Model'.
+A hand written method, 'zoomTo' is provided to accept the four maxima and
+minima values. An additional argument to this method provides the actual
+viewable (or printable) area. These values are used to determine whether
+the aspect ratio of the diagram limits its maximum size in the x or y axes.
+Once this is determined, the dominant axis is set and the subordinate axis
+size is calculated. This is used to equally partition the unused canvas to
+each side of the dominant axis, thereby centering the diagram in the print
+area. Finally, a boolean argument is used to determine whether the scroll-
+bars are to be set (this must only happen when zooming the diagram as
+defined here and not when printing).
+
+i100.1.5.4 Zoom to Selected.
+This feature is implemented using essentially the same algorithms as
+described above. The only difference is that the maxima and minima
+calculations only consider those symbols that are selected. When the
+resulting maxima and minima are passed to the zoomTo method, a zoom to
+selected effect is obtained.
+
+i100.1.5.5 Zoom to percentage.
+This feature is deferred.
+
+i100.1.6   Diagram and Symbol Color Selection
+The Eclipse extension point 'org.eclipse.ui.preferencePages' is extended
+in the 'com.projtech.bp.core' project. This is used to define a root
+preference page. At this time, no preferences are proposed for this page.
+Later work will add global BridgePoint preferences here. This work adds an
+additional preference page, contributed to the same extension point by the
+canvas project. This preference specifies the BridgePoint preference page
+as its root, so that it appears in the preference tree below the BridgePoint
+preference page. This extension calls out 'CanvasEditorPreferences', a hand
+written java class that defines two widget groups. One group for specifying
+diagram colors and one for symbols.
+
+Diagram and symbol types are specified in the canvas plugin.xml data. Each
+symbol has a name and a default color specified for it. Colors are specified
+in an xml element with RGB attributes. Each diagram similarly has a name and
+color, but diagrams also specify which symbols are valid on them. Later work
+will use this data to instantiate the tool classes and user interface needed
+to create new symbol instances on diagrams. The data from each 'symbol' xml
+element is read when the canvas plugin is first activated. The data is used
+by the CanvasPlugin class to instantiate Element_Specification instances.
+Similarly, 'canvas' xml elements are used to provide information for
+the creation of Model_Specification instances. The symbol information
+defined as part of the diagram element is used to associate the newly
+created Model_Specification instance with the relevant Element_Specification
+instances across R11.
+
+During the Draw operations for Model and Graphical Elements, the related
+specification instance is located using the identifier value. Once located,
+the relationship is cached by relation across R9 and R10 respectively.
+
+i100.1.6.1 Diagram colors
+The first group specifies a list box that allows selection of all diagram
+types specified for the installation. This group also specifies a
+'ColorSelector' instance. This shows a button showing the currently selected
+color.
+
+i100.1.6.2 Symbol colors
+Another similar group performs the same function for symbols. As the user
+selects different diagrams, the symbol list changes to show the symbols that
+are valid for that diagram type.
+
+In both cases, selecting a new color takes immediate effect, but the changes
+are discarded and the previous colors restored if the preference page is
+canceled. A 'Restore Defaults' button returns all the color values to the
+defaults specified in the canvas plugin.xml file. The 'Apply' and 'OK'
+buttons make the color changes permanent in the preferences store.
+
+i100.1.7 Clean targets
+The canvas requires clean targets analogous to those introduced by the
+work for issue 116.
+
+Work Required
+-------------
+i100.1.1       Single canvas editor
+i100.1.1.0     Preamble
+i100.1.1.0.1   Remove OOA of Graphics from OOA of OOA.
+i100.1.1.0.2   Add action language operations to support drawing.
+i100.1.1.0.3   Modify MC-Java to support needs of Canvas
+i100.1.1.0.3.1 Allow separate generation of java for each project.
+               In the file 'java.arc', read a new 'isRoot' boolean
+               attribute on the package result. Test this and don't
+               emit any code for model change management if it is
+               false. Add a domain level import statement so that
+               main domain classes can be imported.
+i100.1.1.0.3.2 Support Object and Class datatypes.
+               Modify the file 'do_type.inc' to check for the data types
+               'instance' and 'class'. Generate declarations for these as
+               'Object' and 'Class' respectively.
+i100.1.1.0.3.3 Change com.projtech.bp.core/color/package_spec.clr to
+               assign attr_isRoot = true.
+i100.1.1.0.4   Create infrastructure in canvas project for MC-Java.
+i100.1.1.0.4.1 Create mdl, color and sql folders
+i100.1.1.0.4.2 Create color/package_spec.clr and assign attr_isRoot
+               = false. Set root_class = "Ooaofgraphics".
+i100.1.1.0.5   Create 'CanvasEditorInput'.
+i100.1.1.0.6   Create the 'CanvasEditor' class in the canvas project.
+i100.1.1.0.7   Enable open behavior by extending 'com.projtech.bp.core.
+               editors', specifying 'CanvasEditorInput' as the input 
+               class and 'CanvasEditor' as the editor class.
+i100.1.1.0.8   Enable opening from a file resource by extending 'org.
+               eclipse.ui.editors', specifying 'CanvasEditor' as the
+               class and 'CanvasEditorActionContributor' as the action
+               contributor (see i100.1.5).
+i100.1.1.1     Draw directly to an SWT Canvas drawing surface.
+i100.1.1.1.1   Add SWT.Canvas and bp.ui.canvas.Model_c instances to
+               CanvasEditor.java.
+i100.1.1.1.2   Add required action language canvas drawing operations,
+               with Model.Draw as main entrypoint (see accompanying
+               Graphics Domain model).
+i100.1.1.2     Access all graphics routines through EE (GR).
+i100.1.1.2.1   Add 'Graphics Subsystem' External Entity, keyletters GR.
+i100.1.1.2.2   Add required low level drawing bridges. Each takes a GC
+               context argument and is marked with 'Translate:native'.
+i100.1.1.3     Map Bridge calls to native Java methods.
+i100.1.1.3.1   Modify MC-Java to place native contents directly in the
+               generated source.
+i100.1.1.3.2   Modify MC-Java to scan for 'Import' keyword in the external
+               entity and individual bridge descriptions and output 'import'
+               statements as described in the design.
+i100.1.1.4     Provide Scrolling behavior
+i100.1.1.4.1   Add vertical and horizontal scrollbar instances to
+               'CanvasEditor'.
+i100.1.1.4.2   Hook up scrollbar callbacks so that scroll position attributes
+               are updated when the user moves the scrollbars.
+i100.1.1.4.3   Specify drawing routines so that translation by scroll
+               position occurs before drawing.
+
+i100.1.2       Symbol Display
+i100.1.2.0     Preamble
+i100.1.2.0.1   Add action language to the 'Model.Draw' operation to cache
+               the client counterpart instance in the 'represents' attribute
+               (if needed), initialize the background color, select the set
+               of Graphic Entities (GD_GE) and delegate a 'Draw' call to each
+               one. 
+i100.1.2.0.2   The Draw operation for each symbol type shall call bridges
+               on a client external entity to initialize the 'represents'
+               attribute if necessary and to obtain the required basic symbol
+               style and the text to show in the symbol.
+i100.1.2.0.3   Create enumerated type 'Style' with enumerations for each of
+               the styles specified in the design.
+i100.1.2.0.4   Provide 'rotateAboutOriginBy' method. This takes a set of
+               points and rotates them by an angle argument.
+i100.1.2.0.5   Provide 'determineAngle' method. This takes two co-ordinates
+               and determines the angle of the line between them. Used
+               with the previous operation to rotate adorning shapes (such
+               as arrowheads and diamonds) to have the same orientation as
+               the line to which they are attached.
+i100.1.2.0.6   Create a Client 'CL' external entity and bridges to provide
+               fan-in for the java reflection method invocation mechanism.
+               These methods all use the same basic mechanism. They take a
+               string argument that is the name of the method to call. They
+               take additional arguments as required by the interface and
+               are named for the required arguments. For example, 's_invoke_ii'
+               takes two integer parameters and returns a string.
+i100.1.2.0.7   Extend the OOA of OOA to provide get_style, get_text etc.
+               operations on each metamodel instance represented by symbol
+               (see OOA of OOA model for these[4]).
+i100.1.2.0.8   For Shapes, invoke get_style to determine required shape.
+               Invoke get_compartments to determine how many compartments
+               are needed. For each compartment, invoke get_entries to
+               determine how many lines will be required. For each line,
+               call get_text three times; for Left, Right and Centered
+               text. Left and Right can coexist, but Centered text always
+               stands alone.
+i100.1.2.0.8.1 Provide Left, Right and Centered (with respect to the passed
+               co-ordinates) text printing function. Centered means in the
+               X axis.
+i100.1.2.0.8.2 Centered text is truncated using ellipses (...) if the text
+               will not fit inside the width of the shape.
+i100.1.2.0.8.3 Left and right justified text is considered together. Truncate
+               both with ellipses to half the shape width each if neither will
+               fit inside the shape.
+i100.1.2.0.8.4 If one of the two text blocks will fit, the right justified one
+               is dominant, i.e. place ellipses on the left text.
+i100.1.2.0.9   For connectors, invoke get_style for each end of the connector.
+               Invoke get_text for each end and for the center of the
+               connector. Invoke get_fixed_text for each end of the connector.
+i100.1.2.0.9.1 Determine angle of connector line (first or last segment as
+               appropriate). Use angle value to decide quadrant in which
+               fixed text is to be placed. Fixed text is always placed above
+               or to the left of the line. Obtain and print fixed text.
+i100.1.2.0.9.2 Use same technique for floating text default position (floating
+               text is always below or to the right of the line.
+i100.1.2.0.9.3 If associated Connector Text instance contains non-zero
+               values for the start, middle or end text, use these for
+               floating text placement instead.
+i100.1.2.0.9.4 Obtain and print floating text. If connector is selected
+               display resize handles.
+i100.1.2.0.9.5 Wrap floating text to the size specified in the connector
+               text instance. Wrap only on whole word boundaries.
+i100.1.2.1     Draw to UML 2.0 standard.
+i100.1.2.1.1   The 'get_text' function for the 'Imported Class' metamodel
+               entity delegates most of the calls to the actual class
+               associated with it across R101.
+i100.1.2.1.2   For compartment 1, entry 1, select the related subsystem
+               (->O_OBJ[R101]->S_SS[R2]). Append "(from: " + subsystem.Name
+               + ")" to the name obtained from the associated class.
+i100.1.2.2     User selectable font.
+i100.1.2.2.1   Extend 'org.eclipse.ui.fontDefinitions'. No special class
+               is required. The id is 'com.projtech.bp.canvas.font'. The
+               name is 'UML Diagram Text', the comment is 'This is the font
+               used on BridgePoint UML Diagram Editors'. The default font
+               is 'org.eclipse.jface.dialogfont'.
+i100.1.2.3     Same display  options as the existing BridgePoint tool.
+               This requirement is deferred.
+i100.1.2.4     Clip text to the external dimensions of the symbol.
+i100.1.2.4.1   Add clipTo and unClip bridges to the Graphics External
+               Entity. Color them as native. The body of clipTo
+               calls GC.setClipping. The body of unClip calls
+               GC.setClipping passing a null rectangle which sets the
+               clipping region to the whole canvas.
+i100.1.2.5     Fixed connector text offset.
+               For maintenance and readability of the model, this fixed
+               value is obtained by calling a bridge on the graphics
+               subsystem external entity that returns an integer constant
+               value of 15. This call is made when the offset from the line
+               end is being calculated in i100.1.2.0.9.1 and i100.1.2.0.9.2
+               above.
+
+i100.1.3       Selection Highlighting
+i100.1.3.1     Selected symbols shall be shown with a bold outline.
+               The GR::setLineWidth bridge is created to support this
+               requirement. If the current zoom factor is greater than
+               1.0 it is applied to the desired line width. If less,
+               the line width is set as requested (this ensures that
+               lines do not disappear at extreme zoomed out values
+               due to the line width being rounded to zero). The native
+               call is to GC.setLineWidth().
+i100.1.3.2     Show resize handles on writable canvas.
+               If the shape element 'isSelected' is true, call the bridge
+               'drawHandles' passing the context and the x, y, width and
+               height of the shape. This call is made after clipping is
+               removed otherwise the handles sometimes get a little
+               truncated. The 'drawHandles' bridge is native. It defines
+               points for the top right corner of the shape and creates
+               the rest by rotation the first time it is called.
+i100.1.3.3     Highlight segment vertices.
+               Create 'GR::drawEllipse' with arguments x, y, x_radius and
+               y_radius. In Connector.Draw, if 'isSelected' is true call
+               'drawEllipse' for each segment drawn, passing the value
+               returned by GR::getHotSpotSize for the x and y radii and the
+               Start_X and Start_Y segment values for x and y. A final call
+               is made passing End coordinates of the last segment.
+i100.1.3.4     Show resize handles on connector text.
+               If 'isSelected' is true, call 'drawHandles' using x, y
+               width and height values for each of the three floating text
+               blocks whose position is defined in the Connector_Text instance
+               associated with the connector.
+i100.1.3.5     To detect selection changes in the model, the 'hookListeners'
+               method calls 'addSelectionChangedListener' on the Ooaofooa
+               root model instance. The callback body calls 'redraw' on the
+               SWT.Canvas instance. This schedules a redraw, and when the
+               canvas redraws itself, the new selections are shown.
+i100.1.4       Diagram Printing
+i100.1.4.0     Preamble
+i100.1.4.0.1   Create the class 'CanvasPrintAction'.
+               This class defines a 'run' method called by Eclipse whenever
+               the user initiates any of the global print commands.
+i100.1.4.0.2   Call the 'CanvasEditor.handlePrint' method from the 'run'
+               method.
+i100.1.4.0.3   Create the method, 'CanvasEditor.handlePrint'.
+               The PrinterData instance returned by the PrintDialog.open
+               command (see i100.1.4.4 below) is used to create an instance
+               of Printer. This printer instance is passed to the
+               constructor of SWT.GC. The resulting GC instance is passed
+               to Model.Draw instead of the GC normally obtained by passing
+               the SWT.Canvas instance. This causes the drawing to occur on
+               the printer context and not on the display.
+i100.1.4.1     Provide print button.
+               Create and hook up the print action as described in the design.
+i100.1.4.2     Print file menu entry.
+               No action required.
+i100.1.4.3     Print hotkey.
+               No action required.
+i100.1.4.4     Printer selection dialog.
+               The first action of 'handlePrint' is to create and open an
+               instance of PrintDialog, passing the shell of the SWT.Canvas
+               instance as the parent widget. The resulting PrinterData
+               instance is used to create the Printer instance described
+               above.
+i100.1.4.5     Portrait and landscape mode.
+               No action required.
+i100.1.4.6     Scale diagram to fit the page.
+               Call the 'zoomTo'(see i100.1.5.3) method before beginning
+               the Draw process. Pass the client area obtained from the
+               printer (this allows automatic scaling to any selected
+               paper size). Pass the maximum and minimum x and y values
+               obtained from the Model class (see i100.1.5.3 below).
+               Finally pass false to the last argument to disable auto-
+               adjustment of the scroll bar positions on the display.
+
+i100.1.5       Scaling
+i100.1.5.0     Preamble
+i100.1.5.0.1   Create class 'CanvasEditorActionContributor'.
+i100.1.5.0.2   In the method 'contributeToToolBar', the tool buttons are
+               created and added to the toolbar. The Zoom In, Zoom Out,
+               Zoom All and Zoom Selected tools are added in this way.
+i100.1.5.0.3   The method 'setActiveEditor' does nothing at this time.
+               Later work will use this method to add additional tools to
+               the toolbar depending on the type of canvas selected.
+i100.1.5.1     Zoom In.
+i100.1.5.1.1   Create method 'zoomIn'.
+i100.1.5.1.1.1 Check for maximum zoom factor.
+i100.1.5.1.1.2 If current value is less, cache the current zoom factor
+               and calculate the new zoom factor by adding 1/12th to its
+               current value. Since the 100% zoom is based on a font size
+               of 12 points, this zoom factor change will cause a 1 point
+               font size change.
+i100.1.5.1.1.3 Calculate the new height and width and the delta between
+               the new and old height and width.
+i100.1.5.1.1.4 Call 'zoomTo'(see i100.1.5.3 below for a detailed
+               description of the behavior of this method) passing the
+               currently visible area. The new scroll positions are
+               adjusted for the change in height and width and passed as
+               the x and y values, along with the new height and width and
+               a flag enabling auto-adjustment of the actual scrollbars. 
+i100.1.5.1.2   Add Zoom In keyboard shortcut.
+i100.1.5.1.2.1 In the canvas plugin.xml file extend 'org.eclipse.ui.
+               commands' to create a new category called 'BridgePoint
+               Diagram Editor Commands'.
+i100.1.5.1.2.2 Create a command in in the same extension called 'Zoom In'.
+               Assign it to the above category.
+i100.1.5.1.2.3 Create a keybinding in the same extension that is mapped
+               to the above command and assign it to the configuration
+               'org.eclipse.ui.defaultAcceleratorConfiguration'. The keys
+               are as described in the design.
+i100.1.5.2     Zoom Out.
+i100.1.5.2.1   Create the method 'zoomOut'.
+i100.1.5.2.1.1 The algorithm is as for 'zoomIn', except that the lower
+               limit of 2 point font size is checked for and 1/12 is
+               subtracted from the current zoom factor.
+i100.1.5.2.1.2 Add Zoom Out keyboard shortcut
+i100.1.5.2.1.3 Create Zoom Out key binding.
+i100.1.5.3     Zoom All.
+i100.1.5.3.1   Add action language maximum and minimum operations
+i100.1.5.3.1.1 Create the maxima and minima operations on the Model class.
+               Each of the 'MaxX', 'MaxY', 'MinX' and 'MinY' operations
+               takes a boolean argument named 'allElements'. If true, all
+               shapes and connectors are considered, otherwise the maximum
+               or minimum test is performed only on those graphical elements
+               for which the 'isSelected' operation returns true. This
+               boolean supports the difference in behavior between the
+               'Zoom All' and the 'Zoom to Selected' functions.
+i100.1.5.3.1.2 Create the hand written method, 'zoomTo'.
+               This method is passed the available client area, together
+               with a boolean 'allElements' that has the same semantics as
+               described above. It calls the maxima and minima functions
+               passing the 'allElements' value. The resulting minimum and
+               maximum X and Y values are used to calculate the desired size.
+               The method then calculates the ratio of the desired size to the
+               available size in both the x (width) and y (height) axes. It
+               then selects the lower of the two ratios as the dominant axis
+               and calculates the actual size of the other axis based on the
+               zoom factor required for the dominant axis. It calculates the
+               'spare' canvas area by subtracting the desired axis size from
+               the actual axis size and distributes this spare area evenly on
+               either side of the diagram by adjusting the scroll position
+               in the subordinate axis by half of the spare amount. Finally,
+               if the updatePart argument is true, the physical scrollbars
+               for the canvas are adjusted by the amounts calculated. This
+               allows the same algorithm to be used for both display and
+               printing.
+i100.1.5.4     Zoom to Selected.
+i100.1.5.4.1   Create the hand written method 'zoomSel'.
+               This method uses a procedure identical to 'zoomAll' except
+               that a check for an empty selection is made before entering
+               the main body and the maxima and minima calls are made
+               passing false in the 'all' argument (see i100.1.5.3.1.1
+               above).
+i100.1.5.5     Zoom to percentage.
+               This feature is deferred.
+
+i100.1.6       Diagram and Symbol Color Selection
+i100.1.6.0     Preamble
+i100.1.6.0.1   Extend 'org.eclipse.ui.preferencePages'
+i100.1.6.0.1.1 In the project bp.core, add an extension to the specified
+               eclipse extension point. This extension specifies the
+               class 'bp.core.ui.preferences.BridgePointPreferences'.
+               It specifies the id as 'bp.core.root' and its name as
+               'BridgePoint'.
+i100.1.6.0.2   Create the core preferences class.
+               Create 'BridgePointPreferences.java' in the folder
+               'src/com/projtech/bp/core/ui/preferences'. This class is
+               added purely to satisfy the Eclipse binding mechanism. No
+               functionality is added at this time.
+i100.1.6.0.3   In the project bp.ui.canvas, add an extension to the same
+               eclipse extension point. This extension specifies the
+               class 'bp.ui.canvas.preferences.CanvasEditorPreferences',
+               and it specifies its category as 'bp.core.root'. This places
+               the page underneath the currently empty 'BridgePoint'
+               preference page. The name of this page is set as 'Bridge-
+               Point Diagram Editors'.
+i100.1.6.0.4   Create the canvas preference class.
+               Create 'CanvasEditorPreferences.java' in the folder
+               'src/com/projtech/bp/ui/canvas/preferences'. This class
+               extends 'org.eclipse.jface.PreferencePage'.
+i100.1.6.0.4.1 This class implements the methods 'createContents',
+               'initializeValues', 'handleCanvasSelection', 'performOK',
+               'performCancel', 'performDefaults'.
+i100.1.6.0.4.2 Create the contents of the preference page.
+               The method 'createContents' creates a 'Composite'
+               instance to hold all the widgets needed for the preference
+               page. The required widgets are; a 'List' instance for the
+               canvas types, a 'ColorSelector' instance to choose the
+               color of the canvas background, another 'List' to show the
+               valid symbols on the canvas and another 'ColorSelector'
+               button to allow the user to choose a color for the symbol.
+i100.1.6.0.4.3 Initialize the preference values.
+               The 'initializeValues' method sets up the preference store
+               for the canvas. It then obtains the set of canvases defined
+               for the system and adds them to the first list. It then
+               selects the first canvas, and then calls 
+               'handleCanvasSelectionChange' to set the color of the 
+               'ColorSelector' and to update the list of symbols.
+i100.1.6.0.4.4 Harden the users choices into the preference file.
+               The method 'performOK' writes the current values found in the
+               graphics specification elements into the canvas preference
+               store.
+i100.1.6.0.4.5 Cancel the users choices.
+               The method 'performCancel' writes the values found in the
+               preference store into the corresponding graphics specification
+               element attributes.
+i100.1.6.0.4.6 Revert to the defaults.
+               The method 'performDefaults' reads the values in the plugin
+               registry that were set as default in the canvas plugin xml
+               file and writes them into the corresponding graphics
+               specification element attributes.
+i100.1.6.0.5   Specify the canvas and symbol types
+i100.1.6.0.5.1 Enhance the extension point 'bp.core.editors'.
+               The file 'core/schema/com.projtech.bp.core.editors.exsd' is
+               modified to do the following: add two new child elements to
+               <editor> called <canvas> and <symbol>. Both <canvas> and
+               <symbol> contain a required child element, <color> that has
+               three attributes r, g and b. Both elements specify required
+               attributes, 'name' and 'class'. <canvas> has an attribute
+               called 'modelType' and <symbol> has additional attributes
+               called 'elemType' and 'isConnector'. Finally, <canvas>
+               contains zero or more <validSymbol> elements. Each of these
+               must call out the name of a previously defined <symbol>
+               element in this extension.
+i100.1.6.0.5.2 In the file 'bp.ui.canvas/plugin.xml', add an extension of
+               the point 'bp.core.editors'. In this extension, declare the
+               following <symbol> elements; 'Subsystem', 'External Entity',
+               'Class', 'Imported Class', 'State'. In each case, the value
+               of elemType is set to match the value already attributed to
+               the graphics domain element in the existing BridgePoint tool.
+               Each element has a color element with rgb values set to match
+               the existing BridgePoint canvas colors. Note that because
+               connectors have no color of their own, no (e.g.) relationship
+               or transition symbol types need to be declared at this time.
+               Later work will add these and additional attributes to the
+               schema as required.
+i100.1.6.0.5.3 Read the data at plugin startup.
+               In the CanvasPlugin class, a new method, 'initializeCanvases'
+               is added and called from the constructor. This method opens
+               the plugin registry and reads the 'bp.core.editors' extension
+               point. For each <symbol> element found, an instance of the
+               modeled class 'Element_Specification' is created. For each
+               <canvas> element, an instance of 'Model_Specification' is
+               created. For each <validSymbol> element within each <canvas>,
+               the canvas and symbol instances are located and related 
+               across the modeled relationship R11 using a newly created
+               instance of 'ElementInModelSpecification'.
+i100.1.6.1     Allow the user to specify the canvas colors.
+               The first 'ColorSelector' instance has a selectionListener
+               added that updates the background color attribute of the
+               currently selected Model_Specification instance. The first
+               'List' instance has a selectionListener that sets the
+               current canvas to the one just selected by the user. It then
+               calls 'handleCanvasSelectionChange' which updates the color
+               on the color selector and clears and refills the second
+               (symbol) list with the correct instances found by navigating
+               R11 from the current canvas.
+i100.1.6.2     Allow the user to specify the symbol colors
+               The second color selector and list do the same jobs respectively
+               for the current symbol as those described above do for the 
+               current canvas.
+i100.1.6.3     Update the colors immediately.
+               The color selector listeners, the 'performCancel' and the
+               'performDefaults' method all call the static method 'redrawAll'
+               on the the CanvasEditor. This forces all the visible canvases
+               to redraw themselves immediately.
+
+i100.1.7       Clean targets
+i100.1.7.1     The file bp.canvas/build.xml has the following build targets
+               added; "clean_all", "clean_sql", "clean_java" and "clean_
+               classes".
+
+End
+---
+
+$Log: canvas-i100.1.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:06  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.166.1  2008/12/31 16:10:09  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2004/02/23 17:32:10  campbell
+Job: 100
+Fixed review observations.
+
+Revision 1.7  2004/02/20 19:24:46  campbell
+Job: 100
+Clarified that floating text is obtained for the middle of a connector.
+Added narrative in Design section and extra work required to
+cover the cacheing of the client counterpart instances.
+
+Revision 1.6  2004/02/19 21:54:41  campbell
+Job: 100
+Color selection behavior added to Work Required section.
+Final version fro pre-review comments.
+
+Revision 1.5  2004/02/19 18:03:40  campbell
+Job: 100
+Zooming added to Work Required section.
+
+Revision 1.4  2004/02/18 23:16:43  campbell
+Job: 100
+Work Required section expanded.
+
+Revision 1.3  2004/02/18 18:56:45  campbell
+Job: 100
+Expanded with yet more detail.
+
+Revision 1.2  2004/02/18 16:03:02  campbell
+Job: 100
+Expanded with more detail.
+
+Revision 1.1  2004/02/18 00:29:37  campbell
+Job: 100
+First Introduction.

@@ -1,0 +1,161 @@
+========================================================================
+
+File:      $RCSfile: dts0100573488.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+The testInstanceViewingAndNavigation() in debug.ui is failing
+
+1. Abstract
+-----------
+With the promotion of issue dts0100572189 (removal OAL persistence) a unit 
+test is failing that needs to be investigated and addressed.   The failing test
+is debug.ui.test/testInstanceViewingAndNavigation().
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100573488 (this issue)
+http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=6df1efdd-b278-4a72-baa0-932262ad9d9e
+
+[2] ClearQuest DEI dts0100572189
+http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&rmsessionid=8a3ca832-35de-40c2-9e9e-932262ad9d9e
+Remove persisted OAL instances from the model files
+
+[3] ClearQuest DEI dts0100572189
+http://dtsweb.wv.mentorg.com/cqweb/main?command=GenerateMainFrame&service=CQ&schema=dtr01&contextid=dts01&entityID=34127772&entityDefName=Defect
+Prevent export of a model with errors when OAL Export is selected
+
+4. Background
+-------------
+This unit test failure is caused by the change to persist OAL across R612 
+instead of R601 [2].   It has been decided that it is best to back out that 
+change and continue to use R601 for several reasons the most important of which 
+is that this change would cause model compilers to have to change (including 
+our customer's model compilers).  
+
+5. Design
+---------
+In order to use R601 (now that persisted OAL has been removed [2]) we must 
+assure that R601 is populated with all parsed data during the export (after 
+the parse-all).  To do this, the export wizard should call ACT_ACT.Initialize() 
+for each of the ACT_ACT instances in the element(s) being exported. 
+
+5.1 Modify the R601/R666 and R612/R650 association text phrases and add 
+descriptions for these associations.
+
+5.2 Modify the stream.pei.sql file and back-out the change that was made to 
+persist across R612 (reinstate persistence across R601).
+
+5.3 Modify the Export Wizard to hook-up the parsed instance across R601 after
+the parse-all is performed.
+
+6. Implementation Comments
+--------------------------
+6.1
+Changed the association text phrases on R601/R666 to reflect that they 
+are actually "committed" changes, not simply "transient" parsed OAL (which is 
+what R612/R650 represents).  Added the following description to all 4 of these 
+associations:
+
+R612/R650 and R601/R666 are similar but are separate to allow parsing to be
+decoupled from Verifier/Export.  As parsing occurs R612/R650 are used, however 
+R601/R666 are populated only when one of the following four conditions happens:
+                              1) Verifier is launched
+                              2) OAL is saved after being edited
+                              3) Model export is performed
+                              4) During model import when the parse on import 
+                                 option is selected
+                                 
+This allows a user to make a change to the OAL while running a verifier session, 
+but not have verifier "see" the change until the change is explicitly saved by
+the user.
+
+6.2
+Reverted to version 1.30.4.3 (backing out change 1.30.4.4).  The change being 
+backed out was to persist the OAL during export across R612 instead of R601. 
+The OAL is now, again persisted across R601.
+  
+ 
+6.3 
+In the parseAllForExport() function after the parsing the selected elements, 
+we now call ACT_ACT.Initialize() for each of the ACT_ACT instances in the 
+ModelRoots of the element(s) being exported.  This is done to assure R601/R666 
+is initialized prior to export.  
+
+6.4 In the ModelExport wizards's parseAllForExport() function, the place we 
+look for parse errors was modified to process pending events before looking 
+to see if there was a parse error.  This helps assure the ILogListener is 
+notified before we check for errors.
+
+Note that an issue was raised about this problem [3], and it can now be closed
+with the promotion of this issue.
+
+6.5 Updated test results to account for reverting OAL persistence from 
+back to R601.  Note that these same files were modified in [2] when 
+when OAL was removed from the model files and the switch to R612 was made.
+
+7. Unit Test
+------------
+7.1 Run all unit tests and assure they pass
+    Note: CanvasCopyPasteTests.java::testUndoRedoRestoresPastedElements() is 
+    failing. We have decide to promote but continue to investigate this.
+
+8. Code Changes
+---------------
+Changes are in branch R2_1_2-RWM-dts0100573488.
+
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Body.xtuml
+
+com.mentor.nucleus.bp.io.mdl/src/com.mentor.nucleus.bp.io.mdl.wizards/
+    ModelExportWizard.java
+com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/testOAL1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/watch_export.xtuml
+
+
+End
+---
+
+$Log: dts0100573488.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/04/07 15:14:12  rmulvey
+Job:dts0100573488
+Updated note to show CanvasCopyPasteTests.java::testUndoRedoRestoresPastedElements() is failing.
+   We have decide to promote but continue to investigate this separately.
+
+Revision 1.5  2009/04/03 18:32:28  rmulvey
+Job:dts0100572188
+Updated expected results to account for persistence between ACT_ACT and
+ACT_BLK once again using R601 instead of R612.  This change was made for dts0100572189 and is now being reverted.
+
+Revision 1.4  2009/04/03 15:40:41  rmulvey
+job:dts0100573488
+Updated to account for observations made during review.
+
+Revision 1.3  2009/04/03 12:53:41  rmulvey
+job:dts0100573488
+typo
+
+Revision 1.2  2009/04/03 12:51:30  rmulvey
+job:dts0100573488
+Noted the branch the changes are in
+
+Revision 1.1  2009/04/03 12:48:09  rmulvey
+job:dts0100573488
+Introduced

@@ -1,0 +1,495 @@
+========================================================================
+
+File:      $RCSfile: i121.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Implement function invocations
+
+
+Abstract
+--------
+This note describes adding OAL semantics verification for 
+invocations of functions.
+
+History
+-------
+
+final i121-022004-01.rvm
+
+Document References
+-------------------
+Issue 121
+action_semantics.dnt
+
+
+Background
+----------
+
+This note describes the changes to the parser validation
+functions so invocations of functions are semantically validated.
+
+This work is part of implementing the action semantics 
+design (action_semantics.dnt), section AS1.4.3.
+
+The Tiger reduced parser (oal.bnf) has the following rules
+regarding these statements:
+
+function_statement
+  :
+  TOK_DOUBLECOLON!
+  function_invocation
+  ;
+
+function_invocation
+  :
+    function_function
+    TOK_LPAREN!
+    (
+      invocation_parameters
+    )?
+    TOK_RPAREN!
+  ;
+
+invocation_parameters
+  :
+    data_item
+    TOK_COLON!
+    expr
+    (
+      TOK_COMMA!
+      data_item
+      TOK_COLON!
+      expr
+    )*
+  ;
+  
+rval
+  :
+    ( TOK_DOUBLECOLON )=>
+    TOK_DOUBLECOLON!
+    function_invocation
+  |
+   ... etc ...
+
+Note that all 'synch_svc' strings are changed to 'function
+and 'function_parameters' are changed to 'invocation_parameters'.
+
+Design
+------
+
+i121.1  Changes to ooaofooa
+
+i121.1.1  Redo parameter list relationships
+
+The class Function Value (V_FNC) is a subtype of the Value (V_VAL)
+class.  It also has relationship R817 to the Function Invocation (ACT_FNC)
+class.  Function Invocation is a subtype of Statement (ACT_SMT).  This
+creates a problem because a Value is not a Statement.  To resolve this
+problem, relationship R817 is changed to relate V_FNC and the 
+Actual Parameter (V_PAR) class.  A new relationship, R827, is added
+from V_FNC and the S_SYNC class.
+
+Similar changes are made for the Bridge Value (R810, R828, S_BRG)
+and Transform Value (R811, R829, O_TFR) classes.
+
+i121.1.2  Changes to clear operations
+
+The Value (V_VAL) clear() operation is updated to add a check
+for the Function Value subtype.
+
+The Function Value clear() operation is created.  The operation
+clears and deletes all parameters associated with the instance.
+
+The Actual Parameter clear() operation is created.
+
+The Statement clear() operation is updated to add a check
+for the Function Invocation subtype.
+
+The Function Invocation clear() operation is created. The operation
+clears and deletes all parameters associated with the instance.
+
+i121.1.3  Add V_FNC.ParmListOK
+
+The attribute ParmListOK (boolean) is added to the Function Value
+class.  This attribute is only true if all parameters to the
+function are correct.  This attribute is needed to distiguish
+between when there is an error in the parameter list, and when
+there is no parameter list.  Both conditions are indicated by
+a null identifier for the parameter list.
+
+i121.2  Parameter verification
+
+Each of the invocations can have a parameter list.  The parameter
+list can have the following errors:
+
+- Parameter missing from parameter list
+- Unknown parameter in parameter list
+- Parameter value is wrong type
+- Duplicate parameter in list
+
+i121.2.1  Data_item_validate()
+
+This function is called to verify the parameter name is 
+defined for the function.  If the parameter is not defined,
+an error is raised.  Otherwise, the S_SPARM.SParm_ID value
+is returned.
+
+i121.2.2  Function_parameters_loop4_end()
+
+This function is called for the second and subsequent 
+parameters in a parameter list.  The function checks that
+there were no errors in the parameter, and if not, creates
+an instance of V_PAR, and the associated supertype V_VAL.
+All relationships with the new parameter instance are formalized.
+
+i121.2.3  Function_parameters_end()
+
+This function is called after all parameters have been
+parsed.   The function checks that there were no errors 
+in the first parameter, if it exists, and if not, creates 
+an instance of V_PAR, and the associated supertype V_VAL for the 
+first parameter.  All relationships with the new parameter 
+instance are formalized.
+
+i121.3  Function invocation verification
+
+Function invocations fall into two categories: functions 
+returning void are a standalone statement, and functions returning
+something else are r-values that are part of an expression.
+Both of these cases use the function_invocation rule to capture
+the commonality of the function invocation.  A function invocation
+can have the following errors:
+
+- Function unknown
+- Multiple functions with the same name
+- Function returning void used as an r-value
+- Function returning a value not used as an r-value
+
+Note that assigning a function returning a value of the 
+wrong datatype is checked by the assignment code.
+
+i121.3.1  Add parameter to function invocation rule
+
+The parameter isRval is added to the function_invocation rule.
+This allows the verification code to know if the function
+return type should be void or something else.
+
+function_statement
+  :
+  TOK_DOUBLECOLON!
+  function_invocation[false]
+  ;
+
+function_invocation[boolean isRval]
+  :
+    function_function
+    TOK_LPAREN!
+    (
+      invocation_parameters
+    )?
+    TOK_RPAREN!
+  ;
+
+rval
+  :
+    ( TOK_DOUBLECOLON )=>
+    TOK_DOUBLECOLON!
+    function_invocation[true]
+  |
+   ... etc ...
+
+i121.3.2  Validation function changes
+
+The following functions are modified to perform the
+semantic validation for function invocations.
+
+i121.3.2.1  function_function_validate()
+ 
+This function verifies that the function name passed in is 
+the name of a function, and  that there is only one function 
+defined with that name.  If there is a problem, an error 
+is raised. Otherwise, the function creates an instance of Function Value 
+(V_FNC), and the associated V_VAL instance.  We create the instance
+here so that any parameters for the invocation are associated with
+this instance. The function returns the V_VAL.Value_ID.
+
+i121.3.2.2 function_invocation_validate()
+
+This function validates that the function return type matches 
+with the isRval parameter. If not, it raises an error.
+
+i121.3.2.3 function_invocation_end()
+
+The function validates the parameter list for any missing or 
+duplicated parameters.  The function also checks that the
+actual parameter data types are correct.
+
+i121.3.2.4 function_statement_end() 
+
+The function creates a ACT_FNC instance, then moves the 
+parameter list from the Function Value instance to the ACT_FNC 
+instance. The V_FNC and V_VAL instance are cleared and deleted.
+
+Work Required
+-------------
+
+i121.1  Changes to ooaofooa
+
+i121.1.1  Redo parameter list relationships
+
+The changes are made to ooaofooa.bak as described in the design.
+
+i121.1.2  Changes to clear operations
+
+The changes are made to ooaofooa.bak as described in the design.
+
+i121.1.3  Add V_FNC.ParmListOK
+
+The change is made to ooaofooa.bak as described in the design.
+
+i121.2  Parameter verification
+
+i121.2.1  Data_item_validate()
+
+This function is implemented in function_import.sql as
+described in the design.
+
+i121.2.2  Invocation_parameters_loop4_end()
+
+This function is implemented in function_import.sql as
+described in the design.
+
+i121.2.3  Invocation_parameters_end()
+
+This function is implemented in function_import.sql as
+described in the design.
+
+i121.3  Function invocation verification
+
+i121.3.1  Add parameter to function invocation rule
+
+i121.3.1.1  The change is made to oal.bnf as described in 
+the design.
+
+i121.3.1.2  A test for the parameter "boolean isRval" is
+added to grammar_enhancer.arc.
+
+i121.3.2  Validation function changes
+
+i121.3.2.1  function_function_validate()
+ 
+This function is implemented in function_import.sql as
+described in the design.
+
+i121.3.2.2 function_invocation_validate()
+
+This function is implemented in function_import.sql as
+described in the design.
+
+i121.3.2.3 function_invocation_end()
+
+This function is implemented in function_import.sql as
+described in the design.
+
+i121.3.2.4 function_statement_end() 
+
+This function is implemented in function_import.sql as
+described in the design.
+
+
+Implementation Comments
+-----------------------
+
+
+Unit Test
+---------
+
+// Function definitions are:
+//   void test1()
+//   void test2( i:int )
+//   void test3( s: string, i: int )
+//   int  test4()
+//   int  test5( i: int )
+//   string test6( s: string, i: int )
+//   boolean test7( r: real, s: string, i: int )
+
+// testFunctionRetVoidParmNone
+::test1();
+
+// testFunctionRetVoidParmInt
+::test2( i: 2 );
+
+// testFunctionRetVoidParmStringInt
+::test3( i: 2, s: "t" );
+
+// testFunctionRetVoidParmStringIntOtherOrder
+::test3( s: "u", i: 3 );
+
+// testFunctionRetIntParmNone
+x = ::test4();
+
+// testFunctionRetIntParmInt
+x = ::test5( i: 2 );
+
+// testFunctionRetStringParmStringInt
+s = ::test6( i: 6, s: "t2" );
+
+// testFunctionRetStringParmStringIntOtherOrder
+s = ::test6( s: "t3", i: 7 );
+
+// testFunctionRetBooleanParmRealStringInt
+s = ::test7( r: 2.1718, s: "t3", i: 7 );
+
+// testFunctionRetBooleanParmRealStringIntReverseOrder
+s = ::test7( i: 7, s: "t3", r: 2.1718 );
+
+------- Invalid code ------------
+
+// Parameter tests
+
+// testFunctionRetVoidNoParmsWithParm
+::test1( x: true );
+
+// testFunctionRetVoidParmIntWithoutParm
+::test2();
+
+// testFunctionRetVoidParmIntUnknownParm
+::test2( i: x );
+
+// testFunctionRetVoidParmIntStringSecondUnknownParm
+::test3( i: 7, s: z );
+
+// testFunctionRetVoidParmIntExtraParm
+::test2( i: 2, r: 3.14 );
+
+// testFunctionRetVoidParmIntDupParm
+::test2( i: 2, i: 1 );
+
+// testFunctionRetVoidParmIntExtraParmDiffOrder
+::test2( r: 3.14, i:2 );
+
+// testFunctionRetVoidParmIntWrongType
+::test2( i:true );
+
+// testFunctionRetVoidParmIntStringWrongType
+::test3( i: 7, s:true );
+
+// testFunctionRetVoidParmIntStringWrongTypeDiffOrder
+::test3( s:true, i:7 );
+
+// Function name validation tests
+
+// There are two instances of mult_func1() defined in the model.
+// There are two instances of mult_func2() defined in the model.
+// The function void mult_parms( a: int, a: int )
+
+// testFunctionRetVoidNoParmUnknown
+::bad1();
+
+// testFunctionRetVoidNoParmMult
+::mult_func1();
+
+// testFunctionRetRealNoParmUnknown
+r = ::bad2();
+
+// testFunctionRetRealNoParmMult
+r = ::mult_func2();
+
+// functionRetVoidDupParms
+::mult_parms( a: 7 );
+
+// Function return value tests
+
+// testFunctionRetVoidNoParmsAsRval
+i = ::test1();
+
+// testFunctionRetVoidParmIntAsRval
+i = ::test2( i: 2 );
+
+// testFunctionRetVoidParmStringIntAsRval
+i = ::test3( i: 2, s: "t" );
+
+// testFunctionRetVoidParmStringIntOtherOrderAsRval
+i = ::test3( s: "u", i: 3 );
+
+// testFunctionRetIntNoParmsAsVoid
+::test4();
+
+// testFunctionRetIntParmIntAsVoid
+::test5( i: 2 );
+
+// testFunctionRetStringParmStringIntAsVoid
+::test6( i: 6, s: "t2" );
+
+// testFunctionRetStringParmStringIntOtherOrderAsVoid
+::test6( s: "t3", i: 7 );
+
+// testFunctionRetIntNoParmTypeMismatch
+x = "x"; x = ::test4();
+
+// testFunctionRetIntParmIntTypeMismatch
+x = "x"; x = ::test5( i: 2 );
+
+// testFunctionRetStringParmStringIntTypeMismatch
+x = 22; x = ::test6( i: 6, s: "t2" );
+
+// testFunctionRetStringParmStringIntOtherOrderTypeMismatch
+y = true; y = ::test6( s: "t3", i: 7 );
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version:  1.8   Final version: 1.9
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version:  1.17  Final version: 1.18
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.9   Final version: 1.10
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.10  Final version: 1.11
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.13  Final version: 1.14
+
+
+End
+---
+
+$Log: i121.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.166.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/03/11 22:44:58  campbell
+Job: 121
+Fixed version number typo.
+
+Revision 1.2  2004/02/21 01:25:53  greg
+Job: 121
+Update from review
+
+Revision 1.1  2004/02/20 20:14:05  greg
+Job: 121
+Initial introduction
+

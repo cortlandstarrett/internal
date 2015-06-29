@@ -1,0 +1,195 @@
+========================================================================
+
+File:      $RCSfile: dts0100615728-dts0100615758-dts0100615989-dts0100526653-dts0100537390.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Verifier stability improvements
+
+1. Abstract
+-----------
+One defect introduced with the changes for BP 3.0 and some additional stability
+enhancements have been identified and fixed in this document.
+
+2. History
+----------
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100615728 - Statement pointer does not progress after
+    synchronous inter-component call inside controlled block.
+[2] ClearQuest DEI dts0100615758 - Verifier launcher can leave entries in Debug
+    View.
+[3] ClearQuest DEI dts0100615989 - Occasional harmless error log entry and small
+    memory leak.
+[4] ClearQuest DEI dts0100526653 - BridgePoint Verifier hangs when launching a
+    model having a class based state machine with no states in it.
+[5] ClearQuest DEI dts0100537390 - Final deletion states does not "do their
+    deletion job" in Verifier.
+
+4. Background
+-------------
+BridgePoint 3.0 saw significant work on the Verifier inter-component messaging
+architecture. A defect was introduced with this work where inter-component
+invocations inside a statement block inside a control statement would correctly
+make the call, but then fail to step on to the next statement[1].
+
+Since Verifier's first release, it has been easy to create situations where a
+launch root was left in the Debug View. While this did not cause any significant
+problems for Verifier, it is confusing for the user. This issue catches and
+removes two cases where this can happen[2].
+
+Some occasional error log entries and a small memory leak[3] and a minor launch
+issue[4] are also addressed with this work.
+
+Finally, failure to remove instances in their deletion state when the state
+action is empty is also addressed[5].
+
+5. Design
+---------
+5.1 Increment statement pointer after message call in a controlled block
+This is caused by an erroneous select statement in Stack.dequeue(). In the case
+where a synchronous message returns void, the dequeue operation must take care
+of stepping the statement pointer because normal stepping on is inhibited by the
+blocked call and must remain inhibited until the remote call has been executed.
+To step the statement pointer, dequeue must find the currently executing
+Block in Stack Frame. It currently attempts to do this using:
+
+   select any bisf related by blockedFrame->I_BSF[R2923] where
+                         selected.Stack_Frame_ID == blockedFrame.Stack_Frame_ID;
+
+As noted in activity comments, this OAL was copied from Statement.execute(). It
+was unfortunately copied incorrectly and merely selects the first Block In
+Stack Frame instance found associated with the blocked stack frame. The correct
+code should be:
+
+   select any bisf related by blockedFrame->I_BSF[R2923] where
+                                                           selected.isExecuting;
+
+5.2 Prevent dead entries in Debug View
+Dead entries are left in the debug view because when the Verifier launch
+delegate class fails to launch a debug session, it does not make the call to
+remove the launch.
+
+There are two cases where this can happen; when no models have been selected for
+execution and when an exception happens during launch. The first case is easier
+to hit than it sounds, because removing, replacing or closing a project does not
+remove associated launches. The policy is to un-check the associated entries,
+thereby preserving other valuable data the user may have provided for the 
+launch. The second case should of course not happen, but it is better to react
+as gracefully as possible when it does. In fact the existing code does catch
+CoreExceptions, but does nothing for any other kind of exception.
+
+A test for no models selected shall be added. When this case is detected, a
+helpful dialog will be shown and the launch removed. A catch clause shall be
+provided for all exceptions. This will remove the launch and re-throw the
+exception.
+
+5.3 Address false error log entry and memory leak
+In Stack.execute(), the OAL assumes that a block will always be found for a
+given stack frame. Generated safety code prevents a Null Pointer Exception, but
+does log an error. Since it is possible in normal operation for a stack frame to
+exist without a block, a not empty test is put around the code, thereby
+preventing the error being logged.
+
+In Pending Event.fire(), a change already made for sending events to class state
+models is made for instance state models. This change covers the possibility
+that the target component has already noticed and processed an event being
+delivered before the sending process can notify it.
+
+In Return Stmt.execute(), there is OAL which transfers a return value to a
+target value on the stack frame below (to which it is returning control). This
+OAL omitted to dispose the runtime value causing a small but, over time,
+significant leak during execution. The missing dispose shall be added to this
+block of logic. 
+
+5.4 Hang during Verifier launch
+If a model with an empty class state machine is launched, Verifier hangs. This
+is caused by a while loop in Class in Engine.reset() which assumes that an
+initial state will be found. Since there are no states, this never exits.
+
+The solution is to follow the pattern for instance initialize code and add a
+check for state cardinality of zero. 
+
+5.5 Final state does not delete instance if state action is empty
+Final state instance deletion is normally done when exiting the outer block of
+the state action. This must be, because the action may require access to the
+soon to be deleted instance's attribute values. However, when there is no state
+action, there is also no outer block to exit, so the instance is never disposed
+as required.
+
+Disposal must happen either when the transition action completes (if there is
+one) or when the event is first processed. The first case is handled in
+Block.popUpBlock() by adding the disposal code in the block which handles
+exiting the transition action (elif not_empty tranActionBody). The second case
+is covered by adding disposal code to Instance.takeEvent() in the middle of the
+action inside the block controlled by the test for empty state and transition
+actions.
+
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+All existing JUnit tests shall pass. In addition, the following models shall be
+run manually and the error logs examined to ensure that none of the errors
+discussed above are logged:
+
+Run SeatHeater overnight and confirm that there are no failures.
+
+Finally, create an empty launch and confirm that nothing is left in the Debug
+View after the new informational dialog is dismissed.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Body/
+    Block/Block.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class In Engine/Class In Engine.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance/Instance.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Pending Event/Pending Event.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Stack/Stack.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Invocation/Return Stmt/Return Stmt.xtuml
+
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.launch/
+    BPLaunchDelegate.java
+
+
+End
+---
+
+$Log: dts0100615728-dts0100615758-dts0100615989-dts0100526653-dts0100537390.int,v $
+Revision 1.3  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.2  2009/09/11 14:56:43  campbell
+Job: dts0100615728
+Fix typo.
+
+Revision 1.1  2009/09/04 09:15:40  campbell
+Job: dts0100615728
+Rename document to include all addressed issues.
+Added code changes.
+
+Revision 1.1  2009/09/02 13:38:50  campbell
+Job: dts0100526653
+Name changed to reflect additional issue addressed.
+
+Revision 1.1  2009/09/01 10:48:57  campbell
+Job: dts0100615728
+Introduced.

@@ -1,0 +1,273 @@
+========================================================================
+
+File:      $RCSfile: dts0100654483.ant,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Verifier must check relationship conditionality and multiplicity rules.
+
+1. Abstract
+-----------
+This note describes the alternative solutions available to support checking
+instance populations against the modeled cardinality rules.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100654483 - Verifier must check xtUML rules. For example
+    Relationship condinationality and multiplicity.
+
+4. Background
+-------------
+SAAB reports that novice analysts have difficulty understanding why a model
+runs as expected in Verifier but does not run correctly when passed through a
+model compiler and run on a target. One of the more common reasons for these
+behavioral differences is that Verifier does not attempt to enforce modeled
+cardinalities. This note addresses this by providing the needed cardinality
+checking.
+
+5. Analysis
+-----------
+5.1 Requirements
+The original BridgePoint Verifier product (circa 1995) performed an instance
+database audit after completion of each activity. While this is thorough, this
+is seen as inefficient. Instead, checks will be made after each relate statement
+and during each selection statement. No checks will be made after an unrelate
+statement, since this would lead to errors being reported during legitimate
+teardown of a model object cluster.
+
+For a relate statement, only the association specified in the relate statement
+and the specific instances involved will be checked for consistency with the
+cardinality rules. It is possible to check both sides of an association with
+little extra overhead.
+
+During a select statement, each step of the traversal will be checked for rule
+consistency. For example, a traversal:
+
+select any c related by self->A{R1]->B[R2]->C[R3];
+
+will result in three separate sequentially performed checks. The first will
+check that conditionality and multiplicity of R1 is honored before proceeding to
+perform the traversal to the instance set of class A found across R1. This
+behavior will then be repeated for traversal of R2 and finally R3.
+
+In the case of selection, bidirectional checking (both sides) is potentially
+very resource intensive. CONFORMITY CHECKING WILL THEREFORE BE PERFORMED IN THE
+DIRECTION OF TRAVERSAL ONLY.
+
+5.1.1 Select statement
+The following checks will be performed at each step of traversal chain. The
+instance population rules are violated if the instance population on the target
+side is:
+
+             \                Conditionality
+Multiplicity  \    Conditional              Unconditional
+               \
+   one         |  greater than 1(a)            not exactly 1(b)
+               |
+   many        | NO TEST POSSIBLE(c)            zero
+
+(a) This test is redundant, since it would have already been detected by 
+    the top left quadrant of 5.1.2 below.
+(b) Part of this test is redundant, since being greater than 1 would have
+    already been detected by the top right quadrant of 5.1.2 below. This test
+    therefore reduces to a zero population test (since unrelate cannot be tested
+    for).
+(c) Many, conditional (*) specifies no constraint on the instance population
+    that may be found across the association. Therefore no constraint checking
+    is possible.
+
+5.1.2 Relate statement
+The following checks will be performed on the link population associated with
+the association being related. The instance population rules are violated if the
+instance population on the target side is:
+
+             \                Conditionality
+Multiplicity  \     Conditional             Unconditional
+               \
+   one         |  already related          already related
+               |
+   many        | NO TEST POSSIBLE(d)      NO TEST POSSIBLE(e)
+
+(d) Many, conditional (*) specifies no constraint on the instance population
+    that may be found across the association. Therefore no constraint checking
+    is possible.
+(e) Many, unconditional (1..*) specifies a lower limit of 1 on the instance
+    population found across the association. Since the relate statement only
+    adds instances to the traversed population, and since the checking can only
+    be performed after the statement has been executed, no constraint checking
+    is possible.
+
+5.1.3 Unrelate statement
+Check that the instances being unrelated are participating in the association
+link population prior to the unrelate.
+
+5.1.4 Delete statement
+Chack that the instance is not participating an any association link populations
+at the moment of deletion.
+
+5.2 UI
+5.2.1 Preferences
+Consensus is absent on what is and what is not an illegal instance population
+configuration. For this reason, preferences shall establish Verifiers required
+behavior when finding a constraint has been violated. The violation preferences
+are (after applying the reduction process in 5.1):
+
+- Empty unconditional association population during select
+- Association already asserted during relate
+- Attempt to unrelate two unrelated instances
+- Instance participating in an association link during delete
+
+For each violation kind, the options Ignore, Warning and FATAL may be set
+independently. 'Ignore' means Verifier does not report violations. 'Warning'
+means the violation is reported on the console, but execution does not stop.
+'FATAL' means the violation is reported on the console and execution is halted
+at the statement being executed when the violation was detected.
+
+5.2.2 Message format
+The format of the console messages shall be:
+
+'<Warning | FATAL> Select: Unexpected empty population found while traversing
+                              unconditional association <R number>(text phrase)'
+
+'<Warning | FATAL> Relate: Already related on
+                                            association <R number>(text phrase)'
+
+'<Warning | FATAL> Unrelate: Instances not related on
+                                            association <R number>(text phrase)'
+
+'<Warning | FATAL> Delete: Instance still related on
+                                            association <R number>(text phrase)'
+
+The text phrase is always shown if one is present in the model. If the FATAL
+behavior preference is selected, the message 'Execution Halted.' follows the
+above messages.
+
+The default setting for all link population checks shall be 'FATAL'. An entry in
+the Release Notes will tell how to reduce the strictness of the checks.
+
+6. Work Required
+----------------
+6.1 Select.execute()
+Around halfway down this operation is a large while loop that traverses the list
+of links specified in the selection navigation path. Each instance of ACT_LNK
+represents one step of the traversal, so each iteration of the while loop
+traverses one step. During the execution of this while loop, instances of
+R_PART, R_FORM, R_AONE, R_AOTH and R_ASSR are selected as dictated by the
+traversal step. These instances contain the cardinality rules for the
+association. Thus - once the inner 'for each' iteration is completed -
+selection_local_reference holds the state of the instance population found for
+that traversal step. This can then be verified against the rules assuming that
+the preference indicates that the check be made. If the test indicates a
+violation occurred, print a message to the console using LogInfo or LogError
+depending on the preference setting. If specified by the preference, halt
+execution, setting the suspend reason to "Halted on illegal link instance
+population on <R number>(association phrase)" and setting the associated stack
+runState to 'Suspended'.
+
+Estimated resource: 0.5 man day for coding, 0.5 man day for test.
+
+6.2 Relate.execute() and Relate Using.execute() 
+Verifier does not currently compute the existing instance population across a
+given association. Depending on model and instance population sizes, this may
+affect execution performance.
+
+Each instance creates one Link Participation instance for each association it
+participates in. The population of Link instances found across R2901, R2902 or
+R2903 is therefore not volatile (except in as much as the runtime behavior of
+the model affects it). The populations found across these associations may
+therefore be used to check that the constraints are being met.
+
+The last seven lines of this operation, actually assert the link instance. The
+Link instance, 'link' implements the association and the Link Participation
+instances, 'srcIil' and 'dstIil' capture the ends of the link for each
+participating instance. The association the Link instance realizes is found
+across R2959 from the Link Participation instances and across R2904 for the link
+instances, so it should be a straightforward matter to check for existing
+link instances when the association rules dictate that a check needs to be
+carried out. This should be done inside the final if .. else statement so that
+the correct instance population (forward or back) is used.
+
+If the test indicates a violation occurred, print a message to the console using
+LogInfo or LogError depending on the preference setting. If specified by the
+preference, halt execution, setting the suspend reason to "Halted on already
+related link on <R number>(association phrase)" and setting the associated stack
+runState to 'Suspended'.
+
+Estimated resource: 0.5 man day for coding, 1 man day for test.
+
+6.3 Unrelate.execute() and Unrelate Using.execute()
+At the bottom of each of these operations is a for loop that iterates over the
+link populations looking for the relevant link instances. This shall be modified
+to report and halt as necessary if the link instances are not found.
+
+Estimated resource: 0.5 man day for coding, 1 man day for test.
+
+6.4 Link Participation.dispose()
+This operation shall be extended to report and halt as necessary if Link
+instances are found across R2901, R2902 or R2903.
+
+Estimated resource: 0.5 man day for coding, 1 man day for test.
+
+6.5 Preference access
+6.5.1 Add preference access bridge code in Preference getInteger so that we can
+distinguish Ignore, Warning and FATAL for each of the four population checks.
+
+Estimated resource: 0.25 man day for coding, 0.25 man day for test.
+
+6.6 UI
+6.6.1 Create four preferences with tri-state selectors.
+6.6.2 Implement preference persistence.
+
+Estimated resource: 0.5 man day for coding, 0.5 man day for test.
+
+7. Acceptance Test
+------------------
+Create a test model that implements the 8 error conditions shown in the matrices
+above. Execute the model and check that:
+
+- Verifier ignores the three possible violations when the Preferences specify
+  that the reporting should not occur.
+
+- Verifier detects and reports the three possible violations when the
+  Preferences specify that the reporting should occur.
+
+- Verifier halts when the three possible violations are detected when the
+  Preferences specify that the halting should occur.
+
+- Test all permutations of cardinality, both with and without a Link class
+  present.
+
+8. Resource estimate
+
+  Design note creation and reviews : 0.5 man day
+  Coding (from [6] above)          : 7.0 man days
+  
+  Total                            : 7.5 man days
+
+End
+---
+
+$Log: dts0100654483.ant,v $
+Revision 1.3  2010/03/09 14:50:20  campbell
+Job: dts0100654483
+Make default behavior strict. Always output text phrase.
+
+Revision 1.2  2010/03/09 12:48:36  campbell
+Job: dts0100654483
+Correct section numbering and resource arithmetic.
+
+Revision 1.1  2010/03/09 12:26:38  campbell
+Job: dts0100654483
+Introduced.
+

@@ -1,0 +1,668 @@
+========================================================================
+
+File:      $RCSfile: model_explorer-outline_view.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:27:08 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Model Explorer and Outline Views
+
+Abstract
+--------
+This document identifies the infrastructure needed to get Eclipse to
+show a model in a tree form.
+
+History
+-------
+  update - model_explorer-outline_view_062003.rvm
+  final  - model_explorer-outline_view_062403.rvm
+
+Document References
+-------------------
+[1] bp.core/doc/internal/technical/Model_Explorer-Outline_View/
+                                         model_explorer-outline_view.ant
+[2] bp.ui.explorer/mdl/UITree.bak
+[3] bp.core/doc/internal/technical/Object_Contribution/
+                                                 object_contribution.ant
+[4] http://www.eclipse.org/articles/treeviewer-cg/TreeViewerArticle.htm
+[5] http://www.eclipse.org/articles/Article-Internationalization/
+                                                           how2I18n.html
+[6] bp.core/doc/internal/technical/File_IO/file_io.ant (TBD)
+[7] bp.core/doc/internal/technical/Property_View/property_view.ant (TBD)
+[8] bp.core/doc/internal/technical/Retargetable_Action/
+                                           retargetable_action.ant (TBD)
+[9] bp.core/doc/internal/technical/Dedicated_Canvas_Editor/
+                                       dedicated_canvas_editor.ant (TBD)
+[10] bp.core/doc/internal/technical/Dedicated_Text_Editor/
+                                         dedicated_text_editor.ant (TBD)
+[11] Design Patterns, Gamma, Helm, Johnson and Vlissides, Addison-Wesley
+                                    1994, ISBN 0-201-63361-2, pp 139-150
+[12] The Java Developers Guide to Eclipse, Shavor et al., Addison-Wesley
+                                    2003, ISBN 0-321-15964-0, pp 319-320
+[13] Eclipse Documentation Platform Plug-in Developer Guide, Reference
+               Extension Points Reference/Workbench/org.eclipse.ui.views
+Design
+------
+Overview
+The Model Explorer and Outline are similar in that they are both tree
+based Eclipse views. Eclipse expects tree information content to be
+supplied by an underlying infrastructure that implements the Eclipse
+interface 'ITreeContentProvider'. This interface could be provided
+directly by the underlying metamodel classes, but this would cause
+coupling and mixing of subject matters. Eclipse instead proposes using
+an adapter pattern[11]. The adapter implements the tree specific methods
+(see ME1.3.2 below) and delegates the implementation to model specific
+methods. This fits beautifully with a generated approach, the adapters
+are generated and provide a thin layer over the metamodel classes. Both
+Model Explorer and Outline use the same adapters, since they are showing
+the same tree. Hence, ME1.1 through ME1.4  below discuss how the adapters
+are generated, ME1.5 discusses the specifics of Model Explorer and ME1.6
+covers the specifics of the Outline View.
+
+The Java Developers Guide to Eclipse[12] specifies 11 steps for creating
+a view:
+
+  1.  Design the look of the view.
+  2.  Declare the view extension in the plugin.xml file.
+  3.  Create the view class.
+  4.  Create the content provider.
+  5.  Create the label provider.
+  6.  Associate the view and the model.
+  7.  Synchronize the model and the viewer.
+  8.  Handle user selections.
+  9.  Filter the view.
+  10. Sort the view.
+  11. Add the view actions.
+
+1.  The look of the Explorer and Outline views is specified in the
+    analysis note for this work[1]. The abstraction of the specification
+    is that the views look as similar to the existing Java equivalent
+    views (Package Explorer and Java Outline) as practicable. The choice
+    and placement of buttons specified below is driven by this
+    abstraction.
+2.  The Explorer view extension is defined in the bp.ui.explorer file
+    plugin.xml. This xml file is hand written. It declares the Explorer
+    view as required by the Eclipse specification[13] and is not discussed
+    further here. The Outline view is a common view and is not defined by
+    this work. Instead, it derives its appearance from the OutlinePage
+    passed to it by the currently focused editor. This work is not done
+    here, but is discussed below in section ME1.6.
+3.  The view class for Explorer is described in ME1.5. For the same reasons
+    as described in 2. above, the Outline class is defined by Eclipse and
+    is not created by this work.
+4.  The content provider creation is discussed in ME1.4.2.
+5.  The label provider design is discussed in ME1.4.1
+6.  The model and view are associated using the adapter pattern introduced
+    above and presented in more detail in ME1.3. ME1.1 and ME1.2 describe
+    how these adapters are generated.
+7.  The model and view are synchronized using a ModelChangedListener. This
+    is discussed in ME1.5.
+8.  User selections are detected using a SelectionListener, also discussed
+    in ME1.5.
+9.  The views are filtered (elements are selectively not shown) in a number
+    of ways:
+    - by submenu Menu entries described in ME1.5.1.1
+    - by a 'Filters' dialog discussed in ME1.5.1.5
+    - by buttons described in ME1.6.1
+10. The Outline view is sorted under control of a 'sticky' button
+    described in ME1.6.2.
+11. View actions are created during construction of the view as discussed
+    in ME1.5.1 and ME1.6.1. Actions are also added to the context menus
+    as defined in ME1.5.2 and ME1.6.2.
+
+Generally, the directory structure of the archetype and generated files
+follows the precedent of MC-2020 as far as practicable.
+
+
+ME1.1.1 - A new model, UITree is created and the following entities are 
+          added:
+
+ME1.1.2   - Tree Node Specification (T_TNS)
+            T_TNS specifies entries in the view trees (such as Explorer,
+            Outline and the tree based Comparators). 'Tree_Node_Spec_ID'
+            is a unique identifier for the class and 'Icon' is a string
+            identifying the eclipse icon to show in the tree.  Other
+            attributes are 'Key_Lett' (metamodel entity referential),
+            'Label' (a string specifying the human readable label to
+            use in the tree) and 'NamingAttribute' (a string specifying
+            an attribute in the client model that can be read to obtain
+            the label if it is not constant) and 'NamingAttributeRelChain'
+            (an optional relationship chain that describes how to locate
+            the instance that contains the attribute specified in 
+            'NamingAttributeRelChain'. Finally there is a string attribute
+            'CategoryName'. This is used for filter naming and category
+            assignment to group sort results (see ME1.6.1.2).
+          - Tree Parenthood Specification (T_TPS)
+            T_TPS specifies the hierarchy of the tree. Instances of this
+            class define which metamodel entries contain which other
+            entries. For example the system contains domain packages,
+            which in turn contain functions, subsystem packages, data
+            types and external entities. It contains three attributes,
+            Parent_Tree_Node_Spec_ID (a referential for the parent 
+            node), Child_Tree_Node_Spec_ID (a referential for a child
+            node) and 'ParentChildRelChain', a string containing a 
+            specification of how to navigate from the parent node to the
+            child node.
+
+          This model defines a schema for build time pre-existing 
+          instance data. See the UITree model itself[2] for full 
+          descriptions and details of the relationships between these
+          classes. The build time data is used for the following
+          purposes:
+
+          - to generate adapter classes used to provide model 
+            navigation facilities to the tree viewers.
+          - to generate a Model Label Provider class, that
+            provides the correct name and icon for each tree entry.
+          - to generate a content provider class.
+          
+ME1.1.3 - The model is in backup form at:
+          com.projtech.bp.ui.explorer/mdl/UITree.bak
+          
+ME1.1.4 - The model is in schema form at:
+          com.projtech.bp.ui.explorer/sql/UITree_schema.sql
+
+ME1.2.1 - Create the file:
+          com.projtech.bp.ui.explorer/mdl/UITree.pei.sql
+          
+ME1.2.2 - Tree node (T_TNS) and Parent specification (T_TPS) instances
+          are added to the file UITree.pei.sql to produce the following
+          hierarchy:
+
+          - System (S_SYS, package and folder icon)
+            +-Domain (S_DOM, package icon)
+              +-Function (S_SYNC, public method icon)
+              | +-Parameter (S_SPARM, public field icon*)
+              +-Subsystem (S_SS, package icon)
+                +-Class (O_OBJ, class icon)
+                  +-Operation (O_TFR, public method icon)
+                    +-Parameter (O_TPARM, public field icon*)
+
+          * Eclipse does not show parameters in its tree views; the field
+            icon was chosen as the nearest equivalent. We may wish to 
+            create our own parameter icon.
+
+          Other entries will be made as new functionality demands.
+
+ME1.3.1 - The file 'BuildTree.arc' is used to create the adapters,
+          content and label providers. The main body of 'BuildTree.arc'
+          calls the 'create_adapters' function. 'BuildTree.arc' is
+          introduced at:
+          com.projtech.bp.ui.explorer/arc/BuildTree.arc.
+          
+ME1.3.2 - Archetype function 'create_adapters' generates classes that
+          allow the tree views to show the metamodel instances. The
+          'getParent' and 'getChildren' methods are interesting because
+          they traverse the metamodel to present an always accurate
+          picture of the model state to the user. These methods are
+          generated with MC-Java compatible relationship traversal calls
+          so that the adapter knows how to move from parent to child and
+          vice versa. The relationship information required is colored
+          as the attribute 'TreeParenthoodSpecification.
+          ParentChildRelChain'. This specifies the navigation path as a
+          standard OAL relationship chain in the direction sense 
+          parent->child.
+          
+          For example, the navigation to traverse for a tree parenthood
+          specification between the instance state chart and its local
+          events is specified in 'ParentChildRelChain' as:
+          
+          - '->SM_SM[R517]->SM_EVT[R502]->SM_SEVT[R525]->SM_LEVT[R526]'
+          
+          Finally, a 'getText' method is generated for use by the label
+          provider class (see ME1.4 below). If the data item,
+          'Tree_Node_Specification.Label' is not empty, code is generated
+          to return the constant string specified in the data item. If
+          'Tree_Node_Specification.NamingAttribute' is not empty, code
+          is generated to return the value of the attribute specified in
+          the data item. If an attribute name is specified in the 'Label'
+          data item, code may be emitted to perform a traversal before
+          making the call to the specified accessor. If this behavior is
+          required, a relationship chain is specified in the data item,
+          Tree_Node_Specification.NamingAttributeRelChain'.
+                    
+          In most cases, 'Label' and 'NamingAttributeRelChain' are empty
+          and 'NamingAttribute' has the value 'Name'. Below are some
+          examples of cases where other values are required:
+          
+          - Instance Statemodel (SM_ISM): Label = 'Instance State Chart'
+                                NamingAttribute = ''
+          - Core Data Type (S_SDT): NamingAttribute = 'Name'
+                            NamingAttributeRelChain = '->S_DT[R17]'
+          - Local Event (SM_LEVT):  NamingAttribute = 'Drv_Lbl'
+               NamingAttributeRelChain = '->SM_SEVT[R526]->SM_EVT[R525]'
+               (Note: MC-Java is required to support Derived Attributes
+                                                      (MDA's) for this).
+          
+          An alternative design was considered that involved developing
+          a means for using action language in the pre-existing instance
+          data (for T_TNS and T_TPS) to specify how to navigate between
+          parents and children and also to specify how the label string
+          is calculated. It was noted, however, that this approach 
+          involves significant additional complexity required to work
+          around limitations in the way generator handles 'unique_ids'
+          (assignment is not possible) and in the way the 'AL_Xlate'
+          feature is implemented (it would be useful to be able to pass
+          a string containing the action language and an instance handle
+          for context instead of the current arrangement of expecting
+          the action semantics in the passed metamodel entity). The
+          alternate design is also very similar to some existing implicit
+          bridging proposals.
+          
+          The less generic design is selected here. A general solution
+          along the lines of this alternative proposal will be developed
+          in the implicit bridging context when the time comes to
+          provide product grade support for this technology.
+          
+          The archetype function 'create_adapters' is defined in the
+          file 'create_adapters.inc'. This is introduced at:
+          com.projtech.bp.ui.explorer/arc/create_adapters.inc.
+
+ME1.4   - Create the label and content provider classes          
+ME1.4.1 - Create the Label Provider class.
+          The archetype function 'create_label_provider' is called from
+          the main body of 'BuildTree.arc'. This archetype
+          function generates the 'ModelLabelProvider' class. This
+          declares a method, 'getImage' that returns an icon based
+          on the type of the object passed (this is always a client
+          model instance). It uses the java 'instanceof' operator to
+          determine what icon to show. Code is generated to check for
+          each meta-model type and return a string icon descriptor as
+          specified in the Tree Node Specification (T_TNS). A second
+          method, 'getText' returns the text to show in the tree for the
+          entry. This needs no generated code. It simply calls 'getName'
+          on the objects adapter.
+
+          The archetype function 'create_label_provider' is defined in
+          the file 'create_label_provider.inc'. This is introduced at:
+          com.projtech.bp.ui.explorer/arc/create_label_provider.inc.
+
+ME1.4.2 - Create the Content Provider class
+          The 'create_content_provider' archetype function is called from
+          the main body of 'BuildTree.arc'. The 'ModelContentProvider'
+          class generated by this archetype provides three important
+          methods. Each one uses an 'instanceof' test to determine the
+          type of model element being shown and delegates the call to
+          the appropriate adapter class.
+
+          The archetype function 'create_content_provider' is defined in
+          the file 'create_content_provider.inc'. This is introduced at:
+          com.projtech.bp.ui.explorer/arc/create_content_provider.inc.
+
+ME1.5   - Create the 'ExplorerView' class by hand, based on a simplified 
+          version of the Eclipse example code 'Moving Box' (a call graph
+          study of the original example revealed excessive unnecessary 
+          complexity in the design of the adapters)[4]. The view is set
+          up by the method, 'createPartControl'. This is the hierarchical
+          call Eclipse uses to show all its widgets. This method first
+          sets the widget layout using 'FillLayout'. This is the simplest
+          off the shelf layout and is recommended for cases where there
+          is only a single widget in the window. Next, it sets the tree-
+          viewer widget and points it at the content and label providers.
+          It then sets the tree viewer to use a hash lookup. This
+          enhances performance at the cost of some additional memory
+          usage. Next, the calls are made to set up the viewer actions,
+          menus, toolbar, filters and hook up the required event
+          listeners.
+          
+          Finally, the method 'setInput' is called to provide the tree
+          view with the information to show. The method 'getInitialInput'
+          is implemented here to obtain an instance of the client model
+          entity at the root of the tree (there can only be one root
+          instance, so code equivalent to the OAL statement 'select any
+          from instances of' works for this).
+          
+          Once the root is provided to the tree, Eclipse takes care
+          of calling the appropriate methods on the adapters through the
+          label provider to correctly show the tree.
+
+          The 'createFilters' method creates the filters needed for
+          hiding static members and functions. Each of the actions that
+          turn the filters on and off call the method 'updateFilters'.
+          Actions can have checked state (see ME1.5.1.3). In the
+          'updateFilters' method, the filters are added or removed based
+          on the return value of the '<action>.isChecked' method.
+
+          In 'hookListeners', 'SelectionChangedListener's are added to
+          both the tree and the client model. There are two sources of
+          selection change:
+          - from the tree widget owned by the Model Explorer when the
+            user clicks in the tree, and
+          - from the model when a selection change is made in some other
+            viewer.
+          If a selection change came from the tree, propagate the
+          selection change to the model (all model viewers in turn then
+          receive a selectionChanged notification).
+          
+          If a selection change from the model is notified and the 'Link
+          with Editor' action is unchecked (see ME1.5.1.3 below),
+          selection changes received are ignored. Otherwise, the 
+          selection changes are propagated to the tree selection using
+          'TreeViewer.setSelection'. The tree is also expanded and/or
+          scrolled to reveal the element if necessary using 
+          'TreeViewer.reveal'. When the selection changes for any reason,
+          the Model Explorer also updates the status bar with the full
+          path to the first selected element.
+          
+          An 'IModelChangeListener' is used to detect changes made to
+          the model for any reason. A change causes the viewer to
+          refresh its tree. Finally, an 'OpenListener' is added to honor
+          'double click to open behavior'. Note that the user can
+          override double click behavior in Window | Preferences |
+          Workbench | Open Mode. By listening for 'Open' and not 'Double-
+          Click', Explorer honors the users preference without having to
+          read the workbench preferences.
+ME1.5.1   - The following Package Explorer equivalent buttons are provided
+            on the Model Explorer:-
+            - Back
+            - Forward
+            - Up
+            - Collapse All
+            - Link with Editor
+            - <Drop Menu>
+              - Hide Static Members
+              - Hide Operations
+              - Filters...
+              - Link with Editor
+            Note: static members are those which would be translated to
+            methods or fields with a static modifier. Functions and
+            Class based operations come into this category.
+ME1.5.1.1 - The 9 actions specified above ('Link with Editor' appears
+            twice) are created in the method, 'ExplorerView.createActions'.
+            This method is called from 'createPartControl'. The first 3
+            (goto) actions are created differently than the others.
+            These are available as pre-defined, retargetable actions;
+            BackAction, ForwardAction and UpAction respectively. Since
+            they are predefined, no additional configuration for these is
+            required. The other actions have tooltip text set for them.
+            Icons also need to be set for each action (existing Eclipse
+            icons are re-used where possible for user interface
+            continuity).
+ME1.5.1.2 - The 'Collapse All' action simply calls 'collapseAll' on the
+            tree viewer widget.
+ME1.5.1.3 - The 'Link with Editor' action sets the tree selection and
+            reveals the selected element. After this point, changes
+            in the selection are reflected in the tree until the button
+            toggle is released (see ME1.5 above). To be consistent with
+            other Eclipse views, this action button is to be 'sticky'
+            i.e. it should latch when pressed. This is done by setting
+            its style to AS_CHECK_BOX. The initializing call to
+            'setChecked' causes Eclipse to do this automatically (by
+            contrast for example, 'Collapse All' has no setChecked call
+            and does not toggle).
+ME1.5.1.4 - The method 'createMenus' is expanded to add the drop menu
+            and the actions appearing under it.
+ME1.5.1.5 - The 'Filters...' entry opens a dialog allowing the user to
+            turn on and off many filters, one for each entry in T_TNS.
+            The Resource Navigator declares its version of this as an
+            extension point, allowing third parties to add new filters
+            specified on filename and extension. Model Explorer does not
+            follow this precedent because the filters are generated and
+            programmatic. When the action is selected from the Explorer
+            menu, a 'ListSelectionDialog' is shown. The content provider
+            for this dialog is generated from T_TNS, so that the user is
+            able to filter out any model element that can appear in the
+            tree (filtered items also filter their children). When the
+            dialog is closed, 'updateFilter' is called. This is also
+            generated and sets the required filters on the view using
+            'TreeViewer.addFilter' and 'TreeViewer.removeFilter'. The
+            additional dedicated button filters are implemented in the
+            same way, but are turned on and off directly from the action
+            body. All filters are very simple, they just check for the
+            class they filter using 'instanceof' and return the
+            appropriate boolean value. The filter settings are made
+            persistent using the built in Eclipse IDialogSettings
+            support. A workspace settings section called 
+            'com.projtech.bp.ui.filterSettings' is used to persist the
+            filter settings. Filter names are derived directly from
+            'TreeNodeSpecification.CategoryNames'.
+            Grouping and naming of filters separately from the tree
+            structure was considered. For example, it is useful to be
+            able to turn off the display of all data types with one
+            click as opposed to three (one each for core, user and
+            enumeration). This is not implemented at the first release.
+            
+            The filters dialog and supporting classes are generated by
+            the archetype 'create_tree_filters' and defined in the file
+            'create_tree_filters.inc'.  This function is called from the
+            main body of 'BuildTree'. The file is introduced at:
+            com.projtech.bp.ui.explorer/arc/create_tree_filters.inc
+            
+ME1.5.2   - The Model Explorer context menu follows the layout of the
+            standard Eclipse context menus. The following entries are
+            provided:
+            - 'New' provides a submenu with a list of all elements that
+               can be created in the context of the selected element.
+            - 'Open' opens the selected element with the appropriate
+               editor. Provided under Retargetable Action task[8].
+            - 'Open With' is enabled if there is more than one editor
+               for the selected element. Provided under Retargetable 
+               Action task[8].
+            - 'Open Type Hierarchy' not planned for Drop 1.
+            - 'Copy, Cut, Paste, Delete', only Delete is functional
+               for Drop 1. Provided under Retargetable Action task[8].
+            - 'Source' functionality is largely provided as part of the
+               architecture. Action language 'Format' may be provided at
+               a later date, not in Drop 1.
+            - 'Refactor | Rename...' as provided by the JDT under
+               the Refactor menu is what Builder always does. Dropped.
+            - 'Refactor | Move..' not planned for Drop 1.
+            - 'Rename', enables in place element renaming in the tree.
+               Provided under Retargetable Action task[8].
+            - 'Import, Export' allows import/export of BP 6.1 model
+               files. Actions defined here, but functionality design
+               provided elsewhere, see File_IO[6].
+            - 'Refresh', provided for consistency, should not be needed
+               if listeners are installed and implemented correctly.
+               Provided under Retargetable Action task[8].
+            - 'Team', contributed by installed SCM provider. Allows the
+               same actions to be performed on controlled items as from
+               the Navigator view. Not planned for Drop 1.
+            - 'Compare With', not planned for Drop 1.
+            - 'Replace With', not planned for Drop 1.
+            - 'Properties', provides the same information as is
+               presented in the Properties view[7]. Retargetable Action,
+               Not planned for Drop 1.
+            The context menus are ready for extension as required in
+            object_contribution.ant[3]. Object Contributions are added
+            to the context menu between entries 'Open With' and 'Copy'.
+            This is achieved by passing the SWT type constant MB_ADDITION
+            as the style of a menu separator defined following the 'Open
+            With' menu entry.
+ME1.5.3   - The openListener creates a file system resource and populates
+            it with the text to be edited. It then invokes the default
+            Eclipse text editor on the resource. The editor to be invoked
+            is provided as an extension point. This is done for two 
+            reasons:
+            - so that there is no coupling between the Explorer and
+              Outline views and any specific editor behavior
+              (specifically of those plugins which implement the oal
+              aware editors) supplied  by a PT plugin
+            - third party plugins can override the default editor
+              allowing users to develop and share their own action 
+              language editors.
+            The open listener is added here. However the file system
+            work associated with it is added by the File_IO task[6].
+ME1.5.4   - The plugin.xml file is hand written according to the
+            Eclipse specification and is introduced at:
+            com.projtech.bp.ui.explorer/plugin.xml
+
+ME1.6     - Create the content outline adapter 'ModelContentOutlinePage'.
+            The constructor takes an adapter (class generated in ME1.3.2
+            above) instance to use to show the root of the outline tree.
+            It also takes the client model instance that is to be at the
+            root of the outline tree. A new instance of this is created
+            by each editor when it is instantiated. The editor passes
+            the adapter and instance when its 'getAdapter' method is
+            called (the instantiation is documented elsewhere, see the
+            Dedicated Text and Canvas Editors[9,10]).
+ME1.6.1   - The following Outline View buttons are provided (all are
+            of the 'sticky' type):-
+            - Sort
+            - Hide Static Members
+            - Hide Operations
+            Note that these button functions will be defined for the
+            final product based on feedback from beta customers. The
+            number of available buttons is limited to a maximum of five
+            by the need to restrict the consumption of screen real-
+            estate. A limit of five is chosen because that is what is
+            used on the Java Outline View.
+ME1.6.1.1 - The actions are created in similar manner to that described
+            for Explorer in ME1.5.1.1, a 'createActions' method is
+            implemented and called from the method 'createControl'.
+ME1.6.1.2 - Sort is provided by a dedicated 'ModelElementSorter' class
+            specialized from 'ViewerSorter'. The different kinds of
+            tree element are kept together by overriding the
+            'ViewerSorter.category' method. Otherwise, sorting is
+            performed on a case-insensitive, alpha ascending order
+            basis.
+ME1.6.1.3 - The other actions are implemented exactly as for the Model
+            Explorer view (see ME1.5.1.5) by adding and removing filters
+            to and from the tree view that implements the outline view.
+ME1.6.2   - The Outline context menus follow the layout of the standard
+            Eclipse context menus. The same entries are provided as 
+            described for Model Explorer, see ME1.5.2. As with the 
+            Explorer, the context menus are ready for extension as
+            required in object_contribution.ant[3].
+ME1.6.3   - Selection and ModelChange listeners are provided using
+            a 'hookListeners' method. Their role is similar to that
+            described for Model Explorer.
+
+Internationalization
+--------------------
+The file 'ExplorerView.java' contains five human readable strings, and
+'ModelContentOutlinePage.java' contains four human readable strings. These
+are declared as final private static strings immediately below the 
+class declaration. All other strings are marked as untranslatable with
+the comment '//$NON-NLS-1$'.
+
+To internationalize this work, run 'Source | Externalize Strings...'
+(see the Eclipse internationalization white paper[5]).
+
+Work Required
+-------------
+ME1.1.1   - Create the indicated model.
+ME1.1.2   - Create the indicated entities and attributes.
+ME1.1.3   - Add the backup in the indicated place.
+ME1.1.4   - Add the schema in the indicated place.
+ME1.2.1   - Create the indicated file.
+ME1.2.2   - Add the specified Tree specification instances.
+ME1.3.1   - Create the BuildTree archetype.
+ME1.3.2   - Create the create_adapters archetype.
+ME1.4.1   - Create the create_label_provider archetype.
+ME1.4.2   - Create the model_content_provider archetype.
+ME1.5     - Create the Model Explorer View class.
+ME1.5.1   - Add the Explorer buttons and their implementations to the
+            java file for the above class.
+ME1.5.1.1 - Add the indicated actions.
+ME1.5.1.2 - Add the indicated code to the 'Collapse All' action.
+ME1.5.1.3 - Add the indicated code to the 'Link with Editor' action.
+ME1.5.1.4 - Add the 'create_menus' method.
+ME1.5.1.5 - Create the archetype to generate the ListSelectionDialog
+            supporting classes and methods.
+ME1.5.2   - Add the Explorer context menus to the java file for the
+            above class.
+ME1.5.3   - Add the Explorer openListener implementation to the java
+            file for the above class.
+ME1.6     - Create the ModelContentOutlinePage class.
+ME1.6.1   - Add the Outline buttons and their implementations to the
+            java file for the above class.
+ME1.6.1.1 - Add the actions
+ME1.6.1.2 - Create the sorter class.
+ME1.6.1.3 - Create the method to add and remove the filters from the
+            tree.
+ME1.6.2   - Add the Outline context menus to the java file for the above
+            class.
+ME1.6.3   - Create the hookListeners method and Selection and ModelChange
+            listener inner classes.
+
+End
+---
+$Log: model_explorer-outline_view.dnt,v $
+Revision 1.1  2009/09/03 18:27:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.13  2009/01/01 23:13:26  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.12.168.1  2008/12/31 16:10:36  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.12  2003/07/09 23:22:14  campbell
+Job: 20
+Fixed Implementation review minute 7.
+
+Revision 1.11  2003/07/02 17:16:40  campbell
+Job: 20
+Fixed incorrect path to UITree_schema.sql
+
+Revision 1.10  2003/07/01 18:28:32  campbell
+Job: 20
+Made Outline filters consistent with Explorer.
+
+Revision 1.9  2003/07/01 18:26:51  campbell
+Job: 20
+Updated for review minutes 062403-01.rvm.
+
+Revision 1.8.2.1  2003/06/24 23:44:14  campbell
+Job: 20
+Creating sandbox copy of prototype before working on HEAD.
+
+Revision 1.8  2003/06/23 20:17:39  campbell
+Job: 20
+Review issues resolved.
+
+Revision 1.7  2003/06/23 15:16:46  campbell
+Job: 20
+Updated for initial review feedback.
+Awaiting official review minutes for
+completion.
+
+Revision 1.6  2003/06/19 23:03:41  campbell
+Job: 20
+Updated for feedback from DEF.
+Final copy for review.
+
+Revision 1.5  2003/06/19 00:47:01  campbell
+Job: 20
+Updated for feedback from CDM.
+
+Revision 1.4  2003/06/18 19:24:40  campbell
+Job: 20
+Final version for review.
+
+Revision 1.3  2003/06/17 23:33:27  campbell
+Job: 20
+Intermediate update.
+
+Revision 1.2  2003/06/12 21:05:35  campbell
+Job: 20
+Added Work Required section.
+
+Revision 1.1  2003/06/12 16:07:59  campbell
+Job: 20
+First Introduction
+
+Revision 1.3  2003/06/11 22:29:14  campbell
+Job: 29
+Introduced new documentation folders
+
+Revision 1.2  2003/06/11 17:06:47  campbell
+Job: 20
+Added details of tree support
+
+Revision 1.1  2003/06/10 15:54:31  campbell
+Job: 20
+First Introduction
+

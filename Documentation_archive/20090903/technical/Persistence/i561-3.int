@@ -1,0 +1,349 @@
+========================================================================
+
+File:      $RCSfile: i561-3.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Subnote
+Add file menu operations, Work Required subsection 3
+
+
+Document References
+-------------------
+[1] Design note - Documentation/internal/technical/Persistence/i561-3.dnt
+
+Implementation Comments
+-----------------------
+1.
+A convienence method getStructuredSelection() was added to bp.core's 
+Selection, to return the current selection as an IStructuredSelection,
+rather than an ISelection.
+
+2.
+In bp.core's create_global_action.inc, a method deleteDomainProxies()
+was added to handle the deletion of selected domains which have not yet
+been loaded from disk.  Also, the DeleteAction was changed so 
+that the deletion of a domain deletes the domain's underlying file, rather 
+than simply disposing the domain.  The ability to delete a project from the 
+model explorer was also added.
+
+3.
+In the portion of bp.ui.explorer's create_adapters.inc responsible for 
+generating the SystemAdapter, the method used for retrieving the project 
+associated with a system-model was changed to get the project directly from 
+the workspace using the system's name, rather than calling getAdapter() 
+on the system.  The latter approach failed under a scenario encountered 
+during the course of the work done for this note, whereas the former did not.
+
+4.
+In bp.ui.explorer's create_explorer_view.inc, code was added to the 
+ExplorerView's resource-change-listener to update the model explorer when
+an xtUML project is open or closed in the resource navigator.  Code was 
+also added to delete the associated system-model when a project is deleted
+from the filesystem.
+
+5.
+In bp.io.mdl's CoreImport, the import process was changed to call
+clearDatabase() on the target model-root only when that root holds one or more 
+model elements.  Calling the method on an empty model-root was producing 
+a model-explorer refresh while the tree was being updated to display the 
+children of a domain-proxy, causing an errant visual result (namely, an extra, 
+blank child node).  
+
+6.
+A class UIUtil was added in a new package bp.core.util.  To the class was 
+added a refreshViewer method which implements a common pattern necessary
+to properly refresh a viewer under different circumstances.
+
+7.  
+Tests pertaining to model export were removed from the IOMdlNestedTest class
+of bp.io.mdl.test.
+
+8.  
+A copyFile() utility method was added to bp.test.Util.
+
+9.
+The attaching of an xtUML nature to newly created projects was added to 
+bp.test.common.TestingUtilities.createProject() and 
+bp.ui.text.test.description.OpenDescriptionEditor.createProject().
+
+10.
+The ability to enable/disable the function of the Ooaofooa.persist() method  
+was added to the Ooaofooa class.  Calls were made at key places to disable 
+persistance for almost all the legacy unit tests, namely in CanvasTest and 
+Ooaofooa.setLoadPathForTests().  The tests were not written expecting 
+the models to be persisted as they operate, and thus such persistance would
+produce undesirable side effects, such as modification of test-model
+files.   
+
+11.
+In bp.als.oal.test's Test_Readme.txt, a note was added instructing the reader
+to add a VM argument to the OAL Test debug configuration.  The 
+argument specifies the location of an SWT DLL that is now needed because
+a call to Display.getDefault() added to Ooaofooa.fireModelChange().  This
+call is invoked when fireModelChange is called from outside the UI thread, such
+as when Ooaofooa's resource change listener gets notified of a change made
+to the model's file in the filesystem.
+
+12.
+In java.arc, a call was added within Ooaofooa.clearDatabase() to clear the 
+database of the corresponding graphics-root.  The method clearGraphicsDatabase() 
+in the new class bp.core.util.OoaofgraphicsUtil uses reflection to accomplish
+this task without creating a dependency loop between the core and canvas 
+plugins.  The call to Ooaofgraphics.clearDatabase() in 
+bp.ui.canvas.CanvasModelListener was removed, as the listener was always 
+notified from the UI thread, which caused conflicts when Ooaofooa.clearDatabase 
+was called from a different thread.
+
+13.
+bp.core's create_rename_action.inc was another place where code was 
+added to persist the model when a user action has completed.
+
+14.
+An error was found and corrected in bp.ui.explorer.test's small.mdl model file 
+where a startchart instance had the wrong model-type.  
+
+15.
+XtUML Natures were added to all Tiger projects that contain models, so that when
+the tool is started after upgarding to M7, all projects will appear in Model
+Explorer.
+
+16.
+The ParseAllInDomain test was changed to be plugin runtime based. This was
+required because its execution now relies on Eclipse plugin binding.
+
+17.
+The NewDomainWizard was modifed to add a resource listener to the new domain.
+
+18.
+In create_action_test.arc in core.test, the test for DeleteS_DOM was removed.
+This is because it no longer tested a valid code path, since this set of tests
+don't have file system artifacts. The same test is performed comprehensively by
+one of the new tests introduced by this work. A comment is left that directs the
+reader to the new test.
+
+19.
+The recently introduced Unicode test had to be changed to remove some obsolete
+references to the Export Wizards that were only causing compile errors.
+
+20.
+CanvasModelListener was changed to not call ooaofgraphics.clearDatabase any
+longer. This is now done by reflection.
+
+21.
+DescriptionFactory had a call to ActivityEditorInput.setInput() corrected to be
+DescriptionEditorInput.setInput(). This corrected a problem discovered with the
+TigerNature tests that caused the wrong kind of placeholder file to be restored.
+
+Unit Test
+---------
+_- Open a canvas, make some changes.
+_R The changes are saved immediately to disk
+_- Open an Activity editor, make some changes
+_R The changes are _not_ saved immediately to disk
+_- Activate the save action
+_R The changes are saved to disk
+_- Repeat with Description editor
+_- Make changes from the Resource Navigator, Model Explorer, Outline and
+   Properties views.
+_R Verify that all changes are flushed immediately to disk.
+_R All open editors refresh when something affecting their appearance changes
+[Automated by TigerNatureTest.testSSPersistance(), testActivityPersistance(), 
+	and testDescriptionPersistance()]
+
+- Open a canvas, make a change
+R The team "changed" marker (>) appears on the domain in the model explorer
+- Replace the domain with the latest version from CVS
+R All editors open on the domain close	
+R The domain is reloaded from the file
+R The changed marker no longer appears on the domain in the model explorer
+[Automated by TigerNatureExistingProjectsTest.
+	testConfigurationManagmentChangesAllEditorsClose()]
+
+- Open an xtUML project
+R The project's corresponding system-model and its subtree appear in the model 
+	explorer
+- Close the project 
+R The project's corresponding system-model and its subtree no longer appear
+	in the model explorer
+R All editors open on the project close	
+[Automated by ExplorerTest.testProjectOpenThenClose()]
+
+- Delete an xtUML project from the resource navigator
+R The project's corresponding system-model and its subtree no longer appear
+	in the model explorer
+R All editors open on the project close	
+- Restore the project from CVS or from a copy in the filesystem
+R The project's corresponding system-model and its subtree appear in the model 
+	explorer
+- Repeat the above for deleting a project from the model explorer
+[Automated by ExplorerTest.testProjectDelete() and 
+	testProjectDeleteFromModelExplorer()]
+
+- Delete a domain's file from the resource navigator
+R The domain and its subtree no longer appear in the model explorer
+R All editors open on the domain close	
+- Restore the domain file from CVS or from a copy in the filesystem
+R The domain and its subtree appear in the model explorer
+- Repeat the above for deleting a domain from the model explorer
+[Automated by ExplorerTest.testDomainDelete() and 
+	testDomainDeleteFromModelExplorer()]
+
+Code Changes
+------------
+com.projtech.bp.als/.project
+
+com.projtech.bp.als.oal.test/Test_Readme.txt
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/
+                                                           ParseAllInDomain.java
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/
+                                                         TestPlugin.java [added]
+com.projtech.bp.als.oal.test/.classpath
+com.projtech.bp.als.oal.test/.project
+com.projtech.bp.als.oal.test/plugin.xml [added]
+com.projtech.bp.als.oal.test/Test_Readme.txt
+
+com.projtech.bp.compare.test/.project
+
+com.projtech.bp.core/arc/create_global_action.inc
+com.projtech.bp.core/arc/create_object_action.inc
+com.projtech.bp.core/arc/create_rename_action.inc
+com.projtech.bp.core/src/com/projtech/bp/core/ui/NewDomainWizard.java
+com.projtech.bp.core/src/com/projtech/bp/core/ui/Selection.java
+com.projtech.bp.core/src/com/projtech/bp/core/util/
+                                                  OoaofgraphicsUtil.java [added]
+com.projtech.bp.core/src/com/projtech/bp/core/util/UIUtil.java [added]
+com.projtech.bp.core/.project
+com.projtech.bp.core/generate.xml
+
+com.projtech.bp.core.test/arc/create_action_test.arc
+com.projtech.bp.core.test/src/com/projtech/bp/core/test/
+                                            TigerNatureExistingProjectsTest.java
+com.projtech.bp.core.test/src/com/projtech/bp/core/test/TigerNatureTest.java
+com.projtech.bp.core.test/xtUMLNatureTestWorkspace/*
+com.projtech.bp.core.test/.project
+com.projtech.bp.core.test/plugin.xml
+
+com.projtech.bp.internal.io.sql.test/.project
+
+com.projtech.bp.io.core/src/com/projtech/bp/io/core/CoreImport.java
+com.projtech.bp.io.core/.project
+
+com.projtech.bp.io.mdl/src/com/projtech/bp/io/mdl/ModelExportPage.java
+	[removed]
+com.projtech.bp.io.mdl/src/com/projtech/bp/io/mdl/ModelExportWizard.java
+	[removed]
+com.projtech.bp.io.mdl/plugin.xml
+
+com.projtech.bp.io.mdl.test/src/com/projtech/bp/io/mdl/test/IOMdlNestedTest.java
+com.projtech.bp.io.mdl.test/src/com/projtech/bp/io/mdl/test/
+                                                           IOMdlUnicodeTest.java
+com.projtech.bp.io.mdl.test/.project
+
+com.projtech.bp.test/src/com/projtech/bp/test/Util.java
+com.projtech.bp.test/src/com/projtech/bp/test/common/TestingUtilities.java
+
+com.projtech.bp.ui.canvas/mdl/ooaofgraphics.bak
+com.projtech.bp.ui.canvas/mdl/ooaofgraphics.mdl
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasModelListener.java
+com.projtech.bp.ui.canvas/.project
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+    CanvasTest.java
+com.projtech.bp.ui.canvas.test/.project
+
+com.projtech.bp.ui.explorer/arc/create_explorer_view.inc
+com.projtech.bp.ui.explorer/.project
+
+com.projtech.bp.ui.explorer.test/mdl/small.mdl
+com.projtech.bp.ui.explorer.test/src/com/projtech/bp/ui/explorer/test/
+                                                               ExplorerTest.java
+com.projtech.bp.ui.explorer.test/.project
+
+com.projtech.bp.ui.properties/arc/BuildPropertySource.arc
+
+com.projtech.bp.ui.properties.test/.project
+
+com.projtech.bp.ui.text/arc/create_editorinput_java.arc
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/PlaceHolder.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityEditor.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/
+                                                        AllActivityModifier.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+                                                          DescriptionEditor.java
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/description/
+                                                         DescriptionFactory.java
+
+com.projtech.bp.ui.text.test/src/com/projtech/bp/ui/text/test/description/
+                                                      OpenDescriptionEditor.java
+com.projtech.bp.ui.text.test/.project
+
+MC-Java/java.arc
+
+End
+---
+
+$Log: i561-3.int,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.12  2009/01/01 23:13:08  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.11.44.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.11  2005/03/08 02:51:45  campbell
+Job: 561
+Ready for Review.
+
+Revision 1.10  2005/03/04 21:59:50  jmather
+Job: 561
+Added notes addressing changes called for by implementation review.
+
+Revision 1.9  2005/03/03 22:48:11  jmather
+Job: 561
+Added implementation note about Ooaofooa.clearDatabase clearing the database of the corresponding graphics-root.
+
+Revision 1.8  2005/03/03 01:54:45  jmather
+Job: 561
+Added an implementation comment about a VM argument now needed for the OAL Test debug configuration.
+
+Revision 1.7  2005/03/03 00:41:21  jmather
+Job: 561
+Added implementation comments.
+
+Revision 1.6  2005/03/03 00:03:15  jmather
+Job: 561
+Updated code changes secion.
+
+Revision 1.5  2005/03/01 18:01:18  jmather
+Job: 561
+Specified which automated tests correspond to those in this note's Unit Test section.
+
+Revision 1.4  2005/02/25 22:25:52  jmather
+Job: 561
+Specified unit tests.
+
+Revision 1.3  2005/02/24 23:39:14  jmather
+Job: 561
+Added more implementation comments.
+
+Revision 1.2  2005/02/18 21:21:59  jmather
+Job: 561
+Added mention to a change to EditorInput that had previously been omitted.
+
+Revision 1.1  2005/02/18 18:24:33  jmather
+Job: 561
+Introduced.

@@ -1,0 +1,96 @@
+========================================================================
+
+File:      $RCSfile: dts0100716139.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Prevent dead lock issues with loading
+
+1. Abstract
+-----------
+This note describes the changes required to prevent dead locking when certain
+tool actions are performed.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100716139
+
+4. Background
+-------------
+Customers were seeing partially configured graphical connectors when restarting
+the tool.  The work to resolve that issue changed the loading behavior such that
+all cross reference associations triggered a load.  This in turn caused our
+consistency unit test to become dead locked before completion.  At the time the
+fix seemed to be that we should serialize the loads by running all loads on the
+UI thread.  This resolved that issue.
+
+A new issue was found by the customer where modifying an OAL buffer and saving
+while the parser was still running caused a dead lock.  This was actually caused
+by the fix for the graphical issue.  The reason being that the UI thread tried
+saving but was told to wait on the parser thread, which triggered a load that
+required a wait on the UI thread. 
+
+5. Design
+---------
+As the background suggests the change to load on the UI thread caused new dead
+lock issues.  The original issue which caused this change saw a dead lock that
+was caused by a Display.syncExec() call used to notify listeners of model
+changes.  It was determined that there is no need to use a synchronized call
+here.  After some investigation it was determined that the syncExec call was
+added to guarantee that a model root change event is responded to before a
+component is persisted.  If this was not guaranteed then some graphical data can
+be left omitted from the file.  The model root changed events are the only
+events that require a synchronized delivery, however they only need to run on
+the thread which created the event.
+
+To fully resolve all known dead locks we need to remove the load in UI thread
+changes.  In addition to removing those changes we need to change the current
+syncExec call in EclipseOoaofooa.java to an asyncExec call.  In order to
+continue supporting model root change events we need to change
+ModelRoot.fireModelRootChanged() so that it directly calls the run method of the
+ListenerMethodInvoker instance.  Doing so will cause a synchronous call to the
+listeners and will do so on the current thread.
+
+
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+_- Run Consistency unit tests
+_R Tests run to completion and pass
+
+_- Open an OAL editor on a large bit of OAL
+_- Create an error and save
+_- Close the tool leaving the editor opened
+_- Start the tool
+_- Enter erroneous OAL and save (ctrl + s) as quickly as possible
+_R The tool does not dead lock
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100718916
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/EclipseOoaofooa.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/common/ModelRoot.java
+com.mentor.nucleus.bp.core/src/com/mentor/nucleus/bp/core/
+	common/PersistableModelComponent.java
+
+End
+---
+
+$Log: dts0100716139.int,v $
+Revision 1.1  2010/09/21 22:45:32  tlondon
+Job: dts0100716139
+
+Add int

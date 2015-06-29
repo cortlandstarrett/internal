@@ -1,0 +1,164 @@
+========================================================================
+
+File:      $RCSfile: dts0100748742.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Prevent Eclipse Job flooding during Verifier execution
+
+1. Abstract
+-----------
+The BridgePoint UI can become unresponsive when running a model using simulated
+time. This note addresses the changes required to prevent this.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100748742 - Eclipse synchronous Job flooding during
+    Verifier execution.
+[2] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/
+    Models/Test/SAAB CFMon
+
+4. Background
+-------------
+During a customer visit, it was noted that the UI became unresponsive when
+running a model using simulated time.
+
+5. Analysis
+-----------
+Simulated time execution is characterized by timers not waiting at all. The
+delayed events are dequeued immediately and time advances discontinuously. This
+places extra stress on the update notification mechanism such that the UI can
+becomes unresponsive.
+
+5.1 Reason for UI unresponsiveness
+During periods of non responsiveness, one or more CPU cores are seen to run at
+100%. If tool execution is paused in a debug environment during such a period,
+it is observed that the Eclipse UISynchronizer class can have hundreds of
+thousands of entries. Any new UI events are added to the end of this queue and
+so can take a non trivial amount of time to be processed in this situation.
+
+5.2 Suggested solution to this problem
+A mechanism already exists to address this problem, this involves using the
+enable/disableChangeNotification provided by ModelRoot. Unfortunately, the
+current implementation of this still floods the UISynchronizer queue. This is
+because when notifications occur on a non-UI thread they require transfer to
+the UI thread for servicing. The check for notification enablement occurs
+after the transfer to the UI thread, which of course leaves the queue choked
+with events that will ultimately be ignored.
+
+The solution is to check notification change status before transferring control
+to the UI thread.
+
+5.3 Disable event notification during resume
+Investigation of this problem also revealed that the BPThread.internalResume()
+method does not disable model change notification. This has the effect of
+causing UI flooding that begins after an execution pause and resume, and before
+the execution thread of control is passed back to the Verifier thread. Where the
+paused activity is small, this is not noticeable. However, if a very long
+running activity is paused, the UI flooding can become apparent. This should be
+addressed by adding a try - finally clause surrounding the relevant resume code.
+
+
+6. Design
+---------
+6.1 Early notification status check 
+An early notification status check is achieved by modifying the EclipseOoaofooa
+method, callFireMethod(). The upper half of this method deals with synchronous
+and non-maskable event notification, this works as required. The lower half of
+this method enqueues the event notifications asynchronously and needs to be
+enclosed in a test which checks the result of a isChangeNotificationEnabled()
+call.
+
+6.2 Disable event notification during resume
+A try finally block is added to the lower part of the BPThread.internalResume()
+method as suggested in the analysis section[5.3].
+ 
+6.3 Change Notification debug support
+During investigation of this issue, it was observed that debugging the problem
+was rather difficult due to there being little captured information as to the
+origin of enqueued messages or the identity of the threads that are enabling and
+disabling notification. To address this, debugging code was added in the
+following areas:
+
+- ModelRoot: The simple integer count used to disable event notification is
+  replaced with a HashMap using the thread identity as key and providing an
+  individual per-thread integer count as value. The disableChangeNotification()
+  method in model root is changed to first look for an existing key value pair
+  for the current thread. If one is found, the count is incremented. If not,
+  a new key value pair is added with count 1. The enableChangeNotification()
+  method does the complementary work, finding and decrementing the count for the
+  thread and removing the key value pair when the count reaches zero. A new
+  error log entry is made if a thread calls this method without having
+  previously disabled the change notification. The isChangeNotificationEnabled()
+  method now returns true if and only if the map is empty.
+
+- ModelChangeEvent: This class now holds a stack frame record for the moment the
+  event was created. This is set at creation time and allows us to see the
+  source of any event flooding. This is possible because the change event is
+  available in the UISynchronizer queue, so it is now possible to determine the
+  source of event flooding by inspecting these stack frames. In order to
+  minimize end user runtime overhead, a check for debug mode will be made before
+  loading the stack trace field.
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully described in the design section.
+
+9. Unit Test
+------------
+All tests will be run as JUnits unless otherwise specified.
+
+9.1 _- Run the SAAB test model[2] using simulated time.
+    _R UI remains responsive.
+    
+9.2 _- Pause and resume execution of SAAB test model[2] start_verifier function
+       using simulated time.
+    _R UI remains responsive.
+
+9.3 _- Set a breakpoint in the UISynchronizer so that execution stops when a
+       model change event is being dequeued.
+    _- Inspect the event in the Variables view.
+    _R The event contains the stack trace of the thread which created it.
+
+9.4 _- Add a new test class, EnableChangeNotificationTest to the core test
+       suite. Add two test methods methods which make a call to the ModelRoot
+       method, enableModelChangeNotification(), one with and one without a
+       previous call to disableModelChangeNotification().
+    _R Running the first test method results in no error log entry.
+    _R Running the second test method results in an error log entry.
+
+9.5 This note proposes changes to the change notification mechanism which
+    affects both BridgePoint Builder and Verifier. All existing JUnit tests must
+    therefore pass.
+
+End
+---
+
+$Log: dts0100748742.dnt,v $
+Revision 1.3  2011/02/17 10:46:28  campbell
+Job: dts0100748742
+Address review observations.
+
+Revision 1.2  2011/02/08 12:45:15  campbell
+Job: dts0100748742
+Cosmetic changes. Ready for pre-review
+
+Revision 1.1  2011/02/08 12:43:00  campbell
+Job: dts0100748742
+Introduced.
+

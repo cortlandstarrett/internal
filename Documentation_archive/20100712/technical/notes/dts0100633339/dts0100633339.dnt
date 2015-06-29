@@ -1,0 +1,376 @@
+========================================================================
+
+File:      $RCSfile: dts0100633339.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support Imported Components in Verifier
+
+1. Abstract
+-----------
+Verifier currently does not support the ability to construct a system from
+components 'imported' from other packages. This note specifies the changes
+needed to allow this.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100633339 - Support Imported Component in Verifier
+[2] ClearQuest DEI dts0100637015 - Rename internal classes
+
+4. Background
+-------------
+As part of this work, the term 'Imported Component' will be retired and replaced
+with 'Component Reference'. This term is more accurate and removes a source of
+confusion for users, who assumed from the old term that a copy of the component
+was being made by this action. Accordingly all discussion below uses the new
+term.
+
+To support the construction of large systems, Verifier must allow a system to be
+built using Component References. This note describes the changes needed to
+support this capability.
+
+5. Analysis
+-----------
+5.1 Core
+There are several places in the Verifier execution OAL where it is assumed that
+a Component Instance is participating. The alternate path required to navigate
+through the component reference class to the target component is not followed.
+The additional OAL must therefore be added.
+
+5.2 Debug UI
+The Launcher already correctly shows Component References, so launching a model
+already works. However, the Session Explorer view for Component References is
+not correct. It shows the component reference and the component instance below
+it. The component instance shows the participating classes below it, but does
+not show the expected port and function package entries. The ExecuteAction class
+now needs to handle both Component References and the new possibility that
+multiple instances of the same component exist.
+
+6. Design
+---------
+6.1 Fix Verifier's execution logic for Component References
+During the investigation work for this issue, two significant observations were
+made:
+
+1) As soon as Component References are allowed in Verifier, support for multiple
+   component execution must exist. This is because there is nothing to stop the
+   user pointing multiple Component References at the same Component. Detection
+   and prevention of multiple references to the same component could be done at
+   launch time, but this is seen as an unnecessary limitation that would have to
+   be documented.
+2) If multiple component execution is to be supported, the current execution
+   meta-model is inadequate for the unambiguous resolution of component
+   instances.
+
+To address this, a new Verifier runtime class, Runtime Channel, is introduced.
+This class is a link class managing a new reflexive association between
+instances of Execution Engine. Execution Engine instances play the role of a
+runtime Component Instance concept. Any one Execution engine may be wired up as
+a requirer or provider over any number of Runtime Channels. Hence, the semantics
+of the new association is 'Execution Engine is interface provider to zero or
+more Execution Engines' and 'Execution Engine is interface requirer of zero or
+more Execution Engines'. Each instance of Runtime Channel is also associated
+with the Satisfaction it implements at runtime.
+
+Runtime Channel instances are created during Verifier startup to 'wire up' the
+executing components. As well as allowing Verifier to unambiguously address
+multiple component instances, this has the added bonus of significantly 
+simplifying the message passing logic in the Signal and Interface Operation
+execute() and getValue() operations (see following sections).
+
+With this job, the name Execution Engine is rapidly becoming inappropriate. An
+issue is raised[2] to fix this.
+
+6.1.1 Satisfaction.dispose()
+This is extended to dispose any associated Runtime Channel instances.
+
+6.1.2 isSatisfiedInExecution() (Provided Operation, Provided Signal,
+                                          Required Operation and RequiredSignal)
+The logic in these operations tested to see if the activity had a counterpart
+in another component. This is now done much more simply by seeing if a 'Runtime
+Channel' instance exists. These operations are therefore no longer needed and
+are removed.
+
+6.1.3 Execution Engine.dispose()
+This is extended to dispose any associated Runtime Channel instances.
+
+6.1.4 Instance Subsystem
+The new class, 'Runtime Channel', it's associations, R2969 and the reflexive
+R2968 are added into this subsystem.
+
+6.1.5 Interface Operation Invocation
+6.1.5.1 execute()
+This operation is substantially rewritten to remove the old complex logic which
+located the counterpart component and determined if there was OAL in the remote
+component to transfer control to. The replacement OAL leverages R2968 to do the
+same job. Copious commentary is added to this operation to aid understanding.
+
+6.1.5.2 setupParameterValues()
+This operation is significantly simplified since it no longer needs to duplicate
+OAL required to locate the remote component.
+
+6.1.5.3 shouldExecuteLocally()
+The functionality previously provided by this operation is absorbed into the
+execute() operation described above. It is removed accordingly.
+
+6.1.6 Signal Invocation
+6.1.6.1 execute()
+This operation is substantially rewritten and simplified to leverage R2968. See
+comments in this function for an explanation of its operation.
+
+6.1.6.2 setupParameterValues()
+Considerably simplified.
+
+6.1.6.3 shouldExecuteLocally()
+No longer required.
+
+6.1.7 Message Value
+6.1.7.1 getValue()
+Completely reworked to leverage R2968. See the embedded comments.
+
+6.1.7.2 setupParameterValues()
+Simplified to remove repeated code to locate the remote component. Reduced to
+case where only a boolean is needed to control whether execution is enqueued
+locally or remotely. This boolean is passed as an argument. If enqueueing
+remotely, a passed Execution Engine identifier is used to locate the correct
+component with which the parameter values must be enqueued.
+
+6.1.7.3 shouldExecuteLocally()
+In common with the other two message invoking statements, the functionality
+previously provided by this operation is no longer required.
+
+6.1.8 Internal references to Imported Component
+There are too many internal references to Imported Component to address within
+the scope of this work. An issue is raised to track an update to entirely remove
+this name from the development database[2].
+
+
+6.2 Debug UI
+6.2.1 Make Session Explorer show Component References exactly like Components
+This fix should be made by modifying the Session Explorer tree build data in:
+
+com.mentor.nucleus.bp.ui.session/sql/UITree.pei.sql.
+
+6.2.2 Handle Component References and multiple component instances
+To do this, we will restore some old commented out code in the ExecuteAction
+class. This code delegates the responsibility for locating the Execution Engine
+instance that represents a component instance. It delegates it to the Session
+Explorer View tree which has the context to know which Component instance sub-
+tree a given entry was clicked on, so that execution is started on the correct
+component instance. The same call is used to decide if the Execute menu entry
+should be enabled.
+
+The method on the SessionExplorerTreeViewer that will do this will be called
+getExecutionEngineOfSelectedElement(). It in turn delegates to a private method,
+traverseToExecutionEngine(Object) that obtains the tree path using the
+SessionExplorerTreeViewer method, getTreePathFromItem(), and ascends the tree
+until an Execution Engine instance is found, or the top of the tree is reached.
+
+6.2.3 Change execution engine model root for Component References
+The method BPDebugTarget.launchImportedComponent(), is renamed to
+launchComponentReference(). In this method, pass the component model root to
+the Execution Engine constructor instead of the component reference model root.
+Otherwise, the executable elements of Verifier look in the wrong instance
+population for expected instances. One example of this is found in
+Body.createStackFrame(), where no stack is found if this change is not made,
+because the stack_id passed was created against a different model root.
+
+6.2.4 Handle component reference case when initializing OAL subsystem
+6.2.4.1 Handle component reference cases
+In BPDebugTarget.launchElement(), add code that checks for the existence of
+a component reference to the execution engine, not just a directly related
+component. If a component reference is found, we traverse to the associated
+component across R2963 and use that.
+
+6.2.5 Wire up components
+Section 6.1 discussed the addition of a new Runtime Channel class. This class
+is instantiated at Verifier startup by five new methods, two variants of 
+wireChannels(), two variants of wireChannel(), plus a boolean method
+alreadyWired().
+
+6.2.5.1 wireChannels(ExecutionEngine_c)
+This method is called from launchElement. If the engine is not executing a 
+component reference, the Requirements and Provisions are wired up by calling 
+wireChannel(ExecutionEngine_c, Satisfaction_c, boolean)[See 6.2.5.3]. Otherwise,
+a component reference is handled by delegating to the other wireChannels()
+variant [see 6.2.5.2] inside a loop for each interface referenced from the
+component reference.
+
+6.2.5.2 wireChannels(ExecutionEngine_c, ImportedReference_c)
+This does the same job as the non referenced component side of the method above,
+except that it does it for the component reference variant. It calls on to one
+of the wireChannel() variants[See 6.2.5.4].
+
+6.2.5.3 wireChannel(ExecutionEngine_c, Satisfaction_c, boolean)
+Every engine being verified is visited by the wireChannels infrastructure. For
+this reason, every satisfaction is visited twice (by definition, since a
+satisfaction connects two component instances together). Thus, before wiring
+two component instances (execution engine instances) together, alreadyWired()
+[6.2.5.5] is called to ensure that each satisfaction is wired once. Assuming
+that the satisfaction needs to be wired, the second wireChannel variant is
+called to actually perform the wiring job.
+
+6.2.5.4 wireChannel(Satisfaction_c, boolean, ExecutionEngine_c,
+                                                              ExecutionEngine_c)
+This method simply creates the new Runtime Channel instance and wires the source
+and destination component (execution engine) instances together across R2968
+using the new instance. Note that the method relates the execution instances in
+different senses across this association depending on whether the target
+component instance is the requirer or the provider. This ensures that the
+provider will always be found across one leg of the reflexive and the requirer
+across the other. This consistency keeps the runtime OAL that must locate the
+remote component much simpler. Finally, this method also relates the new
+'Runtime Channel' instance to the satisfaction it implements across R2969.
+
+6.2.5.5 alreadyWired(ExecutionEngine_c, Satisfaction_c)
+All runtime channels already associated with the candidate component instance
+are obtained by navigation over R2968. If any channel thus found implements the
+passed satisfaction instance, this method returns true. This test is repeated
+for the alternate direction of the reflexive association, R2968.
+
+6.2.6 MonitorAction and MonitorOffAction
+The selectionChanged() and run() methods of these classes are modified to handle
+the component reference cases.
+
+6.2.7 Spotlight View
+Without modification, the spotlight view does not show any spotlight elements
+under a component reference. The spotlight content provider is modified to
+perform the extra navigation needed to find component instances (again,
+Execution Engine instances) associated with component references.
+
+6.2.8 Replace 'Imported Component' with 'Component Reference' in the UI
+This required label changes in a number of places:
+
+6.2.8.1 context_menu.pei.sql
+The entry for the Assign Component action is modified to show the label: 'Choose
+the component to reference'.
+
+6.2.8.2 Imported Component.get_compartment_text()
+This is modified to show the label 'Unassigned Component Reference' if no
+associated Component instance is found.
+
+6.2.8.3 Canvas plugin.xml
+User visible references to 'Imported Component' replaced (this automatically
+updates tool tip text too).
+
+
+7. Design Comments
+------------------
+7.1 Defect in Component.initializeRequirement()
+While testing component instance resolution, a defect in the Builder setup for
+component interface references was exposed. In the initializeRequirement()
+operation at line 140 is found the following selection:
+
+select any importedRef related by provision->C_IR[R4009]->CL_IIR[R4701]
+                              where (selected.Ref_Id == provision.Provision_Id);
+
+Now R4701 is multiplicity many at the Imported Reference end, so a where clause
+is necessary. Unfortunately the clause supplied selects against the wrong id,
+with the result that it always selects the first reference found across this
+association. This leads to a situation where Builder appears to do the right
+thing, but in reality all the satisfactions are wired up to the same CL_IP
+instance across R4705. This is not noticeable until Verifier attempts to execute
+multiple component instances. Then, some instances get wired up more than once
+and others do not get wired up at all. When the problem line is changed to:
+
+select any importedRef related by provision->C_IR[R4009]->CL_IIR[R4701]
+                                      where (selected.Id == param.provision_id);
+
+all operates as expected.
+
+7.2 Defect in MC-Java
+This must be the first time we have used a reflexive association with a link
+class in the metamodel, because MC-Java generates incorrect code. The fix is
+simple, an extra name part is added for reflexive associations to disambiguate
+the direction to traverse. For simple reflexives, this code is present, for
+associatives it was missing. The fix is to copy the working handling for the
+simple case to the associative case.
+
+7.3 Defect in DeleteTest.inc
+Analogous fault to [7.2] is also in DisposeTest. The fix is similar, except that
+a required function is missing altogether and must be copied into this
+archetype.
+
+8. Work Required
+----------------
+Fully outlined in the design section.
+
+9. Unit Test
+------------
+Repeat execution of all these manually run test models both in simple component
+form (i.e. executing the components directly) and in component reference form
+(i.e. creating a separate component package and using component references to
+create the same wiring structure).
+
+9.1 Ring Around the Rosy
+    - As checked in.
+    - Modified to chain return values together.
+    - Modified to make interface operation calls to obtain parameter values.
+
+9.2 SC Video application.
+
+9.3 Tick simple VSI application.
+
+9.4 Seat Heater VSI demonstration application.
+
+9.5 GPS application.
+
+9.6 Looper model.
+For this model, wire it up as instructed above, but also repeat the test a
+further two times:
+
+- Eliminate Component 2 and wire two instances of Component1 together. Execution
+  should proceed in a loop as before.
+- Chain three component instances together so that the middle instance passes
+  its signal to the third instance which then passes its signal on to the
+  first. Again, execution should proceed in a loop.
+
+9.7 All existing unit tests must pass.
+ 
+End
+---
+
+$Log: dts0100633339.dnt,v $
+Revision 1.8  2010/01/05 04:29:56  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.7  2009/11/24 14:53:39  campbell
+Job: dts0100633339
+Specify multiple component instance tests.
+
+Revision 1.6  2009/11/24 14:40:53  campbell
+Job: dts0100633339
+Address review issues.
+
+Revision 1.5  2009/11/24 12:28:21  campbell
+Job: dts0100633339
+Nearing review readiness.
+
+Revision 1.4  2009/11/23 20:32:05  campbell
+Job: dts0100633339
+Checking in work in progress.
+
+Revision 1.3  2009/11/12 10:58:31  campbell
+Job: dts0100633339
+Check in work in progress.
+
+Revision 1.2  2009/11/11 12:54:38  campbell
+Job: dts0100633339
+Check in work in progress.
+
+Revision 1.1  2009/11/10 12:54:30  campbell
+Job: dts0100633339
+Introduced.
+

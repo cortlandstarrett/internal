@@ -1,0 +1,182 @@
+========================================================================
+
+File:      $RCSfile: i859.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:26:58 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Add multiprocessor support to Model Debugger
+
+Abstract
+--------
+This note describes changes to Model Debugger to allow it to execute on
+multiprocessor systems (actual or simulated).
+
+History
+-------
+
+final i859-042105-01.rvm
+
+Document References
+-------------------
+[1] Issue 859
+[2] http://www.intel.com/technology/hyperthread/
+
+Background
+----------
+The Model Debugger fails with an access exception error when loading a target
+on certain computers.  The computers have CPUs with HyperThreading [2].
+
+Analysis
+--------
+Hyperthreading is essentially a way for a single CPU to simulate a multiple
+CPU system.  This results in the threads in Model Debugger executing with
+more overlap.  This results in the threads simultaneously accessing the 
+DOM information, resulting in corruption.
+
+Design
+------
+
+1. Add DOM access locking
+
+Since we now have multiple threads accessing the DOM simultaneously, a mutex is
+added to control access to the DOM information.
+
+1.1 Add DOM mutex
+
+The method static QMutex* DOMLock() is added to the ptc_DOM_c class.
+The method returns the address of a (new) static data member m_DOM_mutex.
+
+1.2  Use DOM mutex
+
+All code that accesses the DOM is changed to first grab the mutex before
+accessing the DOM, and releasing it after the access is complete.  Qt provides
+a convenience class named QMutexLocker that provides a simple one-line way of
+doing this.  Changes are made to the following handwritten methods:
+
+- blue_window::customEvent
+  The mutex is locked for the following events that access the DOM:
+  
+  PTC_LVDELETENODE_EVENT
+  PTC_CREATEDOMAINTREE_EVENT
+  PTC_CREATEOBJECTTREE_EVENT
+  PTC_CREATEMESSAGETREE_EVENT
+  PTC_CREATEPENDINGFUNCTIONTREE_EVENT
+  PTC_CREATEEXECUTINGFUNCTIONTREE_EVENT
+  PTC_LVMODIFYNODE_EVENT
+  PTC_MODIFYRUNMODE_EVENT
+  
+- ptc_worker::formatLogText
+- ptc_worker::addDomain
+
+- The archetype protocol_umld_handler is changed to generate the mutex locking
+code for each method that accesses the DOM.
+
+2.  Change encoding attribute access
+
+The 'encoding' attribute of the 'system' element contains the name of the
+character encoding on the target.  Each time a message is sent or received
+to or from the target, the communication code (executing in the main/UI thread)
+must convert the message from/to Unicode.  This implies that the code
+must access the DOM for each message sent/received.  Placing a lock around
+this access causes a deadlock between the UI and worker thread.  To solve
+this deadlock we will only access the DOM as needed from this code.
+
+2.1  Add encoding data member
+
+The method static void setEncoding( const QString &e ) is added to the
+ptc_DOM_c class.  The method stores the passed in value in a static data
+member, which is then used by the methods ptc_DOM_c::toUnicode() and
+ptc_DOM_c::toTargetEncoding().  The static data member is implemented using
+the class QDeepCopy, so that we don't have cross thread references for the
+QString data.  setEncoding() only updates the DOM data if the encoding value
+has changed.  The DOM is locked while this change is made.
+
+2.2  Call encoding method
+
+ptc_worker::addDomain() is changed to call setEncoding() instead of 
+modifying the DOM data directly.
+
+Design Comments
+---------------
+
+Work Required
+-------------
+
+1. Add DOM access locking
+
+1.1 Add DOM mutex
+
+The changes are made to the dom_gen_gen archetype, which generates the 
+archetype that generates the ptc_DOM_c class.
+
+1.2  Use DOM mutex
+
+The changes are made as described in the design.
+
+2.  Change encoding attribute access
+
+2.1  Add encoding data member
+
+The changes are made to the dom_gen_gen archetype.
+
+2.2  Call encoding method
+
+The change is made as described in the design.
+
+
+Unit Test
+---------
+
+The tests are performed on a system with a HyperThread CPU and one without.
+
+- Start Model Debugger 
+R Model Debugger starts
+- Load the sample MicrowaveOven target
+R Target loads without error
+- Execute the pending initialization function
+R Function executes without error
+- Move execution slider to the left
+- Press the Start button
+R Target execution begins, with nothing to execute
+- Open the System Browser Window
+- Open the tree until the Oven instance object state attribute is visible.
+- Invoke the TestSequence1 function
+R The target begins executing
+- Scroll System Browser back down so Oven instance state is visible
+R state changes as test executes
+R Test completes without error
+R Target shuts down
+
+End
+---
+
+$Log: i859.dnt,v $
+Revision 1.1  2009/09/03 18:26:58  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.36.1  2008/12/31 16:10:53  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/04/21 21:43:12  greg
+Job: 859
+Addressed observations
+
+Revision 1.1  2005/04/20 22:40:17  greg
+Job: 859
+Introduce
+

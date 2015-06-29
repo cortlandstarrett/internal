@@ -1,0 +1,191 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Make nested packages show in Model Explorer, fix data upgrade issue
+
+1. Abstract
+-----------
+This job combines solutions to two unrelated data integrity issues. 
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3387 (Only one sub-interface package shows in ME)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3387
+[2] Bugzilla item 3510 (Field issue with Relaxed Same Data data upgrade)
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3510
+
+4. Background
+-------------
+4.1 Only one sub interface package shows in Model Explorer
+A user reported that when nesting interface packages, only one package would
+show in Model Explorer.
+
+4.2 Relaxed same data upgrade issue
+A user reported that some of his upgraded state models contained events with
+multiple copies of the same original event data item. Different events in the
+the same state machine have differing numbers of event parameters added, even
+though they were upgraded from the same original event data.
+
+5. Analysis
+-----------
+5.1 Only one sub interface package shows in Model Explorer
+A review of the various data structures reveals that this is a problem with
+nested:
+
+- Communication Packages
+- Interface Packages
+- Sequence Packages
+- Use Case Packages
+
+These cases all work incorrectly in the same generic way. In each case, the
+identifying attribute of the link class element was also a referential to the
+parent package. Since the referential formalized a one to many association,
+this formalization was guaranteed to violate the OOA assumption of unique IDs.
+This led to the persistence infrastructure only ever writing a single instance
+of the link class.
+
+The Activity Package has a different combination of ID's and cardinalities and
+appears to work correctly. Interestingly, the Activity.newActivity() operation
+treats the Activity Package in Activity Package element as a singleton which is
+consistent with the expected behavior.
+
+The following package types are implemented quite differently and seem to work
+reliably:
+
+- Datatype Package
+- Function Package
+
+5.2 Relaxed same data upgrade issue
+When upgrading to relaxed same data, the following occurs:
+
+- all event data item instances are found from the state machine being upgraded
+- for each data item, all events are then found across R522 and R520.
+- for each event, the data item is cloned
+- the clone is then associated with the Dimensions and with its data type.
+
+As part of step 4, we need to traverse to the Dimension instances in order to
+clone them. Unfortunately, the default traversal method is currently being
+called. By default, MC-Java assumes that the traversed-to element could be
+anywhere in the resource structure, and so it calls
+PersistenceManager.ensureAllInstancesLoaded(). This causes the new cloned event
+to be batch related with the old, pre-clone SDI instance. Not only that, but the
+end of the load caused by the PersistenceManager calls the data upgrade code
+again.
+
+Now, when the traversal at step 2 is performed, the list this time includes the
+cloned event, which now gets cloned again and so on for as many data items as
+exist in the original state machine.
+
+This issue was not detected by our existing tests because our io tests preloaded
+the model elements, so the re-entrancy did not occur.
+
+6. Design
+---------
+6.1 Only one sub interface package shows in Model Explorer
+While studying the existing state of the data, it was realized that by adopting
+the singleton container pattern seen in the Activity Package (see 5.1 above),
+the data upgrade needs were eliminated.
+
+Therefore to resolve this issue, we will copy the singleton container pattern to
+the Communication, Sequence, Interface and Use Case Packages.
+
+6.2 Relaxed same data upgrade issue
+The solution is to change the Dimensions traversal call from:
+
+ Dimensions_c.getManyS_DIMsOnR531(evDi);
+
+at line 2416 of ImportHelper.java rev 1.37 to:
+
+ Dimensions_c.getManyS_DIMsOnR531(evDi, null, false);
+
+The third argument turns off the forced loading behavior, which is what we want
+since we know that all relevant instances of S_DIM will already be loaded. This
+prevents the re-entrancy and solves the problem.
+
+7. Design Comments
+------------------
+  None.
+
+8. Work Required
+----------------
+The work required is fully covered in the design section above.
+
+9. Unit Test
+------------
+9.1 Only one sub interface package shows in Model Explorer
+- A new test model shall be created with multiple subpackages under each of the
+  package types specified in 6.1.
+- New automated tests shall be added to ui.explorer.test. These tests shall
+  check that the correct number of subpackages show in the model explorer under
+  each package type.
+- Demonstrate that this test fails in 2.0.0 and that it passes with the
+  modifications specified in 6.1.
+
+9.2 Relaxed same data upgrade issue
+- A test model is provided by the user with the request that each new release
+  be tested against it. Marketing has mandated that no-one likely to have
+  customer contact with the users competitor companies should become familiar
+  with this model. Therefore a model obfuscator tool shall be created and added
+  to the bp.internal.tools project.
+- The obfuscator shall be generated for version 1.5.4 of the tool. This is the
+  version of the tool used to create the test model supplied by the customer.
+  We will then obfuscate the model using a 1.5.4 installation, producing a
+  secure version of the model without any data upgrades. The resulting
+  obfuscated model will be checked into bp.io.mdl.test.
+- A new test shall be created that uses the above model to test that the correct
+  number of event parameters are present after data upgrade.
+- Demonstrate that this test fails under 2.0.0 and that it passes with the
+  modification specified in 6.2.
+- An issue shall be raised to widen testing against this new customer originated
+  model.
+- The obfuscator does not currently encode Action semantics attribute data. An
+  issue shall be raised to enhance the obfuscator to deal fully with these
+  fields.
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:19  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.4  2008/05/13 21:42:35  campbell
+Job: 3387
+Address review observations.
+
+Revision 1.3  2008/05/13 17:21:08  campbell
+Job: 3387
+Add possible process related cause identified for problem.
+
+Revision 1.2  2008/05/13 17:18:08  campbell
+Job: 3510
+Specify that an issue will track wider testing against the customer supplied model.
+
+Revision 1.1  2008/05/13 17:13:44  campbell
+Job: 3387
+Introduced.
+

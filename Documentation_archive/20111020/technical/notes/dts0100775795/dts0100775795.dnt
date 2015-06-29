@@ -1,0 +1,214 @@
+========================================================================
+
+File:      $RCSfile: dts0100775795.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Timers are not being properly destroyed in TIM.terminate()
+
+
+1. Abstract
+-----------
+Code was written to modify TIM.terminate to only destroy the timers and 
+execution engines for a given model root.  There was an error in that change.  
+The problem is that with that code, not all timers are being destroyed.  
+This was observed while executing the CFMon test model multiple times.  
+After the first execution, the second execution would hang.  The reason was not 
+all previous timers were destroyed.  
+
+To see the problem:
+_- Restoring the TIM.java that contains the code to selectively delete the 
+   timers (TIM.java revision 1.19.6.1)
+_- Set a breakpoint in BPDebugTarget.java::terminate() on the line that looks 
+   like this:
+    threads.clear();
+    Note: at that point, TIM.java::terminate has been called on all model roots, 
+    and there should be no timers
+_- In the expression view add watches for:
+    TIM.eelist
+    TIM.timerList
+_- Execute CFMon (for instructions for CFMon see dts0100769023)[3]
+_R Breakpoint is hit
+_R TIM.eelist is empty as expected
+_R ERROR! TIM.timerList is NOT empty
+
+
+2. History
+----------
+
+
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100775795
+    "Timers are not being properly destroyed in TIM.terminate()"
+[2] ClearQuest DEI dts0100696901 
+    "Errors found while running the SMA QA Verifier Test plan."
+[3] ClearQuest DEI dts0100769023  
+    "Verify deterministic behavior"
+    
+    
+4. Background
+-------------
+
+ 
+5. Analysis
+-----------
+5.1 The Terminate() method in TIM.java is responsible for removing the 
+    ComponentInstance instances in the eelist and their corresponding entries 
+    in the eeIdleList, then removing the timers instances from the timersList.
+    This method is called from three places, the shutdown() method in ARCH.java,
+    stop() method in BPThread.java and terminate() method in BPDebugTarget.java
+    
+5.2 The current case is that both lists are cleared whenever a terminate is 
+    called but that behavior is wrong because it leads to stopping all the 
+    models running in the debug session even if only one of them was terminated.
+    
+5.3 When executing terminate for only one model running in a debug 
+    session that contains other running models,  only the instances of 
+    ComponentInstance and timers related to that model being terminated should 
+    be removed.       
+    
+5.4 When terminating a model running in the debug session there should be a way
+    to get the componentInstance and timer instances that should be removed.  
+       
+5.5 Depending on modelRoot to get the instance related to that model is not 
+    correct because some timers are not related to model root.
+    
+5.6 According to the metamodel Instance Subsystem, Timer class is only related 
+    to PendingEvent across a conditional relation R2940.  ComponentInstance is 
+    related to PendingEvent across One To Many relation R2964.
+    
+5.7 There are two proposed solutions to fix the above problem :
+5.7.1 The first is creating a new relation in the metaModel directly relating
+      The Timer class directly to the ComponentInstance but that relation would 
+      only be used in this special case and won't be used any where else.
+5.7.2 The other solution is having this relation represented in a HashMap
+      that keeps each timer created associated with the ComponentInstance that
+      created it so that while removing instances only the ones associated with
+      the ComponentInstance being terminated are removed while others remain 
+      intact.  This is the solution that's explained in the design section.
+               
+
+6. Design
+---------
+6.1 Changes in Tim.java
+6.1.1 Add a static HashMap to the Class TIM that has the timer instances as keys 
+      and their corresponding ComponentInstance as values.  Access to this 
+      static HashMap is controlled using the same lock used for the timerslist
+      that is named timerLock.
+6.1.2 The method insertTimer() got added new passed parameter of type 
+      ComponentInstance , this parameter is used to add a HashMap entry 
+      associating timer instance to that ComponenetInstance whenever a timer 
+      is added to the timersList. 
+6.1.3 The method removeTimer is modified to remove a timer instance entry from 
+      the HashMap after removing it from the timersList.
+6.1.4 The method timer_start() is modified to pass a ComponentInstance parameter
+      when it calls the insertTimer() method, That Component instance is the 
+      instance related to the PendingEvent instance across R2964.  
+6.1.5 The method timer_reset_time() is modified so that when a timer is reset, 
+      the method first retrieves its corresponding ComponentInstance from the 
+      HashMap then when it's inserted again that instance is passed to 
+      insertTimer() method. The same change is done to the method
+      timer_add_time().
+      add static lock 
+6.1.6 The method terminate() signature is changed to get passed a 
+      ComponentInstance parameter instead of a modelRoot instance.  The method 
+      then removes that instance from the eelist and its corresponding 
+      eeIdleList entries. The method then gets the timer instances associated 
+      with that ComponenetInstance and remove them from the timersList and from 
+      the map. 
+
+
+6.2 Changes to ARCH.java:
+6.2.1 The method shutdown() is modified to pass the ComponentInstance instance 
+      as a parameter when calling TIM.terminate() instead of the modelRoot. 
+
+6.3 Changes to Timer.xtuml
+6.3.1 The operation Fire() is updated to get a ComponentInstance related to the
+      PendingEvent instance then get the uniqueId of that ComponentInstance
+      and pass as a parameter to the operation insertTimer().
+6.3.2 The operation insertTimer() _which is native java method_ , uses the 
+      passed parameter of ComponentInstanceId, to find the CompoenentInance.
+      The method getGlobal() searches in all model roots for ComponentInstance 
+      instance that has the same id value as the passed parameter.  After 
+      finding the ComponentInstance it's then passed to insertTimer() method in 
+      TIM.java.
+
+6.4 Changes to BPDebugTarget.java
+    The method terminate() is updated to pass the parameter ComponenetInstance
+    to the method TIM.terminate(). That instance is found using the BPThread
+    method getEngine().
+      
+6.5 Changes to BPThread.java
+    The method stop() is modified to pass the ComponentInstance engine as a
+    parameter to TIM.terminate().
+
+
+7. Design Comments
+------------------
+
+
+
+8. Work Required
+----------------
+stated in the design section.
+
+
+9. Unit Test
+------------
+9.1 Unit Test:
+9.1.1 _- Run DebugUI Test suite 
+      R- 0 errors , 0 failures
+      
+9.2 Manual Test:
+9.2.1 _- From welcome page Import MicrowaveOven and GPS watch projects 
+      _- Launch verifier to MicrowaveOven 
+      _- UnCheck Run Deterministic 
+      _- Launch verifier to GPS watch
+      _- UnCheck Run Deterministic 
+      _- Execute MicroWaveOven 
+      _- While Executing MicroWaveOven Terminate GPS watch 
+      R- MicroWave Oven Continues execution to the end  
+    
+9.2.2 _- Restore the TIM.java that contains the code to selectively delete the 
+         timers (TIM.java revision 1.19.6.1)
+     _- Set a breakpoint in BPDebugTarget.java::terminate() on the line that 
+       looks like this:
+        threads.clear();
+        Note: at that point, TIM.java::terminate has been called on all model roots, 
+        and there should be no timers
+     _- In the expression view add watches for:
+        TIM.eelist
+        TIM.timerList
+     _- Execute CFMon 
+     _R Breakpoint is hit
+     _R TIM.eelist is empty as expected
+     _R TIM.timerList is empty
+
+9.2.3 Do the Manual Test in [3].
+
+End
+---
+
+$Log: dts0100775795.dnt,v $
+Revision 1.3  2011/06/23 10:55:54  hkhaled
+job: dts0100775734
+update dnt after review
+
+Revision 1.2  2011/06/22 14:27:49  hkhaled
+job:dts0100775795
+update dnt
+
+Revision 1.1  2011/06/22 11:39:54  hkhaled
+job:dts0100775795
+initial dnt
+

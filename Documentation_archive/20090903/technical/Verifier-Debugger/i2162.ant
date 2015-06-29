@@ -1,0 +1,288 @@
+========================================================================
+
+File:      $RCSfile: i2162.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Domain wide event queues
+
+Abstract
+--------
+This note describes the necessary approach for implementing domain wide event 
+queues. 
+
+History
+-------
+
+update i2162-071406-01.rvm
+final i2162-072006-01.rvm
+
+Document References
+-------------------
+[1] \\svr-azt-fil-01\software_archive\SRS_MV.doc
+
+Background
+----------
+The Verifier SRS[1] calls for a debug view that can show the events queued for 
+the entire system. This note will address the implementation of three queues for 
+self, regular, and delayed events, as well as other basic features of all three 
+queues in order to satisfy the SRS presentation requirements 29 - 33.
+
+Analysis
+--------
+The debug view will need to look similar to the diagram found below:
+
+Note: The labels below are accurate according to the latest SRS draft, but the 
+node structure may need to be updated at a later date based on the alpha 
+plugins.
+
++ O Launch
+  + V Verifier
+    + M ODMS
+      - S Drive::In Drive line 7
+      - S Online Location::Delegating to Subtype line 2
+      - S Online Location::Accepting Event line 4
+      - E Robot Move Complete (to 6:Online Location from 1:Robot at 12:01:25.137623)
+      - E Disk In Drive (to 3:Disk from 2:Drive at 12:01:25.954301)
+      - E Mount Disk (to 1:QP from QP_disk_mount_request at 12:01:26.014772)
+      - E Port Unlocked (to 1:EE from PIO_port_unlocked at 12:03:26.877643)
+      - E Gripper Open (to 1:Robot from PIO_gripper_opened at 12:03:27.218462)
+    + M PIO
+    + M QP
+    + M Test
+
+Legend: L = Launch Icon, V = Verifier Target Icon, M = Model icon
+        S = Stack Frame icon, E = Pending Event icon
+
+The above example shows an event, 'Robot Move Complete' in the process of being
+dispatched. New stack frames shall appear above the top stack frame, and a new 
+event shall appear below 'Gripper Open'. The tree grows in two directions like 
+this to give the user the visual cue that they are dealing with two different 
+buffer mechanisms; the Stack, a Last In First Out (LIFO) structure, and the 
+Event Queue, a First In First Out (FIFO) structure.
+
+Event data items are shown in the Variables view, as are any local variables
+created during the execution.
+
+The Models in the debug view shall be those the user chose to launch the
+simulation with, either by multiple selection and choosing 'Debug...' or in the
+Launch Configuration Dialog (LCD).
+
+In addition to displaying the accurate order in which events will be processed, 
+the debug view shall provide a medium through which a user can:
+
+   - Move self & regular events up or down (SRS-72P-32)
+   - Allow users to edit the properties of an event (SRS-72P-33)
+   - Add (SRS-72P-29) & delete (SRS-72P-31) events
+
+Work Required
+-------------
+1.0 Create queues for self, regular, and delayed events
+
+	Provide three new associations between Pending Event and the Execution 
+	Engine. The cardinality of these associations will all be conditional one 
+	(0..1) on the Execution Engine side but many (*) on the Pending Event side. 
+	There shall be an associative link for each queue so that the associations 
+	are each managed by a separate link class. Each associative link shall have 
+	a cardinality of one, and the link class shall have a reflexive association 
+	that maintains system event queue order.
+       
+    Instead of creating a new queue for delayed events, the existing Timer 
+    class shall be moved between Pending Event and the Execution Engine. The 
+    existing association between Timer and Pending Event shall be replaced with 
+    one of the new associations discussed above. Some of the OAL code that 
+    referenced R940 within Pending Event, Execution Engine, and Timer will need 
+    to be changed to reflect the addition of the associative link via the 
+    'using' clause.
+
+2.0 Ordering of events
+
+    To guarantee that the displayed event order will exactly match the Execution 
+    Engine behavior, the Instance.poll() operation shall be replaced by a 
+    takeEvent(Event_ID) operation. The Execution Engine will call 
+    takeEvent(Event_ID) and the next event shall be found through the self 
+    queue via R946 or regular queue via R944. Once found, its ID shall be 
+    passed to the new operation.
+       
+    Firing a self or regular event shall add it to both sets of associations 
+    forming the instance and domain event queues. Likewise, setting a timer 
+    shall add the event to the delayed event queue, and changing the remaining 
+    time on a timer shall always adjust a timer's position in the display. If 
+    the user edits a timer via the 'event property dialog' and sets the delay to 
+    0, the delayed event will be moved to the back of either the self or 
+    regular queue.
+
+3.0 Move up & move down events
+   
+    The detailed policy for moving an event up in the queue shall be as 
+    follows:
+       
+    - The event is placed immediately in front of the next higher event as 
+      found across the appropriate reflexive association proposed in section 
+      1.0 above. If the event is at the top of the regular queue, the event 
+      shall be moved into the self queue; however, if the event is at the top 
+      of the self queue, the move up feature shall be disabled. If the two 
+      events share the same instance, the event order shall also be changed 
+      across the Pending Event reflexive association for self via R908 or 
+      regular via R939.
+       
+    The detailed policy for moving an event down in the queue shall be as 
+    follows:
+       
+    - The event is placed immediately behind the next lower event as found 
+      across the appropriate reflexive association proposed in section 1.0 
+      above. If the event is at the bottom of the self queue, the event shall 
+      be moved into the regular queue; however, if the event is at the bottom 
+      of the regular queue, the move down feature shall be disabled. If the two 
+      events share the same instance, the event order shall also be changed 
+      across the Pending Event reflexive association for self via R908 or 
+      regular via R939.
+         
+    After the proposed modifications, R908 and R939 affect display order 
+    only. Execution order is defined only by the order of events as 
+    specified across the three new associations introduced by the work in 
+    section 1.0 above.
+
+    Example: Move E4 up three times
+       
+    System Event Queue
+
+       Start         1           2           3
+      E1 -> I1    E1 -> I1    E1 -> I1    E4 -> I1
+      E2 -> I2    E2 -> I2    E4 -> I1    E1 -> I1
+      E3 -> I1    E4 -> I1    E2 -> I2    E2 -> I2
+      E4 -> I1    E3 -> I1    E3 -> I1    E3 -> I1
+    
+    Instance event queue
+       
+      E1          E1          E1          E4
+      E3          E4          E4          E1
+      E4          E3          E3          E3
+       
+    Note that after the second move, the Instance event queue view did not
+    change. This is because the second move only requires to be performed on
+    the system event queue, not the instance event queue.
+    
+4.0 Add & delete events
+
+    In the debug view, the user shall be able to invoke the context menu of a 
+    domain by right clicking on it. Among other items, the user shall have 
+    the option to add an event.
+    
+    By clicking on 'Add event', the user will be prompted to enter the 
+    necessary data (target instance, event, delay, and data items). the 
+    target ID, event ID, and delay shall be passed to the domain function 
+    unique_ID CreatePendingEvent(unique_ID target_ID, unique_ID event_ID, 
+    integer delay).
+    
+    unique_ID CreatePendingEvent(unique_ID target_ID, unique_ID event_ID, 
+    integer delay) shall create a new I_EVI, determine the target type 
+    (instance, class, or creator), relate the target to I_EVI, call Pending 
+    Event fire() or timer fire() based on the delay, and return the ID of I_EVI.
+    
+    The pending event ID, returned from unique_ID CreatePendingEvent(unique_ID 
+    target_ID, unique_ID event_ID, integer delay), will then be passed to 
+    another domain function boolean AddDataItem(unique_ID pevt_ID, unique_ID 
+    DI_ID, object value).
+    
+    boolean AddDataItem(unique_ID pevt_ID, unique_ID DI_ID, object value) shall 
+    create I_DIV, relate the newly created I_DIV to the previously created 
+    I_EVI, relate I_DIV to SM_EVTDI, and finally assign the value to I_DIV.Value.
+    
+    Alternatively, if the user invokes the context menu of an event by right 
+    clicking on it, the user shall have the option to delete the event. By 
+    clicking on 'Delete', the dispose operation associated with the event 
+    shall be called which will immediately remove the event from the queue. 
+
+Acceptance Test
+---------------
+ - Check each queue for empty
+ - Check ordering of each queue
+ - Compare ordering of queues to order of execution
+ - Set a timed event delay to some value other than 0
+ - Set a timed event delay to 0 and check self & regular queues
+ - Move event up & check order of the queue compared to the order of debug view
+ - Move event down & check order of the queue compared to the order of debug 
+   view
+ - Move top regular event up & check order of the self & regular queue compared 
+   to the order of debug view
+ - Move bottom self event down & check order of the regular & self queue 
+   compared to the order of debug view
+ - Attempt to move the top self event up
+ - Attempt to move the bottom regular event down
+ - Attempt to add an event via the context menu of debug view
+ - Attempt to delete an event via the context menu of debug view
+ - Attempt to add a self, regular, and timed event to the system
+ 
+ (More to be added at design time)
+ 
+End
+---
+
+$Log: i2162.ant,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.11  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.10.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.10  2006/07/27 14:50:16  mpowell
+Job: 2162
+
+minor change to the History section
+
+Revision 1.9  2006/07/21 15:15:21  mpowell
+Job: 2162
+
+Updated based on i2162-072006-01.rvm
+
+Revision 1.8  2006/07/20 14:35:05  mpowell
+Job: 2162
+
+minor grammar changes
+
+Revision 1.7  2006/07/19 19:03:16  mpowell
+job: 2162
+
+Updated to satisfy 1, 9, 10 of the rvm
+
+Revision 1.6  2006/07/18 15:54:19  mpowell
+job: 2162
+
+Updated for rvm items 2-8
+
+Revision 1.5  2006/07/14 18:36:52  mpowell
+job: 2162
+
+Added more details for Adding an Event
+
+Revision 1.4  2006/07/12 21:34:08  mpowell
+Job: 2162
+
+Modified Work Required section 1.0
+
+Revision 1.3  2006/07/12 21:20:48  mpowell
+Job: 2162
+
+Replaced references to i1626 with actual content from i1626
+
+Revision 1.2  2006/07/12 15:06:37  mpowell
+job: 2162
+
+Fixed the Log
+

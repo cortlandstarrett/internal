@@ -1,0 +1,175 @@
+========================================================================
+
+File:      $RCSfile: dts0100528106.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Enhance BridgePoint Builder and Verifier performance
+
+1. Abstract
+-----------
+This note describes how BridgePoint and Verifier performance is enhanced by
+moving to a different notification architecture.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100528106 Repeated function execution causes slowdown
+[2] ClearQuest DEI dts0100570181 Timer Jitter
+[3] ClearQuest DEI dts0100587947 Have Model Explorer listen for transactions
+
+4. Background
+-------------
+Some customers have reported slowness in both Verifier and in BridgePoint in
+general.
+
+5. Analysis
+-----------
+Prior to this work, BridgePoint views use model changes to trigger view updates.
+These updates can be quite expensive on CPU time, particularly in larger models.
+Model changes are sent on a very fine grain basis; every instance creation,
+deletion, attribute or relationship change causes model change messages to be
+sent. Because viewers refresh their contents after every change message a user
+change that involves multiple modifications can cause the viewers to update more
+often than necessary.
+
+This issue proposes to modify this policy to instead use the end of a
+BridgePoint internal transaction as the trigger for a view update. Transactions
+occur once per user action and consequently the viewers use CPU resource much
+more frugally.
+
+6. Design
+---------
+6.1 Change Viewers to listen for transactions
+
+The following viewers are modified to listen for the completion of transactions
+before refreshing their appearance:
+
+- Outline
+- Spotlight
+- Session
+- Model Explorer
+
+An issue[3] was raised to harmonize Model Explorer with this policy when it was
+thought that there might not be time to accommodate it here. However, the
+necessary changes were identified and hence this new issue should also be
+resolved at the same time.
+
+6.2 Change to Verifier
+
+Verifier previously used model changes to signal execution progress. Verifier in
+particular creates a very large number of model change messages while running.
+Verifier currently does not create transactions at all.
+
+Verifier is modified to start a transaction before each statement is executed
+and end it after the statement is executed. Views thus now only update
+themselves on a boundary that the user sees as atomic. This is true even for
+control statements such as invocations, if statements and for loops;
+transactions do not nest, when the control statement is evaluated or the
+invocation causes a new stack frame to be entered, the transaction ends and a
+new transaction is started for the first statement of the newly entered block.
+
+6.3 Cascade changes
+6.3.1 Verifier
+The TransactionManager expects to serialize changes. With multi component
+execution, threads run concurrently. The TransactionManager instance is used as
+a point of synchronization so that its serialization assumptions are not
+violated.
+
+6.3.2 TransactionManager
+A small change was made to avoid a Null Pointer Exception in the case where a
+transaction is empty. canComplete() is modified to return true if a transaction
+is empty.
+
+6.3.3 NewDomainWizard
+This class is modified to generate a transaction when complete to signal views
+to refresh themselves.
+
+6.3.4 UIUtil
+This utility class is slightly modified to refresh asynchronously in the case
+where a NonRootModelElement is the root element being changed. This was causing
+test failures because of changed threading behavior brought about by the changes
+described above.
+
+6.3.5 Class As Link and State Machine State
+These modeled classes were modified to add safety code in case a related
+instance was not found. Due to changed timings during the tests these were
+necessary to prevent Null Pointer Exceptions. In both cases, the operations
+changed are called from the UI to enable or disable menu entries dynamically.
+In all cases where NPE's were observed, the test was in the process of shutting
+down and had otherwise passed. I expect more of these to come to light as
+testing is performed in different environments.
+
+6.3.6 TIM
+This realized external entity was modified to fix some Null Pointer Exceptions
+that were being reported during test shutdown, again due to changed timing.
+While in there, I took the opportunity to fix a problem reported by our European
+TME related to timer jitter[2].  The change was made as described in that issue,
+except for some minor naming enhancements. This issue should be resolved at the
+same time as the headline issue above[1] during the promotion process.
+
+6.4 Miscellaneous other changes
+
+6.4.1 TestingUtilities
+A small change to the allowJobCompletion() method was made to remove a
+deprecated call. This was thought to be implicated in a test failure during
+test but was later eliminated since the code called by the new interface does
+exactly the same thing as the old. Eliminating the deprecated call was left in
+the design as good practice.
+
+6.4.2 MC-Java
+Debug code which was reporting a dangling backward reference was providing
+output without any indication of the association that was causing the problem.
+A small non functional change to MC-Java is made to provide the required more
+helpful output.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+Fully covered above.
+
+9. Unit Test
+------------
+9.1 All existing Unit tests must pass.
+
+9.2 Verifier run times are significantly improved.
+
+Run the customer specified test model (in the issue[1]), executing functions
+LM::UC_000, LM::UC_001_002, LM::UC_020, LM::UC_0x001 and LM::UC_003. Measure
+the run times and compare with the measurements reported in the issue[1].
+
+9.3 Assure that modifying the model during Verifier execution does not cause
+deadlock.
+
+End
+---
+
+$Log: dts0100528106.dnt,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/05/15 13:06:09  campbell
+Job: dts0100528106
+Update for changes to Model Explorer, add modification to MC-Java.
+
+Revision 1.2  2009/05/14 18:51:39  campbell
+Job: dts0100528106
+Address review issues.
+
+Revision 1.1  2009/05/14 15:57:04  campbell
+Job: dts0100528106
+Introduced.
+

@@ -1,0 +1,138 @@
+========================================================================
+
+File:      $RCSfile: dts0100608182.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Implement Stop Mode debugging in Verifier
+
+1. Abstract
+-----------
+This note describes the changes needed to implement Stop Mode debugging in
+Verifier.
+
+2. History
+----------
+   final - dts0100608182-081809-01.rvm
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100608182 - Implement Stop Mode debugging in Verifier
+[2] ClearQuest DEI dts0100608268 - Allow the user to select Stop Mode or Run
+    mode behavior for breakpoints
+
+4. Background
+-------------
+Verifier currently follows the default 'Stop Thread' JDT behavior and only stops
+the component in which a breakpoint is encountered. This behavior is also known
+as Run Mode debug. For embedded systems, it makes more sense to use the
+alternative Stop Mode debug policy. This is analogous to the (non default)
+'Stop VM' JDT behavior. In this mode, a breakpoint stops all running components,
+not just the component containing the breakpoint.
+
+5. Design
+---------
+Changes are needed to two Verifier debug model classes, BPThread and
+BPDebugTarget.
+
+5.1 BPDebugTarget
+This class already caches references to all the BPThread instances involved in a
+debug session. There is one instance of BPThread for each component being
+executed. The class is modified to add two new methods, threadIsSuspending() and
+threadIsResuming(). The methods take an argument that identifies the thread
+being suspended or resumed. The body of the method delegates the suspend or
+resume command to each BPThread instance except the one already changing state.
+We do not want to delegate back to the originating thread because a call loop
+would exist and blow the stack.
+
+5.2 BPThread
+The existing methods, resume() and suspend() are renamed to internalResume() and
+internalSuspend() respectively. Two new methods are created to replace resume()
+and suspend() which call on to the internal versions. Two additional new methods
+are added; notifyTargetOfSuspension() and notifyTargetOfResumtion(). Each
+BPThread caches the owning BPDebugTarget instance. These two new methods use
+this cached BPDebugTarget reference to call the threadIs*() methods, thereby
+causing all threads to be stopped or started as appropriate.
+
+Inside the BPThread run loop, there is already a test to detect when a component
+has become suspended. Here a call is also made to notifyTargetOfSuspension().
+This implements the stop all components policy when a breakpoint is hit.
+
+Note that the suspend behavior on individual components is not changed in any
+way by this work. Any component may always have been suspended at any time by
+the user. This means that no new risk to a blocked component not honoring a
+suspend request is not in any way altered by this work. The existing
+implementation always sends the appropriate debug events, which triggers the
+debug UI to open the debug tree and obtain stack frame data etc. The normal
+state for a suspended thread is in a wait state, hence, they are not typically
+woken up when the component execution suspends. If a component happens to be
+executing when it is suspended, then the execution loop in Stack.execute() exits
+and the wait state is then entered.
+
+6. Implementation Comments
+--------------------------
+At a later time, we will add the capability to specify whether the Stop Mode or
+Run Mode policy is to be used when a breakpoint is hit. At this point, we should
+remove the behavior that stops all threads when the user pushes the Suspend
+button when a single component is selected in the debug view. Stopping all
+threads will then still be supported by selecting the root of the debug tree and
+pushing Suspend. Similarly at that time, the Resume button behavior will be
+modified to only start all threads if the suspension was due to a Stop Mode
+request (either through the UI or by hitting a Stop Mode breakpoint). An issue
+is raised [2] to track this enhancement.
+
+7. Unit Test
+------------
+Due to the limited scope of this change, it is proposed that only the JUnit
+tests for Verifier be run, in addition to a range of test models manually
+executed:
+
+7.1 Ring Around the Rosy
+    - As checked in.
+    - Modified to chain return values together.
+    - Modified to make interface operation calls to obtain parameter values.
+7.2 SC Video application from John Wolfe.
+7.3 Tick simple VSI application.
+    - As checked in
+    - Modified to use simple return keyword in void activity
+7.4 Seat Heater VSI demonstration application.
+7.5 GPS application from Staffan Kjellberg.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPDebugTarget.java
+com.mentor.nucleus.bp.debug.ui/src/com.mentor.nucleus.bp.debug.ui.model/
+    BPThread.java
+
+End
+---
+
+$Log: dts0100608182.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/08/18 14:33:31  campbell
+Job: dts0100608182
+Address review comments.
+
+Revision 1.3  2009/08/18 14:25:36  campbell
+Job: dts0100608182
+Address review comments.
+
+Revision 1.2  2009/08/18 12:59:16  campbell
+Job: dts0100608182
+Correct typo.
+
+Revision 1.1  2009/08/18 10:07:49  campbell
+Job: dts0100608182
+Introduced.

@@ -1,0 +1,334 @@
+========================================================================
+
+File:      $RCSfile: dts0100668763.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Complete the testing associated with making context menus consistent
+
+1. Abstract
+-----------
+The issue raised to create consistent context menus for creating model elements  
+(dts0100573206) was promoted before it's testing was complete.  This issue is 
+raised to allow that testing to be completed.  The unit test template calls out 
+the tests that need to be fixed.  
+
+2. History
+----------
+None
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100668763 - Complete the testing associated with making 
+		context menus consistent
+[2] ClearQuest DEI dts0100695244 - JUnit : Disconnect CME test
+[3] ClearQuest DEI dts0100650381 - Support GEF based graphical editor
+
+4. Background
+-------------
+From the Unit test template:
+---------------------------------
+8.2) Errors introduced with new CME entries from issue dts0100573206 
+      bp/compare/test/cases/GenerateComparisonTextTest.java:testGenerateTextFor-
+      SQLFile()
+      bp/compare/test/plcm/InspectorTest.java:testModelInspector()
+      
+10.2) Errors introduced with new CME entries from issue dts0100573206
+      _- bp.core.test/arc/create_context_menu_tests.arc
+         Many CME generated tests were removed.  See the block labeled:
+         // START: (consistent menu entries) dts0100573206 test removal 
+         // END: (consistent menu entries) dts0100573206 test removal 
+      _- bp/core/test/SequenceTests.java::testSequenceInDomainModeling() 
+      _- bp/core/test/ModifyNonFullyLoadedModelTests.java/testDeleteClassWithRe-
+      ferringImportedClass
+          
+12.3) Errors introduced with new CME entries from issue dts0100573206
+      /io/mdl/test/pkgcm/PkgCMCreateTest.java::testCreateSubSystem_ThruCE()
+      
+13) Errors introduced with new CME entries from issue dts0100573206:
+	bp/ui/canvas/test/CanvasCreationTest.java::testCreateSubsystemInSubsystem()
+    bp/ui/canvas/test/CanvasCreationTest.java::testCreateModelClassInSubsystem
+    bp/ui/canvas/test/CanvasCreationTest.java::testCreateImportedModelClassIn-
+    Subsystem
+    bp/ui/canvas/test/CanvasCreationTest.java::testCreateActivityInDomain
+    bp/ui/canvas/test/CanvasCreationTest.java::testCreateActivityInSS
+        
+    bp/ui/canvas/test/CanvasEditorInteraction.java::test82CreateNewEEP
+    
+    bp/ui/canvas/test/AutoReconciliationTests.java::testGraphicalRepresentsSet  
+
+Step 1: Comment out tests with expected failures
+Step 2: Fix tests with expected failures.
+
+5. Analysis
+-----------
+5.1 Compare Suite
+5.1.1 GenerateComparisonTextTest.java:testGenerateTextForSQLFile()
+        The test no longer fails and did not require any changes.
+        The testDummy() has been removed
+5.1.2  InspectorTest.java:testModelInspector()
+        The test no longer fails and did not require any changes.
+
+5.2 CoreII Suite
+5.2.1 ContextMenuTests : 
+5.2.1.1 The RSL code between the two comments mentioned in unit_test_template
+  is removed to allow the generation of the CME tests.
+  
+5.2.1.2  The CME tests are failing because the sub menu items for 'New' label 
+  could not be obtained. The testing utility method, getChildMenuItems() was never
+  sending the correct event to get the child menu populated.  A SWT.Show 
+  event needed to be sent to the child menu.  Therefore the testing code is 
+  changed to send such an event.  In addition the event processing loop is 
+  removed as it was forcing a SWT.Hide (thus causing the menu to disappear) 
+  to be sent before we could access the child items.
+
+5.2.2 : SequenceTests : testSequenceInDomainModeling() method compares actual 
+  Domain diagram with the expected one. The test fails because there was
+  extra Function Package in the actual diagram, this extra Function Package
+  is brought by testFormalizeInstanceWithNestedClass() which run before
+  testSequenceInDomainModeling(). 
+  When 'Instance' in Sequence diagram was formalized to a class in testFormalize-
+  InstanceWithNestedClass(), AutoReconciliationSpecification.Updateallelements() 
+  checks Domain diagram for new or deleted elements, and query for Function 
+  Packages inside it.
+  Domain.getFunctionPckgCount() and Domain.getFunctionPckgId() -which invoked 
+  indirectly from Updateallelements()- returns all Function Packages 
+  in the Domain including the nested Function Packages, causing nested Function 
+  Packages to be drawn in Domain diagram.
+  
+5.2.3 ModifyNonFullyLoadedModelTests : testDeleteClassWithReferringImportedClass
+      is resolved by updating expected results
+     The test was failing due to two mismatched expected result. First one for
+     Subsystem canvas diagram, The original -which imported in the test session-
+     had some changes and the expected result did not updated with it.
+     The second in Run log that has extra statements in the actual result that
+     came from Travis work.  
+     
+ 
+5.3  MDL PkgCM Test Suite : 
+5.3.1 PkgCMCreateTest : testCreateSubSystem_ThruCE() create a new subsystem 
+  inside Domain then compares actual Domain diagram with the expected one.
+  The test fails because there were two extra External Entity Packages in 
+  the actual diagram. 
+  The extra packages come when a new Subsystem was created
+  AutoReconciliationSpecification.Updateallelements() checks Domain diagram for 
+  new or deleted elements, and query for External Entity Packages inside it.
+  Domain.getExternalEntityCount() and Domain.getExternalEntityId() - which 
+  invoked  indirectly from Updateallelements()- returns all External Entity
+  Packages in the Domain includes the nested External Entity Packages, causing 
+  nested External Entity Packages to be drawn in Domain diagram.
+  
+5.4 Canvas Test Suite 
+5.4.1 CanvasCreationTest
+        testCreateSubsystemInSubsystem()    
+        testCreateModelClassInSubsystem()
+    	testCreateImportedModelClassInSubsystem()
+	    testCreateActivityInDomain()
+	    testCreateActivityInSS()
+     These tests were already un commented and pass.
+
+5.4.2 CanvasEditorInteraction : 
+
+5.4.2.1 Un comment the setUp().
+5.4.2.2 Un comment the member variables.
+5.4.2.3 Un comment setGenerateResults().
+5.4.2.4 test82CreateNewEEP()
+    Some of the invoked method inside it are no longer exist and have been 
+    replaced by others.
+    
+    CanvasEditor  -->   GraphicalEditor
+	CanvasTestUtils.controlShapeToolState(graphicsModelRoot, shptool, "activate");
+	            -->    UITestingUtilities.activateTool( shptool);
+	CanvasEditor.ptCanvas --> GraphicalEditor.getModel()
+	CanvasTestUtils.controlShapeToolState(graphicsModelRoot, shptool, "deactivate");
+				-->     UITestingUtilities.deactivateTool( shptool); 
+	
+	These changes due to work done in [3].
+				
+    Also new expected result files are added since there non existed one.
+    
+5.4.3 AutoReconciliationTests : 
+		testGraphicalRepresentsSet()
+	   Test was un commented already and pass 
+       
+6. Design
+---------
+6.1 CoreII Suite
+6.1.1 retrieving 'New' sub menu items  fixes : UITestingUtilities.java 
+
+Before:
+ public static MenuItem[] getMenuItems(final Menu menu, String childMenu) {
+    	// set location
+    	menu.setLocation(menu.getShell().getLocation());
+    	
+    	Display display = PlatformUI.getWorkbench().getDisplay();
+    	
+    	// create a timed close on the menu
+    	// enough time to populate the menu
+    	display.timerExec(10, new Runnable() {
+		
+			public void run() {
+				menu.setVisible(false);
+			}
+		});
+    	// populate the menu
+    	menu.setVisible(true);
+    	while(display.readAndDispatch());
+    	MenuItem[] items;
+    	// get child items if item in question
+    	// is contained in a child menu
+    	if(!childMenu.equals("")) {
+    		items = getChildMenuItems(menu, childMenu);
+    	} else {
+    		items = menu.getItems();	
+    	}
+    	return items;
+    }
+    
+After :
+ public static MenuItem[] getMenuItems(final Menu menu, String childMenu) {
+
+		Event event = new Event();
+		event.x = 5;
+		event.y = 5;
+		menu.notifyListeners(SWT.Show, event);
+
+		MenuItem[] items;
+
+		// get child items if item in question
+		// is contained in a child menu
+		if (!childMenu.equals("")) {
+			items = getChildMenuItems(menu, childMenu);
+		} else {
+			items = menu.getItems();
+		}
+
+		event.doit = true;
+		menu.notifyListeners(SWT.Hide, event);
+
+		return items;
+
+	}
+	
+	
+Before : 
+    private static MenuItem[] getChildMenuItems(Menu menu, String childMenu) {
+    	MenuItem[] parentItems = menu.getItems();
+    	for(int i = 0; i < parentItems.length; i++) {
+    		if(parentItems[i].getText().equals(childMenu)) {
+    			MenuManager manager = (MenuManager) parentItems[i].getData();
+    			Menu child = manager.getMenu();
+    			child.setLocation(menu.getShell().getLocation());
+    			child.setVisible(true);
+    			MenuItem[] childItems = child.getItems();
+    			return childItems;
+    		}
+    	}
+		return null;
+	}
+
+After:     
+	private static MenuItem[] getChildMenuItems(Menu menu, String childMenu) {
+		MenuItem[] parentItems = menu.getItems();
+		for (int i = 0; i < parentItems.length; i++) {
+			if (parentItems[i].getText().equals(childMenu)) {
+				MenuManager manager = (MenuManager) parentItems[i].getData();
+				Menu child = manager.getMenu();
+				Event event = new Event();
+				event.x = 5;
+				event.y = 5;
+				child.notifyListeners(SWT.Show, event);
+				return child.getItems();
+			}
+		}
+
+6.1.2 Due to '&' character that define keyboard accelerator for menus -which is
+enabled only for ME view menu- all of the 'New' CME tests on ME view fail 
+because it compares  'New' with 'Ne&w'  in getChildMenuItems() : 
+
+if (parentItems[i].getText().equals(childMenu))
+
+As a result, none of parentItems instances is selected.
+A new method "String removeAccelerator(String oldString){...}" shall be created
+to remove the '&' from label name and return it back. This method should be 
+invoked before any label text comparison.
+E.g.
+Before : 
+if (parentItems[i].getText().equals(childMenu)) 
+After : 
+if ( removeAccelerator( parentItems[i].getText() ).equals(childMenu)) 
+
+6.1.3 Five Data Type packages shall be added to the ContextMenuTests model 
+  to match the requirement of the test. Packages names are :
+  
+  TestElementS_DPKforConstantSpecification
+  TestElementS_DPKforDataTypePackage
+  TestElementS_DPKforEnumerationDataType
+  TestElementS_DPKforStructuredDataType
+  TestElementS_DPKforUserDataType
+
+6.1.4 The 'Disconnect' CME tests are excluded from ContextMenuTests since they 
+  can not run vs Domain based model. an issue is submitted to move them 
+  in Component Context Menu Test [2].
+
+6.2 SequenceTests :  testSequenceInDomainModeling()
+  The relation number in the 'select' statement in Domain.getFunctionPckgCount()  
+  and getFunctionPckgId() is changed from R301  to R29. By this change only the 
+  Function Packages that are created directly inside Domain will be selected.
+
+Before:
+select many functionPckgs related by self->S_FPK[R301];
+
+After:
+select many functionPckgs related by self->S_FPK[R29];
+
+Also The expected result needs to be updated for coordination mismatching.
+
+6.3 MDL PkgCM Test Suite : PkgCMCreateTest :testCreateSubSystem_ThruCE()
+6.3.1 The relation number in the 'select' statement in Domain.getExternalEntityCount() 
+and Domain.getExternalEntityId() is changed from R300 to R36. By this change 
+only the External Entity Packages that are created directly inside Domain will be 
+select.
+
+Before:
+select many externalEntityPckgs related by self->S_EEPK[R300];
+After:
+select many externalEntityPckgs related by self->S_EEPK[R36];
+
+6.3.2 Rename getExternalEntityCount() to  getExternalEntityPkgCount() 
+6.3.3 Rename getExternalEntityId() to getExternalEntityPkgId()
+6.3.4 The new operations name -getExternalEntityPkgCount() and 
+getExternalEntityPkgId-  need to be updated in ui.graphics/plugin.xml
+  
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully described in the design section.
+
+9. Unit Test
+------------
+9.1 All JUnit tests must pass.
+
+End
+---
+
+$Log: dts0100668763.dnt,v $
+Revision 1.2  2010/06/14 15:04:01  nmohamad
+job:dts0100668763
+Addressing review minutes
+
+Revision 1.1  2010/06/10 19:11:42  nmohamad
+job:dts0100668763
+Creating
+

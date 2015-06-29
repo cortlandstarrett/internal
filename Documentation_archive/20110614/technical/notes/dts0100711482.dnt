@@ -1,0 +1,172 @@
+========================================================================
+
+File:      $RCSfile: dts0100711482.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support hover text at connector ends
+
+1. Abstract
+-----------
+This note describes the changes required to support hover text at connector
+ends.  Additionally, this note describes the changes required to support hover
+text for interface references and delegations.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100711482
+[2] ClearQuest DEI dts0100655903 -
+                          (Support drawing of missed xtUML Connectors on Canvas)
+
+4. Background
+-------------
+There is a certain situation where ports are ambiguous on the various diagrams.
+This situation occurs when you have two or more imported provision or
+requirements that are formalized to the same interface.
+
+A future version of BridgePoint will have selectable port symbols, that can
+display their name preventing this situation.
+ 
+5. Analysis
+-----------
+The tool shall support hover text at the start of each of the following
+connectors:
+
+Provision
+Requirement
+Imported Provision
+Imported Requirement
+Delegation
+
+The hover area should be around the same size of the port adornment that is
+present today.
+
+6. Design
+---------
+6.1 Add support for connector end hovering in graphics
+
+The easiest way to achieve this is to allow the decorations to have a tooltip
+configured.  GEF supports a tooltip, and the hover text, for any figure.
+
+A new bridge is added, get_connector_tooltip(end:End), which returns a string
+that is to be used as the tooltip for the given end.  Each decoration class is
+modified to take the returned string and set it as the decoration's tooltip.
+ 
+To satisfy the sizing requirement in the analysis section we must extend the
+bounds considered during a hover for the adornment figures.  This is handled by
+overriding the getBounds(), containsPoint(), and setLocation() methods of the
+ConnectorPolylineDecoration class.  Note that this is not required for the
+filled square (used for Port decoration) decoration as it is configured at the
+required size.  The getBounds() and containsPoint() methods are overridden to
+return and check an area that is 16 pixels by 16 pixels.  The setLocation()
+method is overriden to cache the current end point location in order to
+determine the proper hover area bounds.  These values are automatically scaled
+by GEF, therefore the 16x16 square will always be scaled accordingly.
+
+A new decoration is created, TooltipDecoration, which is to be used for all
+connector ends that have no real decoration.  This allows us to support hover
+areas even when no real decoration is present.
+
+6.2 Add support for connector tooltip specification in ooaofooa
+
+The following classes have a new operation, get_connector_tooltip(end:end),
+added:
+
+Provision - Returns associated port name if at the start
+Requirement - Same as Provision
+Imported Provision - Calls get_connector_tooltip on real Provision
+Imported Requirement - Calls get_connector_tooltip on real Requirement
+Delegation - Returns delegated to port name if at the start, note that the start
+             here refers to the graphical end of the connection.  In this case
+             the start is always the end that is inside the component container.
+
+The formality of the interface reference does not effect what hover text is
+shown.  So an informal interface reference has the same port instance associated
+as it would if formalized to an interface.
+
+6.3 Address non-logged exception in GraphicalCommandStack
+
+During this work an issue was noticed where a log was not being captured during
+an exception.  The exception was occurring during transaction execution, and
+being caught but not logged.  The class is modified such that the catch clause
+now logs the error and additionally nulls the current transaction.  If the
+transaction is null then endTransaction is not called, preventing an unnecessary
+log entry.
+
+6.4 Prevent exceptions during reconciliation
+
+The work for reconciling interface satisfactions prematurely added reconciler
+definitions.  They reconciler does not properly support these and was thus
+trying to create a new connection without enough data.  To prevent this from
+occurring the reconciler definitions were removed.
+
+[2] will cover the work to add back the removed definitions.
+
+6.5 Initialize new ports when created via delegation creation
+
+Currently when drawing a delegation, a new port will be created (along with a
+new interface reference) if an interface reference was not drawn to.  In this
+case the port instance is not initialized, meaning it's name is not properly
+configured.
+
+In Component.newDelegation(), the newly created port instances are initialized.
+This is done by simply calling Port.initialize().
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+Covered in the design section.
+
+9. Unit Test
+------------
+_- Hover over the start point of the following
+  _- Provision
+  _- Imported Provision
+  _- Requirement
+  _- Imported Requirement
+  _- Delegation
+_R The port name associated is shown in the tooltip
+
+_- Create a diagram with two components, one with a provision the other a
+   requirement
+_- Set a breakpoint in AutoReconciliationSpecification_c.updateAllElements()
+   where a connector is created
+_- Create a new component
+_R The breakpoint is not hit
+
+_- Draw a delegation from an outer interface reference to an inner component
+_- Hover over the delegation end that is on the inner component
+_R The port name is displayed in the hover text.
+
+End
+---
+
+$Log: dts0100711482.dnt,v $
+Revision 1.3  2010/08/24 18:04:16  tlondon
+Job: dts0100711482
+
+Address review minutes
+
+Revision 1.2  2010/08/24 15:51:30  tlondon
+Job: dts0100711482
+
+Add port initialize change
+
+Revision 1.1  2010/08/17 19:28:34  tlondon
+Job: dts0100711482
+
+Introduce notes
+

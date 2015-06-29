@@ -1,0 +1,184 @@
+========================================================================
+
+File:      $RCSfile: i339.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Native .mdl Persistence
+
+Abstract
+--------
+This note describes how Tiger will make the initial move to it's own native mdl
+format.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 339
+[2] Bugzilla issue 224
+[3] Bugzilla issue 360
+
+Background
+----------
+Like its predecessors, the M5 milestone release shall work on a single domain
+file. Unlike its predecessors, the file will have its own extension (.mdl) and
+will contain Tiger specific data for the first time.
+
+This note describes the changes needed to achieve this goal.
+
+Analysis
+--------
+In order to load a domain into Tiger, the user shall use import and specify the
+required .mdl file to use. The BridgePoint SQL interface will continue to exist.
+The new Nucleus BridgePoint model import and export wizards shall look exactly
+like the BP import and export wizards, except for the page titles which will
+substitute 'Model' for 'SQL' in all places and substitute 'Nucleus BridgePoint'
+for 'BridgePoint 6.1' in all places. The required difference specified here lies
+in what is loaded and saved. The Nucleus BridgePoint import and export wizards
+shall save all data in the Tiger meta-model except the processing subsystems.
+The processing subsystems typically contain a large number of instances which
+would make the files very large and slow to load. Instead, processing subsystem
+instances shall be recreated by parsing the action language found in each of the
+Action_Semantics attributes in the meta-model. Unlike the BridgePoint 6.1 SQL
+import, data for extensions added to the model [2,3] shall also be saved.
+
+Work Required
+-------------
+i339.1   Create the new Import and Export Wizards
+         - Create a new plugin project, com.projtech.bp.io.mdl.
+         - The project shall have a sql folder containing a file_io.pei.sql
+           file.
+         - This file shall be a copy of the existing 
+           bp.io.sql/sql/file_io.pei.sql file, modified to include the new
+           instances to be output. No mapping, renaming or swapping of
+           variables shall be required, so data to support this shall be removed
+           from this file.
+         - Apart from the above file, the rest of this project should avoid
+           duplication of files in bp.io.sql. Specifically, the schema source
+           model, schema generation ant scripts and wizard code should be moved
+           to a common plugin, com.projtech.bp.io.core. The plugins bp.io.sql
+           and bp.io.mdl shall then depend on bp.io.core.
+
+i339.2   Modify the Compare feature to work with .mdl files and to include all
+         new metamodel data in the comparison.
+         - Change the compare extension point so that it now offers the current
+           functionality when .mdl files are selected instead of .sql files.
+         - Modify ooa_hierarchy.pei.sql so that all new data items introduced
+           by previous work are traversed and compared (except processing
+           subsystems as before).
+
+i339.3   Modify MC-Java to use .mdl files
+         The Tiger metamodel has been designed so that existing model compilers
+         can continue to generate code even though the meta model contains and
+         supports many new features. For this reason, only 2 changes are needed
+         to MC-Java:
+i339.3.1 Convert .mdl files to SQL
+         - Change all the build files (not just those for MC-Java) so that .mdl
+           files are used as the source in place of .bak files.
+         - Because the generator executables require input files to physically
+           bear a .sql extension, it is necessary to replace bak2sql with a
+           simpler script that changes the extension from .mdl to .sql. This
+           script shall take a boolean argument that determines whether the
+           script shall strip graphics data from the output or not. 
+         - Replace references to bak2sql in all build files with references to
+           the new script. Note that all places where graphics were to be
+           preserved by bak2sql shall call the new script with the previously
+           described argument set.
+i339.3.2 Change MC-Java ooa schema so the new file format can be loaded
+         - Modify MC-Java/ooa_schema.sql by hand to add the new classes added by
+           the work that extended the tree entries[2].
+         - Verify that no other instances of ooa_schema.sql exist in any other
+           project.
+         - If they do, change the build data for the relevant module so that it
+           refers to this single copy.
+
+Acceptance Tests
+----------------
+_- Build tiger
+_R Tiger builds without error.
+_- Run all Tiger Unit Tests
+_R Unit tests run without error.
+
+Repeat the following for the set of MC2020 test suite models:
+
+_- export the model from BridgePoint as SQL.
+_- Import the model using BP SQL Import wizard.
+_- Export as a Tiger .mdl file.
+_R There are no export errors
+_- Reimport as a Tiger .mdl file.
+_R There are no import errors
+_- Export as a BP SQL file.
+_- Reload into BridgePoint.
+_- Run Audit.
+_R Audit reports no new errors.
+
+End
+---
+
+$Log: i339.ant,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.152.1  2008/12/31 16:10:13  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2004/09/08 22:38:02  campbell
+Job: 339
+Addressed review issues.
+
+Revision 1.2  2004/09/02 21:00:49  campbell
+Job: 339
+Clarified that Compare functionality must work on only mdl files
+after this task is complete.
+
+Revision 1.1  2004/09/02 20:49:05  campbell
+Job: 339
+Changed filename to reflect issue tracking the change.
+
+Revision 1.7  2004/09/02 16:48:45  campbell
+Job: 339
+Updated per WGT comments.
+
+Revision 1.6  2004/09/02 00:47:51  campbell
+Job: 31
+Changed title to adopted standard.
+
+Revision 1.5  2004/09/02 00:34:26  campbell
+Job: 339
+Reworked to specfyfull details for only the current
+M5 milestone.
+
+Revision 1.4  2004/08/30 16:21:48  campbell
+Job: 339
+Added more detail on multiple imports, Operation from resource
+navigator, Domain Chart and automatic editor closure.
+
+Revision 1.3  2004/08/20 18:57:52  campbell
+Job: 339
+Begun Work Required section.
+
+Revision 1.2  2004/08/20 17:42:15  campbell
+Job: 339
+Added more detail.
+
+Revision 1.1  2004/08/18 00:43:06  campbell
+Job: 339
+Introduced.
+

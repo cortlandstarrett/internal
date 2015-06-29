@@ -1,0 +1,205 @@
+========================================================================
+
+File:      $RCSfile: dts0100684884.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+OAL Parser (or runtime) fails to detect typing error when confusing arrays 
+and inst_ref
+
+1. Abstract
+-----------
+The parser flags missing dimensions for all kinds of arrays, but
+it does not for structured data type member. This note describes the fix
+for this problem.
+
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100684884 - OAL Parser (or runtime) fails to detect 
+								typing error when confusing arrays and inst_ref
+[2] ClearQuest DEI dts0100700651 - instance reference type and structure data 
+								type member test.
+[3] ClearQuest DEI dts0100700661 - instance reference type error while model
+                                execution.
+[4] ClearQuest DEI dts0100700662 - Expanding structured data type member of 
+							  array instance reference type encounters problem.
+[5] ClearQuest DEI dts0100700663 - 	The Variable view does not display any value
+								 for instance reference type	
+[6] ClearQuest DEI dts0100701029 - unflagged OOB for attribute of  structured 
+								type with array member
+[7] ClearQuest DEI dts0100678220 - JUnit : Create automated unit test for Arrays
+                                parsing and validation
+
+4. Background
+-------------
+None.
+
+5. Analysis
+-----------
+5.1 While typing OAL code the parser checks the code for syntax errors and 
+invokes the appropriate validation methods as needed. For the case of parsing a 
+SDT member, the parser invokes Member_access_loop11_end() to validate the 
+structured member.
+
+5.1.1 If the SDT member is an instance reference type, 
+Member_access_loop11_end() method does not report the missing dimensions
+because there is no code to validate them. Currently Member_access_loop11_end()
+only checks if the model class the instance reference type refers to exists,
+and if that class contains the required attribute.
+
+
+if (empty sdt)
+    if (empty irdt)
+		<snipped code>
+    else
+        select one modelClass related by irdt->O_OBJ[R123];
+        if (empty modelClass)
+	          ::clear_value_data();
+	        ERR::reportParseError( msg: "Internal Error: Class not found for " +
+	                    "variable " + endVal.Text, token: param.a1_rule_token );
+        else
+	       select any attr related by irdt->O_OBJ[R123]->O_ATTR[R102] where
+	                                                      selected.Name == name;
+	       f (empty attr)
+	            ::clear_value_data();
+	            ERR::reportParseError( msg: "->%s<- is not an attribute of " +
+	                                       "class ->" + modelClass.Name + "<-.",
+	                                               token: param.a1_rule_token );
+	       else
+	          // Successfully recognized an attribute reference
+			  <snipped code>
+	        end if;
+        end if;
+    end if;
+ else
+ <snipped code>   
+ 
+5.1.2 In Member_access_loop11_end(), it is noticed that there is 
+no code to validate the index value - whether it is in or out bounds- for 
+Instance reference types and structure data type members. This shall be
+implemented.
+
+
+6. Design
+---------
+6.1 Member_access_loop11_end() needs to be changed as follows:
+
+6.1.1 Value::getDimensions
+The 'if (endVal.getDimensions() >0)' and 'elif (endVal.getDimensions() < 0)'  
+blocks validate the index count. These are moved to the end of the function to 
+perform the validation for all cases regardless of subtype.
+
+The Value:: Getdimensions() operation checks for the array dimensions definition
+and compares it with the dimensions used to access an element. If the  result is
+greater or less than zero, then there is missing or extra dimensions in the OAL
+code respectively. The Member_access_loop11_end() function already calls this
+method, but it needs to change to invoke this operation for all member types.
+
+6.1.2 Value::Iselementcountvalid()
+An 'elif (not endVal.isElementCountValid())' block will be added to validate that 
+the index values are in bounds.
+
+The Value::Iselementcountvalid() operation validates all the indices values 
+if they are in bounds. A false return value means that -at least- one of the 
+indices is out of bounds. The Member_access_loop11_end() operation needs to 
+invoke this method. If the return value is false, an appropriate error message
+shall be reported.
+
+7. Design Comments
+------------------
+7.1 The following problems were discovered during analysis of this issue and 
+separate issues have been raised for them (as noted below):
+7.1.1 While executing a model, the verifier suspends when accessing a variable 
+of type instance reference and the console view display this error message : 
+
+Null instance access, Suspending.
+Internal error. Attribute Value Reference.getRuntimeValue(): Unexpected 
+execution state encountered, Suspending.
+A separate issue has been raised to resolve this problem [3].
+
+7.1.2 The Variable view does not display any value for instance reference types.
+A separate issue has been raised to resolve this problem [5].
+
+7.1.3 Expanding the structured data type member of array instance reference 
+types encounters a problem. The error message is :
+
+An internal error occurred during: "Label Job".
+java.lang.NullPointerException
+A separate issue has been raised to resolve this problem [4].
+
+7.1.4 When there is a class with an attribute of type "Structured DataType"
+and this structure has an array member, the parser does not flag an index out of
+bounds error for the array member.
+A separate issue has been raised to resolve this problem [6].        
+
+8. Work Required
+----------------
+8.1 The work required is fully outlined in design section.
+
+9. Unit Test
+------------
+9.1 All the JUnit tests must pass.
+9.2 Perform manual test [2]. This test will be automated by the work for [7].
+
+End
+---
+
+$Log: dts0100684884.dnt,v $
+Revision 1.11  2010/07/08 12:31:10  nmohamad
+job:dts0100684884
+Addressing review minutes
+
+Revision 1.10  2010/07/06 15:25:14  campbell
+Job: dts0100684884
+Correct issue title, clarify that test automation is scheduled as part of another job.
+
+Revision 1.9  2010/07/06 14:40:14  campbell
+Job: dts0100684884
+Slight rewording.
+
+Revision 1.8  2010/07/06 14:28:42  nmohamad
+job:dts0100684884
+Refining the 6.1 and 6.2
+
+Revision 1.7  2010/07/06 14:07:01  nmohamad
+job:dts0100684884
+Address Campbell comments.
+5.3 and 5.5 is moved to design section, 5.6 is deleted
+
+Revision 1.6  2010/07/06 13:40:09  nmohamad
+job:dts0100684884
+Address Campbell comments.
+
+Revision 1.5  2010/07/06 12:47:05  rmulvey
+job:dts0100684884
+Corrected grammar.
+
+Revision 1.4  2010/07/05 07:16:15  nmohamad
+job:dts0100684884
+Update the code change patch
+
+Revision 1.3  2010/07/04 15:24:10  nmohamad
+job:dts0100684884
+Add a design comment 7.1.4
+
+Revision 1.2  2010/07/01 20:46:44  nmohamad
+job:dts0100684884
+update design section, add design comments and maunal test
+
+Revision 1.1  2010/06/30 20:10:37  nmohamad
+job:dts0100684884
+Creating..
+

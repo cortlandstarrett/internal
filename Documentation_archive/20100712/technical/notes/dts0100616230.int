@@ -1,0 +1,206 @@
+========================================================================
+
+File:      $RCSfile: dts0100616230.int,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Event data items with parameters that are assigned to creation transitions are 
+not handled properly by generator
+
+1. Abstract
+-----------
+OAL that attempts to access received event data from a creation transition 
+causes generator to display errors and/or encounter null pointer exceptions.
+
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100616230
+[2] Bugzilla issue 3208 
+    Relax same data rule
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3208
+    
+
+4. Background
+-------------
+In BridgePoint version 2.0.0 modifications were made to relax the same data rule
+that was enforced on transitions into a state.  This allowed transitions with 
+different signatures to be allowed into the same state.
+
+About that same time frame, the MC3020 model compiler was modified to no longer 
+use .al_xlate (it began using the persisted OAL instance data).  This meant that
+only customers with their own model compilers who still relied on .al_xlate 
+would be a position to fully exercise the change that was made to generator.
+This issue is raised because a customer has encountered a problem with this 
+change made to the generator.  As described in the Abstract, this problem is
+specific to creation transitions.
+
+5. Design
+---------
+5.1 Create a simple reproducible case
+5.1.1 This is the reproducible case that was used:
+	_- build a debug generator and put in a working folder c:\temp\gen 
+	_- Copy required dll's and license files as need to allows gen_erate to be
+	   run from the command line
+	_- test to assure there are no license problems:
+	   gen_erate.exe -import <table creation> -import <insert statements> -arch <arch file>
+	_- import saab model that was provided [1] into bridgepoint
+	_- build the model
+	_- copy the gen/code_generation/_system.sql into the working folder 
+	   created above
+	_- copy the ooaofooa schema definition from mc3020 into the working folder
+	_- copy the archetype used to create the problem into the working folder
+	_-
+	   ./gen_erate.exe -nopersist -import xtumlmc_schema.sql -import saab-original.sql -arch cause_err.arc
+	_R gen_erate crashes
+	_- Debug using MSVC++ 6
+	
+5.2 Review code changes made during the Relax Same Data Rule issue and look
+    for potential problems.
+
+6. Implementation Comments
+--------------------------
+6.1 After debugging the provided reproducible case and then reviewing the
+    code changes that were made for the Relax Same Data rule issue [2] 
+    a place was found where refactoring occurred that did not properly 
+    consider creation transitions.  This was in gs_sorgen.cc::get_evt_ptr().    
+    The problem found is best described using the OAL pseudo code that 
+    describes the implementation of the broken function:
+    
+    Before Relax Same Data:
+		  //   select one sm_state related by moah->SM_STATE[R511]
+		  //   select one supdt related by sm_state->SM_SUPDT[R521]
+		  //   select one evt related by supdt->SM_EVT[R520]    
+		  
+    After Relax Same Data:
+    
+		  //   select one sm_state related by moah->SM_STATE[R511]
+		  //   select many transitions related by sm_state->SM_TXN[R506]
+		  //   select many ns_txns related by transitions->SM_NSTXN[R507]
+		  //   select many sm_semes related by ns_txns->SM_SEME[R504]
+		  //   select any sm_sevt related by sm_semes->SM_SEVT[R503]
+		  //   select one evt related by sm_sevt->SM_EVT[R525] 
+		  
+
+    Note that the problem is that the modification described above only 
+    considers New State Transitions, it does not consider Creation 
+    Transitions (SM_CRTXN).  
+    
+    The fix is to modify the implementation of gs_sorgen.cc::get_evt_ptr() to 
+    look for event data through a creation transition when there is not one 
+    found through the New State Transition.  Here is the new comment in that 
+    function that describes the new implementation:
+		  //   select one sm_state related by moah->SM_STATE[R511]
+		  //   select many transitions related by sm_state->SM_TXN[R506]
+		  //   select many ns_txns related by transitions->SM_NSTXN[R507]
+		  //   select many sm_semes related by ns_txns->SM_SEME[R504]
+		  //   select any sm_sevt related by sm_semes->SM_SEVT[R503]
+		  //   select one evt related by sm_sevt->SM_EVT[R525] 
+		  //   if ( evt->cardinality() == 0 )
+		  //      .// Look for a creation transition
+		  //      select many tmp_txns related by transitions->SM_CRTXN[R507]
+		  //      select any tmp_sm_lmevt related by cr_txns->SM_LEVT[R509]
+		  //      select any tmp_sm_sevt related by sm_lmevt->SM_SEVT[R526]
+		  //      select one tmp_evt related by sm_sevt->SM_EVT[R525] 
+		  //   end if
+    
+6.1.1 After the above change was made, the customer verified that the change
+      did fix the problem with accessing event data sent in a creation 
+      transition.  However, the customer noted that there was still a problem
+      accessing event data in instance state actions.  
+      
+      Support for OAL in instance state transitions was added after our model
+      compilers began using persisted OAL instead of .al_xlate.  Therefore,
+      generator has never supported OAL in instance states.  However,
+      a quick review of generator source found that the only place R513 is
+      accessed is in gs_sorgen.cc::get_evt_ptr().  This is the same location
+      that was just modified to fix the problem with creation transitions (so
+      we were familiar with the code).  A change was made to this location
+      to traverse SM_TAH through R513 in cases where traversing R513 to SM_MOAH
+      produced no SM_EVT result.  This simple change did provide the support for 
+      accessing event data inside actions on transitions that the customer
+      desired, so the change was included.  Following is the new comment in
+      gs_sorgen.cc::get_evt_ptr() after this change was made:
+	  // select one ah related by action->SM_AH[R514]
+	  // select one moah related by ah->SM_MOAH[R513]
+	  // if ( moah->cardinality() == 0 )
+	  //   .// Look for an action on transition
+	  //   select one tah related by ah->SM_TAH[R513]
+	  //   .// R530 has multiplicity 1, not many. However, we use many here
+	  //   .// for orthagaonality with the SM_MOAH case.  Since the C++ code
+	  //   .// always uses instance sets, even for cardinality 1 relationships 
+	  //   .// we can do this. 
+	  //   select many transitions related by tah->SM_TXN[R530]
+	  // else
+	  //   select one sm_state related by moah->SM_STATE[R511]
+	  //   select many transitions related by sm_state->SM_TXN[R506]
+	  // end if
+	  // if (transitions->cardinality() != 0)
+	  //   select many ns_txns related by transitions->SM_NSTXN[R507]
+	  //   select many sm_semes related by ns_txns->SM_SEME[R504]
+	  //   select any sm_sevt related by sm_semes->SM_SEVT[R503]
+	  //   select one evt related by sm_sevt->SM_EVT[R525] 
+	  //   if ( evt->cardinality() != 0 )
+	  //     ret_val = evt;
+	  //   else
+	  //      .// Look for a creation transition
+	  //      select many tmp_txns related by transitions->SM_CRTXN[R507]
+	  //      select any tmp_sm_lmevt related by cr_txns->SM_LEVT[R509]
+	  //      select any tmp_sm_sevt related by sm_lmevt->SM_SEVT[R526]
+	  //      select one tmp_evt related by sm_sevt->SM_EVT[R525] 
+	  //      ret_val = tmp_evt;
+	  //   end if
+	  // end if
+	  //
+      
+      
+    
+6.2 main_gen_erate.cc was touched to force its version to be bumped.
+    		  
+7. Unit Test
+------------
+7.1 Assure that the manual test called out in section 5 no longer gives an 
+    error.
+7.2 Present an engineering release of this fix to the customer to allow them
+    to test it with their model compiler.    
+
+8. Code Changes
+---------------
+Changes are in branch R3_0_1-RWM-dts0100616230.
+
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/gen_sim/src/gen/
+    gs_sorgen.cc
+model_compilers/generator/gen_erate/bp_source/win32/7.1B/main/src/gen_erate/
+    main_gen_erate.cc
+
+
+End
+---
+
+$Log: dts0100616230.int,v $
+Revision 1.4  2010/01/05 04:29:32  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.3  2009/09/10 19:49:31  rmulvey
+job:dts0100616230
+Updated the note to describe how and why generator was enhanced  to support event data translation for actions on transitions.
+
+Revision 1.2  2009/09/02 21:40:15  rmulvey
+job:dts0100616230
+Addressed review observations
+
+Revision 1.1  2009/09/02 18:15:36  rmulvey
+job:dts0100616230
+Introduced an implementation note describing the fix.

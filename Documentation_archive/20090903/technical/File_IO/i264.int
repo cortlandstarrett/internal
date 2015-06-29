@@ -1,0 +1,166 @@
+========================================================================
+
+File:      $RCSfile: i264.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:37 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Update model scroll position on import
+
+Abstract
+--------
+This note describes a change to update the canvas y scroll position
+for all models on import and export.
+
+History
+-------
+
+final i264-062204-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 264
+
+Background
+----------
+
+The coordinate systems between BP 6.1 and Tiger specify the
+Y axis scroll position differently.  This causes models loaded
+into Tiger to have the canvases always appear as blank when
+initially opened.
+
+Design
+------
+
+i264.1  Update scroll position on import
+
+Since the scroll position for the y-axis moves in different directions
+for the two programs (increasing value is up in one and down in the other),
+we need to create a formula to translate from one coordinate system to
+the other.  The formula is:
+
+new_y = - old_y + 6000 - 641
+
+Looking at each term in the formula:
+
+-old_y  We negate the current scroll position since the two coordinate
+        systems move in opposite directions.
+        
++6000   The canvas height is 6000, so we add this amount to move
+        the origin to the opposite corner of the canvas.
+        
+-641    The default display height of the canvas when opened 
+        in BP is 641.  We need to subtract this amount to shift the
+        scroll position up by one screen, since the original position
+        effectively points to the upper right corner of the display instead of
+        the lower right corner.
+
+The file gen_import_java.arc is changed to add a special case for
+importing the Model.ScrollYPos attribute.  When the code for this
+attribute is generated, the translation formula is applied to the
+imported value before it is saved in the Model instance.
+
+i264.2  Update scroll position on export
+
+The exact same formula is used for translating the scroll y position
+before exporting the value.  We must translate the value back, otherwise
+importing and exporting the same file multiple times would result in the
+scroll position eventually moving off the canvas.
+
+The file gen_export_java.arc is changed to add a special case for
+exporting the Model.ScrollYPos attribute.  When the code for this
+attribute is generated, the translation formula is applied to the
+Model instance attribute before it is exported.
+
+Implementation Notes
+--------------------
+
+- The transformation formula should also take into account the 
+scaling factor when subtracting the canvas height.  The actual
+formula is:
+
+new_y = - old_y + 6000 - 641/ZoomFactor
+
+Unit Test
+---------
+
+- Run canvas Test
+R Test runs without error
+- Start BridgePoint
+- Create a new domain using canvas.test/mdl/odms.bak
+- Open the class diagram and note the scroll position
+- Export the domain with graphics to a file named odms_test.sql
+- Start Tiger
+- Adjust Tiger window size so that canvas is the same size as BP canvas
+- Import the odms_test.sql file
+R No errors
+- Open the ODMS class diagram
+R Canvas is not blank, and at the same scroll position as BP
+- Close class diagram
+- Export domain to odms_test1.sql
+- Import odms_test1.sql
+- Open the ODMS class diagram
+R Canvas is not blank and in the same scroll position as the previous test
+- Close class diagram
+- Export domain to odms_test2.sql
+- Import odms_test2.sql
+- Open the ODMS class diagram
+R Canvas is not blank and in the same scroll position as the previous test
+- Compare GD_MD instances for class diagram in odms_test.sql and odms_test1.sql
+R ScrollYPos attribute has the same value in both files.
+
+- In BP, create a new domain named 'odms_test2', without any .bak file
+- Import odms_test2.sql
+R Imports without error
+- Open class diagram
+R Canvas is at the same scroll position
+
+Code Changes
+------------
+
+com.projtech.bp.io.sql/arc/gen_export_java.arc
+Initial version:  1.8   Final version: 1.9
+
+com.projtech.bp.io.sql/arc/gen_import_java.arc
+Initial version:  1.15  Final version: 1.16
+
+End
+---
+
+$Log: i264.int,v $
+Revision 1.1  2009/09/03 18:20:37  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.162.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/06/25 23:20:14  greg
+Job: 264
+Change gen_import_java.arc version
+
+Revision 1.3  2004/06/23 00:55:34  greg
+Job: 264
+Made review changes
+
+Revision 1.2  2004/06/21 18:20:09  greg
+Job: 264
+Minor update
+
+Revision 1.1  2004/06/21 18:14:55  greg
+Job: 264
+Initial introduction
+

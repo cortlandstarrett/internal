@@ -1,0 +1,247 @@
+========================================================================
+
+File:      $RCSfile: i2164.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:48 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+MV: Automatic Generation of Tree Structures
+
+Abstract
+--------
+This note explains the way the existing infrastructure for generating trees
+will be changed to make it easier for multiple projects to generate their own
+custom trees in different plug-ins.
+
+History
+-------
+update i2164-dnt-062206-01.rvm
+
+Document References
+-------------------
+[1] Bugzilla issue 2164
+[2] Documentation/internal/technical/Verifier-Debugger/i2164.ant
+
+
+Background
+----------
+See document reference [2]
+
+Analysis
+--------
+See document reference [2]
+
+Design
+------
+1. (No change from work required section in analysis note[2])
+   Create a new project com.mentor.nucleus.bp.ui.tree
+
+2  (No change from work required section in analysis note[2])
+   a. Compare the differences between the instance explorer and model explorer
+   archetype files in order to identify the common ground between them.  Then
+   create a single generic archetype file for each comparison and store it
+   in com.mentor.nucleus.bp.ui.tree/arc.  Update BuildTree.arc and
+   BuildInstanceTree.arc accordingly to call the new generic function in the
+   common project.  Delete the now unused archetypes in
+   com.mentor.nucleus.bp.ui.explorer/arc.
+
+   b. While there is no instance explorer version of the create_adapters
+   archetype, a generic version of that file shall be created and the build
+   archetypes updated so that other projects can have their adapters generated
+   as well.
+
+
+3. (No change from work required section in analysis note[2])
+   a. Move the UITree.xtuml file from bp.ui.explorer/models to bp.ui.tree/models
+
+   b. Delete the unused UITree.bak file from bp.ui.explorer/models.  The models
+   folder should automatically be deleted because no files remain.
+
+   c. Create a new ANT script in com.mentor.nucleus.bp.ui.tree called
+   generate_schema.xml, which will be responsible for generating the
+   sql/UITree_schema.sql and sql/uitree.sql files in the bp.ui.tree project.
+
+   d. Update the bp.ui.explorer/generate.xml file to call the
+   generate_schema.xml script in the bp.ui.tree project to handle generating and
+   cleaning the sql/UITree_schema.sql and sql/uitree.sql files.
+
+   e. Copy .cvsignore from bp.ui.explorer/sql to bp.ui.tree/sql since CVS should
+   now ignore the generated files in that directory.
+
+   f. Delete .cvsignore from bp.ui.explorer/sql since the file is now empty.
+
+4. (No change from work required section in analysis note[2])
+   In each generic archetype, use the provided path parameter to locate the
+   calling project, and then call a function that will return custom code to
+   include in the file.  
+     For example:  bp.ui.tree/arc/create_generic_content_provider.inc will
+     expect to find a function called create_custom_content_provider in
+     bp.ui.explorer/arc/create_custom_content_provider.inc in order to create
+     bp.ui.explorer/src/com/.../bp/ui/explorer/ModelContentProvider.java
+   
+5. In the analysis note[2] Design section 5 states that all projects will use
+   a common buildtree.arc file in the ui.tree project, but it was determined
+   that projects should have the flexibility to customize that file.  Also, the
+   buildtree.arc file provides the location to store the project-specific 
+   settings that are passed to the other generic archetype templates.  So each
+   project will have its own buildtree.arc file now, but it will be generated 
+   along with the other skeleton files.  All generated skeleton files are listed
+   in #6 of this section.
+   
+6. This section has been expanded and rewritten due to a change in
+   implementation approach from using gen_erate.exe to using ANT in order to
+   customize most of the files:
+   Create generate_skeleton_tree.xml in the bp.ui.tree project.  This file will
+   generate the skeleton files for all the files needed to compile a generated
+   tree that should be maintained under version control by populating template
+   files stored in bp.ui.tree/templates.  The following files will be customized
+   and generated for each project, and all names within the < and > characters
+   are user customizable:
+   
+    <root>
+      generate.xml
+      
+      .externalToolBuilders/
+        <BUILDER_NAME>.launch
+      
+	  sql/
+	    UITree.pei.sql
+	  arc/
+	    create_<VIEW NAME>.inc
+	    BuildTree.arc
+	  src/<PROJECT_WITH_SLASH>/
+	    I<HELPCONTEXTIDS_PREFIX>HelpContextIds.java
+	    <TREEVIEWER_PREFIX>TreeViewer.java
+	    
+	    src/<PROJECT_WITH_SLASH>/<optional "actions" folder>/
+	      FilterSelectionAction.java
+	    
+	    src/<PROJECT_WITH_SLASH>/<optional "adapters" folder>/
+	      RootAdapter.java
+	      DomainProxyAdapter.java
+
+	    src/<PROJECT_WITH_SLASH>/<optional "views" folder>/
+	      (empty folder until the project is built again to generate more files)
+	  
+
+7. a. Create a "How to add a generated tree to a project.txt" file to be stored
+   in com.mentor.nucleus.bp.ui.tree that will explain what a developer must do
+   to add a generated tree to an existing project.
+
+   b. Create a "Identifying generated tree files.txt" file to be stored in
+   com.mentor.nucleus.bp.ui.tree that will list all generated files (both
+   skeleton and always generated) along with a description of why the file
+   exists.
+   
+   c. Create an "Identifying generated tree files.txt" file to be stored in
+   com.mentor.nucleus.bp.ui.tree that will explain how to add a new node to a
+   tree.  
+
+8. Ensure automatically that all required plug-in dependencies for the new tree
+   are set.  If they are not set, add individual dependencies as needed.
+   Create an add_plugin_dependencies.xml ANT file that will be responsible for
+   accomplishing this goal, and have generate_skeleton_files.xml call this file
+   and provide all needed arguments.  The ANT file should also identify whether
+   the plug-in project uses an OSGI MANIFEST.MF file, and if so the dependencies
+   should be added to this file rather than directly to the plugin.xml file.
+
+9. Generate_skeleton_files.xml shall automatically create a new builder for the
+   generated generate.xml file and add it to the project.  The builder will be
+   created in the .externalToolBuilders folder as <BUILDER_NAME>.launch.  The
+   .project file will then be modified to launch this builder to execute
+   generate.xml before any other builders.  After executing generate.xml, the
+   workspace will be refreshed to display any new files to the user.   
+
+10. Give developers the option to choose whether to generate files into
+    actions, adapters, or views folders.  This capability is required in order
+    to both match the structure of the existing model explorer files and the
+    structure of the default plug-in project created by the Eclipse wizard.
+    The user will be able to supply arguments to the generate_skeleton_files.xml
+    ANT script to specify what folder name should be used for actions, adapters,
+    and views.  By default, everything shall be placed in the
+    <project>/src/<project with slashes> folder.  For example:
+    com.mentor.nucleus.bp.ui.explorer/src/com/mentor/nucleus/bp/ui/explorer
+
+11. When cleaning the generate_skeleton_files builder, all generated files
+    shall be destroyed, empty folders shall be deleted, and the generate.xml
+    builder shall be removed from the project.  However, the plug-in
+    dependencies will not be changed since some of them may still be used by
+    pre-existing code.
+
+12. If the user does not provide the required arguments to the
+    generate_skeleton_files.xml builder, then the script will terminate without
+    generating anything and an instructional message shall be displayed along
+    with the "How to add a generated tree to a project.txt" file in the console.
+
+13. The console shall display helpful information to the developer about what to
+    do next after the initial successful generation of the skeleton files.
+
+14. Move the instance explorer view from the bp.ui.explorer project into a new
+    bp.ui.session project.
+
+15. Generate the model explorer view files using the new infrastructure.
+
+16. Update com.mentor.nucleus.bp.ui.canvas/generate.xml to find
+    UITree_schema.sql in ....bp.ui.tree/sql rather than ....bp.ui.explorer/sql.
+
+17. The generate_skeleton_file.xml script shall generate a .cvsignore file for
+    the adapters folders if the file does not exist and the adapters have been
+    placed into their own folder.  All java files in that folder shall be
+    ignored by CVS.  Upon cleaning the skeleton files, this file shall be
+    deleted if it has not been modified since it was originally generated.
+
+
+Design Comments
+---------------
+- Currently, it is possible for multiple, identical import statements to be
+  added to a java file when the adapters, views, and actions are not placed into
+  unique folders.  This poses no compilation problems, but is not ideal.
+
+- This implementation is limited to generating only a single tree in a project.
+
+Work Required
+-------------
+No additional work is required beyond what is specified in the design section.
+
+Unit Test
+---------
+No JUNIT test shall be created for this issue.  Instead, the ....bp.ui.explorer
+project will be modified to use this new infrastructure as will the new 
+....bp.ui.session project.
+
+End
+---
+
+$Log: i2164.dnt,v $
+Revision 1.1  2009/09/03 18:20:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:14  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/06/23 14:47:41  jeremyr
+Job:2164
+Addressed review observations
+
+Revision 1.2  2006/06/22 16:45:02  jeremyr
+Job:2164
+Added a 17th design item.
+
+Revision 1.1  2006/06/21 16:22:15  jeremyr
+Job:2164
+Introduce
+

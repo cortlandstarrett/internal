@@ -1,0 +1,499 @@
+========================================================================
+
+File:      $RCSfile: dts0100677178.int,v $
+Version:   $Revision : 1.1 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Uniqueness of attribute names not checked
+
+
+1. Abstract
+-----------
+The uniqueness of attribute names is not checked at entry time, neither by the
+parser on "Parse All" nor by Verifier. After investigation, this defect is also
+applicable on all BP elements that are non root elements.
+
+2. History
+----------
+None
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100677178 - Uniqueness of attribute names not checked
+[2] Manual Test DEI dts0100697477  - Class Attribute/Operation names uniqueness 
+[3] dts0100677178.dnt
+4. Background
+-------------
+In this section, outline the important points relating to this issue/bug that
+the reader would need to know in order to understand the rest of this
+document.
+
+5. Design
+---------
+Refer to [3].
+
+6. Implementation Comments
+--------------------------
+6.1 Upon creation of any element in BP, the initialize function of that element
+gets called. Part of the initialize code is the creation of that element instance
+name. The domain function "getUniqueInitialName" should be used to verify such
+functionality. The current faulty code path pseudo code is as follows [Attribute 
+creation will be used as an example for illustration below]:
+
+_- User creates a class attribute
+_- Class 'attribute' initialize function gets called
+_- The initialize function calls 'Ooaofooa.Getuniqueinitialname()' in order to 
+      retrieve a unique attribute instance name
+_- 'Ooaofooa.Getuniqueinitialname()' gets mapped into 'PersistenceManager.get-
+      UniqueNameForComponent()' call.
+_- 'PersistenceManager.getUniqueNameForComponent()' is implemented in a way to 
+	  guarantee name uniqueness only for root elements (e.g. components, 
+	  subsystem, packages, Interfaces, ...)
+_- If the element being added is not a root element as implemented in the 
+    function, a fixed redundant name is assigned to this instance. Please 
+    observe code below:
+
+
+Before : 
+   public String getUniqueNameForComponent(NonRootModelElement element,
+            String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            NonRootModelElement parent_me = hmd
+                    .getParentComponentRootModelElement(element);
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+            return candidateName;
+        }
+    }
+    
+    public String getUniqueNameForComponent(NonRootModelElement element, 
+            NonRootModelElement parent_me, String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+            return candidateName;
+        }
+    }
+
+6.2 The two getUniqueNameForComponent functions should be updated to ensure 
+ instance name uniqueness for non root elements. The else statements in the 
+ above two functions should be updated to query the element root, traverse all 
+ existing children of same element type and assign an instance name-number 
+ accordingly.
+
+In order to ensure uniqueness on creation, the PersistenceManager.java has to be 
+changed as follows
+
+ (Please observe the else statement implementation in comparison to the original 
+implementation illustrated in section 6.1):
+
+
+After:
+    public String getUniqueNameForComponent(NonRootModelElement element, 
+            String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            NonRootModelElement parent_me = hmd
+                    .getParentComponentRootModelElement(element);
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+  
+         	 
+        	NonRootModelElement parent_me = hmd.getComponentRootModelElement(element);
+        	
+        	String uniqueName = candidateName;
+        	int postfix = 0;
+  
+        	List children = getHierarchyMetaData().getChildren(parent_me, false);
+  
+            Iterator iterator = children.iterator();
+            while(iterator.hasNext()) {
+            	NonRootModelElement candidate = (NonRootModelElement) iterator.next();            	
+            	if(candidate.getName().equals(uniqueName)) {
+            		if (candidate.getClass() == element.getClass())
+            		{
+            		    postfix += 1;   
+                        uniqueName = candidateName + "-" + postfix; //$NON-NLS-1$
+                        iterator = children.iterator();
+            		}
+            	}
+            }            
+        	return uniqueName;
+        }
+    }
+    
+    public String getUniqueNameForComponent(NonRootModelElement element, 
+            NonRootModelElement parent_me, String candidateName) {
+        IPersistenceHierarchyMetaData hmd = PersistenceManager
+                .getHierarchyMetaData();
+        if (hmd.isComponentRoot(element)) {
+            PersistableModelComponent parent_mc = getComponent(parent_me);
+            return getUniqueNameOfParent(parent_mc, candidateName);
+        } else {
+        	 
+        	parent_me = hmd.getComponentRootModelElement(element);
+        	
+        	String uniqueName = candidateName;
+        	int postfix = 0;
+  
+        	List children = getHierarchyMetaData().getChildren(parent_me, false);
+  
+            Iterator iterator = children.iterator();
+            while(iterator.hasNext()) {
+          	NonRootModelElement candidate = (NonRootModelElement) iterator.next();            	
+          	if(candidate.getName().equals(uniqueName)) {
+          		if (candidate.getClass() == element.getClass())
+          		{
+          	          postfix += 1;   
+                      uniqueName = candidateName + "-" + postfix; //$NON-NLS-1$
+                      iterator = children.iterator();
+          		}
+          	}
+          }          
+      	return uniqueName;
+        }
+    }
+
+
+6.3 Rename functionality
+Using Properties and Model Explorer Views : in 
+\com.mentor.nucleus.bp.core\arc\create_rename_action.inc 
+apply additional code in 'isNameValid' to verify the name is not a duplicate 
+and extend the errors to cover such a use-case. The code should be added before 
+the end of the function "return null;" statement inside the "isNameValid function.
+
+
+  final ModelRoot modelRoot = ((NonRootModelElement) element).getModelRoot();
+
+  if (Ooaofooa.Getuniqueinitialname(modelRoot, name, element) != name) {
+	return CorePlugin.DUPLICATE_NAME_ERROR;
+
+Hardcoded strings have been replaced with global error strings defined in Core
+Plugin. For a description of corePlugin.DUPLICATE_NAME_ERROR, refer to 
+section [6.6]
+
+Already existing isNameValid error indiacting name contains spaces has also 
+been replaced by Global error strings as indiacted below:
+
+Before:
+   public static String isNameValid(String name, ModelElement element)
+    {
+        // if the given element is of a type whose instances may not have
+        // spaces in their names, and there is a space in the given name
+        if ((element instanceof Attribute_c
+            || element instanceof FunctionParameter_c
+            || element instanceof OperationParameter_c
+            || element instanceof BridgeParameter_c
+            || element instanceof Function_c
+            || element instanceof Operation_c
+            || element instanceof Bridge_c
+            || element instanceof StateMachineEventDataItem_c
+            || element instanceof DataType_c
+            || element instanceof Enumerator_c
+            || element instanceof SymbolicConstant_c
+            || element instanceof LiteralSymbolicConstant_c)
+            && name.contains(" ")) {
+            // the name is not valid
+-->            return "Spaces are not allowed in the name of an element of
+            this type.";
+        }
+
+After:
+
+   public static String isNameValid(String name, ModelElement element)
+    {
+        // if the given element is of a type whose instances may not have
+        // spaces in their names, and there is a space in the given name
+        if ((element instanceof Attribute_c
+            || element instanceof FunctionParameter_c
+            || element instanceof OperationParameter_c
+            || element instanceof BridgeParameter_c
+            || element instanceof Function_c
+            || element instanceof Operation_c
+            || element instanceof Bridge_c
+            || element instanceof StateMachineEventDataItem_c
+            || element instanceof DataType_c
+            || element instanceof Enumerator_c
+            || element instanceof SymbolicConstant_c
+            || element instanceof LiteralSymbolicConstant_c)
+            && name.contains(" ")) {
+            // the name is not valid
+-->            return CorePlugin.INVALID_NAME_SPACES;
+        }
+
+6.4 Rename Junit test functionality
+The Rename tests within the Core has to change since it has been assumed
+that duplicate names of entities are allowed. All tests assumed that an entity's new 
+name should be set to "New_Name". In order to fix this issue the following arc file has to 
+be updated:  /com.mentor.nucleus.bp.core.test/arc/create_action_test.arc
+
+
+Before:
+
+.assign newName = "New_Name";
+
+After:
+
+.assign newName = "New_Name"+"$r{action.Key_Lett}";
+
+As a result of the above change, the test expected results file should also
+be updated to indicte the correct name with appended suffix.
+
+The rename_transaction.exp file inside 
+/com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/ should be
+updated as follows:
+
+Before: 
+ Attribute 'Name' of core.SystemModel changed ( 'Old_Name' -> 'New_Name')
+ 
+After:
+
+ Attribute 'Name' of core.SystemModel changed ( 'Old_Name' -> 'New_NameS_SYS')
+
+
+
+6.5 UI Properties Junit test functionality
+Due to the change in isNameValid function described in section 6.3, a specific 
+test in UI properties JUnit test suite fails since it assumes that isNamevalid 
+returns non null string only when spaces exist in the entity name. This is not 
+the case anymore since a string return of isNameValid function could now also
+indicate that the entity name is a duplicate.
+
+Previously function checkSpaceInModelElementNameProperty would assertTrue 
+whenever isNameValid returns a non null string which would trigger a test case
+failure. In order to fix this assumption the function has changed to accept a 
+boolean parameter indicating whether a duplicate name message is expected or 
+not. In such case, isNameValid is expected to return a non null string 
+indicating that name is a duplicate as opposed to null.
+
+The string indicating the error has been hardcoded in corePlugin (refer to
+section 6.6) and globally accessed by all functions using this error. Thus the
+file now imports:
+
+import com.mentor.nucleus.bp.core.CorePlugin;
+
+The changed entities are:
+Plugin : ui.properties.test
+File: PropertiesViewTest2.java
+Function:  checkSpaceInModelElementNameProperty
+Function: testSpaceNotAllowedInModelElementsNameProperty
+
+Before:
+-------
+     public void testSpaceNotAllowedInModelElementsNameProperty()
+    {
+        // test that we can't add a space to an attribute name
+        String name = "Serial_Number";
+        Subsystem_c subsystem = OoaofooaUtil.getSubsystem(modelRoot, "Odms");
+        ModelClass_c clazz = OoaofooaUtil.getClass(subsystem, "Disk");
+        Attribute_c attribute = OoaofooaUtil.getAttribute(clazz, name);
+        checkSpaceInModelElementNameProperty(
+            new AttributeO_ATTRPropertySource(attribute), "Root_Nam", name, false);
+        
+        // find a function to whose name we'll try to add a space
+        name = "test_robot";
+        Function_c function = OoaofooaUtil.getFunction(modelRoot, name);
+        checkSpaceInModelElementNameProperty(
+            new FunctionS_SYNCPropertySource(function), "Name", name, false);
+        
+        // test that we can still add a space to a model class name
+        ExplorerUtil.selectItem(clazz);
+        checkSpaceInModelElementNameProperty(
+            new ClassO_OBJPropertySource(clazz), "Name", "Disk", false);
+
+        // test that we can still add a space to a subsystem name
+        ExplorerUtil.selectItem(subsystem);
+        checkSpaceInModelElementNameProperty(
+            new SubsystemS_SSPropertySource(subsystem), "Name", "Odms", false);
+    }
+        
+    /**
+     * Checks that after adding a space to the given model-element name,
+     * the modified name is considered invalid/valid (according to the 
+     * spaceAllowed parameter) by the cell editor for the model-element's 
+     * name property.  The editor is created by the property-descriptor 
+     * returned by the given property-source for the given property-id.
+     */
+    private void checkSpaceInModelElementNameProperty(
+        IPropertySource propertySource, String propertyId, String name,
+        boolean spaceAllowed)
+    {
+        // create a cell-editor for the name property's value 
+        IPropertyDescriptor descriptor = 
+            PropertiesUtil.getDescriptor(propertySource, propertyId);
+        CellEditor editor = descriptor.createPropertyEditor(new Shell());
+        
+        // validate this test by checking that the editor says that the
+        // given name is valid
+        ICellEditorValidator validator = editor.getValidator();
+        assertTrue(
+            "Property cell editor says original name is invalid", 
+            validator.isValid(name) == null);
+
+        // check that the editor says that a name containing a space is 
+        // invalid/valid
+        String result = validator.isValid(name + " ");
+        assertTrue("Property cell editor says name with spaces is valid", 
+            spaceAllowed ? result == null : result != null);
+    }
+    
+After:
+------
+
+The change in this function is adding the bool value argument of whether a 
+duplicate name error is expected while calling 
+checkSpaceInModelElementNameProperty or not.
+    public void testSpaceNotAllowedInModelElementsNameProperty()
+    {
+        // test that we can't add a space to an attribute name
+        String name = "Serial_Number";
+        Subsystem_c subsystem = OoaofooaUtil.getSubsystem(modelRoot, "Odms");
+        ModelClass_c clazz = OoaofooaUtil.getClass(subsystem, "Disk");
+        Attribute_c attribute = OoaofooaUtil.getAttribute(clazz, name);
+
+-->        checkSpaceInModelElementNameProperty(
+            new AttributeO_ATTRPropertySource(attribute), "Root_Nam", name, false, true);
+        
+        // find a function to whose name we'll try to add a space
+        name = "test_robot";
+        Function_c function = OoaofooaUtil.getFunction(modelRoot, name);
+-->        checkSpaceInModelElementNameProperty(
+            new FunctionS_SYNCPropertySource(function), "Name", name, false, false);
+        
+        // test that we can still add a space to a model class name
+        ExplorerUtil.selectItem(clazz);
+-->        checkSpaceInModelElementNameProperty(
+            new ClassO_OBJPropertySource(clazz), "Name", "Disk", false, false);
+
+        // test that we can still add a space to a subsystem name
+        ExplorerUtil.selectItem(subsystem);
+-->        checkSpaceInModelElementNameProperty(
+            new SubsystemS_SSPropertySource(subsystem), "Name", "Odms", false, false);
+    }
+        
+The change in this function is adding the bool value argument duplicateName 
+of whether a  duplicate name error is expected while calling  
+checkSpaceInModelElementNameProperty or not. If expected
+
+
+   private void checkSpaceInModelElementNameProperty(
+            IPropertySource propertySource, String propertyId, String name,
+-->            boolean spaceAllowed, boolean duplicateName)
+        {
+            // create a cell-editor for the name property's value
+            IPropertyDescriptor descriptor =
+                PropertiesUtil.getDescriptor(propertySource, propertyId);
+            CellEditor editor = descriptor.createPropertyEditor(new Shell());
+
+            // validate this test by checking that the editor says that the
+            // given name is invalid since it is a duplicate
+            ICellEditorValidator validator = editor.getValidator();
+            String result = validator.isValid(name);
+            assertTrue(
+                "Property cell editor says original name is invalid",
+-->                 duplicateName ? result == CorePlugin.DUPLICATE_NAME_ERROR : result == null );
+
+            // check that the editor says that a name containing a space is
+            // invalid/valid
+            result = validator.isValid(name + " ");
+            assertTrue("Property cell editor says name with spaces is valid",
+                spaceAllowed ? result == null : result != null);
+        }
+    
+6.6 Global String Error Messages Definition
+
+Hardcoded strings used in function isNameValid (refer to section 6.3)
+have been replaces with globally defined strings in Core Plug-in.
+
+The following additional string errors have been added to
+create_core_plugin_class.arc in com.mentor.nucleus.bp.core plug-in:
+
+
+	public static final String DUPLICATE_NAME_ERROR =
+        "Name already exists.";
+
+	public static final String INVALID_NAME_SPACES =
+        "Spaces are not allowed in the name of an element of this type.";
+
+6.7 Explorer JUnit tests rename persistency issue
+
+The explorer tests were initially issuing entities renames without turning on the
+persistency. This resulted in updated renames object names only that is not 
+consistently persistent to disk.
+
+This was previously not checked and not detected as an issue as part 
+of running the tests. Due to the current update in the detection of duplicate
+renaming, the problem was detected and was causing the test to fail.
+
+The below file needs to change to enforce the rename to update the object name
+as well as the persistent name on disk.
+
+File changed: FunctionKeyActivationTest.java
+Plugin: com.mentor.nucleus.bp.ui.explorer.test
+
+Update:
+
+Before:
+	ExplorerUtil.renameItem("??");
+	
+After:
+
+        Ooaofooa.setPersistEnabled(true);
+        ExplorerUtil.renameItem("??");
+        Ooaofooa.setPersistEnabled(false);
+
+7. Unit Test
+------------
+7.1 Perform manual test [2].
+7.2 All JUnit tests must pass.
+
+
+
+8. Code Changes
+---------------
+Branch name: Review-dts0100677178
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core.common/
+PersistenceManager.java
+com.mentor.nucleus.bp.core/arc/create_core_plugin_class.arc
+com.mentor.nucleus.bp.core/arc/create_rename_action.inc
+
+com.mentor.nucleus.bp.core.test/arc/create_action_test.arc
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+rename_transaction.exp
+
+com.mentor.nucleus.bp.ui.explorer.test/src/
+com.mentor.nucleus.bp.ui.explorer.test/FunctionKeyActivationTest.java
+
+com.mentor.nucleus.bp.ui.properties.test/src/
+com.mentor.nucleus.bp.ui.properties.test/PropertiesViewTest2.java
+
+
+
+End
+---
+
+$Log: dts0100677178.int,v $
+Revision 1.2  2010/07/26 09:31:33  gbahig
+job:dts0100677178
+Updated int with all JUnit test code updates for issue dts0100677178
+
+Revision 1.1  2010/06/30 13:04:05  gbahig
+job:dts0100677178
+This is the implementation note for issue dts0100677178

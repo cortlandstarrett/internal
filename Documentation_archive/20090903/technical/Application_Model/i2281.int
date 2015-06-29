@@ -1,0 +1,169 @@
+========================================================================
+
+File:      $RCSfile: i2281.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:18 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Speeding Up Model Persistence
+
+Abstract
+--------
+This note describes the implementation for a performance enhancement which
+shortens the time necessary to persist a model.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 2281
+
+Background
+----------
+With users reporting long waits (with high CPU utilization) when making 
+modifications to large models, I ran the TPTP profiler on Tiger when making 
+a change to the metamodel.  The profiler reported that the largest portion of
+time spent saving the model (after the change) was in the Referential
+Attribute.get_root_name() operation.   This operation must perform a traversal
+from the callee to its base attribute.  To make sure the traversal does not get 
+caught in an infinite loop due to circular referencing, the operation 
+first marks all referential attributes as having not been visited, then 
+marks individual such attributes as visited as the traversal progresses.  
+If the traversal hits an attribute which has already been visited, then the 
+the attempt to find the base attribute aborts.  
+
+The performance problem exhibited is in large part due to the way the visited 
+status of the referential attributes is maintained.  Currently, there is a 
+boolean 'visited' attribute of the Referential Attribute class.  Having to set 
+this attribute to false for all instances in the model each time the 
+attribute's root name is requested (which is done at least once for each such 
+attribute during a persist), leads to an O(n^2) amount of work being 
+done for each persist, where n is the number of referential attributes.  
+
+Design
+------
+1. Replace 'visited' attribute with association
+
+A class Referential Attribute Visited Recorder is added to the Subsystem 
+subsystem.  A non-persistent instance of this class is created per domain.  
+The sole purpose of this instance is to allow instances of Referential 
+Attribute to be related to it across a new association R119, as a way to mark 
+that they have been visited during a traversal from a referential attribute to 
+its base attribute.  In this way, all that is necessary to mark all instances
+as non-visited is to unrelate all the instances that are associated across R119, 
+which on average should be O(1) in number.   
+
+The new recorder class is marked as non-persistent, and non-user-visible.
+The lone instance of the class per domain (mentioned above) is created in the 
+Domain_c constructor as a result of modifications made to the constructor 
+generation code in java.arc.
+
+2. Modify test data
+
+The new Referential Attribute Visited Recorder class is added to those in 
+compare.test's CreatePEITestFiles.arc which do not need to be visited by 
+one of the compare tests.
+
+The odms.exp and odms_ng.exp expected results files of both io.mdl.test
+and io.sql.test are regenerated to include mention of the calls to the 
+operations of the new Referential Attribute Visited Recorder class.
+
+3. Simplify test result comparison logic
+
+In the outputLogsCompare() method of both io.mdl.test.IOMdlTest and 
+io.sql.test.IOTest, the logic used to assemble the actual results string
+for comparison purposes is simplified to remove mention of any line separator
+characters involved, which helps prevent spurious failures in these tests.
+
+
+Implementation Comments
+-----------------------
+1. Keep relates/unrelates across R119 silent
+
+A call to disable/enable all model change listeners is placed before/after
+all such relates and unrelates.  This is because notifications of their
+occurrences were causing UI refreshes in the middle of other operations
+the tool was performing, resulting in various exceptions.  
+
+The change was made to the following operations:
+
+Subsystem.'Referential Attribute'.get_root(), get_prefix()
+Subsystem.'Referential Attribute Visited Recorder'.setAllToNotVisited()
+
+As further insurance against the occurrence of such untimely UI refreshes, an 
+empty override of modelElementRelationChanged() is added to the model change 
+listeners for the ExplorerView and the ModelContentOutlinePage, since neither 
+of them display associations.
+
+The odms.exp and odms_ng.exp expected results files of both io.mdl.test
+and io.sql.test are modified once more to include mention of the calls to 
+disable/enable all the model change listeners.
+
+2. Modify more expected test results
+
+The TransactionTest/cancel_transaction.exp results of core.test are modified
+to include transaction deltas involving relates and unrelates across R119.
+
+
+Unit Test
+---------
+The work for this issue represents only a performance enhancement, with no
+new functionality introduced, so no new units tests are needed.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.compare.test/arc/CreatePEITestFiles.arc
+
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+
+com.mentor.nucleus.bp.core.test/expected_results/TransactionTest/
+    cancel_transaction.exp
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/odms_ng.exp
+com.mentor.nucleus.bp.io.mdl.test/expected_results/odms.exp
+com.mentor.nucleus.bp.io.mdl.test/src/IOMdlTest.java
+
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms_ng.exp
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms.exp
+com.mentor.nucleus.bp.io.sql.test/src/IOTest.java
+
+com.mentor.nucleus.bp.ui.canvas/src/com/mentor/nucleus/bp/ui/canvas/
+    ModelContentOutlinePage.java
+
+com.mentor.nucleus.bp.ui.explorer/arc/create_explorer_view.inc
+
+MC-Java/java.arc
+
+
+End
+---
+
+$Log: i2281.int,v $
+Revision 1.1  2009/09/03 18:21:18  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.16.1  2008/12/31 16:10:18  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/07/21 22:36:18  jmather
+Job: 2281
+Added some implementation comments.
+
+Revision 1.1  2006/07/14 00:43:49  jmather
+Job: 2281
+Introduced.

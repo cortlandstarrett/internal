@@ -1,0 +1,508 @@
+========================================================================
+
+File:      $RCSfile: R3_3_0_RC1.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Resolve remaining R3_3_0 issues
+
+1. Abstract
+-----------
+This note describes the changes necessary to resolve all late issues raised
+during the testing phase of release 3.3.0.
+
+It includes documentation for the following issues:
+
+dts0100774708
+dts0100774710
+dts0100774714
+dts0100774715
+dts0100774721
+dts0100774722
+dts0100774966
+dts0100774970
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100774708
+      Ports do not have Formalize label in Component diagram under GP
+[2] ClearQuest DEI dts0100774710
+      ComponentParticipant in SP context is formalized to GP context component
+[3] ClearQuest DEI dts0100774714
+      Component reference assignment problems under a GP context
+[4] ClearQuest DEI dts0100774715
+      Empty Set Type window for event data item ( event parameter ) under a GP
+[5] ClearQuest DEI dts0100774721
+      Assign to Component failure in nested component under generic package
+[6] ClearQuest DEI dts0100774722
+      The right click in ME acts on the latest selection, even it is not
+      selected
+[7] ClearQuest DEI dts0100774966
+      Deleting system level package from ME leaves white symbol
+[8] ClearQuest DEI dts0100774970
+      Duplicate entries for Component references in Model Explorer
+[9] ClearQuest DEI dts0100774255 - Unable to execute functions in GP converted
+[10] ClearQuest DEI dts0100763857 - In Generic Packages, allow functions with
+     the same name to exist under a package (in nested packages)
+[11] ClearQuest DEI dts0100775231
+     Modify MC-Java to use getGlobal() in select where statements that use 
+     referential ids
+
+4. Background
+-------------
+The release testing opened a group of issues that are blockers to the release.
+
+5. Analysis
+-----------
+Each issue is resolved separately but within the same branch.  Any analysis if
+necessary is below under each design section.
+
+6. Design
+---------
+6.1 Missing Formalize... menu item for interface reference under GP component
+
+The operation, Interface Reference.canFormalizeAgainstAnyInterface(), did not
+consider a Component as parent to determine if the current element is in generic
+packages.  The OAL is changed to locate the root component of the current parent
+component (which may also be the root), then use that to locate the containing
+package.  The containing package is then used to locate the system.
+
+In addition to the above changes the OAL did not consider visibility.  After
+locating the parent, it is asked for all visible interfaces using the
+collectVisibleElementsForName operations defined in Package or Component. 
+
+It was also noticed that signal assignment was not working under the same
+situation.  Both the Transition.addSignal() and Transition.actionFilter()
+operations showed the problem.  They are both changed to consider R8003.
+
+Imported Class.actionFilter() was not considering visibility which allowed for
+the selection dialog to appear with an empty list.  The actionFilter() operation
+is modified to get the package or component containing the imported class and
+ask it for visible classes, if there is at least the Assign Class menu item is
+allowed.
+
+6.2 Generic package Formalize... menu item available under specialized package
+
+The Formalize... menu item for Component Participant under a specialized package
+was visible.  This allowed for formalization to a generic package Component when
+the participant was under specialized packages.
+
+The Component Participant.actionFilter() operation was not checking the
+isInGenericPackage flag for the generic package test.  The OAL is changed to
+make sure that the generic package Formalize... menu item is only available when
+isInGenericPackage equals true.
+
+During the testing for this issue it was noticed that communication style
+messages could not be formalized when the target was a Component Participant.
+The same actionFilter operation above was incorrectly using the
+isInGenericPackage flag.  In addition to using the flag the "value" parameter
+check was incorrectly using the spec pkg tag.  Message formalization does not
+need to care about generic versus specialized as the elements to formalize
+against are returned by the target element which already handled all necessary
+checks.  The OAL is changed to remove the isInGenericPackage test, and remove
+the spec pkg tag from the "value" parameter check.
+
+Class Instance Participant.actionFilter() also incorrectly used the spec pkg tag
+parameter check for instance event formalization filtering.  This is removed.
+
+6.3 Multiple Assign Component problems under GPs
+Issues [3] and [5] were traced to an inadequate implementations for Component
+Reference.actionFilter() and ComponentReference.assignComponent().
+
+6.3.1 actionFilter()
+The section of OAL that handles the "assign generic package" filter is reworked
+to use the visibility infrastructure so there can be no discrepancy between the
+state of the menu entry and the content of the chooser dialog. The Visibility
+infrastructure is used to obtain the list, which is then filtered to prevent
+a component reference referring to any parent component. This additional filter
+is necessary to prevent a reference loop which would lead to stack overflows. If
+the list is not empty After this additional filtering step, the filter returns
+true and the menu is enabled. Two new operations, isContainedBy() are added to
+Component and Package to allow recursive ascent of the generic containment
+hierarchy to implement the required filter.
+
+6.3.2 assignComponent()
+This operation is partitioned into generic and specific package implementations.
+The logic is simplified to be easier to read.
+
+6.3.3 Description of work done to prevent searching in the wrong model root
+      for a component.
+      
+While perform code examination of the OAL used to assign components is was 
+observed that the potential existed in many places for searches to fail because
+we were searching in the wrong model root.  The OAL that caused this concern
+looked like similar to this:
+    rootCompIdInPkg = component.getRootComponentId();
+    select any rootComponent from instances of C_C where (selected.Id == rootCompIdInPkg);
+
+This same potential problem existed in every location where getRootComponentId()
+was called.  
+
+6.3.3.1 The following alternatives to resolve the above problem were considered.
+6.3.3.1.1
+Remove C_C.getRootComponentId() and modify all places that previously called it 
+with the following code:
+    rootComponent = component;
+    while not_empty rootComponent
+      select one nextParent related by rootComponent->PE_PE[R8001]->C_C[R8003];
+      if (not_empty nextParent)
+        rootComponent = nextParent;
+      else
+        break;
+      end if;
+    end while;
+
+6.3.3.1.2
+Modify all the places that currently call C_C.getComponentRootId() as follows:
+
+rootCompIdInPkg = component.getRootComponentId();
+select any compPe from instances of PE_PE where selected.Element_ID == rootCompIdInPkg;
+select one rootCompInPkg related by compPe->C-C[R8001];
+
+6.3.3.1.3
+Modify MC-Java to generate code that uses getGlocbal() to search all model 
+roots.
+
+6.3.3.2 Option selection.
+
+The MC-Java alternative, 6.3.3.1.3, was the preferred option.  The reasoning is 
+that when getGlobal() was introduced it was done to eliminate a error cluster
+caused by situations where OAL was written that caused lookup failures because
+the wrong model root was search.  This current case is an extension of that 
+which allows us to include referential IDs in the getGlobal() "safety net".
+This option was taken, and the change to MC-Java was made. However, problems 
+were encounter that caused us to back-out this change.  These problems are
+described by [11].
+
+When option 6.3.3.1.3 failed, we instead took option 6.3.3.1.1.  The reason
+option 6.3.3.1.1 was taken over 6.3.3.1.2 is that the author believed
+that by leaving component.getRootComponentId() in place it was too easy to allow
+future errors to be made.
+
+6.3.3.3 Final conclusion to the above work.
+
+After further discussion, it was determined that this code would actually
+never suffer from the problem of searching in the wrong model root.  However,
+conclusion was only reached after the 6.3.3.1.1 change had been made and
+tested.  We shall remove this change, but that work will be done in the
+next Release Candidate branch Review-R3_3_0-RC2.  Additionally, the MC-Java
+change [11] is still the most desireable, and it shall be revisted with the 
+next release.
+
+6.4 Set type contents not filled for event data item under GPs
+
+The reason that the type chooser contents are not populated is that the
+function_body.inc archetype does not specify a traversal to PE_PE for event data
+items.  The event data item element actually requires two traversals, going
+through either the ISM or ASM depending on its location.  To support this the
+archetype is modified to support a secondary traversal if the first returns
+null.  For event data items the following two traversals are defined:
+
+ModelClass_c.getOneO_OBJOnR519(ClassStateMachine_c.
+                getOneSM_ASMOnR517(StateMachine_c.getOneSM_SMOnR516(v_element)))
+ModelClass_c.getOneO_OBJOnR518(InstanceStateMachine_c.
+                getOneSM_ISMOnR517(StateMachine_c.getOneSM_SMOnR516(v_element)))
+
+The ui.properties/arc/BuildPropertySource.arc currently has a test for
+isInGenericPackage that uses the currently set Data Type instance as the basis.
+This is not the correct element to use, as the Data Type may be one that is in
+the default data type package at the system level.  The archetype could be
+changed to check this case, but then would determine the element was in generic
+packages when a specialized package element referred to the same system level
+data type.  The correct element to check is the host for the property source.
+
+When changing the archetype to use the host element we face the problem of
+determining if that element is under a generic package.  Considering there are
+certain elements which have special traversals that need to be made to reach a
+package or a component (like State Machine Data Item), a common approach is
+necessary.  The CopyCutAction class currently does this for inserting string
+data into the clipboard by walking the PMC hierarchy until a Package is hit.  At
+which point the element is considered in generic packages.  The code that does
+this in CopyCutAction.elementsInGenericPackaging() is moved to
+NonRootModelElement.isInGenericPackage().  The
+CopyCutAction.elementsInGenericPackaging() is changed to call this new method.
+The new method is extended to validate the first package found by asserting that
+the package has a PE_PE supertype.  This prevents the old generic packages from
+being considered generic.  Additionally, it is extended to check for core types
+and built in types under the system returning true if found. 
+
+After determining that the current element is under a generic package we also
+need a common way of locating the first generic package or component so that we
+can properly apply visibility rules to the elements available for selection.
+Two new methods are added to NonRootModelElement:  getParentPackage() and
+getParentComponent().  The getParentPackage() method walks the PMC hierarchy
+until either a component or a package is located.  If a generic package is found
+it is returned.  If a component is found null is returned.
+The getParentComponent() method similarly returns null if a package is found and
+returns a component if found.  To verify that the found component is indeed
+under a generic package, a supertype PE_PE is looked for.
+
+6.5 Close editors under system when the project is deleted
+
+When deleting a project no events are sent out to any model change listeners.
+This prevents the graphics from closing unusable editors.  Additionally, as [6]
+states the selection is maintained by the graphics because the edit part was not
+properly disposed (which occurs during element deletion and editor close).
+
+Rather than introduce a file change listener in ui.graphics, the
+PersistableModelComponent.deleteSelf() method is modified to send a delete
+notification if the root element is an instance of SystemModel.  Doing this
+allows the system package diagram editor to close with the existing graphics
+code.  The graphics code has to be modified to check the other editors that are
+not system package diagrams, so that they close if under the system model that
+was deleted.  The new code does this by checking the model root id and comparing
+the project segment with the system model name.
+
+6.6 Incorrect association between CL_IC and C_C across R4205 in GPs
+
+[9] searched the ooaofooa for references to [R4205], changing any found
+locations that were under generic package support to use R8003 instead of R4205.
+The search however excluded relate statements.  This causes created component
+references to be associated with the component twice, once across R8003 and
+again across R4205.  This in turn caused duplicate entries under Model Explorer.
+
+The Component.newImportedComponent() operation is changed to not associate
+across R4205 when under a generic package.  Additionally, the
+Component.pasteComponentReference() is changed to not associate across R4205
+when under a generic package.
+
+7. Design Comments
+------------------
+7.1 Allow functions with the same name to co-exist under different components
+Note that the Headline for this issue is misleading and implies that functions
+with the same name should be able to co-exist in the same component, so long
+as they are in different packages. The required behavior is that same named
+functions shall be permitted so long as only one of that name is visible from
+the referring location.
+
+An isInGenericPackage block is added to the function Function_function_validate
+in bp.coreooaofooa. This new block uses the collectVisibleElementsForName
+visibility infrastructure to find functions with the name passed by the parser.
+
+If none, or more than one is found, suitable error messages are given. Otherwise
+the found function is used for the remaining validation.
+
+7.2 New null checks
+There were a few null pointer errors which are handled more gracefully.
+7.2.1 Model Editor
+A null pointer was thrown in checkEditorInput() where it was checking for a
+Model Class type element. A preceding null check is added to prevent this error.
+
+7.2.2 CopyCutAction
+A null pointer error was thrown in elementsInGenericPackaging because it is
+possible to be passed an elements collection containing null entries in some
+abnormal situations. A preceding null check is added to prevent the flow of
+control being disrupted.
+
+7.3 Update expected result for testPersistOALwithPOI
+
+The current expected result includes an incorrect -1 appended to the domain
+name.  The result is updated to remove this.
+
+8. Work Required
+----------------
+
+9. Unit Test
+------------
+9.1 Missing Formalize... menu item for interface reference under GP component
+
+_- Create Package "pkg" 
+_- Add component "comp"
+_- Add a package and an interface under that package
+_- Add a signal to the interface 
+_- open component diagram  
+_- create two components 
+_- create two ports , provided and required port 
+_- right click on each port 
+_R The formalize menu item is available
+_- Mark the package containing the interface as private
+_R The formalize menu item is not available
+_- Create a package under "comp"
+_- Create a class under the package
+_- Add a class state machine
+_- Add a transition
+_- Right click on the transition
+_R The Add Signal... menu item is present
+_- Execute the Add Signal... menu item
+_R The wizard page lists the signal created above
+  
+9.2 Generic package Formalize... menu item available under specialized package
+
+_- Create new project 
+_- Create new Package 
+_- Add component to the package, name it "GP_Component" 
+_- Back to system model 
+_- create component package 
+_- add two component to it, "SP_Component" and "Container" 
+_- Open "Container" 
+_- Add new communication diagram 
+_- Add Component Participant to it 
+_- Right click on the component participant 
+_R There is no Formalize... menu item 
+
+_- Create a package
+_- Create a floating synchronous message under the package
+_- Create a floating asynchronous message under the package
+_- Create a component with an interface reference
+_- Create an interface with an operation and a signal
+_- Formalize the interface reference
+_- Create a component participant
+_- Formalize the component participant to the component
+_- Select the synchronous message and the component participant
+_- Right click
+_R The Formalize... menu item is available
+_- Deselect all and select the asynchronous message and the component
+   participant
+_- Right click
+_R The Formalize... menu item is available
+_- Create a class in the package with an instance state machine and event
+_- Create a class instance participant and formalize it to the class
+_- Select the synchronous message and the class instance participant
+_- Right click
+_R The Formalize... menu item is available
+
+9.3 Assign Component problems under GPs
+9.3.1 Action Filter
+_- Create new project "pkg" 
+_- Create new package 
+_- Create new component  "c1" 
+_- open it 
+_- create new component "c1_c1" 
+_- Add Component Reference 
+_- right click on it 
+_R Assign to component label is present
+_- Select it
+_R c1_c1 is present in the list
+_- close the chooser 
+_- back to "pkg" canvas 
+_- add component "c2" 
+_- Right click on the c1::Component Reference again 
+_R Assign To Component menu is present 
+_- back to "pkg" canvas 
+_- Create new component reference 
+_- right click on it. 
+_R Assign to component label is present
+_- add nested package "p" 
+_- open "p" 
+_- Add component Reference, right click on it 
+_R Assign To Component label there 
+_- select the label 
+_R Chooser window comes up with  "c1" and "c2" 
+_- Close it without selecting. 
+_- Add component "nested" 
+_- Right click again on the  pkg::p::ComponentReference, and select Assign To Component label 
+_R "nested " is available 
+_- select "nested component and press OK 
+_R ComponentReference is assigned now to "nested" although it is peer to it 
+_- back to "pkg" 
+_- delete "p" 
+_- back to system model, create package "another" 
+_- add component to it "in_different_package" 
+_- right click on  pkg::c1::ComponentRefernece 
+_R Assign To Component label there 
+_- select it 
+_R "c1_c1" component is present which is peered to the componentReference 
+_- select "c1_c1" and press OK 
+_R The component Reference is assigned to "c1_c1" 
+_- right click again on the componentReference and select Assign To Component label 
+_- select component "c2" 
+_R ComponentReference is assigned to "c2" 
+_- right click on the component reference again 
+_R  "Assign To Component"  and  "Unassign" menu entries are there 
+_- select "Assign To Component", choose "in_different_package" component and press OK 
+_R Component Reference is assigned to "in_different_component" 
+_- Right click on the component reference again 
+_R "Assign to Component" and "Unassign" menu entries are there 
+
+9.3.2 Assign to component
+_- Create new project 
+_- Create new Package 
+_- Add component to it  "c1" 
+_- Open "c1" 
+_- add two components "c1_1" and "c1_2" 
+_- open component "c1_2" 
+_- add component reference to it 
+_- right click and select  "Assign to Component" 
+_R  c1_1  component is available 
+_- select c1_1  and press OK 
+_R The component Reference is assigned to  "c1_1" 
+
+9.4 Set type contents not filled for event data item under GPs
+
+_- Create new project 
+_- Create new Package 
+_- open the package and create new model class 
+_- add Class based state machine and instance base state machine 
+_- Add event with parameter in both state machines 
+_- Right click on change type for both parameter 
+_R The Set type window shows available data types
+_- In the properties view select the Type property value
+_R The list shown has available data types
+
+9.5 Close editors under system when the project is deleted
+
+_- Create a project
+_- Create a package
+_- Create a Class with an instance state machine
+_- Open the system diagram
+_- Open the package diagram
+_- Open the state machine diagram
+_- Delete the project
+_R All editors are closed
+
+9.6 Incorrect association between CL_IC and C_C across R4205 in GPs
+
+_- Create a package
+_- Create a component
+_- In the component diagram create a component reference
+_R In model explorer there is only one component reference shown
+_- Copy the reference and paste into the same location
+_R In model explorer there is only two component references shown
+
+End
+---
+
+$Log: R3_3_0_RC1.dnt,v $
+Revision 1.7  2011/06/02 18:38:36  tlondon
+Job: dts0100774708 dts0100774710 dts0100774714 dts0100774715 dts0100774721 dts0100774722 dts0100774966 dts0100774970
+
+Add implementation note
+
+Revision 1.6  2011/06/02 18:28:38  campbell
+Job: dts0100774715
+Add tests for component reference issues.
+
+Revision 1.5  2011/06/02 18:12:42  rmulvey
+job:dts0100774721
+Updated the note to reflect the MC-Java and C_C.getRootComponentId work.
+
+Revision 1.4  2011/06/02 17:59:32  tlondon
+Job: dts0100774715
+
+Add tests
+
+Revision 1.3  2011/06/02 17:32:25  tlondon
+Job: dts0100774715
+
+Update to add expected result change
+
+Revision 1.2  2011/06/01 19:45:54  campbell
+Job: dts0100774714
+Describe changes for this issue.
+
+Revision 1.1  2011/06/01 15:23:00  tlondon
+Job: dts0100759157 dts0100774708 dts0100774710 dts0100774714 dts0100774715 dts0100774721 dts0100774722 dts0100774966 dts0100774970
+
+Introduce design note
+

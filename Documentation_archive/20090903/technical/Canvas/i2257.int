@@ -1,0 +1,202 @@
+========================================================================
+
+File:      $RCSfile: i2257.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Eliminating a Source of Orphaned Graphics Elements
+
+
+Abstract
+--------
+This note describes the implementation for modifying the SQL export/import 
+code to no longer create certain extra graphics instances that become orphaned 
+and are left lying around the model long after they have served their 
+intended purpose.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 2257
+
+Background
+----------
+As described in [1], it is possible to exercise the export-to-SQL code of the 
+tool in such as a way as to inflate a model with a large number of orphaned
+graphics elements.  I can repeatedly reproduce such inflation, although only on 
+a much smaller scale (i.e. ~5E elements per export/modify/save cycle, where E 
+is the number of external entities in the model, versus the model's size 
+increasing by 150 times).  The source of this inflation is eliminated by the 
+work for this issue, and is hoped to be the root cause of the symptoms 
+reported by Toni Siljamaki.
+
+Design
+------
+1. Eliminate creation of extra graphics elements in fixBPEEGraphics
+
+Part of the job of this graphics model function is to move symbols representing 
+external entities from the domain-package diagram (DPD) of the SQL model under 
+import to a new external-entity diagram in the resulting Tiger model.  The 
+function accomplishes this task in a convoluted way because of another task
+it must perform, which is to create a graphics element for the new 
+external-entity package that is to go on the DPD.  Rather than move the 
+graphics elements for the external entities from the one diagram to the other, 
+it makes a copy of them, so that one of the copies that is left over in the DPD 
+may be reused as the graphics element for the external entity package.  
+Unfortunately, the other copies left over on the DPD never get disposed. 
+
+The function is rewritten to simply move the graphics elements from the DPD
+to the external-entity diagram.  Accordingly, the createEEPkgModel() method of 
+io.sql.ImportBPSqlHelper is modified to create the associated graphics 
+instances for the new external entity package that is created as part of the 
+import.  These are the same instances that were previously coming from the 
+reuse of those for an external entity, as described above.
+
+2.  Regenerate affected test results
+
+Expected results in io.mdl.test/expected_results/models and 
+io.sql.test/expected_results are regenerated due to the above change of no 
+longer creating extra graphics elements during an import.
+
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+- select a model in the model explorer that has one or more external entities
+- copy the model to a new file that doesn't have the .xtuml extension
+- export the model to a BridgePoint 6.1 SQL file
+- make a change to the model such that the model is persisted to disk
+- compare the model to the copy made above (which should be a text-only
+	compare, since the copy's file does not have a standard model extension)
+R the newer version does not contain any extra graphics elements
+
+(The above test is already automated by existing tests in io.mdl.test.IOMdlTest
+which import a model from a SQL file, export it as an .xtuml file, then check 
+the contents of the export file against expected results.)
+
+
+Code Changes
+------------
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/asc.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/BP50_evt.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/BP50_evt2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br1f.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/br2f.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/bridges.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/cl.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/enum4.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/event.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ex3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_G_EVT_LE_precreated.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_multiple_exit_return.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_nested_invoke.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/G_ALL_R_BRG_tim.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_ALL_select_where_enum.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_BRG_G_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_COP_R_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_EVT_PE_G_EVT_NLE_nle_ignored.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_IOP_MDA_self_event.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_IOP_R_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_MDA_R_ALL_interop.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/G_STE_assoc_rel.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_del_inst_mult.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_G_COP_compare_date.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_G_EVT_PE_to_creation.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/
+    G_STE_G_STE_pe_le_same_state.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/im4.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ims.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ims2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/imx.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/init1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/init2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/memleak.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/mt1.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/no_inst.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/poly.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/reflexive.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/select.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/self.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/sm.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/sync.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/syntax.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/trans.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wim2.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wim3.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wims.xtuml
+com.mentor.nucleus.bp.io.mdl.test/expected_results/models/wimx.xtuml
+
+com.mentor.nucleus.bp.io.sql/src/com/mentor/nucleus/bp/io/sql/
+    ImportBPSqlHelper.java
+
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms_ng.exp
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms.exp
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms.imp
+
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+
+
+End
+---
+
+$Log: i2257.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.4  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.16.1  2008/12/31 16:10:07  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2006/06/27 23:52:26  jmather
+Job: 2257
+Added code changes.
+
+Revision 1.2  2006/06/27 23:45:27  jmather
+Job: 2257
+Ready for review.
+
+Revision 1.1  2006/06/27 01:00:10  jmather
+Job: 2257
+Introduced.

@@ -1,0 +1,236 @@
+========================================================================
+
+File:      $RCSfile: dts0100716033.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Correctly restore scroll positions
+
+1. Abstract
+-----------
+This note mainly focuses on changing the tool to properly restore persisted
+scroll positions.  It will additionally cover the following work:
+
+1. Grid snapping enablement should be separate of show grid
+2. Connector bendpoints are not grid snapped
+3. There should be some padding around hover text
+4. Add graphical overview to outline (dts0100672413)
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100716033
+[2] ClearQuest DEI dts0100672413
+
+4. Background
+-------------
+It has been noted that graphics can be missing upon a restart of the tool.  This
+is not really the case, however they do appear missing due to incorrect scroll
+locations.
+
+Since the inception of the new GEF bridgepoint graphics users have requested
+support for a graphical overview to complement the current outline tree.
+
+5. Analysis
+-----------
+5.1 Persisted scroll positions
+
+The tool was incorrectly calling a GEF translation method on the scroll values
+during restart.  This method was adjusting the scroll positions according to the
+scroll positions (and reapplying zoom).  This call should not be made.
+
+Additionally, the tool was not storing the scroll values in the model when
+adjusting the zoom or adjusting the scroll values during a diagram pan.  The
+current scroll values should be stored at these times.
+
+5.2 Grid snap connector bendpoints
+
+GEF does not support grid snapping for connector bendpoints.  The tool shall
+support it, copying what GMF does.
+
+5.3 Add padding between text and outline for hover text
+
+The hover text, through text description hovers and now connector end hover
+text, can sit right against the parent box's edge.  This makes the reading a bit
+more difficult.  The tool shall add a small amount of space around the entire
+text bounds.
+
+5.4 Support graphical overview in outline
+
+Most GEF diagrams have an outline view that has two display methods, one for a
+tree outline and the other for a thumbnail view of the diagram.  The tool shall
+enable the thumbnail view.
+
+6. Design
+---------
+6.1 Persisted scroll positions
+
+In, DiagramEditPart.activate(), the call to getFigure().translateToAbsolute() is
+removed.
+
+In GraphicalZoomManager.primSetZoom(), the scroll positions are stored just
+after they are modified by the zoom change.  The primSetZoom method is where all
+zoom operations are performed except for the zoom all case.  In that case we
+also store the scroll positions.   These values are stored in the Diagram class
+from the ooaofgraphics.
+
+When configuring the zoom from storage we call a new method,
+configureZoomAtStartup which does not cause storage of the scroll locations.
+This is required as the calculated scroll positions are always zero due to the
+fact that the window is not fully configured at this point.  Additionally, this
+call is moved after configuring the allowed zoom levels in GraphicalEditor.
+This allows for previously set zoom levels to be reused if they are outside of
+the normal GEF defaults.  For instance the GEF defaults stop at 50% zoom, so if
+a user had it set to 25% zoom it would not be used upon diagram restore.
+
+6.2 Grid snap connector bendpoints
+
+In ConnectorEditPart, the getAdapter() method is overridden to return a
+SnapToHelper class.  This is how GEF knows whether or not a given edit part may
+have snap support.
+
+Three new classes are added:
+
+SnappingBendpointCreationHandle
+SnappingBendpointMoveHandle
+SnappingBendpointTracker
+
+The SnappingBendpointCreationHandle and SnappingBendpointMoveHandle classes
+override the GEF base implementations so that they may return an instance of the
+SnappingBendpointTracker class as the drag tracker.  The
+SnappingBendpointTracker class handles the relocation of a drag point determined
+by the given SnapToHelper (given by ConnectorEditPart.getAdapter()).  When the
+user drags a bendpoint or creates and then drags one the positions are
+automatically snapped.
+
+In order to snap end points, two new classes are added:
+
+SnappingConnectionEndPointHandle
+SnappingConnectionEndpointTracker
+
+The handle class is overridden to return the new tracker class which handles
+snapping the endpoint location.
+
+6.3 Add padding between text and outline for hover text
+
+Anytime a tooltip is set in the GEF bridgepoint graphics a border is also set.
+This border is of the type MarginBorder, which allows you to define a fixed
+amount of space around each side of the figure.
+
+6.4 Support graphical overview in outline
+
+A new class is created, GraphicalOutlinePage.  This class is returned to eclipse
+as the page used for our outline view.  The class extends the GEF
+ContentOutlinePage class.  It covers the existing behavior from our original
+outline page.  Additionally it two actions are added, one to show the outline
+tree view and the other to show the diagram thumbnail view.  A listener is added
+to the thumbnail figure so that we can store scroll positions when changed.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+All work required is specified in the design.
+
+9. Unit Test
+------------
+9.1 Tests that scroll positions are properly restored
+
+_- Scroll a diagram horizontally
+_- Close the diagram and reopen
+_R The scrolled to position is the same
+
+_- Scroll a diagram vertically
+_- Close the diagram and reopen
+_R The scrolled to position is the same
+
+_- Zoom a diagram to fit the page (make sure the scrolling is changed)
+_- Close the diagram and reopen
+_R The scrolled to positions are the same
+
+_- Use the pan feature to scroll the diagram
+_- Close the diagram and reopen
+_R The scrolled to positions are the same
+
+9.2 Tests that grid snapping is supported for connectors
+
+_- Click the View menu
+_R The Show Grid action is present
+_R The Enable Grid Snapping action is present
+_- Check the Show Grid action
+_R The diagram has the grid drawn
+_- Move a connector's bendpoint
+_R The point is not snapped on the grid
+_- Check the Enable Grid Snapping action
+_- Move a connector's bendpoint
+_R The point is snapped along the grid
+_- Uncheck the Show Grid action
+_R The grid is not drawn
+_- Move a connector's bendpoint
+_R The point is snapped along the grid
+_- Uncheck the Enable Grid Snapping action
+_- Move a connector's bendpoint
+_R The point is not snapped along the grid
+_- Enable the grid snapping
+_- Create a bendpoint and move it
+_R The point is snapped along the grid
+_- Draw a new connection between two shapes, dropping the final end slightly
+   higher then the start's point
+_R The line is drawn straight
+_- Draw a new connection between a shape and a connection (associative link),
+   dropping the final end slightly higher than the start's point
+_R The line is drawn straight
+_- Drag a connector's end so that it is slightly higher than the next point away
+   from it's end
+_R The line is drawn straight
+
+9.3 Tests that padding exists for all hover text
+
+_- Open a diagram with connector text and select one of the texts
+_- Hover over the resize handle
+_R The tooltip text has padding
+_- Hover over a shape with a description
+_R The tooltip text has padding
+_- Hover over a connector with a description
+_R The tooltip text has padding
+_- Hover over a Provided Interface start
+_R The tooltip text has padding
+
+9.4 Tests that the thumbnail view operates as designed
+
+_- Open a diagram
+_- Show the Outline view
+_R There are two actions, one checked (outline and overview)
+_- Click the overview button
+_R A thumbnail view is shown
+_- Click anywhere in the view, other than where the selector figure is currently
+   at
+_R The diagram's scroll position is updated
+_- Close and reopen the diagram
+_R The scroll position is remembered
+
+End
+---
+
+$Log: dts0100716033.dnt,v $
+Revision 1.2  2010/09/16 17:17:54  tlondon
+Job: dts0100716033
+
+Introduce int and adjust dnt according to review minutes
+
+Revision 1.1  2010/09/07 22:52:57  tlondon
+Job: dts0100716033
+
+Introduce note
+

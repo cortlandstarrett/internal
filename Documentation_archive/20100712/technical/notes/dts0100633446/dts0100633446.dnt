@@ -1,0 +1,205 @@
+========================================================================
+
+File:      $RCSfile: dts0100633446.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Support return in a state action
+
+1. Abstract
+-----------
+-Having a 'return' statement in a 'if' construct starts an infinite loop.
+-Verifier fails to dequeue event when state action exits with return.
+ Consider the case when there is one event in the event queue. If the state 
+ action that was triggered by the event, exits (runs to completion) through 
+ a return statement, the event will not be removed from the queue. Therefore it 
+ will be processed twice or as many times as there are state actions that exists 
+ with return. 
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100633446 - Having a return statement inside an if block
+    in action code for a state will cause an infinite loop.
+[2] ClearQuest DEI dts0100639227 - Verifier fails to dequeue event when state 
+    action exits with return
+    
+
+4. Background
+-------------
+
+
+5. Analysis
+-----------
+My first reaction to this (as documented in the issue) was to assert that return
+should simply be made illegal in state actions. Indeed, it should be illegal,
+since 'return' is incompatible with the semantics of this context. However, this
+is not the customers expected fix and it will likely cost more to argue the case
+against than it will to meet the expectation.
+
+5.1 Return Stmt.execute()
+Accordingly, we will look at Return Stmt.execute() and the infrastructure calls
+it makes. The Return Stmt class is found in com.mentor.nucleus.bp.core in the
+xtuml model 'ooaofooa'. It is found in the Invocation subsystem. We only need to
+consider the void return case, since attempting to return a value in this
+context should certainly be caught by the parser as an error. Also, we are not
+concerned with the case where an invoking frame exists, because that only
+happens during synchronous inter-component calls. Thus we may concentrate on
+lines 25 through 34 of this activity:
+
+    stack.pop(disposeFrame:true);
+    select one stack_frame related by stack->I_STF[R2929];
+    select any top_blk_in_stack_frame related by stack_frame->
+                                        I_BSF[R2923] where selected.isExecuting;
+    select one invokingFrame related by stack_frame->I_STF[R2965.'blocks'];
+    select one statement related by top_blk_in_stack_frame->ACT_SMT[R2941];
+    if (empty invokingFrame and not_empty statement)
+      statement.setupNextStatement(stack_frame_id:
+                                         top_blk_in_stack_frame.Stack_Frame_ID);
+    end if;
+
+Of course, any changes proposed to the infrastructure calls, stack.pop() and
+statement.setupNextStatement() must be carefully reviewed because those
+operations are called from other parts of Return Stmt.execute() and indeed from
+other activities in the execution OAL.
+
+Looking over the OAL above however, suggests that altering the called activities
+may not be necessary. First of all, the pop() call does what is suggested, it
+removes the current stack frame from the stack. That is, the current context in
+which the return statement is executing. After the pop, the OAL attempts to
+obtain new context stack frame instance. In the case we are considering, the
+stack frame will be empty at this point. Note that an empty stack frame here is
+an abnormal state for the return statement. It occurs in this case because
+return within a state action are philosophically mismatched concepts.
+
+So, no top block in stack frame will be found and no statement. As a result,
+setupNextStatement() will never be called. This would certainly give the
+reported symptoms. The conclusion is therefore that some activities being
+carried out in setupNextStatement() are necessary for normal exit from a state
+action and these are not being performed in this context. Let us now examine
+this operation to discover what these statements might be.
+
+5.2 Statement.setupNextStatement()
+The Statement class is in the Body subsystem. This operation looks for the next
+statement after the current one and sets it up ready for execution. If no next
+statement is found, the Block.popUpBlock() operation is called. In our context
+we do not have a statement, so we do not have a Block instance either (Blocks
+are containers for groups of Statements). However, we may yet find something
+interesting in popUpBlock().
+
+5.3 Block.popUpBlock()
+The Block class is also in the Body subsystem, and the popUpBlock() operation is
+quite large. However, it splits up into a number of smaller sections. The first
+part looks to see if we have come to the end of a block of OAL and need to start
+executing at the next level up. This isn't relevant in our case, because the
+return statement overrides the block statement structure and exits the whole
+activity.
+
+The next section takes care of popping the stack in the case that no enclosing
+block was found. We already did this directly in the return statement OAL (this
+is again because the return statement overrides the normal block and statement
+execution ordering). So, this section isn't relevant either.
+
+The third section deals with setting up the next statement again, but only if
+there is an available statement. This gets called again here because we have now
+popped out one stack frame level and are stepping on in _that_ context. Again,
+we already did all the stack popping we need to, so this isn't relevant.
+
+The section after that looks for an executing event and takes care of disposing
+it. It also takes care of disposing instances when they enter their final state.
+If this does not get executed when we execute our return (and it doesn't) then
+the incoming event is left on the queue, final state instances will not get
+auto deleted. This a likely cause of the reported problems.
+
+Looking at this code, there is handling for both State and Transition Actions. 
+It is predicted therefore that this issue will exist with transition actions as
+well as state actions. Also, final state instances will not be deleted like they
+should, in addition to the other observed symptoms.
+
+If these conclusions are correct, the fix is to move this event disposal code
+somewhere common and call it from Block.popUpBlock() and from
+Return Stmt.execute() if no statement is found (i.e. the OAL above needs an else
+clause).
+
+
+6. Design
+---------
+6.1 Create new function Block.exitAsynchronousActivity() which includes the 
+    disposing of events and instances in both state Action Body and transaction
+    body. 
+6.2 Replace the code of disposing events and instances in Block.popUpBlock() 
+    by calling the new previous function (Block.exitAsynchronousActivity()).
+6.3 In Return Stmt.execute()
+    adjust the code to call Block.exitAsynchronousActivity() at the check of
+    (if empty statement & empty invokingFrame).       
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully covered in design section.
+
+9. Unit Test
+------------
+-Change one of the test models in the verifier JUnit.Add a return in a state
+ action(to test dts0100639227) and a return in an if-block in a state action
+ (to test dts0100633446 ).
+ 
+ 
+End
+---
+
+$Log: dts0100633446.dnt,v $
+Revision 1.10  2010/01/05 04:29:49  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.9  2009/12/08 15:43:41  mahalim
+job:dts0100633446
+update design note
+
+Revision 1.8  2009/12/07 11:47:40  mahalim
+job:dts0100633446
+implementation note
+
+Revision 1.7  2009/12/01 15:42:51  mahalim
+job:dts0100633446
+DNT after review
+
+Revision 1.6  2009/12/01 14:00:11  mahalim
+job:dts0100633446
+editing Unit Test section
+
+Revision 1.5  2009/11/25 16:45:43  mahalim
+job:dts0100633446
+editing design section
+
+Revision 1.4  2009/11/25 14:42:49  mahalim
+job:dts0100633446
+design section in DNT
+
+Revision 1.3  2009/11/25 11:17:53  campbell
+Job: dts0100633446
+Clarify that an empty stack is an abnormal condition when executing a return
+statement.
+
+Revision 1.2  2009/11/24 16:53:49  campbell
+Job: dts0100633446
+Added additional analysis.
+
+Revision 1.1  2009/11/24 16:25:05  campbell
+Job: dts0100633446
+Introduced.
+

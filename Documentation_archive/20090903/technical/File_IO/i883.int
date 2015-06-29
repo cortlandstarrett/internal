@@ -1,0 +1,122 @@
+========================================================================
+
+File:      $RCSfile: i883.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:36 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Export R_RTO correctly to SQL
+
+Abstract
+--------
+This note describes a fix to export values for the R_RTO class correctly
+to BP 6.1 compatible SQL.
+
+History
+-------
+
+final i883-042905-01.rvm
+
+Document References
+-------------------
+Issue 883
+
+Background
+----------
+
+From the issue:
+
+The attribute R_RTO.Oid_ID is referential to a O_ID instance across R9.
+If the R9 relationship isn't formalized (i.e. the modeled relationship hasn't
+been formalized), the not participating value used by Tiger for the attribute 
+is -1.  BP 6.1 uses a value of 99.  The SQL export code doesn't make this 
+transformation, leading to import errors in BP 6.1 Model Builder.
+
+Design
+------
+
+1. Fix export code
+
+The archetype for creating the export code, io.core/arc/gen_export_java.arc
+already has a section for special cases such as this where the attribute values
+for Tiger differ from those for BP.   A new case is added:
+
+        .elif ( (table.Key_Lett == "R_RTO") and (col.Name == "Oid_ID") )
+  if ( inst.${a.body}() == -1 ) {
+    m_fh.print( 99 );
+  }
+  else {
+    m_fh.print( inst.${a.body}() );
+  }
+
+2. Fix import code
+
+Similarly, the archetype for creating the import code, 
+io.core/arc/gen_import_java.arc is also fixed to translate the incoming 99 to a
+-1:
+
+      .elif (( (table.Key_Lett == "R_RTO") and (col.Name == "Oid_ID")) and 
+              (callingProject == "BP") )
+        .//
+        .// this column is special, change 99 to -1
+           Integer.parseInt((String)parms.elementAt(${col_num})) == 99 
+           ? -1
+           : Integer.parseInt((String)parms.elementAt(${col_num}))\
+
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+
+The model io.sql.test/models/odms.sql is changed (using BP) to add an 
+unformalized relationship between Slot and Robot.  
+
+The method IOTest.testImportOdms() is changed to check that the R_RTO.Oid_ID
+values are -1.
+
+- Run all tests
+R All tests pass
+
+Code Changes
+------------
+com.mentor.nucleus.bp.io.core/arc/gen_export_java.arc
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.arc
+
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms.sql
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms_ng.sql
+com.mentor.nucleus.bp.io.sql.test/models/odms.sql
+com.mentor.nucleus.bp.io.sql.test/src/IOTest.java
+
+End
+---
+
+$Log: i883.int,v $
+Revision 1.1  2009/09/03 18:20:36  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:10  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.36.1  2008/12/31 16:10:14  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/04/29 23:25:52  greg
+Job: 883
+Add history
+
+Revision 1.1  2005/04/29 22:22:51  greg
+Job: 883
+Introduce

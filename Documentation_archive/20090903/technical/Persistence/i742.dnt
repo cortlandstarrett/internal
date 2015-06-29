@@ -1,0 +1,271 @@
+========================================================================
+
+File:      $RCSfile: i742.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:22:27 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Keeping Domain/Model-File and System/Project Names in Sync
+
+Abstract
+--------
+This note describes the design for: updating a domain's name when the name of 
+its model-file changes on disk; the reverse situation of updating a 
+model-file's name on disk when its domain's name is changed; updating a 
+system's name when the name of its project changes on disk; and, the 
+the reverse situation of updating a project's name on disk when its 
+system's name is changed.
+
+History
+-------
+
+Document References
+-------------------
+[1] Documentation/internal/technical/Persistence/persistence-i561.ant
+
+Background
+----------
+This issue is a leftover, unfinished piece of the work required for issue 561.
+
+Analysis
+--------
+See the relevant portions of [1].
+
+Design
+------
+1.
+bp.core.ResourceChangeListener is introduced to listen for resource changes
+in the workspace that have a bearing on model elements.  It contains code
+to listen for changes to a domain's name, at which point it renames the 
+domain's persistence file to match.  It also contains code to rename 
+the associated system when a project is renamed on the filesystem.
+
+1.1
+The code that is in a ResourceChangeListener in bp.ui.explorer.ExplorerView
+is moved into this new listener, because the core plugin is always loaded 
+during the product's execution, whereas the same cannot be said of the
+explorer plug-in, and we do not want to miss events due to a plug-in's 
+absence.
+
+After the code's relocation, its order of handling project openings versus
+renames is reversed, as a rename will also signal an open, and processing 
+the rename event first lets us determine that we should skip the open event.
+Also, the code that deletes a system directly when a project is deleted is 
+replaced with a call to the new SystemModel.dispose() operation (which
+is mentioned later).
+
+1.2
+bp.core's create_core_plugin_class.arc is modified to add the new  
+ResourceChangeListener to the workspace upon plug-in startup.
+
+1.3
+In bp.core's generate.xml, ResourceChangeListener.java is added to the list 
+of cvs-java-files.
+
+2.
+bp.core.ResourceUpdaterModelChangeListener is introduced to listen for 
+model changes that have a bearing on the filesystem resources of the 
+model elements involved.  This new listener contains code to: delete 
+a domain's persistence file when the domain is deleted; to rename the 
+domain's file when the domain is renamed; to delete a system's corresponding 
+project when the system is deleted; and, to rename a system's corresponding 
+project when the system is renamed.
+
+2.1
+bp.core's create_core_plugin_class.arc is modified to add the new  
+ResourceUpdaterModelChangeListener to all model-roots.
+
+2.2
+In bp.core's generate.xml, ResourceUpdaterModelChangeListener.java is added to 
+the list of cvs-java-files.
+
+3.
+In java.arc, code is added to the model-root's resource-change-listener to
+listen for changes to the name of the model's persistence file, at which point 
+it renames the domain to match.
+
+4.
+In bp.core's create_rename_action.inc, code is added to: enable the renaming 
+of domain proxies; to disallow the renaming of more than one item at a time;
+to add a renameTo() method to allow tests to make an automated use of the 
+rename action; and, to make it so that a system's renaming does not cause 
+any persistence of the domains within the system.
+
+5.
+In java.arc, a new version of createModelRootId is added that takes a 
+system's name as a parameter, rather than the system's project, for convenience.
+
+6.
+In java.arc, a model-change-listener is added to Ooaofooa that listens for 
+renamings of the system associated with the model-root's domain, and 
+updates the model-root's ID accordingly.
+
+6.1
+In bp.core.util.OoaofgraphicsUtil, a method setId() is added to allow 
+setting a graphics-root's ID from the core plug-in without causing a 
+plug-in dependency loop.
+
+7.
+In bp.core's create_global_action.inc, the code present to perform 
+domain and system deletions is conformed to use cme-generated functions 
+just like all other model-element deletions.
+
+7.1
+In bp.core's cme_functions.sql, system renaming and deletion functions are 
+added which conform to the pattern of like functions present for the other
+kinds of model elements.  Corresponding entries for these functions are
+added to context_menu.pei.sql.
+
+7.2
+In bp.core's ooaofooa.mdl, a dispose() operation is added to System Model.
+The operation contains only a call to delete the system element, and 
+does not dispose of the system's children domains, since the system 
+does not share the same model-root with its domains.  However, the 
+generation archetype adds the firing of a model change event to the 
+Dispose() method in SystemModel_c.  In java.arc, code is added to have a 
+model-root delete its domain when it hears that its associated system-model 
+has been deleted.
+
+8. 
+In java.arc, Ooaofooa.getFile() is changed to no longer rely on the presence 
+of model elements in order to locate a model's file.  This allows the method
+to return a valid result even after the model-root's system or domain has 
+been disposed.
+
+9.
+In java.arc, the resource-change-listener defined in 
+Ooaofooa.becomeResourceChangeListenerToOwnFile() is moved into its own 
+inner class, due to its size, for better code organization.
+
+10.
+In java.arc, Ooaofooa.performDeletionProtocol() is removed, as the steps
+it performed before deleting the model-root were found to be redundant.
+Calls to this method are therefore replaced with ones to Ooaofooa.delete().
+
+11. 
+In java.arc, code is added to have a model-root re-determine its ID when its 
+domain is renamed.
+
+12.
+In java.arc, code is added to have a model-root delete itself when its domain 
+is deleted.  The deletion is necessary to signal that the domain should
+be reloaded from disk if its file gets restored at a later time. 
+
+13.
+In java.arc, Ooaofooa.setId() is modified to become updateId(), which 
+determines the model-root's ID on its own, rather than being supplied the ID
+through a parameter, so that the same determination policy is followed 
+each time.
+
+14.
+In java.arc, code is added to SystemModel_c.setName() to update the ID's of
+all model-roots associated with the system.  This occurs right after the name 
+change has occurred, before any model-change-listeners are notified, which
+prevents bugs in those listeners resulting from the model-root ID not being
+in sync with its system's name.
+
+15.
+In java.arc, code is added to prevent deletion of default model-roots, 
+as some legacy tests fail if the default test root has been previously deleted.
+
+16.
+In bp.ui.explorer's create_explorer_view.inc, an erroneous string comparison 
+using the '==' operator (that I had introduced as part of the work for i561) 
+is fixed.
+
+17.
+In bp.test's BaseTest, code is removed that caches the default test model-root, 
+as doing so saves little time computationally and could lead to hard-to-find 
+bugs down the road if we ever allow the default test model-root to be deleted.
+
+18.
+In bp.ui.explorer's ExplorerTest, code is added to check for log-file content 
+as part of the determination of whether a test passes.  Also, a call to 
+Util.copyFile() is replaced with one to the more appropriate IFile.create().
+
+19.
+In bp.core's create_action_test.arc, a special case is added for the 
+system rename test to retrieve the system from the default-root, where all 
+system instances are stored.
+
+Work Required
+-------------
+No further work is required beyond that outlined in the Design section.
+
+Unit Test
+---------
+- open a domain package diagram (DPD) from the model explorer
+- rename the domain in the model explorer
+R the corresponding model-file's name changes accordingly in the resource 
+	navigator
+- open the same DPD as before from the model explorer
+R the existing DPD editor is activated; a new one is not created
+  (this tests that the graphics-root's ID has been changed (just like
+  the model-root's was) to match the new domain name)
+[automated by ExplorerTest.testDomainRenameCausesFileNameChange()]
+
+- rename the model-file in the resource navigator
+R the corresponding domain's name changes accordingly in the model explorer
+- open the same DPD as before from the model explorer
+R the existing DPD editor is activated; a new one is not created
+[automated by ExplorerTest.testModelFileRenameCausesDomainNameChange()]
+
+- rename a domain-proxy in the model explorer
+R the corresponding model-file's name changes accordingly in the resource 
+	navigator
+[automated as part of ExplorerTest.testDomainRenameCausesFileNameChange()]
+
+- rename a system in the model explorer
+R the corresponding project's name changes accordingly in the resource 
+	navigator
+[automated by ExplorerTest.testSystemRenameCausesProjectNameChange()]
+
+- rename an xtUML project in the resource navigator
+R the corresponding system's name changes accordingly in the model explorer
+[automated by ExplorerTest.testProjectRenameCausesSystemNameChange()]
+
+
+End
+---
+
+$Log: i742.dnt,v $
+Revision 1.1  2009/09/03 18:22:27  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:09  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.44.1  2008/12/31 16:10:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2005/03/18 16:36:29  jmather
+Job: 742
+Addressed review observations.
+
+Revision 1.4  2005/03/17 17:52:23  jmather
+Job: 742
+Added mention of automated tests.
+
+Revision 1.3  2005/03/17 17:18:45  jmather
+Job: 742
+Rough draft.
+
+Revision 1.2  2005/03/09 16:57:39  jmather
+Job: 742
+Added a test for renaming a domain proxy.
+
+Revision 1.1  2005/03/09 16:08:40  jmather
+Job: 742
+Introduced.
+

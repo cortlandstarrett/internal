@@ -1,0 +1,171 @@
+========================================================================
+
+File:      $RCSfile: dts0100686720.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Datatype visibility issue
+
+
+1. Abstract
+-----------
+With the introduction of generic packaging [3], each packageable element 
+(subtypes of PE_PE across R8001) have controlled visibility. This visibility 
+option can be switched from Public to Private using a context menu entry. 
+Currently User Data Type is the only data type that uses this context menu.
+This is raised to implement this CME for Enumeration and Structured 
+Data Types and Constants.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100686720
+[2] ClearQuest DEI dts0100689750 
+    Datatype visibility menu test
+[3] ClearQuest DEI dts0100631941
+    Remove the need for specialized packages
+
+4. Background
+-------------
+Currently Enumeration and Structured Data Types and Constants are transparent, 
+i.e. they are visible to elements in all other packages. By promoting generic 
+packaging, a visibility option was added for elements created within a generic 
+package. When an element is made public, it can be referred to by
+elements in the parent package of the owning package of the element. Private 
+element can not be referenced outside of the local package.
+
+
+5. Analysis
+-----------
+5.1 The context menu for Enumeration and Structured Data Type and Constants 
+shall have either "Make Private" or "Make Public" labels at any time depending 
+on the current visibility value for the selected data type.
+
+5.2 The "Make Private" and "Make Public" menu entries shall be toggled by
+selecting them.
+
+5.3 Enumeration and Structured Data Type and Constants elements created in a 
+DataType Package shall not have "Make Private" and "Make Public" menu entries.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------|
+	    \Diagram|     			      Generic Package								|					Data Type Package							|
+		 \  	|-----------------------------------------------------------------------------------------------------------------------------------|
+Menu Entry\		|	EnumerationDataType		|	StructuredDataType	|	Constants	|	EnumerationDataType		|	StructuredDataType	|Constants	|
+====================================================================================================================================================|
+Make Private	|			x				|			x			|		x		|		-					|			-			|	-		|
+----------------------------------------------------------------------------------------------------------------------------------------------------|
+Make Public		|			x				|			x			|		x		|		-					|			-			|	-		|
+----------------------------------------------------------------------------------------------------------------------------------------------------|
+
+
+6. Design
+---------
+6.1 Create the pop up menu extension in the core plugin.xml and define their 
+classes. Additionally, add entries to enable the new entry for the Enumeration 
+and Structured DataTypes and Constants.
+
+6.1.1 For each Menu entry in the above table  add a CME and MEF entries in the 
+context_menu.pei.sql file to define the plugin.xml entry.
+Example : 
+INSERT INTO CME VALUES ('','Make Public','S_EDT','',false,'');
+INSERT INTO MEF VALUES ('','Make Public','S_EDT','can','make public');
+
+6.1.2 For each menu entry in the above table add new operation in the 
+bp.core::ooaofooa::Functions::Context Menu Entry Functions to specify the action
+of MakePrivate and MakePublic. This will generate the class that will be used 
+when the new menu entry is selected.
+Example:
+Function Name : S_SDT_MakePrivate
+Function Body :
+select one pe related by sdt->S_DT[R17]->PE_PE[R8001];
+pe.Visibility = Visibility::NotVisible;
+
+6.1.3 Write in the description property of each created function in 6.1.2 :
+"ContextMenuFunction: TRUE" to take the body of the function and convert it to 
+Java code.
+
+6.1.4 Add new operation "actionFilter" to "Enumeration Data Type" and 
+"Structured Data Type" and "Constant Specification" model classes. This function 
+should handle whether to display "MakePrivate" or "MakePublic" labels on the 
+menu based on the current visibility value of the selected Enumeration/Structured 
+Data Type and Constants - in case they are created in generic package- and 
+return boolean value ( true to show the label)
+
+operation parameters : 
+     name : name
+     type : string
+     
+	 name : value
+	 type : string
+	 
+Body : 
+if(param.name == "can")
+  if param.value == "make public"
+    select one pe related by self->S_DT[R17]->PE_PE[R8001];
+    if not_empty pe 
+      return pe.Visibility != Visibility::Visible;
+    end if;
+  end if;
+  if param.value == "make private"
+    select one pe related by self->S_DT[R17]->PE_PE[R8001];
+    if not_empty pe 
+      return pe.Visibility != Visibility::NotVisible;
+    end if;
+  end if;
+end if;
+return false;
+
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+The work required is fully detailed in the design section.
+
+9. Unit Test
+------------
+9.1 Run all JUnit tests, verify they pass.
+
+9.2 Perform the test defined in the SMA QA BridgePoint product for this 
+    issue [2].
+
+End
+---
+
+$Log: dts0100686720.dnt,v $
+Revision 1.7  2010/05/18 15:28:36  nmohamad
+job:dts0100686720
+addressing review minutes
+
+Revision 1.6  2010/05/18 13:08:01  nmohamad
+job:dts0100686720
+vocabulary fix
+
+Revision 1.5  2010/05/18 13:06:33  nmohamad
+job:dts0100686720
+Add Constants as another element that shall have "MakePrivate" and "MakePublic"  in its pop up menu
+
+Revision 1.4  2010/05/17 11:02:32  nmohamad
+job:dts0100686720
+vocabulary fix
+
+Revision 1.3  2010/05/13 17:28:55  rmulvey
+job:dts0100686720
+Corrected grammar.
+
+Revision 1.1  2010/05/13 17:08:53  nmohamad
+job:dts0100686720
+Create design note
+

@@ -1,0 +1,285 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Arrays
+
+1. Abstract
+-----------
+This note covers the changes needed to support arrays.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 477
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=477
+[2] Bugzilla item 2519
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2519
+[3] Bugzilla item 1666
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1666
+[4] Bugzilla item 478
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=478
+
+4. Background
+-------------
+Two potentially significant customers, Lockheed Martin and Ericsson have asked
+for support for arrays for different reasons. This note covers what needs to be
+done to support them.
+
+5. Analysis
+-----------
+To suport arrays, we need to change the metamodel (ooaofooa), the parser and
+Verifier.
+
+5.1 Metamodel Changes
+5.1.1 Enable arrays
+      The following metamodel elements will need an integer 'arrayDimensions'
+      attribute added:
+      - Attribute
+      - Bridge Parameter
+      - Function Parameter
+      - Operation Parameter
+      - Event Data item
+      A value of zero indicates a regular singleton data item, values of 1 or
+      more indicate that the element represents an array with the dimensions
+      given. Arrays of any data type shall be supported, including structured
+      data and instance reference types (depending on when instance reference
+      types are supported, see [3]).
+5.1.2 Display array adornments
+      Every Label that visits one of the above metamodel elements must be
+      changed to append a pair of square brackets '[]' for each array dimension
+      to the label in the appropriate place.  For example, the State Machine
+      Event Data Item must obviously be changed so that the name is accessed
+      through an operation. This operation must test the arrayDimensions
+      attribute and append the brackets if necessary. However, it is much less
+      obvious that the Message Argument class must also be reviewed to ensure
+      that it too appends the brackets in the correct place.
+
+5.2 Parser Changes
+5.2.1 New for statement
+      Reusing the 'for each' syntax was considered, but was rejected because
+      customer expectations will be for random access to the array elements.
+      Therefore a new 'for' statement syntax is added:
+      
+      for <integer handle> = <integer start expression> to
+                            <integer end expression> {step <integer expression>}
+        <statement block>
+      end for;
+      
+      {} denotes optional syntax, the default step being 1. step 0 is valid
+      syntax and <integer handle> may be both read and written inside
+      <statement block>.
+      <array handle>.length is a new valid integer expression.
+      <array handle>[<integer expression>].length (see below) is also a valid
+      integer, provided the array referred to by <array handle> has at least two
+      dimensions (and so on for each array dimension,
+      <array handle>[<integer expression>][<integer expression>].length etc.).
+      Real 'for' statement arguments are not supported, though real array
+      indices will be legal based on existing promotion rules and preference
+      settings[2].
+      
+5.2.2 Array element access
+      New array element access syntax is added:
+      
+      <array handle>[<integer expression>]
+
+      The number of repetitions of the '[<integer expression>]' syntax shall be
+      validated by the parser against the number of dimensions specified in the
+      Model element.
+
+5.2.3 Activity Metamodel Changes
+      The Body and associated subsystems of the metamodel shall be modified to
+      cache the new information parsed by the changes specified above (5.2.1 and
+      5.2.2).
+
+5.2.4 Temporaries
+      An array may be assigned to a temporary local variable. The temporary
+      assumes the same number of dimensions as the array from which the
+      temporary was assigned. Reassignment of a temporary to a different array
+      shall be legal provided that the data type of the arrays are compatible.
+
+5.3 Verifier Changes
+5.3.1 Array size
+      In line with other conveniences to maximize simplicity for the analyst,
+      arrays in BridgePoint need not be sized in advance. In other words when
+      writing, the array increases in size to accommodate the newly written
+      data. Reading past the end of an array shall be a runtime error. It is the
+      responsibility of the user to prevent this situation using the 'length'
+      syntax described above (see 5.2.1).
+
+5.3.2 Array access execution semantics
+      Execution semantics are exactly the same as for conventional variables,
+      except that the value to read or write is determined by applying the
+      integer expression argument(s) to identify the element required. Pass by
+      reference semantics are of course also honored. Verifier will implement
+      the same 'sparse value population' policy it has for conventional
+      variables. Hence, if the user only writes every 10th element of an array,
+      the Verifier will only create values for every 10th element. Similarly,
+      reading an unwritten element is the same error as reading past the end of
+      an array.
+
+5.3.3 For loop execution semantics
+      Execution of a for loop exits if <integer handle> (as defined in 5.2.1
+      above) is greater than or equal to <integer end expression> at the
+      beginning of any <statement block> execution cycle, regardless of how it
+      arrived at that value (i.e. by increment, by having been written or even
+      by initial value). It is therefore possible to write infinite loops and
+      loops which are never entered. It is the user's responsibility to verify
+      that the behavior is what was intended.
+
+6. Work Required
+----------------
+6.1 Metamodel Changes
+6.1.1 Enable arrays
+      Add the 'arrayDimensions' integer attribute to the specified meta model
+      classes.
+6.1.2 Display array adornments
+      Find by a search every piece of OAL that refers to O_ATTR, S_BPARM,
+      S_SPARM, O_TPARM and SM_EDI. Review each to identify all places where
+      square braces need to be added. Add one pair for each array dimension
+      specified by the user in the 'arrayDimensions' attribute.
+
+6.2 Parser Changes
+6.2.1 New for statement
+      In com.mentor.nucleus.bp.als.oal/bnf/oal.bnf:
+      
+      - Add new indexed_for_statement at the end of the statement! rule.
+      - Add definition for indexed_for_statement at the end of the existing list
+        of rules (adding at the end avoids the possibility that the generated
+        labels don't change for existing code, this may be unnecessary).
+      - the indexed for statement definition will be something like:
+      
+      indexed_for_statement:
+        "for"!   { rememberLocation(LT(0)); }
+                        local_variable[true] "="! expr "to"! expr ("step"! expr)
+           block[false]
+        "end"! "for"! ;
+
+      - Add new validation functions Indexed_for_statement_start and
+        Indexed_for_statement_end. These must perform the following:
+        
+        Indexed_for_statement_start: Create a new instance of the statement
+        subtype described below (see 6.2.2).
+        Indexed_for_statement_end: Check that 'local_variable' and that the two
+        (or three) instances of expr are of data type integer. Perform analogous
+        other checks to those performed by For_statement_end.
+        
+      - Extend the new statement type, 'member access' created by other work[4]
+        to offer a special member 'length' of type integer if the variable is an
+        array. A variable is an array if the number of brace pairs in the
+        statement is less than the number of dimensions.
+      
+6.2.2 Array element access
+      New array element access syntax is added:
+      
+      array_element_access:
+      local_variable[false] ("["! expr "]"!)
+
+      New validation functions shall be added; Array_element_access_start
+      (creates the statement instance) and Array_element_access_end which shall
+      perform the following checks:
+      
+      - local_variable.isArray must be true
+      - all instances of expr must be of type integer
+      - the number of brace pairs found must be less than or equal to the number
+        of declared dimensions for the array.
+
+6.2.3 Activity metamodel changes
+      6.2.3.1 A new subtype of Statement; "Indexed For" shall be created. It
+              shall reside in the body subsystem and have associations with
+              Block to implement the nested iteration block.
+      6.2.3.2 A new subtype of Value; Array Element shall be added. It shall
+              have an association with another Value, the root variable
+              (argument, event datum or attribute value). Value shall have a new
+              operation 'isArray' added. It shall shall return true if the
+              number of brace pairs seen is less than the number of dimensions
+              specified in the root variable. There shall be an association with
+              (one or more) Values, one for each instance that provides an
+              index. A link class shall have a reflexive association to capture
+              the ordering of the values so that they may be applied in the
+              correct order to identify the selected array element value. 
+
+6.2.4 Temporaries
+      Assignment rules expressed in the Validation function Assignment_expr_end
+      shall be modified to permit the classes of assignment specified in the
+      analysis section. If a temporary is assigned from a partial set of array
+      indices, then the new array has only the number of dimensions unspecified,
+      i.e. In the case 'z = a[3][y]', 'z' will have one dimension if 'a' has
+      three.
+
+6.3 Verifier Changes
+6.3.1 Array size
+      Verifier currently holds values in a model element related either to the
+      the stack frame, across R2951, or to an Instance across R2909 (see
+      ooaofooa Instance subsystem). These associations shall be modified so that
+      a value is indexed by an arbitrary number (zero or more) of integer index
+      values.
+      
+      If an indexed value to be written is not found, a new value shall be
+      created and related using the provided index values. If an indexed value
+      to be read is not found, execution (or more accurately, exception
+      handling) shall be exactly as for a never written simple value.
+
+6.3.2 Array access execution semantics
+      These are met by the suggested design above.
+
+6.3.3 For loop execution semantics
+      A new execute operation shall be added to the new Indexed_for loop subtype
+      its behavior shall be analogous to that already written for the existing
+      'for' statement, except that it shall increment the local variable (by one
+      or by the 'step' value) and shall test its value against the end test to
+      determine whether to terminate the loop.
+
+7. Acceptance Test
+------------------
+TBD.
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:01  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.5  2007/02/06 18:17:32  campbell
+Job: 477
+Added more details to Work Required section.
+
+Revision 1.4  2007/02/06 18:01:08  campbell
+Job: 477
+Added a detailed Work Required section.
+
+Revision 1.3  2007/02/01 23:46:40  campbell
+Job: 477
+Cosmetic changes only.
+
+Revision 1.2  2007/02/01 00:07:50  campbell
+Job: 477
+Cosmetics and sparse value execution semantics added.
+
+Revision 1.1  2007/01/31 23:44:07  campbell
+Job: 477
+Introduced.
+

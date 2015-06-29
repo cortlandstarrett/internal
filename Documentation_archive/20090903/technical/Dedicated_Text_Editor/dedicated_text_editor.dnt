@@ -1,0 +1,755 @@
+========================================================================
+
+File:      $RCSfile: dedicated_text_editor.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:24:28 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Dedicated Text Editor Design Note
+
+Abstract
+--------
+A specialized text editor is created for description and 
+activity properties. 
+
+History
+-------
+
+final dedicated_text_editor-050304-1.rvm
+
+Document References
+-------------------
+Bugzilla issue 63
+[1] bp.core/doc/internal/technical/Dedicated_Text_Editor/dedicated_text_editor.ant
+[2] Shavor, et.al., Java Developer's Guide to Eclipse, Ch. 27
+  "Building a Custom Text Editor with JFace Text"
+
+Background
+----------
+
+The Description field editor is analogous to the Eclipse text
+editor, except the text is read/written from the Model instead of
+from a file. The Action_Semantics field editor which, like the 
+Description field editor, reads/writes the data from the Model, also
+has the additional function of parsing the Action_Semantics text to 
+validate the Object Action Language (OAL).
+
+Design
+------
+Overview
+
+The Text Editors are editor based Eclipse views. They are implemented
+by extending the class TextEditor. The Editors are invoked via object
+contributions by implementing the Eclipse interface 'IActionDelegate'.
+The Editors are invoked from task markers by using a temporary file
+(called a PlaceHolder) corresponding to the object being edited. 
+This is accomplished by using the extension point 
+"org.eclipse.ui.editors" by which the editor class is selected and 
+"invoked" depending on the file name extension.
+
+This design supports Undo, Redo, and Revert.  No explicit work is
+done to support these operations; they are implemented by the
+TextEditor base class.
+
+
+DTE1.1 Editor extensions
+
+The text Editor extensions are defined in the file plugin.xml. 
+This xml file is generated using the meta-model. There
+are object contributions for each case where either a Description
+or an Activity editor is needed.
+There are two parts to the object contribution which are generated.
+The first is the object contribution element itself, which defines
+the editors that are contributed for the target classes.   
+The second generated part of object contribution is the definition
+of the editors as the default editor for the targets.  Elements that
+have both descriptions and activities have the activity as the default editor.
+
+If a model element can be opened with Canvas Editor and one or more 
+of the text Editors, the Canvas Editor is the default open action.
+This special case is handled by hard coding a test for the 
+occurences in a common archetype, arc/create_util.inc. Specifically, 
+the lines of code:
+
+  .select many canvas_dsc_obj_set from instances of O_OBJ
+      where ( ((selected.key_lett == "S_DOM") OR
+               (selected.key_lett == "S_SS")) OR
+              ((selected.key_lett == "SM_ISM") OR 
+               (selected.key_lett == "SM_ASM")) )
+  
+selects the classes that meet this criteria.  Since the data describing
+which elements have a canvas editor in contained in ui.canvas/plugin.xml,
+this solution seemed to be the best compromise.
+
+DTE1.2 Navigating to correct meta-model inputs
+
+The design provides the ability to edit any meta-model
+field named "Description" with the Description Editor, and any field
+named "Action_Semantics" with the Activity Editor. However, the model
+element that has this field is not always the element shown in the
+Model Explorer. One example is a statechart state activity.
+The Model Explorer element shown representing a state activity 
+is State Machine State (SM_STATE). However,
+the Description and Action_Semantics fields corresponding to a
+state are located in the related Action (SM_ACT) element. To
+provide a method of generating code to navigate to the correct element,
+a new coloring table is introduced as follows:
+
+CREATE TABLE NAV_OBJ (
+	Src_Key_Lett	STRING,
+	Tgt_Key_Lett	STRING,
+	Nav_Tgt_To_Src	STRING,
+	Usage           STRING );
+
+Usage has the following possible values: Both, Descrip, Action_Semantics.
+It describes which editors this NAV_OBJ is valid for.
+
+The NAV_OBJ table is assigned some pre-existing instances
+as defined in the file sql/clr_pei.sql. Here are the contents of
+that file:
+
+INSERT INTO NAV_OBJ
+	VALUES ('SM_ACT', 'SM_STATE',
+	'->SM_MOAH[R511]->SM_AH[R513]->SM_ACT[R514]',
+    'Both' );
+INSERT INTO NAV_OBJ
+	VALUES ('SM_SM', 'SM_ISM',
+	'->SM_SM[R517]',
+    'Descrip' );
+INSERT INTO NAV_OBJ
+	VALUES ('SM_SM', 'SM_ASM',
+	'->SM_SM[R517]',
+    'Descrip' );
+INSERT INTO NAV_OBJ
+	VALUES ('O_DBATTR',	'O_ATTR',
+	'->O_BATTR[R106]->O_DBATTR[R107]',
+    'Action_Semantics' );
+
+The coloring object allows the generated code to navigate from
+the Model Explorer element to the related element containing 
+the Description and/or Action_Semantics fields. 
+
+DTE1.3 Common Editor extensions
+
+The following classes are common to both the Activity and Description text
+editors.
+
+TextPlugin.java
+  TextPlugin extends AbstractUIPlugin; provides support necessary to
+  allow this component to be an Eclipse plugin
+  
+DocumentProvider.java
+  The class DocumentProvider extends the Eclipse class 'FileDocumentProvider'.
+  The class maps the expected model element (the editor input) to the presentation
+  model.  A document provider class is something all Eclipse text editors require[2].
+  
+EditorListener.java
+  A model element listener class which handles changes to the model elements
+  including delete and rename.  The class updates the placeholder files as needed.
+  This class is referenced from the plugin.xml file.
+
+EditorModelId.java
+  This class provides all the data required to identify a model class and instance.
+  
+IPlaceHolder.java
+  An interface definition for placeholder files
+
+PlaceHolder.java
+  A utility class which is deals with placeholder files. Functions include
+  find, create, delete, and rename.  The makePlaceHolderFileName() method
+  replaces the characters \/:*?"<>| and space with '_'.
+
+EditorConfiguration.java
+  This class defines the properties that can be configured for a TextEditor
+  (which ActivityEditor is a subclass of).  The class currently defines 
+  the class responsible for displaying hover text (EditorHover).
+
+EditorHover.java
+  This class determines the hover text to output for both the actual text
+  (the ITextHover interface) and markers in the left and right rulers
+  (the IAnnotationHover interface).  If there is no hover text, null is
+  returned.
+  
+EditorAnnotationIterator.java
+  This is a utility class to iterate through the currently existing markers
+  and problems for an editor.
+
+Access to the model data is provided by generated "adapter" classes which
+insulate the Editors from model-specific information.
+
+EditorInput.java
+  A generated class which gives the Editors access to the
+  model data and assures the existence of a corresponding placeholder
+  file, whether the Editor is invoked from the object, the placeholder
+  file, or a task marker.  An instance of this class is contained in both 
+  ActivityEditorInput.java and DescriptionEditorInput.java.
+  
+EditorStorage.java
+  A generated class which implements the Eclipse interface 'IStorage'.
+  It provides read and write access to the model data.  It is the class that uses
+  the mapping provided by the NAV_OBJ coloring to locate the correct model
+  element.
+
+EditorListenerData.java
+  A generated class which is used by the EditorListener class to
+  locate model element instances related to a change event.
+
+ModelAdapter.java
+  A generated class which defines a nested class for each OOA of OOA class
+  with a "Description" field or an "Action_Semantics" field. The nested
+  classes provides the following utility functions to allow for access to model
+  elements:
+  
+    EditorModelId getIdValue()    - gets the id for this instance
+    boolean evaluate(Object inst) - returns true if inst id matches this id
+    String getName(<class> obj)   - returns the instance's name, e.g., O_OBJ.Name
+
+DTE1.4 Description Editor extensions
+
+DescriptionAnnotationModel.java
+  The class that handles annotations and markers for a description.
+  The class extends the AbstractMarkerAnnotationModel class, and implements
+  all methods needed to update the markers associated with the placeholder file.
+  
+DescriptionEditor.java
+  The actual editor class for the Description Editor.  The class handles
+  creation, initialization, and disposal of the editor.
+  
+ShowDescriptionAction.java
+  This is the class that is the object contribution for the Description Editor
+  referenced in the plugin.xml file.  It starts an editor when requested by
+  the workbench.
+  
+DescriptionEditorInput.java
+  The editor input class for the Description Editor.  The getName method
+  returns the title for the description editor window.  The title
+  is the name of the thing being edited appended with ": Description".
+
+DTE1.5 Activity Editor extensions
+
+ActivityAnnotationModel.java
+  The class that captures annotations/markers for an action.
+  The class extends the AbstractMarkerAnnotationModel class, and implements
+  all methods needed to update the markers associated with the placeholder file.
+
+ActivityEditor.java
+  The actual editor class for the Activity Editor.  The class handles
+  creation, initialization, and disposal of the editor.  It also starts
+  a parse of the activity in a background thread each time the user makes
+  a change to the document.  If there is a thread already running from 
+  a previous change, that thread is interrupted and allowed to exit before 
+  the new thread is started.
+  
+ShowActivityAction.java
+  This is the class that is the object contribution for the Activity Editor
+  referenced in the plugin.xml file.  It starts an editor when requested by
+  the workbench.
+  
+ActivityEditorInput.java
+  The editor input class for the Activity Editor.  The getName method
+  returns the title for the description editor window.  The title
+  is the name of the thing being edited appended with ": Activity".
+
+TextParser.java
+  The TextParser extends OalParser; it overrides the implementation of
+  reportError.  This reportError implementation creates the appropriate
+  error message, then creates an instance of ActivityProblem, and adds it
+  to the activity's annotation model.
+
+DTE1.6 Activity Annotation extensions
+
+These files implement the functionality needed for highlighting errors
+in the action language after it has been parsed.
+
+IActivityProblemAnnotation.java
+  This interface defines operations that are valid on both the temporary 
+  ActivityProblemAnnotation and the permanent ActivityProblemMarker.
+  
+IActivityProblemReporter.java
+  This interface defines the operations that a class responsible for reporting
+  ActivityProblems must implement.
+  
+ActivityAnnotationAccess.java
+  This class implements the IAnnotationAccess interface, which provides access 
+  to information that is not available via the API of Annotation class.
+  
+ActivityAnnotationType.java
+  This utility class defines all the plugin specific names for the possible 
+  annotations (BOOKMARK, TASK, ERROR, WARNING, INFO, SEARCH) that can exist 
+  in the editor.
+  
+ActivityMarkerAnnotation.java
+  This class captures the Activity Editor specific behavior for a marker.  The
+  class extends the MarkerAnnotation class and implements IActivityProblemAnnotation
+  interface.
+  
+ActivityProblem.java
+  This class captures the information for a parse error of an action before the
+  action has been saved.  When the action is saved by the DocumentProvider class, 
+  all ActivityProblems are converted to markers by calling createMarker().
+  
+ActivityProblemAnnotation.java
+  This class captures the Activity Editor specific behavior for a problem.  The
+  class extends the Annotation class and implements IActivityProblemAnnotation
+  interface.
+
+
+DTE2.1   Support background compilation
+
+In order to have the activity editor be responsive to the user's typing,
+the compilation process occurs in a background thread, different from 
+the main UI thread.  The compilation process creates and deletes instances,
+and updates attributes, all of which cause model changed messages to be sent.
+These messages must be posted to the UI event queue when they are sent from
+non UI threads.  In order to post the event from a non UI thread, we must
+have a reference to the Display that the UI thread is using.  
+
+DTE2.1.1  The Ooaofooa class is changed to add a public static member
+m_display of type Display.  The ActivityEditor class sets the value of this
+data member before it starts the background parsing.
+
+DTE2.1.2  The function Ooaofooa.fireModelChange is modified to post an
+event to the UI event queue if the current thread is not the UI thread.
+
+DTE2.1.3  The parser rules are changed so that they are defined as 
+throwing the InterruptedException exception.  This exception is thrown
+when a thread is interrupted by another thread.  We need to define the rules
+as throwing the exception so that the functions executing the rules can
+catch the exception, and process it properly.
+
+DTE2.1.4  Since each model change message causes the ModelExplorer tree
+to flicker, the model changed listener for the tree is changed to only
+update the tree if the change occurred in a class that is displayed in the
+tree.
+
+DTE3.1  Add plugins to package
+
+The plugins com.projtech.bp.als.oal and com.projtech.bp.ui.text are added
+to the feature list for the BridgePoint product.  
+
+Work Required
+-------------
+
+DTE1.1 Editor extensions
+
+The plugin.xml file is generated by the archetype create_plugin_xml.arc
+The plugin file has the object contributions described in the design.
+
+DTE1.2 Navigating to correct meta-model inputs
+
+DTE1.2.1 The files clr_schema.sql and clr_pei.sql are created as described
+in the design.
+
+DTE1.2.2 In order to reuse the navigation chain generation code in 
+com.projtech.bp.ui.explorer, the archetypes in the explorer plugin are
+changed to add a parameter to indicate the path to the helper class
+used to parse the relationship chain.  In parse_chain.inc, the parameter 
+is added to all the functions defined in parse_chain.inc.  The parameter
+is actually used in the function parse chain, where the helper class is
+used.   The files create_adapters.inc and create_label_providers.inc 
+are dependent on parse_chain.inc, and all invocations of the functions
+have the new parameter added, with the value "./usr", which was the 
+path originally used.
+
+DTE1.3 Common Editor extensions
+
+TextPlugin.java
+  This class is the standard plugin class created by Eclipse.  The utility 
+  function public static void logError( String msg, Exception e ) is added 
+  to the class for logging errors to the error log.
+  
+DocumentProvider.java
+  This class extends FileDocumentProvider.  It provides the following functions:
+	  public DocumentProvider() - merely calls super constructor
+	  protected boolean setDocumentContent() - get data from either Descrip
+	     or Action_Semantics attribute, call super implementation
+      protected void doSaveDocument() - save data to model.  If this is an
+         Action_Semantics editor, create markers for any existing errors.
+	  protected IAnnotationModel createAnnotationModel() - create the
+	     appropriate annotation model for the editor (description or activity)
+  
+EditorListener.java
+  This class implements the Runnable interface.  It has a nested class
+  Listener that implements IModelChangeListener where all the work is done.
+  The main class merely implements run(), which creates an instance of
+  Listener to do the work. The Listener class implements the following:
+    public Listener() - does nothing
+    public void modelChanged(ModelChangedEvent e) - makes changes to placeholder
+       files (rename, delete) according to the event passed in.
+    private boolean createPlaceHolders() - creates instances of the PlaceHolder
+       class for use by the modelChanged function.  Returns false if the
+       resource path is invalid.
+
+EditorModelId.java
+  This class has no base classes or interfaces.  The class keeps an internal
+  list of the attribute values used to identify the instance.  The first
+  entry in the list is always the key letters of the class of the instance.
+  It is assumed that only the primary identifier is used.
+    
+  public EditorModelId() - does nothing
+  public EditorModelId(IFile file) - constructs the id values from the file
+  public void add(String s) - append s to the identifying value list
+  public String getId1Attr(int i) - return the i'th entry from the id list
+  public String getType() - return the keyletters (entry 0) of the instance
+  public boolean equals(EditorModelId other) return true if this == other
+  public void save(IFile file) - output the id to file
+
+  
+IPlaceHolder.java
+  This interface has no base interfaces. It defines the following:
+	  public final static int DESCRIPTION = 1;
+	  public final static int ACTIVITY = 2;
+	  public final String descriptionExtension = "dsc";
+	  public final String actionExtension = "oal";
+  
+	  public IPath createPlaceholderFile()
+	  public IResource findPlaceHolderFile()
+	  public boolean renamePlaceHolderFile()
+	  public boolean deletePlaceHolderFile()
+
+PlaceHolder.java
+  The class PlaceHolder implements the IPlaceHolder interface.
+  
+  PlaceHolder(final IPath sqlFolderPath, int editorType)
+  PlaceHolder(final IFile placeHolderFile, final IPath sqlFolderPath, int editorType)
+
+  public boolean renamePlaceHolderFile() - rename the file. Return true on success.
+  public IResource findPlaceHolderFile() - return resource for placeholder file
+    for model element.  May return null if no file exists.
+  public IPath createPlaceholderFile() - creates the file.  Throws PartInitException
+    on error.
+    
+  public boolean deletePlaceHolderFile() - delete the file. Return true on success.
+  public IFile getFile() - return the placeholder file
+
+  private boolean comparePlaceHolderFile() - return true if two placeholder
+    files reference the same model element
+  private IResource[] getFolderMembers() - return list of file folder entries
+  private final String makePlaceHolderFileName() - create a unique filename
+    for a model element.
+
+EditorConfiguration.java
+  This class extends the SourceViewerConfiguration class.  Both of the following
+  overridden functions return an instance of the EditorHover class:
+  
+	public IAnnotationHover getAnnotationHover()
+	public ITextHover getTextHover()
+
+EditorHover.java
+  This class implements both the ITextHover and IAnnotationHover interfaces.
+
+	public IRegion getHoverRegion(ITextViewer textViewer, int offset)
+	  - Create a Region instance with offset and length == 1
+	public String getHoverInfo(ISourceViewer textViewer, int lineNumber)
+	  - Create a Region instance for the given line, and pass to following
+	    function.
+	public String getHoverInfo(ITextViewer textViewer, IRegion hoverRegion)
+	  - Get hover text for specified region, if it exists.
+	public void setEditor(IEditorPart editor) - remember the editor this
+	  instance is associated with.
+
+EditorAnnotationIterator.java
+  This class implements the Iterator interface.  It can be configured to
+  skip irrelevant (as determined by the annotation) annotations.
+  
+	public EditorAnnotationIterator(IAnnotationModel model, boolean skipIrrelevants)
+
+	public boolean hasNext() - returns true if there's more
+	public Object next() - returns current instance and moves to next
+	public void remove() - throws an UnsupportedOperationException
+	private void skip() - moves to next in list
+
+
+EditorInput.java
+  This file is generated by the archetype create_editorinput_java.arc.
+  
+EditorStorage.java
+  This file is generated by the archetype create_editorstorage_java.arc.
+
+EditorListenerData.java
+  This file is generated by the archetype create_editorlistenerdata_java.arc.
+
+ModelAdapter.java
+  This file is generated by the archetype create_modeladapter_java.arc.
+  This class uses the Reflection interface to query classes in the OOA of OOA
+  for the "get_name" method when the attribute "Name" is not present.  
+  The get_name operation is implemented for the following classes:
+  	Attribute Reference In Object (O_REF)
+  	Cant Happen (SM_CH)
+  	Event Ignored (SM_EI)
+  	State Model Event (SM_EVT)
+  	Relationship (R_REL)
+  	External Entity Event (S_EEEVT)
+  	
+DTE1.4 Description Editor extensions
+
+DescriptionAnnotationModel.java
+  This class extends the AbstractMarkerAnnotationModel class.  It provides
+  a listener class to catch any changes to the annotation model.  It overrides the 
+  following functions:
+
+  protected void deleteMarkers(final IMarker[] markers)
+  protected boolean isAcceptable(IMarker marker)
+  protected void listenToMarkerChanges(boolean listen)
+  public IMarker[] retrieveMarkers()
+  protected void removeAllAnnotations(boolean fireModelChanged)
+  
+DescriptionEditor.java
+  This class extends the TextEditor class.  It provides a listener
+  to update the markers when the document changes.  It provides the
+  following functions:
+  
+  public void init(final IEditorSite site, final IEditorInput input)
+  public void doSetInput(IEditorInput e_input) throws CoreException
+  public void createPartControl(Composite parent)
+  public void dispose()
+  public boolean isSaveAsAllowed() - always returns false
+  
+  dispose() will only delete the placeholder file if there are no 
+  markers present.
+  
+ShowDescriptionAction.java
+  This class implements the IActionDelegate interface.  It overrides the 
+  following functions:
+  
+  public void run(IAction action)
+  public void selectionChanged(IAction action, ISelection selection)
+  
+DescriptionEditorInput.java
+  This class extends the FileEditorInput class.  It provides the following functions:
+
+  public DescriptionEditorInput(FileEditorInput input)
+  public DescriptionEditorInput(FileEditorInput fe_input, EditorInput e_input)
+
+  public static DescriptionEditorInput setInput(Object o_input)
+  public EditorInput getEditorInput()
+  public String getEditorId()
+  public String getName()
+
+  public IStorage getStorage() throws CoreException
+  public boolean exists() - always returns true
+  public Object getAdapter(Class adapter)
+  public void doSaveDocument(IProgressMonitor monitor, Object element,
+    IDocument document, boolean overwrite)
+  public String getToolTipText() - returns the result of getName()
+
+DTE1.5 Activity Editor extensions
+
+ShowActivityAction.java
+ActivityEditorInput.java
+
+These two classes offer the same functionality as their counterparts
+for Descriptions.
+
+ActivityAnnotationModel.java
+  The class that captures annotations/markers for an activity.
+  The class extends the AbstractMarkerAnnotationModel class, and implements
+  all methods needed to update the markers associated with the placeholder file.
+
+ActivityEditor.java
+  This class extends the TextEditor class.  It provides a listener
+  to update the markers and start a parse when the document changes.  
+  It provides the following functions:
+  
+  public void init(final IEditorSite site, final IEditorInput input)
+  public void doSetInput(IEditorInput e_input) throws CoreException
+  public void createPartControl(Composite parent)
+  public void dispose()
+  public boolean isSaveAsAllowed() - always returns false
+  protected IAnnotationAccess createAnnotationAccess()
+  
+  dispose() will only delete the placeholder file if there are no 
+  markers present.
+
+TextParser.java
+  Implemented as described in the design.
+
+DTE1.6 Activity Annotation extensions
+
+These files implement the functionality needed for highlighting errors
+in the action language after it has been parsed.
+
+IActivityProblemAnnotation.java
+  This interface defines the following operations:
+  
+  	ActivityAnnotationType getAnnotationType();
+
+	boolean isTemporaryProblem();
+	boolean isWarning();
+	boolean isError();
+
+	String getMessage();
+	boolean isRelevant();
+	boolean hasOverlay();
+	Iterator getOverlaidIterator();
+	void addOverlaid(IActivityProblemAnnotation annotation);
+	void removeOverlaid(IActivityProblemAnnotation annotation);
+	boolean isProblem(); - isError || isWarning
+  
+  
+IActivityProblemReporter.java
+  This interface defines the following operations:
+
+  void acceptProblem(ActivityProblem problem);
+  void beginReporting();
+  void endReporting();
+
+  
+ActivityAnnotationAccess.java
+  The class implements the following operations:
+
+  public Object getType(Annotation annotation)
+  public boolean isMultiLine(Annotation annotation) - always returns true
+  public boolean isTemporary(Annotation annotation) - returns true for Activity Annotations
+  
+ActivityAnnotationType.java
+  Implemented as described in the design.
+  
+ActivityMarkerAnnotation.java
+  This class extends the MarkerAnnotation class and implements the
+  IActivityProblemAnnotation interface.  It provides the following 
+  operations:
+  
+  public ActivityMarkerAnnotation(IMarker marker)
+  protected void initialize()
+  public String getMessage()
+  public boolean isTemporaryProblem() - always returns false
+  public boolean isProblem() - isError || isWarning
+  public boolean isRelevant()
+  public void setOverlay(IActivityProblemAnnotation actionAnnotation)
+  public boolean hasOverlay()
+  public ActivityAnnotationType getAnnotationType()
+  public boolean isError()
+  public boolean isWarning()
+  public void addOverlaid(IActivityProblemAnnotation annotation) - not supported
+  public void removeOverlaid(IActivityProblemAnnotation annotation) - not supported
+  public Iterator getOverlaidIterator() - not supported
+
+  
+ActivityProblem.java
+  This class has no base class or interface. It provides the following 
+  operations:
+  
+	public ActivityProblem(
+		String message,
+		int severity,
+		int lineNumber,
+		int start,
+		int end,
+		ActivityEditorInput actionEditorInput)
+	public String getMessage()
+	public int getSourceEnd()
+	public int getSourceLineNumber()
+	public int getSourceStart()
+	public boolean isError()
+	public boolean isWarning()
+	public IMarker createMarker()
+  
+ActivityProblemAnnotation.java
+  This class extends the Annotation class and implements the 
+  IActivityProblemAnnotation interface.  It provides the following
+  operations:
+
+	public ActivityProblemAnnotation(ActivityProblem problem)
+	public void paint(GC gc, Canvas canvas, Rectangle bounds)
+		- nothing is needed until quick fix/IMG_OBJS_FIXABLE_PROBLEM is supported
+
+	public ActivityAnnotationType getAnnotationType()
+	public boolean isTemporaryProblem() - always returns true
+	public String getMessage()
+	public boolean isRelevant() - always returns true
+	public boolean hasOverlay() - always returns false
+	public Iterator getOverlaidIterator()
+	public void addOverlaid(IActivityProblemAnnotation annotation)
+	public void removeOverlaid(IActivityProblemAnnotation annotation)
+	public boolean isProblem() - isError || isWarning
+	public boolean isError()
+	public boolean isWarning()
+
+DTE2.1   Support background compilation
+
+DTE2.1.1  The java.arc archetype is changed to add the new m_display data member 
+to the Ooaofooa (root) class. The ActivityEditor.java class is changed to set the 
+value of thedata member before it starts the background parsing.
+
+DTE2.1.2  In java.arc, the function fireModelChange is modified as described
+in the design.  We need the name of the root class (Ooaofooa) when generating
+other packages (Ooaofgraphics).  The color root_class (with the value "Ooaofooa")
+is added to the ooaofooa_package_spec.clr and ooaofgraphics_package_spec.clr
+files.
+
+DTE2.1.3  The grammar_enhancer.arc archetype is changed to add the
+InterruptedException exception to the parser rules.
+
+DTE2.1.4  The create_explorer_view.inc archetype is changed to generate
+the function boolean classInTree( Object o ), which returns true if the
+passed in class is shown in the tree.  The model changed listener is 
+modified to call this function before telling the tree to refresh.
+
+DTE3.1  Add plugins to package
+
+DTE3.1.1 The plugins com.projtech.bp.als.oal and com.projtech.bp.ui.text are added
+to the feature.xml file.
+
+DTE3.1.2 The project com.projtech.bp.ui.text is added to the MODULES symbol
+in create_nightly_build.sh. (com.projtech.bp.als.oal is already present)
+
+End
+---
+$Log: dedicated_text_editor.dnt,v $
+Revision 1.1  2009/09/03 18:24:28  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.10  2009/01/01 23:13:40  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.9.164.1  2008/12/31 16:10:55  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.9  2004/05/04 18:42:47  greg
+Job: 63
+Review changes made
+
+Revision 1.8  2004/05/04 00:31:34  greg
+Job: 63
+Started making review changes
+
+Revision 1.7  2004/04/29 20:47:22  greg
+Job: 63
+Add S_EEEVT to get_name list
+
+Revision 1.6  2004/04/29 18:48:59  greg
+Job: 63
+Add change to nightly build script
+
+Revision 1.5  2004/04/20 23:55:44  greg
+Job: 63
+Ready for review
+
+Revision 1.4  2004/04/19 22:46:51  greg
+Job: 63
+Continued changes
+
+Revision 1.3  2004/04/17 01:35:23  greg
+Job: 63
+Design almost done.
+
+Revision 1.2  2004/04/16 17:50:28  greg
+Job: 63
+Initial introduction
+
+Revision 1.1.2.1  2003/10/07 20:05:11  dougf
+job:59
+document the design
+

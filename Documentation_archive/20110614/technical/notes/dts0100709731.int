@@ -1,0 +1,116 @@
+========================================================================
+
+File:      $RCSfile: dts0100709731.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Upgrade old graphical data
+
+1. Abstract
+-----------
+This note describes the changes required to upgrade old graphical data that was
+created prior to the new GEF based graphics.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100709731
+
+4. Background
+-------------
+The GEF implementation of BridgePoint graphics requires that one side of a two
+connector connection always be the anchor host.  In the case of interfaces this
+is the Provided Interface.  In the case of subtype/supertype it is always the
+supertype, and it is always guaranteed that the model data is setup this way.
+With interfaces a user can drag and drop a provided interface over a required
+interface, in which case the graphical data is created (in the old graphics)
+such that the required interface was the anchor host.  Anchor host refers to the
+owner of the DIM_CON graphical instance.
+
+5. Design
+---------
+5.1 Add upgrade method
+
+A new method, upgradeGraphicalAnchors, shall be added to the
+com.mentor.nucleus.bp.io.core.ImportHelper class.  This method shall take the
+list of loaded graphical instances.  The given instances shall be iterated over
+looking for anchor hosts that have a target configured in the model data.
+Meaning that they do not own the DIM_CON instance that is between them and the
+connector on the other end.  When this case is found the method shall call on
+the common method, com.mentor.nucleus.bp.ui.graphics.commands.
+    						  CreateConnectionCommand.moveGraphicalConnectors(),
+passing both the anchor host and the connector at the other end.  This method
+will switch the ownership of the DIM_CON from the non-anchor host to the anchor
+host.
+
+In order to call this method the io.core plugin must depend on the ui.graphics
+plugin, and additionally the ui.graphics plugin must export the commands
+package.
+
+6. Implementation Comments
+--------------------------
+6.1 During testing several of the model recreation tests were failing in the 
+    Canvas CCP tests >  testRecreateModels suite.   One of the models was
+    Models_SF/wim3.xtuml.
+    The reason for the failures was that the wim3 SS in the model does not 
+    contain proper graphics.   A graphical element should always have an 
+    ElementSpecification instance associated and there are cases in this model
+    where that is not true..  If you try to open the wim3::Object 12 
+    Directional Reflexive::Instance State Machine diagram you will see 
+    an error that is similar.
+    Since this model has been around a very long time, to resolve this problem
+    the new upgradeGraphicalAnchors function was modified to check for a null 
+    ElementSpecification (instead of just assuming it was not null).
+    Note that this was done in the promotion workspace (not the branch).
+     
+
+7. Unit Test
+------------
+_- Create a model in the old graphics that has a requirement and a provision
+_- Drag and drop the provision over the requirement
+_- Export the model and import into the new graphics
+_R There diagram opens and does not hang
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.io.core/src/.../ImportHelper.java
+com.mentor.nucleus.bp.io.core/arc/gen_import_java.inc
+com.mentor.nucleus.bp.io.core/arc/import_functions.inc
+com.mentor.nucleus.bp.io.core/plugin.xml
+
+com.mentor.nucleus.bp.ui.graphics/META-INF/MANIFEST.MF
+
+End
+---
+
+$Log: dts0100709731.int,v $
+Revision 1.2  2010/08/13 19:41:54  rmulvey
+job:dts0100709731
+6.1 During testing several of the model recreation tests were failing in the
+    Canvas CCP tests >  testRecreateModels suite.   One of the models was
+    Models_SF/wim3.xtuml.
+    The reason for the failures was that the wim3 SS in the model does not
+    contain proper graphics.   A graphical element should always have an
+    ElementSpecification instance associated and there are cases in this model
+    where that is not true..  If you try to open the wim3::Object 12
+    Directional Reflexive::Instance State Machine diagram you will see
+    an error that is similar.
+    Since this model has been around a very long time, to resolve this problem
+    the new upgradeGraphicalAnchors function was modified to check for a null
+    ElementSpecification (instead of just assuming it was not null).
+    Note that this was done in the promotion workspace (not the branch).
+
+Revision 1.1  2010/08/05 21:37:31  tlondon
+Job: dts0100709731
+
+Introduce implementation note

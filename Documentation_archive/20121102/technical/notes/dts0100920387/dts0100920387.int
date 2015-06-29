@@ -1,0 +1,130 @@
+========================================================================
+
+File:      $RCSfile: dts0100920387.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Use workspace paths to create relative paths
+
+1. Abstract
+-----------
+This note describes the changes required to prevent incorrect relative path
+creation for proxy entries.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100920387
+
+4. Background
+-------------
+The Agilent models are kept in GIT.  When you import projects from GIT into the
+workspace they are not copied to the workspace folder.  This caused some issues
+with model data not being synchronized when expected.
+
+5. Requirements
+---------------
+5.1 The proxy path to an element should always be relative to the workspace
+paths.  Such paths should always be valid.
+
+6. Work Required
+----------------
+6.1 Use workspace paths to create relative paths
+
+The utility method, PersistenceUtil.createRelativePath(), takes a local and
+remote path and creates a relative path from the local file to the remote
+location.  To do this it currently uses the file system path.  This causes
+trouble when projects are not physically located under the workspace.  More
+specifically the trouble begins when the workspace path and project path
+segments are not the same length.  To address this the method is rewritten to
+work off of workspace paths ignoring where the project physically lives.
+
+In addition to the above we need to pass the workspace relative path during
+export to the utility method.  These changes are made to
+io.core/arc/export_functions.inc and io.mdl/arc/gen_stream_export.arc.
+
+The test implementation changes the UUIDs in a further test, specifically the
+StaleProxyTest class.  The expected results are updated to account for this.
+
+6.2 Trigger loading when traversing 8001 from a Package to an Interface
+
+Currently the tool will not load child interfaces when expanding a package.
+This is due to a missing special case in mfp_utils.inc which exist for all
+children of a package that are root elements of a file.  The missing entry is
+added for the C_I key letters.
+
+7. Implementation Comments
+--------------------------
+
+8. Unit Test
+------------
+8.1 Proxy path
+
+_- Create a workspace here: c:\workspace
+_- Create a project with an interface
+_- Close the workspace and create another here:
+      c:\workspaces\level_one\workspace
+_- Import the project into the workspace without checking the
+   "Copy into workspace" button
+_- Create a new project with a component that has a provision (IPRs enabled)
+_- Formalize the provision to the interface from the imported project
+_- Open the file and find the C_I_Proxy entry
+_R The path to the interface file is:
+   "../../../../../<project name>/<package name>/<interface name>/<interface name>.xtuml"
+
+8.2 Interface loading
+
+This cannot be manually tested.
+
+_- Load a project that contains an interface under a package
+_- Unload the interface PMC
+_- Run this accessor method:
+   Interface_c[] ifaces = Interface_c.getManyC_IsOnR8001(owningPkg);
+_R The ifaces variable is not empty
+
+_- Run all existing unit tests
+_R All tests pass
+
+9. Code Changes
+---------------
+Branch name: Review-dts0100920387
+
+com.mentor.nucleus.bp.core/com/mentor/nucleus/bp/core/util/PersistenceUtil.java
+
+com.mentor.nucleus.bp.core.test/com/mentor/nucleus/bp/core/test/
+	LazyLoadingTests.java
+com.mentor.nucleus.bp.core.test/src/CoreTestSuite2.java
+
+com.mentor.nucleus.bp.io.core/arc/export_functions.inc
+
+com.mentor.nucleus.bp.io.mdl/arc/gen_stream_export.arc
+
+com.mentor.nucleus.bp.io.mdl.test/src/com/mentor/nucleus/bp/io/mdl/test/
+	ProxyTests.java
+com.mentor.nucleus.bp.io.mdl.test/expected_results/watch_export.xtuml
+
+MC-Java/mfp_utils.inc
+
+End
+---
+
+$Log: dts0100920387.int,v $
+Revision 1.2  2012/10/11 19:57:40  tlondon
+Job: dts0100920336
+
+Complete code change section, add note about test results that were updated.
+
+Revision 1.1  2012/10/09 21:47:58  tlondon
+Job: dts0100920387
+
+Introduce note

@@ -1,0 +1,277 @@
+========================================================================
+
+File:      $RCSfile: dts0100598591.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Fix intermittent problems with multi component messages
+
+1. Abstract
+-----------
+Field feedback from our TME (no CQ issues raised) indicated multiple problems
+with running simple models with multiple components using inter-component
+communication. This note covers the problems identified and proposed fixes.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100598591 - Intermittent problems with multi component
+    messages.
+[2] cvs:\\Documentation\internal\technical\notes\i4018-i4020.dnt - Verifier
+    hangs during inter-component signaling - Pending events are not always being
+    unlinked correctly.
+
+4. Background
+-------------
+In the existing implementation, the method for sending messages for synchronous
+execution (i.e. interface operations and signals not assigned to state model
+artifacts) places a stack frame and associated argument data onto the running
+stack.
+
+This causes multiple intermittent random corruption of the target components
+stack. In the case of a simple no argument stack frame, it works reasonably
+reliably because of the short time to carry out the procedure and the
+synchronized access to the stack frame instance extent. However, when arguments
+are passed, the processing time increases until it is is highly probable that a
+corruption will occur.
+
+The corruption becomes apparent in one of two cases. One, when a remote
+component attempts to enqueue a synchronous message directly onto a local
+component at the same time as the local engine is attempting to manipulate its
+own stack in some way. This manipulation could be; attempting to grab a piece of
+passed data, return a value or just execute a void return. Secondly, when a
+remote process notifies its target before all the data has been computed and set
+up.
+
+A previous attempt has been made to address inter-component signaling issues,
+see [2]. As then, replacing some of the execution loop logic with one or more
+state machines was considered. There is no doubt that the execution logic is
+currently very hard to understand. However a state model which fits with the
+existing execution engine infrastructure would not contribute a great deal to
+the understandability or maintainability of the Verifier. This is because most
+of the complexity is due to the fact that the java stack unwinds right to the
+top after execution of every statement. This is true even when the statement
+involves invocation of another activity. Consider a statement like:
+
+ foo = bar.z()
+
+Execution is effectively suspended part way through the assignment statement and
+execution is restarted on the first line of the operation z(). Only when a
+return statement in z() is executed does the stack get popped and the assignment
+get completed. When bar.z() is replaced with a inter-component call, things
+become yet more complex. This is because in this case the execution engine must
+enter a wait state to allow the remote component to complete computation of the
+required value.
+
+Given the current Verifier design, the state machine needs to be at the root of
+the execution tree, i.e. The stack needs to unwind (as described above) back to
+a state action.
+
+The act of drawing a state machine would aid understanding, but introducing a
+state machine that is actually translated to support and control execution would
+require a much more extensive redesign of the Verifier execution engine. Such a
+significant redesign is not considered practical at this time.
+
+5. Analysis
+-----------
+5.1 Stack corruption
+The corruption occurs because data is being put onto the stack by one thread,
+while another thread is responsible for executing the same stack. Multiple
+methods were investigated to block the executing stack while this stack data
+manipulation was in progress, but none were successful at both locking the
+executing engine and preventing deadlocks.
+
+This problem can be resolved by preparing stack data in a separate data
+structure from the running stack and then allowing the executing thread to
+decide when it is ready to service the incoming data. This modification is
+required for both incoming calls and returned data values.
+
+An alternative strategy was looked at where each execution engine synchronized
+on its own stack each time it started executing a statement. Between statements,
+a remote component can grab access to the stack and put its data directly onto
+it. This strategy cannot work, because all engines must first lock their own
+stacks before starting to execute a statement. Only when the executing statement
+is a send message type is it possible to attempt to acquire the lock on the
+remote component's stack. This violates the concurrency rule that dictates that
+resources always be locked in the same order to avoid deadlock. The only way to
+avoid this would be to scan the OAL and determine which remote components could
+possibly require messages sent to them and acquire locks on all of them in the
+same order at the beginning. This would be both complex and potentially very
+slow. In an experimental model with messaging between components where A sends
+a message to component B and vice versa, the expected deadlocks were observed
+using an execution engine with this design.
+
+Having dismissed the possibility of locking the live stack, the only alternative
+is the one proposed, to lock a queue of incoming data and let the local engine
+take data off it as required.
+
+5.2 Reentrant blocking
+During investigation, it was found that the inter-component blocking mechanism
+was too simple. Any synchronous thread of control that caused execution to re-
+enter a component would cause a deadlock since the reentered component's engine
+was already blocked and could not execute the incoming inter-component call. It
+was considered that possibly a reentrant model such as this be considered
+illegal. However, the conclusion was that this would cause many support calls
+and was in any case an unnecessary restriction.
+
+This problem is resolved by following the solution to 5.1 and replacing java
+level wait calls added in the previous implementation with an extension to the
+existing Verifier blocking mechanism which does not block the java thread but
+instead allows the execution engine to idle and block under its own control.
+Thus any engine can be woken up to execute what it finds on its topmost stack-
+frame, even if a lower stack frame is blocked awaiting the results of a
+synchronous inter-component call. When the stack pops back to the blocked frame,
+the execution engine again enters its blocked state until notified that the
+result is ready (or another inter-component call needs to be serviced).
+
+It is now recognized that an engine can be blocked at more than one place in its
+stack and yet must be ready to execute new incoming calls. Consequently, the
+existing association R2965 between Stack Frame and Stack is no longer adequate.
+It is therefore moved to become a reflexive association between a Stack Frame
+(the blocked one) and another Stack Frame (the remote one being executed and on
+which the first frame is waiting). An engine whose top stack frame is associated
+with another remote frame is blocked and can enter its wait state. If another
+remote call arrives, the engine is notified and the enqueue() operation moves
+the incoming frame onto the top of the live stack and the engine, no longer
+considered blocked, now continues execution until the new stack frame is popped
+whereupon it reenters its blocked state. In this way, it is possible for a
+component to have an arbitrary number of blocked frames on its stack and only
+enters its blocked state when such a frame is found at the top.
+
+5.3 Early notifications
+It was noticed during investigation that remote component notifications were
+being sent before passed argument data was set up. Even with a separate queuing
+structure, this opens a window where the remote component wakes up and attempts
+to dequeue a call before the required data is present. All notifications will be
+moved to be the last thing carried out when executing a message send statement.
+
+5.4 Unsafe back pointer management
+Each java class generated by MC-Java declares two methods; setBackPointerRXXTo()
+and clearBackPointerRXXTo(). A typical method body looks like:
+
+public void clearBackPointerRXXTo(<ReferringType> target) {
+	int index = backPointer_<associationName>_RXX.indexOf(target);
+	if (index != -1)
+		backPointer_<associationName>_RXX.remove(index);
+	else {
+		System.out.println("back pointer not found on XX "
+					+ target.toString());
+	}
+}
+
+Error messages of the output string above are intermittently appearing in the
+console output. In addition, the error log contains Array Out of Bounds
+exceptions associated with this code.
+
+The reason these are observed is because this code is not thread safe. The
+back pointer storage field backPointer_<associationName>_RXX is of type
+java.util.ArrayList. This data structure is not thread safe, but even if it were
+changed to be so, the code above is still unsafe, because another thread may
+access the field after the index is taken on the first line. The window is
+small, but it is clearly being hit.
+
+This is causing memory leaks and in addition, the array out of bounds exception
+is causing Verifier flows of control to go uncompleted. These are causing un-
+predictable runtime errors.
+
+The solution is simple, wrap the bodies of both functions in with a
+synchronized(backPointer_<associationName>_RXX) block. This prevents another
+thread accessing the back pointer instance population while it is being
+adjusted. An analysis of calling methods shows that no other synchronization
+exists in the call tree so there is no risk of deadlock from this change.
+
+6. Work Required
+----------------
+6.1 Stack corruption
+6.1.1 Add new inter-component messaging queues
+For simplicity, Stack Frames can be used to hold the incoming and return data
+values. These are already used to hold stack call and return data, so the same
+infrastructure can be used to place inter-component values where the executing
+stack can find them. However, for the reasons given above [5.1 para1], these
+stack frames must not be placed onto the executing engines stack. Instead, two
+new associations, between Stack and Stack Frame are required. These will be used
+to hold incoming call data and return value data respectively. 
+
+6.1.2 Ensure thread safe queue access
+Two new operations will be added to Stack, enqueue() and dequeue(). Dequeue will
+be used by the executing engine to transfer call and return data onto the live
+execution stack. Enqueue will be used by the remote component to put such data
+into the queue.
+
+MC-Java will be modified to read a new marking 'synchronized:true' declared on
+operations on the meta-model. When MC-Java sees this marking, it will emit the
+'synchronized' keyword in the method signature. Both enqueue() and dequeue()
+will be marked 'synchronized:true'. This will prevent the executing thread from
+attempting to dequeue data while it is being written and will also ensure that
+concurrent access to the queues from different remote components is excluded.
+
+6.2 Reentrant blocking
+6.2.1 Remove the Execution Engine.wait() operation
+
+6.2.2 Move R2965
+This requires multiple cascade changes in the existing execution infrastructure.
+Probably the most significant is that Return Stmt.execute() can now use R2965 to
+locate the correct stack frame to which return data should be attached. The
+current execution mechanism assumes that data will always be associated with
+the top stack frame. This assumption is safe when the engine itself is blocked,
+but is not always the appropriate place when the engine is made fully reentrant.
+
+6.3 Move notifications
+This change is required in the following operations; Signal Invocation.execute()
+Interface Operation.execute() and Message Value.execute().
+
+6.4 Architectural thread safety change
+Modify MC-Java to wrap all back pointer accessors with a synchronized block as
+described above.
+
+6.5 Miscellaneous reliability changes
+A number of other smaller changes are proposed where they were noticed during
+investigation. These will be called out in the design note.
+
+7. Acceptance Test
+------------------
+Execute all known models, both component and non component, execute properly
+without losing stack data or deadlocking.
+
+End
+---
+
+$Log: dts0100598591.ant,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/07/29 18:17:40  campbell
+Job: dts0100598591
+Updated with thread safety architectural change.
+
+Revision 1.5  2009/07/28 13:08:55  campbell
+Job: dts0100598591
+Added state machine discussion.
+
+Revision 1.4  2009/07/27 15:18:35  campbell
+Job: dts0100598591
+Added reference to previous document.
+
+Revision 1.3  2009/07/27 14:37:47  campbell
+Job: dts0100598591
+Added description of failure modes.
+
+Revision 1.2  2009/07/27 14:26:41  campbell
+Job: dts0100598591
+Added description of an alternative strategy considered.
+
+Revision 1.1  2009/07/27 13:04:19  campbell
+Job: dts0100598591
+Introduced.
+

@@ -1,0 +1,162 @@
+========================================================================
+
+File:      $RCSfile: dts0100589055-dts0100589336-dts0100590397.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:08 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Address multiple minor issues, unique_id array assignment, remove
+Class in Engine from persistence hierarchy, Add IFile adapter to Canvas
+Document Input Provider.
+
+1. Abstract
+-----------
+In the wake of the 2.2 release, a few issues have surfaced that are user visible
+but which have relatively low risk fixes. This note describes how they will be
+addressed.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100589055
+[2] ClearQuest DEI dts0100589336
+[3] ClearQuest DEI dts0100590397
+
+4. Background
+-------------
+4.1 Unique_id array initialization
+This Verifier bug[1] makes an array of unique_ids look and partially behave like
+a single value.
+
+4.2 NPE during save when Verifier is running
+This Verifier bug[2] attempts to persist Class In Engine instances when a change
+is made during a Verifier session.
+
+4.3 Canvas open failure
+This builder bug[3] causes an NPE under certain circumstances when an attempt is
+made to open a diagram.
+
+5. Design
+---------
+5.1 Unique_id array initialization
+This defect has been around since arrays were introduced. Although the use of
+an array of unique_ids duplicates the association concept, there are a few cases
+(such as inter-component transfer vectors) where the concept is potentially
+useful. This observation plus the fact that it is a customer reported issue
+leads us to prioritize this issue.
+
+The problem is that the Instance.initialize() operation was too simplistic when
+deciding whether to initialize unique_id values. It previously simply looked at
+the data type to determine if it was a unique_id and if so, assigned a simple
+value based on an ascending value sequence. Clearly this will not work for an
+array, and the user visible initial symptom is the the Variables view
+incorrectly shows the array as if it had a single unique_id value. However,
+when an assignment is attempted, the state of the runtime value is not as
+expected for an array and many runtime errors start to be reported.
+
+A simple solution is adopted whereby only single valued unique_ids that
+participate in identifier sets are initialized. The only consistent alternative
+would be to initialize all unique_id values wherever they are found. This would
+require the design of a recursive descent initializer that could visit both
+array ranks and structured data type members. This more comprehensive approach
+will also have performance ramifications, so the simpler approach is adopted
+pending customer feedback.
+
+5.2 NPE during save when Verifier is running
+This issue occurs whenever a model is changed while it is being executed in
+Verifier.
+
+When the Instance::Class State Machine Execution subsystem was introduced, the
+markings used to suppress persistence component maintenance code were omitted
+from the subsystem Description field. MC-Java looks only to the immediate
+parent subsystem to determine whether it should generate this code. When
+Verifier is running, instances of Class In Engine exist which had incorrectly
+added persistence code. When this was activated, the persistence manager quite
+correctly fails to resolve the persistence hierarchy for a Class In Engine and
+a Null Pointer Exception is thrown.
+
+The solution adopted is to mark the Class State Machine Execution subsystem as
+non persistent like its parent subsystem, Instance. An alternative solution
+would have been to modify MC-Java to ascend the subsystem tree looking for any
+marks to apply. This solution is more robust but given its isolated requirement
+and the extra build time overhead incurred globally, the simpler solution looked
+preferable.
+
+This issue is prioritized because it is easy to hit for customers that are using
+Verifier a lot, and we know that some customers are currently in this category.
+
+5.3  Canvas open failure
+Under certain circumstances an issue is hit where the algorithm used to identify
+the correct editor to open was failing with a Null Pointer Exception deep inside
+the Eclipse editor resolution code. Although this issue has not been reported in
+the field, it has been seen by multiple team members. It is prioritized because
+once hit, there is no known workaround. The workspace must be discarded.
+
+The problem is caused by the fact that, somewhere along the Eclipse development
+path, the ManifestEditor began to assume that an IFileEditorInput can adapt
+itself to an IFile. This is a not unreasonable assumption, but while our
+CanvasEditorInput is a sub-type of FileEditorInput, it does not adapt itself as
+required.
+
+The fix is to implement the adapter pattern in CanvasEditorInput thus:
+
+  public Object getAdapter(Class adapter) {
+	if (adapter.equals(IFile.class)) {
+	  return getFile();
+	}
+	else {
+         return null;
+	}
+  }
+
+The previous implementation returned null, indicating that the adaption was not
+possible.
+
+No alternative fix was identified.
+
+6. Implementation Comments
+--------------------------
+None.
+
+7. Unit Test
+------------
+7.1 All existing unit tests must pass.
+
+7.2 Start a Verifier session call a function that creates some instances. Export
+the model. Ensure that the exported model contains I_INS instances and that all
+expected attribute values and link instances are present.
+
+8. Code Changes
+---------------
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Class State Machine Execution/Class State Machine Execution.xtuml
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/Instance/
+    Instance/Instance.xtuml
+
+com.mentor.nucleus.bp.ui.canvas/src/com.mentor.nucleus.bp.ui.canvas/
+    CanvasEditorInput.java
+
+End
+---
+
+$Log: dts0100589055-dts0100589336-dts0100590397.int,v $
+Revision 1.1  2009/09/03 18:21:08  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/06/02 10:18:04  campbell
+Job: dts0100589055
+Address review minutes.
+
+Revision 1.1  2009/05/29 12:13:54  campbell
+Job: dts0100589055
+Introduced.

@@ -1,0 +1,446 @@
+========================================================================
+
+File:      $RCSfile: dts0100732862.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Reconcile the model compilers and create clean working branches (Nov 2010)
+
+
+1. Abstract
+-----------
+There are a number of different open model compiler branches.  Some have 
+functionality that should be propagated to the others.  This note describes 
+the work performed to reconcile the various branches.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100732862
+[2] ClearQuest DEI dts0100702911 - GPS Watch using SystemC
+[3] svn://tucson.wv/arch1/products/tiger/doc_repository/trunk/Models/Demo/avpace
+
+4. Background
+-------------
+4.1  There are a number of open branches:
+        SycC (Sony) - R303CDS616739
+        C poly-array - R323CDS698353
+        SysC (MDT) - R315CDS616739
+        rootC - R315CDS580444C
+        C++ - R315CDS580444
+
+4.2  The MC-3020 model compiler has recently undergone some improvements.  These
+     improvements need to pushed into the other MCs.  The SysC model compilers 
+     are both still under active development, as is the C++ MC.
+      
+5. Analysis
+-----------
+5.1  We need to create new working branches for rootC, C++, and Medtronic
+     SystemC.  These branches should be based on the HEAD version of the C model
+     compiler.
+     
+5.2  Once the new branches are created, compare the files in each and find out
+     what files are shared among all three.  This will give us an idea of how
+     big the "common base" is among our model compiler versions.
+     
+6. Design
+---------
+6.1  For each model compiler, the work done is to create the new branch recon-
+     ciling merge conflicts.  Then use the new branch archetypes to build
+     the MicrowaveOven and GPS Watch test models.  Work through code generation
+     issues, then work through code compilation issues.  Here is recorded the
+     notes on merge conflicts that were encountered as well as the changes made
+     to fix target code compilation issues (marked with "s" for "solution").
+     
+6.2  SKBCPP201011 (C++/R315CDS580444 merged into C/HEAD at Root_SKBCPP201011)
+  - q.class.events.arc: showed as merge conflict.  Diff view showed some changes
+    to merge in, which I did.  Left with some changes in 
+    TE_EVT_ReceivedEventDataDeclaration where it looks like HEAD moved and C++ 
+    didn't.  Left HEAD code in place.
+  - q.mc_metamodel.populate.arc: showed as merge conflict.  Diff view showed
+    some changes to merge in, which I did.  Left with one change in 
+    MC_metamodel_populate where it looks like HEAD moved and C++ didn't for an 
+    inst_ref datatype declaration.  Left HEAD code in place.
+  - q.smt.generate.arc: showed as merge conflict.  Diff view showed some changes
+    to merge in, which I did.  Left with some changes where it looks like HEAD
+    moved and C++ didn't for an inst_ref datatype declaration.  Left HEAD code
+    in place.
+  - t.smt.c: showed as merge conflict.  Merged in change to comment out
+    ARCH::shutdown().  Left remaining difference to fix typo in attribute name.
+    
+  Problems:
+  ---------
+  - Invalid includes in sys_types.h
+    o Due to change in sys_util.arc in DeclareDomainIdentityEnums. New function-
+    ality wants to use te_c.module_file instead of "<te_c.Name>_classes"
+    - Need to find out where te_c.module_file is set up.  It is assigned in
+      q.mc_metamodel.populate.arc to te_c.Name
+    - The change to use te_c.module_file is tied to the sysc model compiler.
+      The sysc mc has an entirely different q.components.arc than the cpp mc.
+      The syc mc emits to te_c.module_file.h, but the cpp mc does not, hence
+      the invalid includes.
+    s The change I made is to modify sys_util.arc to use te_c.classes_file
+      instead of te_c.module_file.
+     
+  - Class/Module name scoping applied to the domain function definitions in
+    <domain>_functions.cc.
+    o In t.domain.function.c, the function definition specifies te_aba.scope in
+      front of the domain function.  This is invalid in the cpp MC as there is
+      top-level class/module as there is in the sysc mc.  The change appears to
+      have been incorrectly promoted from the sysc mc to the cpp mc.
+    s Remove te_aba.scope in front of function definition in t.domain.function.c
+      Since this was the only change in the file, I just restored the file to
+      the root version from the branch.
+     
+  - Invalid call to Escher_ClassFactoryInit() in sys_main.cc.
+    o sys factory operations are now contained in a class named sys_factory in
+      the cpp mc.
+    s Added hard-code "sys_factory::" in t.sys_main.c in 
+      ApplicationLevelInitialization() like there is in the sysc mc
+     
+  - Building GPS Watch, getting error: bad include System_sys.h
+    o q.class.arc has ClassAddIncludeFiles(), this has a stanza brought in from
+      the sysc mc to include <tm_build_pkg.package_obj_name>.h
+    o Some of the uses of TM_BUILD look to be sysc specific that were pushed up
+      into the cpp branch.  These are the uses of 
+      tm_build.package_[obj|inst]_name
+      - package_inst_name only used in action in 
+        q.class.arc::ClassAddSystemExterns()
+      - package_obj_name used in:
+        o q.class.arc (2 places)
+        o q.packages.arc (1 place)
+    o q.packages.arc is currently merged in, but it is never used in the cpp mc
+    s remove q.packages.arc from new cpp branch
+    s revert functionality in q.class.arc::ClassAddIncludeFiles() to c mc func-
+      tionality, and modify CreateObjectImplementation() to remove sysc specific
+      externs generation.
+     
+  - Building GPS Watch, getting error: storage class specified for 
+    Tracking_TrackPoint_R2_Link_follows
+    o The function is declared as an extern.  It appears that it should be a
+      static like is done in t.class.relate_assoc.h.
+    o The only relationship type that is properly set up as a class operation is
+      the simple one (t.class.relate_simple.[h|c]).  All the other types still
+      specify extern global functions.
+    s Modify the relate functions to set up all relate/unrelate types as proper
+      class operations
+     
+  - In Tracking_ports.cc, error accessing LOG operations because LOG_bridge.h is
+    not included.
+    s This issue went away when I fixed the following issue.
+    
+  - In *_ports.[h|cc], class operations are named with <Component>::<op>.  This
+    does not cause a compile error, but looks pretty wierd.  It would be better
+    if it was more like the C MC and used <Component>_<op>.
+    o te_aba.GeneratedName is set to the name value passed into FactoryTE_ABA
+    s Changed q.mc_metamodel.populate.arc::FactoryTE_MACT() to set the generated
+      name with underscore instead of ::.  Basically reverting to C mc function-
+      ality rather than the change used in sysc MC
+     
+  - In HeartRateMonitor_HeartRateMonitor_class.cc, the interface operation that
+    is invoked via SEND on line 58 is missing the class name scoping for the
+    port class.
+    s Modified q.smt.generate.arc on lines 866 and 896 to add the scoping to
+      the interface signal/operation name used. Modified q.component.arc line
+      136 to add the scoping to the name used.
+     
+  - In Tracking_TrackLog_class.cc, there is a call to Tracking_UTIL_getDistance()
+    that is not properly scoped to use the Tracking class from Tracking_ports.h.
+    o The issue appears to be due to the fact that this usage is in an assign
+      statement that captures the return value of the interface operation.  In
+      other places where interface operations are used, the code is generated
+      correctly.
+    o This code is generated by t.smt.c::t_oal_smt_assign instead of
+      t_oal_smt_iop
+    s Modify q.val.translate.arc::q_val_message_value to add the scoping spec-
+      ification to the name.
+     
+  - Tracking_ports.cc has build errors about LOG functions not being declared
+    s Modified q.components.arc to call invoke includes = 
+      ClassAddIncludeFiles(component).
+      Then modified t.component/ports.c to reference the includes.body.
+     
+6.3 SKBrootC201011 (rootC/R315CDS580444C merged into C/HEAD at 
+    Root_SKBrootC201011)
+  - q.smt.generate.arc: showed as merge conflict.  Diff view showed some changes
+    to merge in to use te_tfr instead of o_tfr, which I did.  Other diffs are
+    added inst_ref handling on the HEAD side which I left in.
+    NOTE: There is a change on the original rootC side in q_smt_generate_event
+        that I left out of the merge, but need to investigate more.  It is
+        related to poly-morphic event handling.    
+  - t.smt.c: showed as merge conflict but wasn't really. The only shown diff is
+    a fixed typo in attribute name.
+
+  Problems:
+  ---------
+  - t.domain_init.h (21 and 29), no TE_TARGET is available
+    s Modified q.mc3020.arc.  Pulled in the TE_TARGET factory function declara-
+      tion and invocation from the C++ branch. Modified it for C code gen
+      instead of C++.
+     
+  - t.domain_classes.h: 26:  ERROR:  Expected '->' in Instance Chain 'te_target'
+    s Modified q.domain.classes.arc to select the new te_target instance so it
+      can be used by this template file.
+
+     
+6.4  SKBSysC201011b (SysC (MDT)/R315CDS616739 merged into CPP/SKBCPP201011 at 
+     Root_SKBSysC201011b)
+  - q.class.arc showed as merge conflict.  There are no actual conflicts.  The
+    SysC branch adds some functionality that I merged in.
+  - q.class.events.arc showed as merge conflict. The conflict is in some event
+    handling in TE_EVT_ReceivedEventDataDeclaration.  The base version changes
+    are newer than the branch changes, so this merge conflict is ignored.
+  - q.component.arc showed as merge conflict. Showed significant differences due
+    to new AUTOSAR VFB stuff in the base.  I have removed this code from the
+    new SysC branch.
+  - q.components.arc showed as merge conflict. Showed significant differences due
+    to new AUTOSAR VFB stuff in the base.  I have removed this code from the
+    new SysC branch.
+  - q.mc_metamodel.populate.arc showed as merge conflict. The conflict is on the
+    naming used for an interface message.  I went with the code from the SysC
+    branch.
+  - q.mc3020.arc showed as merge conflict.  There were just some naming changes
+    to use "sysc" instead of "sys".  These were pulled into the new branch.
+  - q.smt.generate.arc showed as merge conflict. The SysC branch has changes for
+    the handling of interface signals and operations.  I used the SysC branch
+    code where conflicts occurred. It also showed some places where the base
+    moved since the SysC branch was created.  These were left alone.
+  - q.val.translate.arc showed as merge conflict. There is SysC-specific code
+    in the branch for the handling of intercomponent messages.  I copied the
+    changes from the SysC branch into the new branch.
+  - sys_util.arc showed as merge conflict. The SysC branch uses the module file
+    name in a place where the CPP branch uses a different file name.  Merged in
+    the SysC change.
+  - sys.arc showed as merge conflict. There were several changes that were clean
+    merges and one conflict.  The SysC code is used in all cases.
+  - t.component.port.c showed as merge conflict. This file now exists in the
+    CPP base but is not needed in SysC.  Removing the file from the new SysC
+    branch.
+  - t.component.port.h showed as merge conflict.  This file now exists in the
+    CPP base but is not needed in SysC.  Removing the file from the new SysC
+    branch.
+  - t.component.ports.c showed as merge conflict. This file now exists in the
+    CPP base but is not needed in SysC.  Removing the file from the new SysC
+    branch.
+  - t.component.ports.h showed as merge conflict.  This file now exists in the
+    CPP base but is not needed in SysC.  Removing the file from the new SysC
+    branch.
+  - t.domain_classes.h showed as merge conflict.  The file is used a bit diff-
+    erently in the SysC MC.  The way it is included it does not need the header
+    comment blocks that are in the base.  Merged in the removal of those.
+  - t.domain_datatypes.h showed as merge conflict.  The base had an include for
+    the <component>_ports header which is not needed in SysC and is removed.
+  - t.domain_init.h showed as merge conflict.  The file provides significantly
+    different functionality between the SysC and C++ MCs.  Used the SysC branch
+    code exclusively. *** NOTE: there is an if test that has an added check
+    against sm_asm in the base which should perhaps be brought into the new
+    branch.  Not sure if the te_sm check used in the SysC branch code covers 
+    it.***
+  - t.package.module.h showed as merge conflict. This looks like the CPP base
+    uses sc_module.  Perhaps this file is never included/generated against. In
+    either case, the sysc version is what we want and is merged in. 
+  - t.sys_events.h showed as merge conflict. There were just some sysc changes
+    to merge in.
+  - t.sys_main.c showed as merge conflict. This file is not used in the SysC MC.
+    It is replaced by t.sysc_main.c.  I removed the file.
+  - t.sys_tim.c showed as merge conflict.  There were SysC changes to merge in,
+    no pure conflicts.  However, there is some commented code in the tick
+    function that should be revisited at some point.  I marked it with a TODO.
+  - t.sys_types.h showed as merge conflict.  There base changed in the same
+    location as an SysC change was made causing the merge conflict.  I just
+    merged in the SysC change as appropriate.
+  - xtumlmc_schema.sql showed as merge conflict. There is a swapping of the
+    order of Obj_ID and Attr_ID attributes of ACT_DAB. The base version is the
+    correct one, so this merge conflict is ignored.
+
+    Problems
+    --------
+    - There are many issues encountered when you try to build the GPS Watch 
+      SystemC code.  There is an existing open issue to get this to work [2].
+    - There were no problems when building the Medtronic avpace test model [3]
+      generated code using:
+        g++ -I. -I/c/lib/systemc-2.2.0/include/ -c *.cc
+        g++ *.o -L/c/lib/systemc-2.2.0/lib-cygwin/ -lsystemc
+    
+6.5 Common files
+    I performed directory diffs between the C, C++, and SysC model compilers.
+    I then took one set of identical files and grepped the other comparison logs
+    looking for matches. It turns out that there are just under 100 files that
+    are common (identical) between all three model compilers right now.  They
+    are:
+    frag_util.arc
+    m.bridge.arc
+    m.class.arc
+    m.datatype.arc
+    m.domain.arc
+    m.event.arc
+    m.registry.arc
+    model.mc3020_meta.arc
+    q.assoc.pseudoformalize.arc
+    q.class.cdispatch.arc
+    q.class.factory.arc
+    q.class.link.arc
+    q.class.pei.arc
+    q.class.persist.arc
+    q.class.poly.arc
+    q.class.sem.arc
+    q.class.sm_sm.arc
+    q.class.where.arc
+    q.classes.arc
+    q.datatype.arc
+    q.domain.analyze.arc
+    q.domain.bridges.arc
+    q.domain.datatype.arc
+    q.domain.datatypes.arc
+    q.domain.limits.arc
+    q.oal.analyze.arc
+    q.oal.test.arc
+    q.oal.translate.arc
+    q.parameters.arc
+    q.utils.arc
+    readme.txt
+    t.class.attribute.mda.c
+    t.class.attribute.mda.h
+    t.class.cdispatch.c
+    t.class.cdispatch.h
+    t.class.event.h
+    t.class.extent.c
+    t.class.extent.h
+    t.class.idispatch.c
+    t.class.idispatch.h
+    t.class.link.h
+    t.class.ops.c
+    t.class.reset_refs.c
+    t.class.select_where.c
+    t.class.select_where.h
+    t.class.sem.state_action_array.c
+    t.class.sem.state_names.c
+    t.class.sem.txn_action_array.c
+    t.class.set_refs.c
+    t.ee.c
+    t.ee.h
+    t.event.sand.c
+    t.s_sdt.h
+    t.sm_sm.c
+    t.smt_sr.chainto1.c
+    t.smt_sr.chaintom.c
+    t.smt_sr.deallocate_set.c
+    t.smt_sr.declare_ref.c
+    t.smt_sr.declare_set.c
+    t.smt_sr.init_set.c
+    t.smt_sr.many_astob1.c
+    t.smt_sr.many_astob1where.c
+    t.smt_sr.many_astobm.c
+    t.smt_sr.many_astobmwhere.c
+    t.smt_sr.many_atob1.c
+    t.smt_sr.many_atob1where.c
+    t.smt_sr.many_atobm.c
+    t.smt_sr.many_atobmwhere.c
+    t.smt_sr.multi_many_astob1.c
+    t.smt_sr.multi_many_astob1where.c
+    t.smt_sr.multi_many_astobm.c
+    t.smt_sr.multi_many_astobmwhere.c
+    t.smt_sr.multi_oneany_astob1.c
+    t.smt_sr.multi_oneany_astob1where.c
+    t.smt_sr.multi_oneany_astobmwhere.c
+    t.smt_sr.oneany_astob1.c
+    t.smt_sr.oneany_astob1where.c
+    t.smt_sr.oneany_astobm.c
+    t.smt_sr.oneany_astobmwhere.c
+    t.smt_sr.oneany_atob1.c
+    t.smt_sr.oneany_atob1where.c
+    t.smt_sr.oneany_atobm.c
+    t.smt_sr.oneany_atobmwhere.c
+    t.smt_sr.result_ref_init.c
+    t.smt_sr.result_set_init.c
+    t.smt_sr.start_many.c
+    t.smt_sr.start_one.c
+    t.sys_ilb.c
+    t.sys_nvs.c
+    t.sys_persist.c
+    t.sys_sets.c
+    t.sys_threadautosar.c
+    t.sys_threadnuke.c
+    t.sys_threadosx.c
+    t.sys_threadposix.c
+    t.sys_threadwin.c
+    t.sys_xtumlload.c
+
+6.6  To take advantage of the commonality of files, we reworked the way the 
+     model compilers are stored in CVS.
+6.6.1  A new project is created in CVS called "mc".  It contains an "arc/" 
+       folder, which contains a "specialized/" folder.
+6.6.2  The arc/ folder contains all the top-level common archetypes.  
+6.6.3  The specialized/ folder is branched.  Each branch contains the flavor-
+       specific archetypes for various model compilers.  For example:
+           specialized/ (HEAD) - Contains the MC-3020 C-specific files
+           specialized/ (rootcSKB732862) - Contains the rootC-specific files
+           specialized/ (cppSKB732862) - Contains the C++-specific files
+           specialized/ (syscSKB732862) - Contains the SystemC-specific files 
+
+6.7  xtumlmc_build
+6.7.1  In the case that the user has a source model compiler, xtumlmc_build must
+       now handle the archetypes properly if the user is using a new-style arc/
+       folder that contains a specialized/ subfolder.
+6.7.2  If the user is using a new-style arc/ folder, the script will copy all 
+       the archetypes from arc/ and arc/specialized/ into code_generation/arc/.
+6.7.2.1  The script must work properly called from eclipse as well as when
+         running from the command-line.
+    
+6.8  generator binary model compiler
+6.8.1  The creation of the binary model compiler inside gen_erate.exe must now
+       support the new mc project based archetypes.
+6.8.2  The xtumlmc_cplusify_archetypes.pl must be extended to support the case 
+       where the arc/ folder being processed contains a specialized/ subfolder.
+6.8.2.1  If the subfolder exists, all of the arcs in the parent and child
+         folders will be copied to a new directory under the temporary build
+         area.  Processing will then proceed as normal using the new temporary
+         arc/ folder rather than the one originally specified. 
+6.8.3  The create_bp_build script pulls together the pieces that are used to
+       build generator.  This script now supports a command line parameter that
+       the user specifies to indicate if the script should get the archetypes 
+       from the model_compilers project or the new mc project.  It then calls
+       xtumlmc_cplusify_archetypes.pl with the appropriate source directory.
+    
+7. Design Comments
+------------------
+
+
+8. Work Required
+----------------
+The work performed is detailed above.
+
+9. Unit Test
+------------
+
+End
+---
+
+$Log: dts0100732862.dnt,v $
+Revision 1.4  2011/01/04 22:30:36  kbrown
+job:dts0100732862
+Updated design note to include changes for xtumlmc_build and build scripts for gen_erate.exe.
+
+Revision 1.3  2010/11/30 17:38:42  kbrown
+job:dts0100732862
+Updated DNT.
+
+Revision 1.2  2010/11/30 17:07:22  kbrown
+job:dts0100732862
+Updated DNT.
+
+Revision 1.1  2010/11/25 02:29:34  kbrown
+job:dts0100732862
+Created DNT shell.
+

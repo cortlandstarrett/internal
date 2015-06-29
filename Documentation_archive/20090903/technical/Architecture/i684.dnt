@@ -1,0 +1,372 @@
+========================================================================
+
+File:      $RCSfile: i684.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Modifying the Tiger Codebase to Operate on Multiple Loaded Domains
+
+Abstract
+--------
+This describes the modifications necessary to make the bulk of the Tiger
+codebase domain-agnostic in its operation.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 561 - the parent issue of this one
+
+Background
+----------
+Most of the Tiger codebase assumes that only one domain can be loaded into the
+product at any given time.  Such code must be changed to allow for the existence
+of multiple domains, and to know at call time on which domain it should operate.
+
+Analysis
+--------
+Presently, each domain in a system is associated with an Ooaofooa
+object (informally known as a "model-root") which holds the instances of the 
+model elements within that domain.  Most of the current Tiger codebase,
+when it goes to operate on elements within a domain, retrieves a default 
+Ooaofooa instance, expecting it to be the only one that has been instantiated.
+This is because just one domain may currently be loaded at a time.  
+With the presence of multiple loaded domains, the same code must now ask for 
+the specific Ooaofooa instance on which it wishes to operate.  
+
+Design
+------
+1.
+All calls to Ooaofooa.getDefaultInstance() are replaced with 
+calls and/or variable references which resolve to a non-default
+model-root.
+
+1.1
+The calls to Ooaofooa.getDefaultInstance() in bp.als/grammar_enhancer.arc
+are simply removed, as they were present only to provide a model-root on which
+to operate when none had previously been specified.  Such behavior is no longer
+permitted.
+
+1.2 
+The calls to Ooaofooa.getDefaultInstance() in the test packages are replaced 
+with calls to bp.test.common.BaseTest's getDefaultTestInstance(), which returns
+a different default root intended specifically for use by legacy test cases. 
+Operating on this separate root ensures that the tests and the code 
+they exercise are not dependent on instances present in (what was) the 
+standard default root.  The affected calls are in the following files/classes:
+
+bp.als.oal.test
+	OalParserTest, ParseAllInDomain, TestParser
+bp.compare.test.cases
+	CompareSQLFilesTest, I495HierarchyComparisonTest
+bp.convertmodels
+	ConvertModels
+bp.core.test
+	create_action_test.arc, create_dispose_test.arc, gen_delete_test.arc,
+	gen_Formalize_tests.arc, AddRemoveDataItemsTest, AssignClassTest,
+	AssignRemoveEvents, AttributeMenuItemTest, CantHappenEvtIgnoreEvtTests,
+	DerivedAttributeTest, GetNameTest, NumberingTest
+bp.internal.io.sql.test
+	InternalIOTest	
+bp.io.mdl.test
+	IOMdlTest, IOMdlNestedTest, IOMdlUtilities	
+bp.io.sql.test
+	IOTest
+bp.test
+	Util
+bp.ui.canvas.test
+	CanvasTest, CanvasTestUtilities, CreationTransitionTest, ErrorPathsTest,
+	OpenCanvasEditor
+bp.ui.explorer.test
+	ExplorerTest
+bp.ui.properties.test
+	create_view_test.arc
+	EnumRangeTest
+	IsAllowedTypeTest
+	NumberRangeTest
+bp.ui.text.test.activity	
+	ActivityEditorInteraction
+	OpenActivityEditor
+	ParseActivity
+bp.ui.text.test.description	
+	DescriptionEditorInteraction	
+	OpenDescriptionEditor
+	
+1.3 
+Certain calls to Ooaofooa.getDefaultInstance() are replaced with calls 
+to retrieve the model-root associated with the current selection.  These 
+calls are in the following files/classes:
+
+bp.core
+	page.inc
+bp.internal.io.sql
+	EEExportPage, EEExportWizard, EEImportWizard, FunctionExportWizard,
+	FunctionImportWizard
+bp.io.mdl
+	ModelExportWizard			
+bp.io.sql
+	BPSQLExportWizard	
+bp.ui.text
+	ParseAllActivitiesAction
+	
+bp.core's wizard.inc is modified to provide a getter method for the selection 
+that was in effect when the current wizard was started.
+
+Similarly, bp.io.core's CoreExportWizard and CoreImportWizard are modified 
+to allow subclasses access to the selection that was in effect when the 
+current wizard was started.
+
+Code is removed from CoreImportWizard that deleted the contents of the 
+default domain upon an import, since the program should now allow 
+multiple domains to be in memory at once.
+	
+1.4
+Unused calls to Ooaofooa.getDefaultInstance() are removed from the
+following files/classes:
+
+bp.core
+	wizard.inc
+bp.io.core
+	sql_insert.g	
+MC-Java
+	java.arc	
+
+1.5
+In bp.internal.io.sql's gen_dt_import_java.arc, which generates the 
+ImportDataTypeHandler class, and also in its subtypes ImportEESql and 
+ImportFunctionSql, a distinction is made between the model-root 
+into which the instances to import are temporarily loaded,
+and the model-root which is the target of the import operation.  
+Calls to Ooaofooa.getDefaultInstance() are removed and replaced
+with references to the target model-root.
+
+1.6
+In bp.ui.canvas's Cl_c class, the Getinstancefromooa_id method is changed
+to take a model-root parameter instead of calling Ooaofooa.getDefaultInstance().
+The calls to this method in bp.io.core's CoreImport are updated to 
+supply the model-root parameter.
+
+1.7
+In bp.ui.canvas's CanvasEditor class, calls to Ooaofooa.getDefaultInstance()
+are replaced by a reference to the model-root of the model element being 
+edited.  
+
+1.8
+A method addModelChangeListenerToAll is added to Ooaofooa to attach a given 
+model-change-listener to all existing and future instances of the
+Ooaofooa class.  Code fragments that were adding a model-change-listener to the
+default model-root are changed to call this method, instead, in the following 
+files/classes:
+
+bp.ui.canvas
+	CanvasPlugin
+	ModelContentOutlinePage
+bp.ui.explorer
+	create_explorer_view.inc
+	
+A method removeModelChangeListenerFromAll is also added to Ooaofooa 
+to remove a given listener from all extant Ooaofooa instances.  Code
+fragments that were removing a model-change-listener from the default 
+model-root are changed to call this method, instead, in the same  
+files/classes as in the above list.
+
+Additionally, a method doNotAddGlobalModelChangeListenersTo(String id) 
+is added to Ooaofooa to allow clients to specify model-roots that should not be 
+included in those affected by addModelChangeListenerToAll.  This makes 
+sense for model-roots under which self-contained operations are performed
+that the rest of the program doesn't need to be informed of,
+such as those done by the Compare functionality.
+
+1.9
+In bp.ui.properties's BuildPropertySource.arc, calls to 
+Ooaofooa.getDefaultInstance() are replaced by a reference to the model-root 
+of the model element whose properties are sought.  
+
+1.10
+In bp.ui.text's EditorListener, a call to Ooaofooa.getDefaultInstance()
+is replaced by a reference to the model-root associated with the incoming
+model-change event.  A method is added to MC-Java's java.arc to 
+query the model-change event for its associated model-root.
+
+1.11
+In bp.ui.text's create_editorinput_java.arc, a getter method is added to 
+retrieve the model-root associated with the editor input.  This method 
+is used by the same project's ActivityEditor to replace a call to 
+Ooaofooa.getDefaultInstance().
+
+1.12
+In bp.ui.text.activity's ActivityEditorInput, a call to 
+Ooaofooa.getDefaultInstance() is replaced by a reference to the model-root 
+associated with model element being edited, when such an element is given.
+
+An analogous change is made to bp.ui.text.description's DescriptionEditorInput.
+
+2.
+Calls to the OalParser constructor which does not take an Ooaofooa model-root 
+parameter are changed to call the constructor which does require that parameter 
+to be given.  These calls are in:
+
+bp.als.oal.test
+	OalParserTest, ParseAllInDomain, TestParser
+	
+3.
+The CorePlugin.hookListeners() method in bp.core's create_core_plugin_class.arc
+is removed, as the PropertyViewListener it added to the default Ooaofooa 
+instance is now added to each Ooaofooa instance upon its construction.	
+
+4.  
+The management of which model elements are currently selected is moved out
+of the Ooaofooa class and into a newly-created bp.core.ui.Selection class, 
+since a selection may now span multiple domains.  The Selection class
+contains a singleton from which the current selection may be retrieved.
+Calls to the selection-reporting functionality which are changed to reflect
+this refactoring are in the following files/classes:
+
+bp.core
+	create_global_action.inc, create_object_action.inc, create_rename_action.inc
+	PropertyViewListener
+bp.core.test
+	create_action_test.arc, gen_delete_test.arc, gen_Formalize_tests.arc,
+	AddRemoveDataItemsTest, AssignClassTest, AssignRemoveEvents,
+	AttributeMenuItemTest, CantHappenEvtIgnoreEvtTests
+bp.io.mdl.test
+	IOMdlUtilities	
+bp.ui.canvas
+	CanvasEditor	
+	Cl_c
+	ModelContentOutlinePage
+	ShowCanvasAction
+bp.ui.canvas.test
+	CanvasTestUtilities
+	ODMSTest
+bp.ui.explorer
+	create_explorer_view.inc	
+bp.ui.explorer.test
+	ExplorerTest
+bp.ui.text
+	ActivityEditor
+bp.ui.text.activity
+	ParseAllActivitiesAction
+bp.ui.text.description
+	DescriptionEditor
+	
+The Selection class is added to those in bp.core's generate.xml that are 
+not to be cleaned.	
+
+5.
+In bp.ui.explorer's create_content_provider.inc and create_explorer_view.inc, 
+the root of the model explorer tree is changed to be the map of all Ooaofooa 
+instances, as the tree is now required to display multiple domains at once.  
+This is a temporary solution expected to be replaced by other work done for [1].
+
+6.
+Unused constructors are removed from bp.ui.text.activity's TextParser, 
+as they merely called the ANTLR-generated constructors for 
+TextParser's superclass, OALParser.  These generated constructors are
+marked as ones that should no longer be called, since they do not provide
+a model-root parameter on which the parser should operate.
+
+Design Comments
+---------------
+1.
+This issue does not consider the work that needs to be done to allow 
+the proper functioning of Tiger operations which affect multiple domains
+at once.
+
+2. 
+A class bp.internal.tools.process.CodeChangesScraper was created that 
+captures the contents of the Synchronize view and outputs them in a form 
+compatiblewith the Code Changes section of an implementation note.  This 
+was done to help automate completion of that section for this and future issues.
+
+More specifically, the tool iterates through the Synchronize view's tree, 
+looking for leaf nodes.  When it finds one, it builds the entry for the
+code change corresponding to the leaf by concatenating the leaf's associated 
+file name with the text of its ancestor nodes in the tree, starting from 
+the root.  Team labels and other adornments shown by the Synchronize view 
+are omitted from the entry's text.
+
+Code change entries are produced by this tool in the following format:
+
+[project name]/[file path within project]/[file name]
+
+For example, the following hierarchy for a changed file
+
++ com.projtech.bp.test M7-JBM-i684 [phoenix]
+	+ src
+		+ com.projtech.bp.process
+			+ CodeChangesScraper.java 1.1.2.7 (ASCII -kkv)
+			
+produces the entry
+
+com.projtech.bp.test/src/com/projtech/bp/process/CodeChangesScraper.java
+
+Lines that are longer than eighty characters are broken into two lines at 
+the last slash before the line limit.  A blank line is inserted between each
+project's group of code changes, in order to delineate the groups.
+
+bp.internal.tools represents a new plug-in, for which the standard plug-in
+infrastructure files were created.  Its plugin.xml file was modified 
+to add a view-action to invoke this new functionality.
+
+Work Required
+-------------
+There is no work required beyond that specified in the Design section.
+
+Unit Test
+---------
+The current set of Tiger unit tests, when geared to operate on a domain other
+than that which has served as a default until now, should be sufficient to 
+exercise the changes made and to confirm that the system still operates 
+as expected. 
+
+End
+---
+
+$Log: i684.dnt,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.50.1  2008/12/31 16:10:24  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2005/02/03 17:10:07  jmather
+Job: 684
+Updated to reflect that the CodeChangesScraper functionality is now part of a new plug-in, bp.internal.tools
+
+Revision 1.5  2005/02/03 00:00:06  jmather
+Job: 684
+Addressed review minutes comments.
+
+Revision 1.4  2005/01/31 23:43:46  jmather
+Job: 684
+Added a design comment about the new CodeChangesScraper functionality.
+
+Revision 1.3  2005/01/28 23:10:42  jmather
+Job: 684
+Final draft.
+
+Revision 1.2  2005/01/28 19:03:04  jmather
+Job: 684
+Full first draft.
+
+Revision 1.1  2005/01/27 23:54:44  jmather
+Job: 684
+Partial first draft.
+

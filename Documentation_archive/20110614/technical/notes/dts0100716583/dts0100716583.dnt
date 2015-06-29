@@ -1,0 +1,340 @@
+========================================================================
+
+File:      $RCSfile: dts0100716583.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Possible access to non-existing dimensions in arrays
+
+
+1. Abstract
+-----------
+There are some cases where the array dimension count validation is not done
+properly,which causes the possibility for accessing non-existing dimension
+in the array. This document describes how to resolve this.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100716583 - Possible access to non-existing dimensions 
+	in arrays
+[2] oal.bnf
+	\com.mentor.nucleus.bp.als.oal\bnf\oal.bnf
+[3] ArrayTest.java
+	\com.mentor.nucleus.bp.als.oal.test\src\com\mentor\nucleus\bp\als\oal\test\
+	TestArray.java
+	
+4. Background
+-------------
+Value::getDimension() operation is used to validate the dimension count 
+for an array and return an integer value that represents the difference between
+the count of declaration dimensions and the count of reference dimensions. 
+
+The return value :
+a. equals zero for valid dimension count.
+	e.g. arr[1][2] = 1;
+	     arr[0][0] = 1; 
+
+b. less than zero if the array is declared with less dimensions count than 
+   that is used in the reference.
+    e.g. arr[1][2] = 1;
+	     arr[0][0][0] = 1; // One extra dimension
+
+c. greater than zero if the array is declared with more dimensions count than
+   that is used in the reference.  
+	e.g. arr[1][2] = 1;
+	     arr[0] = 1;	// One dimension is missing.	 
+
+The return integer value can be represented as : 
+          return  declarationDimensionCount - referenceDimensionCount 
+
+5. Analysis
+-----------
+5.1 When new transient variable is created , it does not have a data type or 
+	dimension instances associated with it, and the transient variable gets them
+	from the right hand side of the assignment statement.
+	
+	This is unlike all other kinds of variables such as Attribute/Parameter, 
+	where the user set their data type and dimension through the user interface.
+	
+	This special case for transient variable declaration is implemented in 
+	separate code path that only executes when create new variable of transient 
+	variable.
+
+5.2 OAL Validation Functions::Assignment_expr_end() (revision 1.54, line no. 111) 
+	
+	There is no checking done on "numDimensions" value, which allows an invalid
+	dimension count for right value not to be reported as parser error.
+
+...
+...
+elif ( rval.isElementCountValid() )
+	// Its a simple data type. Hook up the data type to the correct
+	select one trn related by lvar->V_TRN[R814];
+	relate lvar to val_dt across R848;
+	relate lval to val_dt across R820;
+	numDimensions = rval.getDimensions();  <- The validation for 'numDimensions'
+											is missing.
+	i = 0;
+	while ( i < numDimensions )
+		// Resize each dimension
+		elementCount = rval.getArrayLength(dimension:i);
+		lvar.resizeDimensions(dimension:i, elementCount:elementCount, 
+												numDimensions:numDimensions);
+		i = i + 1;
+	end while;
+...
+...
+
+5.3 The invalid dimension count for right value is not detected as well for 
+	expression rule ( named in the oal.bnf [2] as "expr").
+
+e.g.	a= 1;
+	  	b= a[1]+a[2];  // Bug : no parser error for the invalid dimension count  
+e.g.  	a= 1;
+		if ( a[1]+a[2] == 1) // Bug : no parser error for the invalid dimension 
+	  						//	count
+	  	end if;
+	  	
+	Note that in the previous examples, " a[1]+[2] " is translated by Parser as 
+	'expr' rule.
+		
+5.3.1 OAL Validation Utility Functions::Binary_operation_validate(),
+												(revision 1.45, line no. 22)
+	
+	  the if-statement condition can be evaluated with true if the both values 
+	  of lhs_val.getDimensions() and  rhs_val.getDimensions() are equal to each 
+	  other even if both reports invalid dimension count.
+...
+...
+else
+	if lhs_val.getDimensions() != rhs_val.getDimensions()
+		ERR::reportParseError(msg:"Incompatible array depth for operands " +
+										lhs_val.Text + " and " + rhs_val.Text,
+										token: param.a6_rule_token );
+	end if;
+	select one lhs_val_dt related by lhs_val->S_DT[R820];
+	
+...
+...
+
+	e.g.	a= 1;
+			c= 1;
+	  		b= a[1]+c[2];
+	
+	For "a[1]+c[2]" validation : 
+	- lhs_val.getDimensions() returns -1, where lhs_val represents a[1]
+	- rhs_val.getDimensions() returns -1, where rhs_val represents c[2] 	
+	since both getDimensions() invocations return the same value, this 
+	considered as valid code, which should not happen.
+
+
+5.4 According to the  OAL grammar, it is valid to use less dimensions count in 
+	the reference than that in the declaration.
+
+	.e.g array[4][4]=1;
+  	temp = array[3]; 
+
+ 	In the previous example, 'temp' variable is created as integer array with 
+ 	single dimension of length equals 4.
+
+5.5 The only case that is considered as a parser error, is when dimensions count
+	in the reference is greater than that in the declaration. Recalling the 
+	return integer value equation for  getDimensions() in [4] :
+		return  declarationDimensionCount - referenceDimensionCount 
+  	This means that if getDimensions() returns a negative integer value, then 
+  	there is parser error, else the code has no dimension counts parser error.
+	
+6. Design
+---------
+6.1 Change OAL Validation Functions::Assignment_expr_end() as follows
+Before : 
+...
+...
+else
+	elif ( rval.isElementCountValid() )
+		// Its a simple data type. Hook up the data type to the correct
+		select one trn related by lvar->V_TRN[R814];
+		relate lvar to val_dt across R848;
+		relate lval to val_dt across R820;
+		numDimensions = rval.getDimensions();
+		i = 0;
+		while ( i < numDimensions )
+			// Resize each dimension
+			elementCount = rval.getArrayLength(dimension:i);
+			lvar.resizeDimensions(dimension:i, elementCount:elementCount, 
+													numDimensions:numDimensions);
+			i = i + 1;
+		end while;
+...
+...
+
+After:
+...
+...  
+else
+	numDimensions = rval.getDimensions();
+	if (  numDimensions < 0 )
+		assign_ok = false;
+		if ( numDimensions == -1)
+			err_msg = "The rvalue has one more dimension than the definition";
+		else
+			numDimensions = numDimensions * -1;
+			err_msg = "The rvalue has " + GD::int_to_string(value:numDimensions) + 
+				          " more dimensions than the definition";
+		end if;
+	elif ( rval.isElementCountValid() )
+		// Its a simple data type. Hook up the data type to the correct
+		select one trn related by lvar->V_TRN[R814];
+		relate lvar to val_dt across R848;
+		relate lval to val_dt across R820;
+	
+		i = 0;
+		while ( i < numDimensions )
+...
+...
+	
+6.2 Change OAL Validation Utility Functions::Binary_operation_validate() as 
+	follows :
+
+Before:
+...
+...
+else
+	if lhs_val.getDimensions() != rhs_val.getDimensions()
+		ERR::reportParseError(msg:"Incompatible array depth for operands " +
+										lhs_val.Text + " and " + rhs_val.Text,
+										token: param.a6_rule_token );
+	end if;
+	select one lhs_val_dt related by lhs_val->S_DT[R820];
+	
+...
+...
+
+After:
+...
+else	
+	if lhs_val.getDimensions() < 0
+        	ERR::reportParseError(msg:"The rvalue has incompatible array depth", 
+                                                   token: param.a6_rule_token ); 
+    elif rhs_val.getDimensions() < 0
+          ERR::reportParseError(msg:"The rvalue has incompatible array depth", 
+                                                   token: param.a6_rule_token );
+        
+    elif rhs_val.getDimensions() != lhs_val.getDimensions()
+          ERR::reportParseError(msg:"Incompatible array depth for the operands", 
+                                                   token: param.a6_rule_token );
+        end if;
+    select one lhs_val_dt related by lhs_val->S_DT[R820]; 
+...
+...          
+          
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Fully outlined in the design section
+
+9. Unit Test
+------------
+9.1 All JUnit test must pass.
+9.2 (This manual test is automated in [3])
+_- Create new xtUML project.
+_- Add new xtUML model to it
+_- Add new Function package inside this model.
+_- Add new function "test" in the previous created function package.
+_- Copy/Paste this code in the function "test" body 
+
+arr[5] = 1;
+temp = arr[3];
+temp1 = arr;
+//temp2 = arr[2][2]; // Parser error : The rvalue has one more dimension than the definition 
+//temp3 = arr[2][2][1]; // Parser error : The rvalue has 2 more dimensions than the definition
+arr2[4][4] =1;
+//temp4 = arr2[2]+arr2[2][3]; // Parser error : Incompatible array depth for the operands
+temp5 = arr2; 
+temp6 = arr[3] + arr[3];
+//temp7 = arr[3][2] + arr[3]; // Parser errpr : The rvalue has incompatible array depth
+
+   
+//temp8 = arr[1][1] + arr[1][1]; // Parser error : The rvalue has incompatible array depth
+//temp9 = arr[1][1] + arr; // Parser error : The rvalue has incompatible array depth
+//temp10 = arr[1][1] * arr[1][1]; // Parser error : The rvalue has incompatible array depth
+//temp11 = arr[1][1] + 2; // Parser error : The rvalue has incompatible array depth
+
+if ( arr[2] == 5)  
+end if;
+if ( arr[2]+arr[1] == 5) end if;
+//if ( arr[1][2] == 5) end if; 
+							/* Parser error : 
+								Multiple markers at this line
+  							- unexpected token: ;
+  							- expecting TOK_RPAREN, found 'end'
+							- The rvalue has incompatible array depth 
+  								*/	
+//if ( arr == 5)  end if;// Parser error :  
+							/* Parser error : 
+								Multiple markers at this line
+  							- unexpected token: ;
+  							- expecting TOK_RPAREN, found 'end'
+							- The rvalue has incompatible array depth 
+  								*/	
+
+_- un-comment the first commented line.
+_R parser error with same expected error message
+_- re-comment the line.
+
+_- do the previous three steps from each commented line in the code.
+
+End
+---
+
+$Log: dts0100716583.dnt,v $
+Revision 1.8  2010/11/03 17:09:15  nmohamad
+job:dts0100716583
+Reference to the test automation in the Unit Test section and Document references
+
+Revision 1.7  2010/11/03 11:52:58  nmohamad
+job:dts0100716583
+Addressing the review minutes
+
+Revision 1.6  2010/11/02 14:49:26  nmohamad
+job:dts0100716583
+- Remove extra text in History
+- add 5.5 and 5.6 in the analysis section
+- fix design issue for dimension count in design section
+- update test result in test unit section
+
+Revision 1.5  2010/11/01 19:29:20  nmohamad
+job:dts0100716583
+Fix the error messages and the test result.
+
+Revision 1.4  2010/11/01 17:31:54  nmohamad
+job:dts0100716583
+typo fixing
+
+Revision 1.3  2010/11/01 17:30:34  nmohamad
+job:dts0100716583
+addressing Bob feedback.
+
+Revision 1.2  2010/11/01 16:16:20  nmohamad
+job:dts0100716583
+Add test section and refine the document.
+
+Revision 1.1  2010/11/01 14:53:28  nmohamad
+job:dts0100716583
+Creating
+

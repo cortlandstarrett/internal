@@ -1,0 +1,119 @@
+========================================================================
+
+File:      $RCSfile: i398.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Unrelate R5 when removing an associative link from a canvas
+
+Abstract
+--------
+Connector dispose should look for connectors it is connected to and unrelate
+them from their segment across R5. This note addresses making this change.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 398.
+
+Background
+----------
+The OAL for Connector.move traverses R5 to discover if an associative connector
+must also be moved. Currently disposing a connector that ends on another does
+not remove the R5 association link, so the Connector.move OAL finds a segment
+across R5 to which _should_ be connected an associative connector, the code
+assumes that the associated connector exists but this was already disposed.
+
+Implementation
+--------------
+We could add an if not_empty test to the move code so that no attempt to
+manipulate the attached connector is made unless it is found. However, there may
+well be other places that make this assumption. It is much better to unlink the
+target segmement from the target connector across R5 when disposing the
+connector so that the data structures are kept consistent.
+
+The following OAL is added to Connector.dispose just before the final delete
+statement:
+
+select one endsOnCon related by endElem->GD_CON[R2];
+if (not_empty endsOnCon)
+  select one endsOnSeg related by endsOnCon->GD_LS[R5];
+  unrelate endsOnCon from endsOnSeg across R5;
+end if;
+
+This first of all looks to see if the element that this connector ends on is
+itself a connector. If it is, it traverses to the segment and unrelates it.
+
+Unit Test
+---------
+_- Open ODMS
+_- Delete Disk Ownership Class
+_- Attempt to bend the association R2
+_R No NPE reported at Connector_c.Move line 1979
+
+Implementation Comments
+-----------------------
+The test number differed from the expected, test 110 rather than 84.
+Canvas Editor Interaction in HEAD is missing several calls to tests in
+its test result creation method. Since the results for these tests are
+checked into HEAD, they must have been created OK, but the actual code to call
+them was never checked in. This is not a serious problem and is rectified here.
+
+Code Changes
+------------
+com.projtech.bp.ui.canvas/mdl/ooaofgraphics.bak
+Initial Version: 1.43             Final Version: 1.44
+
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_110/
+                                                                      1048578-5
+Introduced: 1.1
+
+com.projtech.bp.ui.canvas.test/expected_results/CanvasEditor_odms_test_110/
+                                                                  1048578-5.jpg
+Introduced: 1.1
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                    CanvasEditorInteraction.java
+Initial Version: 1.10             Final Version: 1.12
+
+End
+---
+$Log: i398.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/01/01 23:13:06  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.4.152.1  2008/12/31 16:10:09  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.4  2004/10/14 03:52:44  greg
+Job: 398
+Fixed typo in CanvasEditorInteraction.java
+
+Revision 1.3  2004/10/14 00:16:43  campbell
+Job: 398
+Ready for review.
+
+Revision 1.2  2004/10/13 22:44:55  campbell
+Job: 398
+Clarified where the new OAL will be added.
+
+Revision 1.1  2004/10/12 22:16:01  campbell
+Job: 398
+Introduced.

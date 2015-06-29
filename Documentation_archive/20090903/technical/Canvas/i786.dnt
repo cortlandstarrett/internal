@@ -1,0 +1,168 @@
+========================================================================
+
+File:      $RCSfile: i786.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Fix problems when replacing models
+
+Abstract
+--------
+This note describes several fixes for problems noted when replacing a
+project with one that doesn't have the same data in it.
+
+History
+-------
+
+final i786-032505-01.rvm
+
+Document References
+-------------------
+Issue 786
+
+Background
+----------
+The issue describes two problems associated with replacing a project with
+a different version that doesn't have a model file while data for that model
+is being displayed.
+
+Analysis
+--------
+There are two problems:
+
+- NPE in Get_compartment_text
+
+The canvas is being redrawn for a Datatype Package Diagram for a domain
+that no longer exists.
+
+- Resource /ut1/mdl does not exist.
+
+The mdl directory doesn't exist in the newly loaded version of the project.
+The code in findPlaceHolderOfDeletedModelElement doesn't check that the 
+directory is there before trying to access it.  This is the only place
+in the PlaceHolder class where this check is not performed.
+
+Design
+------
+
+1.  Fix canvas redraw problems
+
+1.1  Add check for data existing
+
+In the CanvasEditor paint listener, a check is added at the beginning to 
+verify that what this diagram represents is still present.  If it isn't then
+the listener returns immediately.  Eventually the diagram editor will be closed
+by a model change message from the resource listener.
+
+1.2  Add null pointer checks in client callback methods.
+
+Even with the tests added by section 1, the diagram can be asked to paint
+before the represents() element is deleted, but after some data in that
+element has been deleted.  In this case, the Domain instance is still present,
+but the data type data has been disposed.   The following client callback
+methods are searched for any select statements where the result is not 
+checked to be non-empty.  Note that we still must check the result even for
+cases where the relationship conditionality is unconditional, since the redraw
+is occurring during model deletion, when the model is in an inconsistent state.
+
+get_compartments - no selects or selects are checked
+
+get_compartment_text - no selects or selects are checked, except:
+	CoreDataType
+	EnumerationDataType
+	ExternalEntity
+	ModelClass
+	StateMachineState
+	Subsystem
+	UserDataType
+
+get_connector_text - no selects or selects are checked, except:
+	ClassAsSupertype
+	DerivedAssociation
+	LinkedAssociation
+	SimpleAssociation
+
+get_style - no selects or selects are checked
+
+get_entries - no selects or selects are checked, except:
+    EnumerationDataType
+    
+get_text_style - no selects or selects are checked
+
+
+2. Add check for mdl folder existing
+
+The method PlaceHolder.findPlaceHolderOfDeletedModelElement() is updated to
+check that the mdl folder exists before accessing it.
+
+
+Design Comments
+---------------
+
+Work Required
+-------------
+1.  Fix canvas redraw problems
+
+1.1  Add check for data existing
+
+The change is made to CanvasEditor.java, as described in the design.
+
+1.2  Add null pointer checks in client callback methods.
+
+The changes are made to ooaofooa.mdl (and .bak).  All methods where there
+is an unchecked select are updated to add checks for the select(s).
+
+The reflection code in Cl_c.java is refactored so that there is only
+one place where the reflection error messages are generated.  These error
+messages are then changed to use CanvasPlugin.logError() instead of 
+Ooaofgraphics.log.println().
+
+2. Add check for mdl folder existing
+
+The change is made to PlaceHolder.java as described in the design.
+
+Unit Test
+---------
+
+_- Use test model ut1 (see i767.int)
+_- Use Debug with NPE detection
+_- Replace with Branch M8-GBR-i767
+_- Open Datatype Package
+_- Replace with HEAD
+_R No NPE is reported
+_R There are no errors in the error log
+
+
+End
+---
+
+$Log: i786.dnt,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:05  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.40.1  2008/12/31 16:10:08  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/03/29 01:50:10  greg
+Job: 786
+Add history
+
+Revision 1.1  2005/03/24 20:01:37  greg
+Job: 786
+ready for review
+

@@ -1,0 +1,277 @@
+========================================================================
+
+File:      $RCSfile: dts0100580448.ant,v $
+Version:   $Revision: 1808 $
+Modified:  $Date: 2012-06-14 08:21:31 -0700 (Thu, 14 Jun 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+BridgePoint Merge
+
+1. Abstract
+-----------
+This note analyzes the requirements to support merging of xtUML model changes.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100580448
+    Model Merge
+[1] ClearQuest DEI dts0100769602
+    SVN branch merging needs to be added to BridgePoint
+[3] Documentation/external/requirements/SRS_ModelMerge.docx [requirements]
+
+4. Background
+-------------
+BridgePoint supports comparision of model changes.  This is supported for all
+team providers, local history, and selected files.  The comparison does not
+however allow differences to be merged or copied between the two difference
+panes.  Additionally, the compare functionality is not well maintained and is
+thus not robust.
+
+*. Requirements
+---------------
+See [3].
+
+5. Analysis
+-----------
+5.1 Compare
+
+The eclipse compare window consists of a two or three pane editor and an
+additional structure comparison window when applicable.  In the two pane cases
+the left side pane is the source for comparison and the right pane is the target
+for comparison.  The third pane exists when merging conflicts, it is intended
+for showing a common ancestor between the left and right changes.
+
+BridgePoint currently supports the structure comparison, and a two pane
+comparison where the differences are listed as text.  The two pane comparison is
+done by building a text version of the model trees (source and target), and
+performing a textual compare of the two trees.  These two textual trees are
+dynamic and non-writable.  Here is an example of the text from a textual tree:
+
+Model Class
+  Class Name : Condition
+  Class Number : 3103
+  Class Key Letters : BP_CON
+  Class Description : 
+  Attribute
+    Attribute Name : Breakpoint_ID
+    Description : 
+    Attribute Name Prefix : 
+    Attribute Root Name : Breakpoint_ID
+    Prefix Mode : 0
+
+This approach allowed us to provide some basic compare functionality with
+minimal work.  It is however not the ideal solution, as users do not view the
+model as text in other cases and definitely not in this tree format.
+
+For consistency and for selectable elements we shall implement a real tree view
+for each pane. 
+
+5.1.1 Model Tree
+
+The trees shall be nearly identical to that of the Model Explorer tree.  The
+differences being that all elements that are comparable need to show, e.g.,
+Associations.
+
+Typed elements must additionally show the type that they are assigned.  An
+example of such a typed element is Attribute.  In the tree this type shall be
+appended to the name as follows:
+
+<elementParent>
+	<element> : <elementType>
+	
+For the Attribute case the tree would contain this:
+
+A Class
+	An Attribute : string 
+
+
+Attributes that are user modifiable for an element shall be listed as children
+to that element.  The attribute used to display the text of the element in the
+tree shall be excluded as a child.  This attribute is shown by the text for the
+element's tree item.
+
+Elements which connect two other elements together (like Associations) must also
+show the two elements as children.  This allows the user to see changes to the
+start or end of the connector element.  This will not be of much use until
+retargeting is supported, but it shall be supported anyway. 
+
+An alternative to the above, where showing the attributes and connected elements
+as children, is to provide a new tab on the comparison panes.  This is what is
+done for the EMF compare, where properties are compared in a separate tab.  For
+BridgePoint this tab could contain all user modifiable attributes, and connected
+elements.  This approach was not considered as it is less user friendly than one
+single tree.  Additionally, the ooaofooa does not contain elements with an
+overwhelming amount of user modifiable attributes.
+
+5.1.2 OAL and Descriptions
+
+OAL and Description comparisons are special as they can contain multiple lines.
+Thus a tree is not really an ideal way of comparing the OAL and Description
+data.
+
+To support OAL and Description comparisons we shall show a difference for the
+owning element of the OAL or Descrip attributes.  When such a difference is
+opened, via double click or a context menu, a new compare dialog shall open.
+This dialog shall be a simple text comparison which shall show the textual
+differences for each version of the OAL or Description data.  The OAL comparison
+dialog's two panes shall be fully capable OAL editors, this includes parsing and
+keyword hightlighting.
+
+If an element contains a change in both types (OAL and Description) the tool
+shall default to an OAL comparison dialog.  Leaving the user to use the context
+menu to display the Description comparison dialog.
+
+5.1.3 Difference highlighting
+
+Obviously showing the two different trees is not enough for a valid comparison.
+Each difference must be highlighted.
+
+For highlighting the tool shall find the differences between the two trees.  For
+each difference the tool shall highlight it in the following manner:
+
+- If non existent a line shall exist between the previous and next element
+- If existent a square around the element with a line attached to the other
+  difference shall exist
+- If a simple difference the square color shall be grey
+- If during merge and incoming the square color shall be blue
+- If during merge and outgoing the square color shall be grey
+- If during merge and a conflicting change the square color shall be red
+
+If a difference contains multiple children in an addition, all new elements
+under the root difference shall be highlighted together.
+
+In the OAL and Description comparison dialog the highlighting shall be identical
+to that of the default eclipse text comparison panes.
+
+5.2 Merge
+
+To successfully merge changes a user must be able to transfer changes from one
+side of the compare to another.  Additionally the user must be able to resolve
+changes that result in conflicts.
+
+5.2.1 Change Resolution
+
+In order to support copying changes from one side to the other we shall enable
+the default eclipse compare toolbar actions.  These are:
+
+Copy All Non-Conflicting Changes From Right to Left
+Copy All Non-Conflicting Changes From Left to Right
+Copy Current Change From Right to Left
+Copy Current Change From Left to Right
+
+The Right to Left actions above shall always be enabled, unless the compare is
+of two remote files in which case none of the actions are enabled.
+
+The Left to Right actions are enabled only if the right version is not from a 
+remote file.
+
+Each action shall perform the necessary changes to the target (that being either
+left or right) model.  When a change is transfered from one side to another the
+compare editor shall be marked dirty.  The changes shall be undoable.  Once the
+user saves the changes each side that was modified shall be exported to
+overwrite the original model (as compare works on a temporary copy of the
+original).  Persisting these changes will require a utility that can find the
+original model file for replacement and must use the non-stream based
+persistence classes (the same ones used for normal tool persistence).
+
+The same actions must exist in the compare dialog that shall be opened for OAL
+and Descriptions.  This dialog shall mark the compare editor dirty if changes
+are made inside of it.
+
+5.2.2 Conflict Resolution
+
+In order for a user to properly address conflicts they must be able to manually
+modify the elements.  For textual based comparisons this is not a problem, as
+you can manually modify the text within the compare window.  For structural
+based conflicts the tool would need to have full editing behavior built into the
+compare editor.  While this is possible it is not ideal.  At this point we shall
+disable the Copy actions when dealing with a structural conflict.  Leaving the
+user to view the comparison, along with the common ancestor, for helping with a
+decision of what changes to make.  They shall make these changes in the normal
+tool views and editors.  After which they can re-compare and mark the change as
+merged, causing that difference to be removed from the compare editor.
+
+For OAL and Description data the compare dialog that is opened shall allow
+direct editing on all local elements.  This allows the user to see the
+differences, plus the common ancestor, and make an appropriate change to the
+OAL or Description directly.
+
+6. Work Required
+----------------
+6.1 Compare
+6.1.1 Model Tree
+6.1.1.1 Implement a tree for the left, right and ancestor pane using the xtUML
+        content provided by the eclipse compare infrastructure.
+6.1.1.2 Add default eclipse toolbar actions for copying changes
+6.1.1.3 Add context menu items for opening OAL or Description changes if
+        existent
+6.1.2 OAL and Descriptions
+6.1.2.1 Create a comparison dialog which contains two panes and common ancestor
+        support.
+6.1.2.2 For OAL make each pane a fully supported OAL editor using the given text
+        or action home element as the input
+6.1.2.2.1 Allow direct editing of each local pane (non remote data)
+6.1.2.3 For Descriptions use the built in eclipse text comparison classes
+6.1.2.3.1 Allow direct editing of each local pane (non remote data)
+6.1.2.4 Add default eclipse toolbar actions for copying changes
+6.1.3 Differences highlighting
+6.1.3.1 Implement a tree comparison
+6.1.3.2 Highlight differences according to the analysis
+6.2 Merge
+6.2.1 Change Resolution
+6.2.1.1 Add support for copying a selected change to a destination model
+6.2.1.1.1 For new elements use the paste infrastructure
+6.2.1.1.2 For attribute value changes (e.g., Name) implement java that modifies
+          the target attribute value to match
+6.2.1.1.3 For typed elements resolve the element in the target by id and use
+          reassociate
+6.2.1.1.4 For elements that connect two other elements together write OAL in the
+          ooaofooa that reassociates the target with the necessary elements
+6.2.2 Conflict Resolution
+6.2.2.1 Prevent copy of changes when a difference is a conflicting one
+
+7. Acceptance Test
+------------------
+7.1 Compare
+- xtUML files shall be comparable
+- Left and Right models shall be displayed as a selectable tree
+- All user visible elements of a model shall be shown in compare trees
+- When a difference is in OAL or a Description a compare dialog shall be opened
+  for the text of the OAL or Description
+- Differences shall be highlighted in the tree with easy traceability from one
+  side to the other
+7.2 Merge
+- Changes shall be copiable from one side to the other
+- Changes shall not be copiable to a remote target
+- OAL and Description changes shall be copiable as above
+- Compare editor shall be marked dirty upon change copy
+- Compare editor shall be saveable and shall overwrite the original model being
+  compared
+- Conflicting changes are not copiable within structure
+- Conflicting changes are not copiable in OAL and Description comparison dialog
+- OAL and Description comparison dialog allows direct editing
+- User can mark a conflicting change as merged, removing it from the list of
+  differences
+  
+End
+---
+
+$Log: dts0100580448.ant,v $
+Revision 1.2  2011/08/24 22:02:16  tlondon
+Job: dts0100580448
+Add note about a properties tab
+
+Revision 1.1  2011/08/24 21:31:18  tlondon
+Job: dts0100580448
+Introduce
+

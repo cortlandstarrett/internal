@@ -1,0 +1,460 @@
+========================================================================
+
+File:      $RCSfile: i2286.dnt,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:47 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Design Note
+Verifier First Release
+
+Abstract
+--------
+This note describes the integration work carried out to bring Verifier to its
+first release.
+
+History
+-------
+
+Document References
+-------------------
+[1]  i1626.ant event q
+[2]  i1627.dnt debug model
+[3]  i1629.dnt breakpoints
+[4]  i1635.ant launches
+[5]  i1694.dnt events
+[6]  i1702.ant timers
+[7]  i1703.dnt breakpoints
+[8]  i1704.ant execution control
+[9]  i1727.dnt value stack fram context
+[10] i1733.dnt by reference
+[11] i1786.ant realized EE's
+[12] i2087.ant licensing
+[13] i2161.ant bridge wiring
+[14] i2164.ant tree views
+[15] i2240.dnt self references
+[16] i2344.dnt event queue reflexives
+[17] com.mentor.nucleus.bp.debug.ui.test/expected_results/test_matrix.txt
+[18] Issue i2626
+
+Background
+----------
+Verifer was conceived on Labor day 2004. A little over 2 years later, it is
+ready for release. This note describes the changes made to get Verfiier ready
+for its first release to the field.
+
+Analysis
+--------
+Much work [1-16] has been done by the Verifier development team to add the
+features identified by Product Marketing to the original Verifier execution
+engine. This work integrates these jobs but does not attempt to document them
+again here.
+
+Design
+------
+The only two areas that were significantly reworked during the final integration
+phase were execution control[8] and value computation (not previously explicitly
+documented). These two topics are revisited below (under 'Execution Control' and
+'Value Computation').
+
+Overview
+Hundreds of new operations and four new subsystems are added to the OOA of OOA
+to support Verifier. Most of the new operations are labeled 'execute' (for
+statements) and 'computeValue' (for values). these are added to existing classes
+in the processing subsystems (Body and parent packages of subtypes of
+Statement).
+
+The new subsystems are 'Instance', 'Local', 'Wiring' and 'Breakpoint'.
+
+Instance
+This is the most complex of the new subsystems. It is named for the inclusion of
+the meta level bridging element 'Instance' whose instances represent instances
+of user model classes. Associated with each Instance are Attribute Value
+instances which hold the current value of each of the instances attributes. An
+association with State Machine State (R2915) tracks the current state of the
+instance if it has a state machine. Analogous associations with the
+'Model Class' class track the current state (R2932) and pending events (R2931)
+for class based state machines.
+
+The Instance subsystem also contains the 'Execution Engine', this class manages
+the asynchronous behavior of the system by maintaining two event queues (R2944
+and R2945). It selects event instances ('Pending Event') across these
+associations and delivers them to their target instances.
+
+The 'Stack' and 'Stack Frame' classes control the synchronous execution of the
+modeled system by keeping track of where (in the users model) execution is
+currently occurring. Each stack frame instance controls what is going on during
+execution of a particular invocation of a particular piece of Object Action
+Language (OAL). Note that the same piece of OAL may be entered multiple times
+during recursive invocation. This is allowed for because each recursion will
+have its own Stack Frame instance.
+
+Each Stack Frame has its own set of local variables (see 'Local' below), its own
+record of where it is executing via R2923 and 'Block in Stack Frame' and manages
+its own list of partially computed values.
+
+The 'Execution Engine' and 'Stack' class clusters should have been documented in
+another subsystem, but lack of time and lack of facilities for cut and paste in
+the current release of the BridgePoint tool preclude this enhancement being
+carried out for this release. An issue is raised (i2626 [18]) to get this done 
+later.
+
+Local
+This subsystem documents how local variables are managed. So that recursion is
+fully supported, local variable values are created and managed within the
+context of first of all, a 'Stack Frame' and secondly, a 'Block in Stack Frame'
+being executed within the context of the 'Stack Frame'. Subtypes of 'Local' are
+'Local Reference' (references to either instances or sets of instances),
+'Local Selected Reference' (used for select where statements) and 'Local Value'
+(used to represent transient and argument values).
+
+Wiring
+This subsystem supports automatically wiring together domain bridges to domain
+functions when launched together, see [13] for documentation on this.
+
+Breakpoints
+This subsystem contains all the breakpoint subtypes. The first release has a
+limited number of these, but as time passes many more breakpoint types will be
+added here. See [7] for more details.
+
+Execution Control
+The original execution control design described in [8] was simple but had the
+disadvantage that data was duplicated in the metamodel (by stack frame and its
+associated instances) and on the java stack. The execution mechanism was
+modified to use the metamodel data structures exclusively. The block and in
+particular the invoke statement implementations were modified to create new
+stack frame instances rather than calling the execute methods of the target
+operation, bridge or function. This greatly simplified the OAL needed to resume
+after breaking execution.
+
+Value Computation
+This mechanism suffered from a more subtle but analogous duplicated execution
+data issue. Again, the original design had the merit of simplicity, but it
+precluded stepping into functions that return values, mathematically derived
+attributes etc. The solution was similar to that taken for execution; create a
+'flat' value computation model that does not rely on the java stack. This
+resolves the shortcomings identified above and also makes the execution engine
+ready to support value breakpoints such as halting on a read of a particular
+attribute value (halting on a partially computed value already works for this
+release, because breakpoints are supported in mathematically derived
+attributes).
+
+Design Comments
+---------------
+
+Work Required
+-------------
+
+Unit Test
+---------
+1. Use the Model Compiler test models to exercise the Verifier.
+   1.1 A test matrix will be created that calls-out the model compiler test
+       models that will be used [17].
+   1.2 These tests will be run manually for this release.
+   1.3 A filled-out test matrix will be placed under 
+       Documentation/internal/test_results/R1_4_1/i2286
+
+2. The following Verifier UI features shall be tested:
+
+   - Launch
+   - Execution Control
+   - Breakpoints
+   - Engine
+
+   The following Views shall be tested:
+
+   - Debug
+   - Variables
+   - Breakpoints
+   - Session Explorer
+   - Spotlight
+
+   2.1 Launch Test
+
+       - Launch from Model Explorer
+       - Create from Launch Wizard
+         - Open the Launch Wizard  Check that the Model Verifier Application
+                                   entry is present.
+         - Create a new launch     Click 'New' while the above entry is
+                                   selected. Check that a new, unnamed launch is
+                                   created.
+         - Rename the launch       Give the launch a new name. Check that the
+                                   name changes in the list on the left of the
+                                   wizard.
+         - Model selections        Check that the new launch lists the models
+           should be cleared       in the selected project, but that none of
+                                   them have the checkbox selected (an error
+                                   message should also be shown in the top area
+                                   of the wizard).
+         - Select a model for      Check that the checkbox in the list of models
+           execution               can be turned on.
+         - Change target project   Check that the list of model choices changes
+                                   and that all checkboxes are cleared.
+         - Check multiple models   Check that multiple models may be selected.
+         - Run                     Click debug and check that attempting to run
+                                   with multiple models is prevented.
+         - Enable execution        Click the 'Log Execution Activity' checkbox.
+           logging.                Confirm that detailed execution information
+                                   is output to the log file.
+         - Execution Log is saved  Switch to the 'Common' tab and check the
+                                   'File' checkbox. Choose a suitable well known
+                                   place to put the output. Run and confirm that
+                                   the log data is written to the file.
+
+   2.2 Execution Control Test
+
+       - Suspend Execution         After starting a model, push the Suspend
+                                   (yellow ||) button. Check that execution
+                                   stops and the appropriate OAL is shown (if
+                                   any).
+       - Resume Execution          After suspending execution, push the Resume
+                                   (green >) button. Check that execution
+                                   resumes.
+       - Terminate Execution       Test terminating during execution and while
+                                   suspended.
+         - From UI                 Push the Terminate button (red box). The
+                                   model will stop execution and show as
+                                   terminated in the Debug View. The console
+                                   display will also clear.
+         - Under test model        This is not an engine test (which will be
+           control                 verified under Section 1 tests), but checks
+           (ARCH::shutdown)        that the UI behaves correctly when a model
+                                   terminates autonomously. Run a model that
+                                   calls ARCH::shutdown. Verify that the UI
+                                   shows <terminated>, just as if the Terminate
+                                   button had been pushed.
+       - Step Over                 Step over all statement types. Verify that
+                                   the current PC arrow moves to the next line.
+                                   Repeat stepping over 'invoke' statements (see
+                                   * below) in which a breakpoint is set. Verify
+                                   that execution breaks as expected.
+       - Step Into                 Step into all statement types. Verify that
+                                   for statements that do not invoke any other
+                                   activity, behavior is the same as for Step
+                                   Over. For all 'invoke' statements (see *
+                                   below), verify that a new activity editor is
+                                   opened and stepping continues from the first
+                                   executable line of the new activity.
+       - Step Over from OAL        Step over all 'invoke' statements as defined
+         breakpoint                above. Verify that current PC moves on.
+                                   Repeat with a breakpoint set in the OAL of
+                                   the invoked activity. Verify that execution
+                                   stops at the new breakpoint, not the current
+                                   one.
+
+* Invoke statements are defined as Function, Bridge and Operation calls,
+Derived Attributes and where clauses that invoke any of these.
+
+   2.3 Breakpoints Test
+
+       - Test Matrix
+       
+---------------+-----------+---------+----------+----------+----------+---------
+Breakpoint ->  |           On        |         Off         |      Deleted
+Manipulation ->| From View |From OAL |From View |From OAL  |From View |From OAL
+Hit Count ->   | Off  1  2 |Off  1  2|Off  1  2 |Off  1  2 |Off  1  2 |Off  1  2
+---------------+-----------+---------+----------+----------+----------+---------
+Verifier State
+     |
+     V
+While Running
+While Suspended
+Between Runs
+After Restart
+
+This gives 18 x 4 = 72 individual tests, repeated for each breakpoint type. Any
+model may be used for this test provided it has all of the features that can
+have a breakpoint set.
+
+Breakpoints must be tested on OAL, State Entry, State Exit, Event Generation,
+Event Dequeue, Event Ignored and Event Can't Happen.
+
+Legend: Breakpoint -> On           Breakpoint is enabled. Check execution stops
+                                   when breakpoint conditions are met.
+        Breakpoint -> Off          Breakpoint is disabled. Check execution does
+                                   not stop when breakpoint conditions are met.
+        Breakpoint -> Deleted      Breakpoint has been removed. Check execution
+                                   does not stop when breakpoint conditions are
+                                   met.
+        Manipulation -> From View  The change to the breakpoint was made from
+                                   the Breakpoints view.
+        Manipulation -> From OAL   The change to the breakpoint was made from
+                                   the margin of the Activity Editor.
+        Hit Count -> Off           The hit count is disabled.
+        Hit Count -> 1             The hit count is enabled and set to 1.
+        Hit Count -> 2             The hit count is enabled and set to 2.
+        While Running              Change to breakpoint is made while Verifier
+                                   is running.
+        While Suspended            Change to breakpoint is made while Verifier
+                                   is suspended.
+        Between Runs               Change to breakpoint is made while model is
+                                   Terminated or before verifier is started.
+        After Restart              Change to breakpoint is made and then the
+                                   tool is restarted.
+
+      - Breakpoint Persistence
+        - Check that breakpoints are still shown after restarting the tool
+          (UI only, checking that breakpoints are active after restart is
+          already in the test matrix specified above).
+
+   2.4 Debug View Test
+   
+       - Execution Control buttons are enabled correctly while:
+         - Running                 Terminate and Suspend are enabled
+         - Suspended               Resume, Step Over, Step Into are enabled
+         - Stepping
+           - Over                  Resume, Step Over, Step Into are enabled
+           - Into                  Resume, Step Over, Step Into are enabled
+       - Repeat the above test while a lower stack frame is selected
+         - Stepping                Step Into is disabled
+       - Activity location happens correctly when
+         - Hitting a breakpoint
+         - Stack frame is selected
+       - Show correct reason for Suspend for each breakpoint type specified
+         above. No suspend reason is shown for a user invoked suspend.
+       - Events are shown in the order they will be processed.
+       - Delayed events show the time by which they were delayed. 
+       
+   2.5 Variables View Test
+
+       - Event Data                Suspend in a state that expects event data.
+                                   Check that the correct event data items and
+                                   the correct values are shown.
+       - Local Data                Suspend in an action that creates local data.
+                                   Check that the correct local data items are
+                                   shown and that their data values are correct.
+       - Instances                 Suspend an action that selects an instance.
+                                   Check that the instance handle name is
+                                   correct and that the instance opens to show
+                                   the correct attribute names and values.
+       - Instance sets             Suspend an action that selects an instance
+                                   set. Check that the set name is correct and
+                                   that the contents of the instance list is
+                                   correct.
+       - Timer attribute values    Check that a timer attribute value shows how
+                                   much time remains before expiry.
+
+   2.6 Breakpoints View Test
+   
+       - Activity location when    Check that an OAL breakpoint opens at the
+         double clicked            correct line in an activity editor when
+                                   double clicked (other breakpoints do not
+                                   currently locate).
+       - Correct title             Check that the breakpoint shows the correct
+                                   title. For OAL breakpoints, the OAL line
+                                   number information should appear. For
+                                   others, the name of the state or event
+                                   together with the modifier (entry, dequeued
+                                   etc.) should be shown.
+       - Enable Disable            Check that the state of the breakpoint can
+         (shows correctly)         be changed in the UI of the Breakpoints
+                                   View. Check that the corresponding symbol in
+                                   the Activity Editor margin changes state.
+       - Enable Disable from       Check that the state of the breakpoint can be
+         Activity Editor           changed by right clicking on the symbol in
+                                   the activity editor and selecting
+                                   'Enable/Disable Breakpoint'.
+       - Delete from View          Check that the breakpoint can deleted by
+                                   right clicking on it in the Breakpoints View
+                                   and selecting 'Remove'.
+       - Create/Delete from        Check that a breakpoint can be set and
+         Activity Editor.          cleared by right clicking in the Activity
+                                   editor left margin.
+
+   2.7 Session Explorer View Test
+   
+       - Only simulated models     Only the models for the project selected for
+         appear.                   simulation show in the Session Explorer.
+       - Tree shows subsystems     Check that the subsystems and classes of the
+         and classes.              selected models appear in the tree (also test
+                                   nested subsystems).
+       - Instances show under      Check that instances appear under the class
+         classes.                  that defines them.
+       - Attribute values show     Check that an instance shows its attribute
+         under instances.          values below it in the tree. Note that
+                                   missing attribute values are not an error;
+                                   They indicate attributes that have not yet
+                                   been set by the simulation execution.
+       - Timer attribute values    Check that a timer attribute value shows how
+                                   much time remains before expiry.
+       - Pending events show       Check that an event that has been sent to an
+         under instances           instance appears under that instance.
+       - Pending events show data  Check that data items carried by an event
+         items (no values)         are shown in square brackets after the event
+                                   name.
+       - Delayed events            Check that delayed events show the time by
+                                   which they were delayed.
+       
+   2.8 Spotlight View Test
+
+       - Put in Spotlight from     Check that 'Put in Spotlight' is enabled for
+         Session Explorer          all instances. Check that 'Put in Spotlight'
+                                   is enabled for all classes that have their
+                                   own State Machines.
+       - Remove from Spotlight     Check that entries in the Spotlight View can
+                                   be removed (instances and classes).
+       - Current State             Check that an instance in the spotlight view
+         highlighting.             highlights its current state in the
+                                   corresponding instance state machine diagram.
+                                   Repeat for classes.
+       - Last Transition           Check that an instance in the spotlight view
+         highlighting.             highlights the last transition into the
+                                   current state. Repeat for classes.
+
+3. Verify that all existing JUnit tests pass.
+
+End
+---
+
+$Log: i2286.dnt,v $
+Revision 1.1  2009/09/03 18:20:47  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:15  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.16.1  2008/12/31 16:10:21  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2006/12/08 18:41:21  campbell
+Job:2286
+Added more UI test details.
+
+Revision 1.7  2006/12/08 18:34:39  campbell
+Job:2286
+Added more UI test details.
+
+Revision 1.6  2006/12/08 18:16:53  campbell
+Job:2286
+Added more UI test details.
+
+Revision 1.5  2006/12/08 16:46:23  campbell
+Job:2286
+Added more UI test details.
+
+Revision 1.4  2006/12/07 18:51:43  campbell
+Job:2286
+Added more UI test details.
+
+Revision 1.3  2006/12/06 19:22:56  campbell
+Job:2286
+Added UI test details.
+
+Revision 1.2  2006/12/06 18:36:20  rmulvey
+Job:2286
+Did a pre-review and added a couple lines about this releases testing.
+
+Revision 1.1  2006/12/05 21:57:53  campbell
+Job:2286
+Introduced.
+

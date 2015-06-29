@@ -1,0 +1,220 @@
+========================================================================
+
+File:      $RCSfile: i3288.dnt,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:52 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Modify parser to work with multiple formal components under the same root 
+component package.
+
+1. Abstract
+-----------
+When multiple formal components exist under a single package the domain instance
+used by the tool may not be the correct one.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3288
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3288
+
+4. Background
+-------------
+The parser uses blind selects to aquire a domain instance in many places.  This
+is fine when there is only one domain, but with the introduction of formal 
+components there will often be multiple domains in a single component package.
+Therefore, blind selects against the domain can no longer be used.
+
+
+5. Analysis
+-----------
+The parser contains many OAL statements of this type:
+
+select any dom from instances of S_DOM;
+
+This will return the first domain that is being used as formal content for
+component under a root component package.  When parsing a second domain that is
+used as the formal content of a component under the same root component package,
+the incorrect domain will be returned.
+
+We need to determine a way to get at the correct domain in the parser.  One way
+to do this is to store a domain in the parser when starting it from ui.text.
+
+6. Design
+---------
+6.1 Find the places Oal_validate is instantiated.
+    A search for "new Oal_validate()" yields hits in the following locations:
+        als/oal/test/
+            ComponentSyntaxText.java
+            ImplicitComponentAddressTest.java
+            OalParserTest.java
+            ParseAllInDomain.java
+            
+        bp/ui/text/
+            TextParser.java (11 hits all in the action() function)
+     
+      Given this, it appears that TextParser::action() is the key location.
+      
+6.2 Modify Text_Parser.action() to find the Domain_c instance for the specified 
+    model element being parsed, and pass this into the Oal_validate constructor.
+   
+    Test_Parser.action() routine currently contains a group of if/else's that 
+    enumerate each of the action homes parsed.  
+
+6.3 A utility class, core/util/DomainUtil.java, shall be introduced.  This
+    class returns a domain given a model element.  It is used by 
+    Text_Parser.action() to determine a model element's domain.
+
+6.4 Hand-hack Oal_validate.java (hand-hack first to test, then move this to the 
+    validate_arc.arc archetype)
+6.4.1 Create an Oal_validate constructor that requires a Domain_c instance as 
+      a parameter.
+6.4.2 Remove the Oal_validate no-arg constructor. Note that there are no other 
+      constructors in this class.
+      Removing this simply allows us to clearly see places that instantiate this 
+      part of the parser.  This allows us to assure we are not missing places.
+
+6.4.3 Introduce an operation, getDomain(),  that will return the cached Domain_c 
+      instance when it is not null, and will perform a blind select when the 
+      cached value is null.
+6.4.4 Replace all instances of Domain_c.DomainInstance(modelRoot);
+      with calls to the new getDomain(modelRoot) function.   
+6.4.5 Use the test specified in 9.2 to verify the problem is fixed.
+     
+6.5 Modify als/validate_gen.arc
+6.5.1   Move hand-hacked code from step 6.4 above into the archetype.
+6.5.1.1 Add the new "Oal_validate(Domain_c dom)" constructor.
+6.5.1.2 Create a private class variable, "Domain_c m_dom;", to hold the domain.
+6.5.1.3 Remove the Oal_Validate no-arg constructor.
+
+6.6 Introduce a new native function, unique_id getValidationDomain,  in 
+    "OAL Validation Utility Functions".  This function will return the Dom_ID of
+    the cached Domain_c instance when it is not null, null if it is.  This 
+    function shall be implemented as follows:
+    java.util.UUID getValidationDomain(Ooaofooa modelRoot) {
+		java.util.UUID result = com.mentor.nucleus.bp.core.common.IdAssigner.NULL_UUID;
+		if (this.m_dom != null) {
+			result = this.m_dom.getDom_id();
+		}
+		return result;
+	}
+	      
+6.7 Locate the place in the ooaofooa "OAL Validation Functions" and "OAL 
+    Validation Utility" function packages where blind selects are used.
+6.7.1 For each of these places replace
+      "select any dom from instances of S_DOM;"
+      with
+      "select any dom from instances of S_DOM where selected.ID == ::getValidationDomain();"
+
+6.8 Update the als/oal/test unit tests to account for removal of the 
+    Oal_Validate no-arg constructor.  The follow shall be modified:
+            ComponentSyntaxText.java
+            ImplicitComponentAddressTest.java
+            OalParserTest.java
+            ParseAllInDomain.java
+            
+7. Design Comments
+------------------
+None
+
+8. Work Required
+----------------
+All work is oulined in the design section.
+
+9. Unit Test
+------------
+9.1 All existing unit tests pass
+9.2 The following is a manual test.
+	_- create a new project (test)
+	_- create a domain (dom1)
+	_- create a domain-level EDT in dom1 (edt1)
+	_- create an enumerator in edt1 (d1_1)
+	_- create a SS (ss1) with a class (c1)
+	_- add an operation (op1) in c1
+	_- create a domain (dom2)
+	_- create a domain-level EDT in dom2 (edt2)
+	_- create an enumerator in edt2 (d2_1)
+	_- create a SS (ss2) with a class (c2)
+	_- add an operation (op2) in c2
+	_- in op1 add the following OAL:
+	   foo = edt1::d1_1;
+	_R No parse errors
+	_- in op1 add the following OAL:
+	   foo = edt2::d2_1;
+	_R Parse error occurs
+	_- in op2 add the following OAL:
+	   foo = edt2::d2_1;
+	_R No parse errors	
+	_- in op2 add the following OAL:
+	   foo = edt1::d1_1;
+	_R Parse error occurs
+	_- formalize cp1 to dom1
+	_- formalize cp2 to dom2
+	_- in op1 add the following OAL:
+	   foo = edt1::d1_1;
+	_R No parse errors
+	_- in op1 add the following OAL:
+	   foo = edt2::d2_1;
+	_R Parse error occurs
+	_- in op2 add the following OAL:
+	   foo = edt2::d2_1;
+	_R No parse errors	
+	_- in op2 add the following OAL:
+	   foo = edt1::d1_1;
+	_R Parse error occurs
+
+End
+---
+
+$Log: i3288.dnt,v $
+Revision 1.2  2009/01/01 23:12:52  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.6  2007/11/30 23:20:15  rmulvey
+Job:3288
+Fixed a numbering issue.
+
+Revision 1.5  2007/11/30 23:15:48  rmulvey
+Job:3288
+The "OAL Validation Utility Funtion" that is introduced in 6.6, getValidationDomain, will not perform a blink select if no cached value is present.  It will simply return null.
+
+Revision 1.4  2007/11/30 23:07:50  rmulvey
+Job:3288
+Addressed review minutes
+
+Revision 1.3  2007/11/30 22:05:46  rmulvey
+Job:3288
+Addressed review minutes
+
+Revision 1.2  2007/11/30 21:01:29  rmulvey
+Job:3288
+Fixed a numbering problem
+
+Revision 1.1  2007/11/30 20:59:18  rmulvey
+Job:3288
+Introduced i3288.dnt removed i3288-01.dnt
+
+Revision 1.1  2007/11/30 20:55:03  rmulvey
+Job:3288
+Introduced
+

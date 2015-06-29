@@ -1,0 +1,279 @@
+========================================================================
+
+File:      $RCSfile: property_view.ant,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:25:48 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Analysis Note
+Properties View
+
+Abstract
+--------
+This document analyzes the requirements on the feature that shows client model
+instance values in the Eclipse Properties View.
+
+History
+-------
+final - property_view-083104-01.rvm
+
+Document References
+-------------------
+[1] com.projtech.bp.core/doc/external/Specification/Tiger Spec.doc
+[2] http://www.eclipse.org/articles/Article-Properties-View/properties-view.html
+[3] Bugzilla issue 384
+
+Background
+----------
+The Eclipse Properties View shows information about a selected item.
+The information shown depends on the selected instance. Tiger needs to
+leverage this interface paradigm to support general modifications to
+model data not covered elsewhere. The functionality described by this note is
+intended to be generic; the views shown below are examples. However the
+Properties view is not intended to be a catchall. An issue is raised [3] to
+document the additional functionality needed for self hosting the tool. Examples
+of unsupported functionality (by Property View) include relationship 
+formalization, referential attribute combination, assignment of events to 
+transitions, and specification of STT entries as Ignored or Can't Happen.
+
+Analysis
+--------
+i31.1   General
+        The structure of the metamodel is such that a simple approach to this
+        will not suffice, because properties the user would expect to be edited
+        together live in disparate metamodel elements.
+
+i31.1.1 One approach would be to hand craft some build time data that specifies
+        which property pages should be combined into one. However, this would
+        require a lot of new infrastructure, together with a significant amount
+        of new engineering data to maintain.
+
+i31.1.2 However, we already have a data structure developed initially to support
+        the construction of the explorer and outline trees and enhanced to
+        support model differencing. This data maps the network of the OOA of OOA
+        onto a tree. Principally because the user does not want to learn more
+        than one hierarchy of data, it is logical to assume that the same tree
+        structure is valid in a  properties editor, a model difference and a
+        model browser (though the desired depth differs between the views).
+
+i31.2   Hierarchical Properties View
+        The Properties view shall be made to be hierarchical, just like a tree.
+        The two view types (tree and properties) compliment each other because
+        the properties view is mainly for editing and the other tree views are
+        mainly for browsing (the model or the differences between models). The
+        properties view would not make a good substitute for the tree viewer
+        because, when an item is opened, all the elements attributes are shown
+        as well as any subtrees. This quickly fills up UI real estate, making
+        the Properties Viewer a less than ideal tree browser. Conversely, the
+        tree is not a substitute for the properties editor, because it shows
+        only the name of the tree entry. This is more compact for drilling down
+        into the model data to find something, but cannot support modifying
+        anything other than the item's name. Note that for this reason rename is
+        supported in both views.
+
+i31.3   Descriptive Attributes
+        Element attributes for which dedicated text editors exist (i.e. all
+        Action Semantics and Description attributes) shall show a button bearing
+        ellipses ('...'). The field itself shall show the first few characters
+        of the attribute value with carriage returns mapped to the standard
+        Eclipse CR substitution character (as exemplified by the Team commit
+        comment dialog). The field shall be read only.
+        
+        All other string values shall be editable inside the property cell.
+        Boolean attributes shall be edited by a drop down list containing the
+        values true and false. Integer and real numbers shall be edited as for
+        a string, but they shall be checked for validity during typing.
+
+i31.4   Identifying Attributes
+        All attributes of type unique_id shall be suppressed. This has the
+        effect of suppressing all identifying attributes. 
+        
+i31.5   Referential Attributes
+        These cannot appear in the property editor. Instead the data specified
+        in i31.1.2 shall be used as a specification for generated code to
+        navigate to the related metamodel instance(s). This same specification
+        shall be used to extract the name of the referenced item and display it
+        in a drop down list in the cell. To change the selected item, the user
+        shall select the drop down list that shall show all the legal values
+        the user can choose (this part will require the addition of operations
+        to the metamodel to support complex selection criteria). If the user
+        wishes to modify attributes of the referenced element (the one named in
+        the drop list), they click the '+' box to the left of the property entry.
+        This will cause the editable properties of the referenced item to display
+        in the view. If multiple instances are found across a navigation, then
+        multiple instances shall be shown with one property viewer line per
+        instance (each with a '+' control as required).
+
+i31.6   Read Only Properties
+        Some meta-model elements have a large 'fan-in'. The most obvious example
+        of this is Data Type. The user must not be able to use properties to
+        edit values of these types of element, because this causes unexpected
+        global changes. To edit a data type name shall require the user to
+        select the data type in the tree or on the data type package diagram.
+        Appendix A shows a complete list of read only properties. This shall be
+        achieved by adding markup data to the hierarchy pre-existing instance
+        database.
+
+Examples
+--------
+In the following property view examples, the legend is:
+
+*   Read only reference (opposite of 'v' below).
++,- Represent the functional expand/contract buttons shown in an SWT tree.
+[...] Description or Activity editor open button
+v   Represents the functional drop list activation button, shown only on
+    modifiable references.
+
+In the following model hierarchy examples, the legend is:
+
+- Meta-class
+@ Meta-attribute
+> Reference
+
+The following hierarchy, generated from the pre-existing instances:
+
+- Association
+  @ Association Number
+  @ Association Description
+  - Class As Simple Participant
+    @ Multiplicity
+    @ Conditionality
+    @ Text Phrase
+    > Related: Model Class
+  - Class As Simple Formalizer
+    @ Multiplicity
+    @ Conditionality
+    @ Text Phrase
+    > Related: Model Class
+
+Shall map to the following example Properties editor configuration:
+
+Property                        Value
+- Association                   R8
+  Association Number            8
+  Association Description       This captures the transfer being executed [...]
+  - Class As Simple Participant 
+    Multiplicity                0
+    Conditionality              1
+    Text Phrase                 is executing
+    + Related                   Disk Transfer                                *
+  - Class As Formalizer
+    Multiplicity                0
+    Conditionality              1
+    Text Phrase                 is being executed by
+    - Related                   Entry_Exit Port                              *
+      Class Name                Entry_Exit Port
+      Class Number              8
+      Class Keyletters          D_P
+      Class Description         This is the means by which new disks are i[...] 
+      + Attribute               Port_ID
+      + Attribute               Disk_Transfer_ID
+
+This hierarchy fragment:
+
+- External Entity
+  @ External Entity Name
+  @ External Entity Description
+  @ External Entity Key Letters
+  - Bridge
+    @ Bridge Name
+    @ Bridge Description
+    @ Bridge Type
+    @ Action Semantics Field
+    @ Successful Parse Indicator
+    > Return Type: Data Type
+    - Bridge Parameter
+      @ Bridge Parameter Name
+      @ By Reference Indicator
+      > Type: Data Type
+
+maps to:
+
+Property                        Value
+- External Entity               Qualified Process
+  External Entity Name          Qualified Process
+  External Entity Description   This represents a process running on the h[...]
+  External Entity Key Letters   QP
+  - Bridge                      disk_mount_done
+    Bridge Name                 disk_mount_done
+    Bridge Description          This signals to the qualified process that[...]
+    Bridge Type                 0
+    Action Semantics Field                                                [...]
+    Successful Parse Indicato   0
+    Return Type                 void                                         v
+    + Bridge Parameter          disk_id
+    + Bridge Parameter          drive_id
+    - Bridge Parameter          qp_id
+      Bridge Parameter Name     qp_id
+      By Reference Indicator    0
+      Type                      integer                                      v
+
+Appendix A
+----------
+A.1 Read-only Properties.
+    - All associations are read-only except those between all metamodel entities
+      and S_DT that capture the type of something (return value, parameter type,
+      attribute type etc.)
+
+A.2 Suppressed Properties.
+    - The following properties expose some BridgePoint implementation to the
+      user and are suppressed:
+
+        O_ID.Oid_ID
+        SM_SM.Config_ID
+        O_IOBJ.Modl_Typ
+        S_BRG.Brg_Typ
+        S_CDT.Core_Typ
+        S_UDT.Gen_Type
+
+Acceptance Test
+---------------
+Since completeness testing has already been performed on the source build data,
+normal path coverage acceptance criteria shall apply. No special completeness
+or correctness criteria are envisaged at this time.
+
+End
+---
+$Log: property_view.ant,v $
+Revision 1.1  2009/09/03 18:25:48  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.7  2009/01/01 23:13:44  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.6.152.1  2008/12/31 16:10:59  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.6  2004/09/08 00:13:28  campbell
+Job: 31
+History updated.
+
+Revision 1.5  2004/09/02 00:46:19  campbell
+Job: 31
+Addressed review minutes.
+
+Revision 1.4  2004/08/31 17:06:21  campbell
+Job: 31
+Updated per comments from WGT.
+
+Revision 1.3  2004/08/20 20:28:43  campbell
+Job: 31
+Added reference to Eclipse article.
+
+Revision 1.2  2004/08/16 17:21:19  campbell
+Job: 31
+Added Property View examples.
+
+Revision 1.1  2004/08/06 18:59:46  campbell
+Job: 31
+Introduced.

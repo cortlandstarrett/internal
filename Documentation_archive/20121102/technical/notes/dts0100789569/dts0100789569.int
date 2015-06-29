@@ -1,0 +1,224 @@
+========================================================================
+
+File:      $RCSfile: dts0100789569.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Final changes made for issue found while testing the BridgePoint 3.4.0 
+release candidate.
+
+1. Abstract
+-----------
+This note is being used to capture final changes made during the final manual
+test pass done on BridgePoint release 3.4.0.  Several different issues are 
+captured in this note.  
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100789569
+[2] ClearQuest DEI dts0100806627 - models with no classes fail to compile
+[3] ClearQuest DEI dts0100806606 - The Class participants in systemLevel
+packages are not formalized
+[4] ClearQuest DEI dts0100795435 - Upgrade BridgePoint/EDGE projects to 
+BridgePoint/CDT projects
+[5] ClearQuest DEI dts0100806675 - Consolidate code between bp.cdt and 
+bp.mc.mc3020
+[6] ClearQuest DEI dts0100806661 - Renaming a project causes BP to hang
+[7] ClearQuest DEI dts0100806607 - Failure steps that showed when running the
+manual test dts0100774507
+[8] ClearQuest DEI dts0100795435 - Upgrade BridgePoint/EDGE projects to 
+BridgePoint/CDT projects
+[9] ClearQuest DEI dts0100805949 - GPS Watch GUI is not working.  Failure in SMA
+QA issue dts0100717884
+
+4. Background
+-------------
+4.1   While running some tests on CDT migration, we hit a problem compiling
+      a partial model having no classes.  This is a legitimate case, as we
+      train customers to build empty components first.
+
+4.2   I hit a bug in the new xtUML EDGE to CDT converter.  When I create a new 
+      xtUML project, the created .cproject has the src/ dir explicitly specified
+      as containing source files. Since the gen/ folder is not explicitly 
+      specified, if you right click and select "Exclude from build..." it has 
+      both items checked. Thus CDT thinks gen/ is excluded.  This is what we 
+      want.
+
+      But if I import an EDGE project, then convert it to CDT, no folder is 
+      explicitly specified as containing source code.  Thus CDT thinks all the 
+      folders do.  It does not exclude gen/.  Which causes problems when I build
+      because it goes rooting around in the gen/ and gen/code_generation/ dirs.
+
+5. Design
+---------
+5.1    Checking for Classes [2]
+5.1.1  When generating code at the system level that refers to the internals
+       of components, check for the existence of classes before referring to 
+       them.
+5.1.2  Change a function in sys_util.arc to check for the existence of classes.
+       Supply a 0 (null pointer) when a component has no classes.
+
+5.2 Result of OoaofooaBase.getRoot() not guaranteed [3]
+
+There are a good amount of calls to the above mentioned method, many of which
+were introduced with the inter-project references work.  The getRoot() method
+will only return a valid value if the model has been imported, it will not do so
+on newly created elements.  Due to the number of references to this method, it
+shall be changed to always guarantee a valid result.  To do this the method is
+modified to return the SystemModel instance found by the model root id, if there
+is no cached SystemModel instance (the load case).
+
+5.3 Allow deletion of graphics when disposing system level elements prior to
+opening the diagram [3]
+
+When an element is deleted before the elements diagram has been opened, the
+graphics model change listener cannot locate the graphical element to delete.
+
+The reason for this is the GraphicalElement.represents value has not yet
+been configured.  This value cannot be setup during the event dispatch for the
+delete as the model has already been torn down, and the code to setup the
+represents relies on this data.  In order to configure the represents value
+prior to a delete the handleModelElementAboutToBeDeleted event is now covered in
+CanvasModelListener.  This method will set the graphical represents value for
+all elements under the system diagram.  The conversion to globals action has
+code added that fires this event, whereas the normal delete action for BP
+already fires such an event.
+
+5.4 Prevent workspace lock on project rename [6]
+
+In ComponentResourceListener, we currently process a rename by wrapping it in
+a transaction.  This is done to persist updates that occur for proxy entries.
+This transaction waits on resource jobs before completing which creates the
+dead lock, as the initiating call is from a resource rename.  To address this
+issue we simply need to execute the transaction within a WorkspaceJob, which
+will prevent execution until the rename job has completed. 
+
+5.5  A change is added to fix the issue called out in 4.2 [4].  The change is to 
+     add code during our EDGE to CDT conversion process to set the src/ folder 
+     as a CDT source code folder for the project that has just been converted to 
+     CDT.  This effectively excludes gen/ from the build and only files under 
+     src/ are  seen by the compiler.  I raised issue [5] to circle back in the 
+     next release and clean up any code duplication that exists in the bp.cdt 
+     and bp.mc.mc3020 plugins.  This change was pushed directly to HEAD.  This 
+     allows us to close [8].
+
+5.6 Allow imported reference resolution [7]
+
+In the generic package situation pasted component references with imported
+references attached are not resolving.  There is a line of OAL which expects to
+find the PE_PE associated with the proxy C_IR instance (the one which an
+imported reference refers to).  To allow this we simply need to include a proxy
+for the PE_PE associated with the C_IR at copy time.
+
+5.7 GPS Watch sample issues [9]
+    This issue is resolved in several parts.  First, gdb.exe and a required DLL
+    are now in the MinGW release.  Second, the GPS Watch model in CVS is 
+    modified to include the bin/ folder that contains the compiled java class
+    files.  This allows us to run the GUI out of the box without doing a "Build
+    Project" first.  Third, the GPS and Microwave sample projects in CVS are 
+    modified to have a .launches/ folder in each that contains preconfigured 
+    eclipse launches for running the GUI (in the case of GPS) and the model
+    in verifier (for each model respectively).
+    
+6. Implementation Comments
+--------------------------
+
+7. Unit Test
+------------
+7.1  Tested the fix for 5.1 with a manually built 1 component model having no 
+     classes but having a domain.
+7.2  Tested the fix for 5.5 by importing the foo_EDGE.zip project associated
+     with the original issue, running the converter, and verifying the source
+     and excluded dirs.
+     
+8. Code Changes
+---------------
+8.1  mc/arc/sys_util.arc in C, SystemC and C++ branches
+     This file is common to the C, SystemC and C++ model compilers.
+     It has been committed to the common area of archetypes but also
+     to the existing SystemC and C++ branches of that common area.
+8.1.1  HEAD
+8.1.2  cpp768362 (C++ HEAD)
+8.1.3  sysc768362 (SystemC HEAD)
+
+8.2  Branch name: Review-dts0100806606
+
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core/OoaofooaBase.java
+com.mentor.nucleus.bp.core/src/com.mentor.nucleus.bp.core/common/
+    ComponentResourceListener.java
+com.mentor.nucleus.bp.core/arc/generate_globals_util.arc
+com.mentor.nucleus.bp.core/models/com.mentor.nucleus.bp.core/ooaofooa/
+    Element Packaging/Element Packaging.xtuml
+
+com.mentor.nucleus.bp.io.mdl/sql/stream.pei.sql
+
+com.mentor.nucleus.bp.ui.canvas/src/com.mentor.nucleus.bp.ui.canvas/
+    CanvasModelListener.java
+
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    MC3020Nature.java
+com.mentor.nucleus.bp.mc.mc3020/src/com.mentor.nucleus.bp.mc.mc3020/
+    ModelCompiler.java
+com.mentor.nucleus.bp.mc.mc3020/generate.xml
+com.mentor.nucleus.bp.mc.mc3020/plugin.xml
+
+com.mentor.nucleus.bp.welcome/models/GPS Watch/.launches/GPS Watch UI.launch
+com.mentor.nucleus.bp.welcome/models/GPS Watch/.launches/GPS Watch.launch
+com.mentor.nucleus.bp.welcome/models/MicrowaveOven/.launches/
+    MicrowaveOven.launch
+    
+End
+---
+
+$Log: dts0100789569.int,v $
+Revision 1.9  2011/10/13 01:05:11  kbrown
+job:dts0100789569
+Updated INT
+
+Revision 1.8  2011/10/13 00:42:55  kbrown
+job:dts0100789569
+Updated INT based on review.
+
+Revision 1.7  2011/10/12 22:00:49  tlondon
+Job: dts0100806607
+
+Add change to note
+
+Revision 1.6  2011/10/12 19:12:42  kbrown
+job:dts0100789569
+Updated int.
+
+Revision 1.5  2011/10/12 19:08:24  tlondon
+Job: dts0100806606
+
+Add change to note
+
+Revision 1.4  2011/10/12 18:54:41  cstarret
+job:dts0100806627
+documented model compiler change to deal with empty components
+
+Revision 1.3  2011/10/12 17:36:09  tlondon
+Job: dts0100806606
+
+Add changes to community int
+
+Revision 1.2  2011/10/12 16:59:19  cstarret
+job:dts0100806627
+first few steps in the int
+
+Revision 1.1  2011/10/12 15:47:26  rmulvey
+job:dts0100789569
+This note is being used to capture final changes made during the final manual
+test pass done on BridgePoint release 3.4.0.  Several different issues are
+captured in this note.

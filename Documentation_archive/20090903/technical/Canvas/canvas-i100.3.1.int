@@ -1,0 +1,412 @@
+========================================================================
+
+File:      $RCSfile: canvas-i100.3.1.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:56 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp. and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Allow new symbol drawing.
+
+Abstract
+--------
+Eclipse based BridgePoint needs a canvas on which to show diagrams. This
+note implements the design chosen to allow the user to add new symbols to
+the canvas.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 187.
+[2] Bugzilla issue 100.
+[3] com.projtech.bp.core/doc/canvas-i100.3.dnt
+
+Design
+------
+See design note[3].
+
+Implementation Notes
+--------------------
+- In the OOA of OOA, added a space after the colon of an event label to
+  improve compatibility with BridgePoint and to work better with the Tiger
+  label line wrapping policy.
+- cme functions were modified to use the same creation calls as specified in
+  the canvas plugin.xml.
+- The file gd.sql was renamed to bp_gd.sql to avoid misassumption that this
+  model is the tiger gd (it is and must remain the BridgePoint graphics domain
+  model). The coresponding entries are modified in the generate.xml file.
+- The ooaofgraphics_import_spec.clr is modified to import
+  java.lang.reflect.Method. This supports the bridging mechanism between the
+  graphics domain and its client.
+- In CanvasEditor.java:
+  - A new MouseTrackListener is added to generate Mouse Enter and Exit events.
+    These are sensed by the Model state machine to reset the mouse cursor when
+    the user moves the mouse outside of the drawing canvas area and set it
+    again when the mouse re-enters the canvas area. The Mouse Exit event is also
+    used to reset the 'grab hand' two dimensional scrolling feature, since this
+    is not reliably resetting in M2.
+  - A mouse center button handler is installed that generates the 'Activate'
+    event to the Selection tool on the currently focussed canvas. This has the
+    effect of turning off the currently selected tool. This handler also calls
+    CanvasEditorActionContributor.setTools to ensure the tool button states
+    correctly reflect the modeled tool states.
+  - The keyboard event handler is modified to generate a single key pressed
+    event, rather than once each time the keyboard auto-repeats. This makes
+    control over the 'grab hand' scrolling behavior more reliable.
+  - Code is added to the modelChange listener to instantiate and properly relate
+    a new Model instance when an element is created (such as Subsystem or State
+    Model) that needs one.
+  - A small block of code is added to the model change listener to update the
+    title of the editor window on a model change. This solves a small defect
+    noticed during testing of this work when the name of an element owning a
+    canvas changes.
+  - HandleOpen is modified to not attempt to perform open on a double click etc.
+    when no metamodel ellement is selected.
+- In CanvasEditorActionContributor.java:
+  - The currently focused Model instance is cached in the variable curCanvas.
+  - curCanvas is set up in setActiveEditor.
+  - The toolBarManager is cached in the variable thisToolBarManager.
+  - toolBarManager is set up in contributeToToolBar.
+  - The method contributeToToolBar adds a 'CoolItemGroupMarker'. This provides
+    a separately detachable group for the model tools.
+  - setActiveEditor removes all the old tools from the model tools group.
+  - setActiveEditor calls the modeled operation Model.initializeTools. This
+    creates one Model Tool instance per Shape Specification instance and
+    relates them to the Model instance they are going to control.
+- In CanvasEditorInput
+  - the method getName is made public for use by the model change listener in
+    CanvasEditor.
+- In create_explorer_view, the classInTree method is made public so that it
+  can be used by the Outline View.
+- All other changes are fallout from removing underscores from the Graphics
+  Domain classes Graphical_Element and Line_Segment.
+
+Unit Test
+---------
+_- (test_101) In 'Model Tool::Idle' generate CT_MTL5:Activate
+R- State changes to 'Active'
+
+_- (test_102) In 'Model Tool::Active' generate CT_MTL6:Deactivate
+R- State changes to 'Idle'
+
+_- (test_103) In 'Model Tool::Active' generate CT_MTL1:Mouse Down
+R- State changes to 'Active'
+
+_- (test_104) In 'Model Tool::Active' generate CT_MTL3:Mouse Up
+R- State changes to 'Active'
+
+_- (test_105) In 'Model Tool::Active' generate CT_MTL4:Mouse Move
+R- State changes to 'Active'
+
+_- (test_106) In 'Selection Tool::Idle' generate CT_SEL1:Activate
+R- State changes to 'Active'
+
+_- (test_107) In 'Selection Tool::Active' generate CT_SEL2:Deactivate
+R- State changes to 'Idle'
+
+_- (test_108) In 'Shape Tool::Idle' generate CT_STL5:Activate
+R- State changes to 'Waiting For Initial Position'
+
+_- (test_109) In 'Shape Tool::Waiting For Initial Position' generate
+                                                      CT_STL6:Deactivate
+R- State changes to 'Idle'
+
+_- (test_110) In 'Shape Tool::Waiting For Initial Position' generate
+                                                      CT_STL1:Mouse Down
+R- State changes to 'Initializing Shape'
+
+_- (test_111) In 'Shape Tool::Initializing Shape' generate CT_STL2:Mouse Up
+R- State changes to 'Waiting for Initial Position'
+
+_- (test_112) In 'Shape Tool::Initializing Shape' generate CT_STL3:Mouse Moved
+R- State changes to 'Dragging Shape'
+
+_- (test_113) In 'Shape Tool::Dragging Shape' generate CT_STL3:Mouse Moved
+   with no element specification.
+R- State changes to 'Dragging Shape'
+
+_- (test_113a) In 'Shape Tool::Dragging Shape' generate CT_STL3:Mouse Moved
+   with variable aspect ratio element specification.
+R- State changes to 'Dragging Shape'
+
+_- (test_113b) In 'Shape Tool::Dragging Shape' generate CT_STL3:Mouse Moved
+   with fixed aspect ratio element specification.
+R- State changes to 'Dragging Shape'
+
+_- (test_114) In 'Shape Tool::Dragging Shape' generate CT_STL2:Mouse Up
+   with no element specification.
+R- State changes to 'Waiting for Initial Position'
+
+_- (test_114a) In 'Shape Tool::Dragging Shape' generate CT_STL2:Mouse Up
+   shape drawn backwards.
+R- State changes to 'Waiting for Initial Position'
+
+_- (test_114b) In 'Shape Tool::Dragging Shape' generate CT_STL2:Mouse Up
+   with no element specification.
+R- State changes to 'Waiting for Initial Position'
+
+_- (test_115) In 'Model::Idle' generate GD_MD20:Tool Activated
+R- State changes to 'Mouse Not on Canvas'
+
+_- (test_116) In 'Model::Mouse Not on Canvas' generate GD_MD21:Tool Deactivated
+R- State changes to 'Idle'
+
+_- (test_117) In 'Model::Mouse Not on Canvas' generate GD_MD23:Mouse Enter
+R- State changes to 'Tool Active'
+
+_- (test_118) In 'Model::Tool Active' generate GD_MD21:Tool Deactivated
+R- State changes to 'Idle'
+
+_- (test_119) In 'Model::Tool Active' generate GD_MD2:Mouse Pressed
+R- State changes to 'Tool Active'
+
+_- (test_120) In 'Model::Tool Active' generate GD_MD4:Mouse Moved
+R- State changes to 'Tool Active'
+
+_- (test_121) In 'Model::Tool Active' generate GD_MD3:Mouse Released
+R- State changes to 'Tool Active'
+
+_- (test_122) In 'Model::Waiting for Mouse Press to Slide Canvas' generate
+                                                            GD_MD22:Mouse Exit
+R- State changes to 'Idle'
+
+_- (test_123) In 'Model::Resting while Sliding Canvas' generate
+                                                        GD_MD15:Space Released
+R- State changes to 'Idle'
+
+_- (test_124) In 'Model::Resting while Sliding Canvas' generate
+                                                            GD_MD22:Mouse Exit
+R- State changes to 'Idle'
+
+_- (test_125) In 'Model::Resting while Sliding Canvas' generate
+                                                         GD_MD15:Mouse Pressed
+R- State changes to 'Ready to Slide Canvas'
+
+_- (test_126) In 'Model::Resting while Sliding Canvas' generate
+                                                    GD_MD6:Mouse Context Press
+R- State changes to 'Opening Context Menu'
+
+The following tests introduced by 100.2.int are modified:
+
+_- (test_23) In 'Sliding Canvas' generate GD_MD4:Mouse Moved
+R- State changes to 'Resting while Sliding Canvas'
+
+_- (test_24) In 'Sliding Canvas' generate GD_MD3:Mouse Released
+R- State changes to 'Resting while Slide Canvas'
+
+_- (test_39) In 'Ready to Slide Canvas' generate GD_MD3:Mouse Released
+R- State changes to 'Resting while Sliding Canvas'
+
+
+Code Changes
+------------
+com.projtech.bp.core/icons/arrow.gif
+Introduced: 1.1
+
+com.projtech.bp.core/icons/newclass.gif
+Introduced: 1.1
+
+com.projtech.bp.core/icons/newextent.gif
+Introduced: 1.1
+
+com.projtech.bp.core/icons/newiclass.gif
+Introduced: 1.1
+
+com.projtech.bp.core/icons/newstate.gif
+Introduced: 1.1
+
+com.projtech.bp.core/icons/newsubsystem.gif
+Introduced: 1.1
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial: 1.38      Final: 1.39
+
+com.projtech.bp.core/schema/com.projtech.bp.core.editors.exsd
+Initial: 1.3       Final: 1.4
+
+com.projtech.bp.core/sql/cme_functions.sql
+Initial: 1.4       Final: 1.5
+
+com.projtech.bp.io.sql/arc/class_rename.inc
+Initial: 1.2       Final: 1.3
+
+com.projtech.bp.io.sql/sql/bp_gd.sql
+(renamed from gd.sql)
+Introduced: 1.1
+
+com.projtech.bp.io.sql/generate.xml
+Initial: 1.9       Final: 1.10
+
+com.projtech.bp.ui.canvas/color/ooaofgraphics_import_spec.clr
+Initial: 1.1       Final: 1.3 (reverted to 1.1)
+
+com.projtech.bp.ui.canvas/mdl/ooaofgraphics.bak
+Initial: 1.27      Final: 1.30
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/preferences/
+                                                  CanvasEditorPreferences.java
+Initial: 1.1       Final: 1.2
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasEditor.java
+Initial: 1.8       Final: 1.11
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                            CanvasEditorActionContributor.java
+Initial: 1.1       Final: 1.4
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasEditorInput.java
+Initial: 1.2       Final: 1.5
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                                     CanvasEditorListener.java
+Introduced: 1.2
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasPlugin.java
+Initial: 1.6       Final: 1.8
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/CanvasPrintAction.java
+Initial: 1.1       Final: 1.2
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                                      CanvasZoomAllAction.java
+Initial: 1.1       Final: 1.2
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                                       CanvasZoomInAction.java
+Initial: 1.1       Final: 1.2
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                                      CanvasZoomOutAction.java
+Initial: 1.1       Final: 1.2
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                                      CanvasZoomSelAction.java
+Initial: 1.1       Final: 1.2
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/Cl_c.java
+Introduced: 1.3
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/
+                                                  ModelContentOutlinePage.java
+Initial: 1.11      Final: 1.13
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/ShowCanvasAction.java
+Initial: 1.2       Final: 1.3
+
+com.projtech.bp.ui.canvas/src/com/projtech/bp/ui/canvas/ToolAction.java
+Introduced: 1.3
+
+com.projtech.bp.ui.canvas/generate.xml
+Initial: 1.7       Final: 1.9
+
+com.projtech.bp.ui.canvas/plugin.xml
+Initial: 1.13      Final: 1.14
+
+com.projtech.bp.ui.canvas.test/expected_results/<multiple files>
+Introduced: 1.1
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                             CanvasSCTest.java
+Initial: 1.13      Final: 1.15
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                               CanvasTest.java
+Initial: 1.9       Final: 1.11
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                  CanvasTestResultCreator.java
+Initial: 1.4       Final: 1.5
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                           ErrorPathsTest.java
+Initial: 1.3       Final: 1.4
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                                 ODMSTest.java
+Initial: 1.3       Final: 1.4
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                               SymbolTest.java
+Initial: 1.4       Final: 1.5
+
+com.projtech.bp.ui.canvas.test/src/com/projtech/bp/ui/canvas/test/
+                                                               ToolSCTest.java
+Introduced: 1.4
+
+com.projtech.bp.ui.explorer/arc/create_explorer_view.inc
+Initial: 1.16      Final: 1.17
+
+com.projtech.bp.ui.explorer/src/com/projtech/bp/ui/explorer/
+                                                           ExplorerPlugin.java
+Initial: 1.6       Final:1.7
+                               
+com.projtech.bp.ui.explorer/src/com/projtech/bp/ui/explorer/
+                                                    FilterSelectionAction.java
+Initial: 1.2       Final:1.3
+
+com.projtech.bp.ui.explorer/src/com/projtech/bp/ui/explorer/
+                                             IModelExplorerHelpContextIds.java
+Initial: 1.3       Final:1.4
+                               
+End
+---
+
+$Log: canvas-i100.3.1.int,v $
+Revision 1.1  2009/09/03 18:18:56  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.2  2009/01/01 23:13:06  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.158.1  2008/12/31 16:10:09  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2004/07/15 17:04:13  campbell
+Job: 187
+Renamed fromcanvas- i100.3.int.
+
+Revision 1.7  2004/06/08 20:35:28  greg
+Job: 187
+Corrected file versions
+
+Revision 1.6  2004/06/08 20:01:39  greg
+Job: 187
+Changes from second review made
+
+Revision 1.5  2004/06/08 01:46:54  campbell
+Job: 187
+Final revision number adjustments.
+
+Revision 1.4  2004/06/08 01:42:15  campbell
+Job: 187
+Addressed review issues.
+
+Revision 1.3  2004/06/05 12:33:57  campbell
+Job: 187
+Corrected CanvasEditor revision.
+Included introduced file Cl_c.java omitted in error.
+
+Revision 1.2  2004/06/04 23:36:23  campbell
+Job: 187
+Updated unit tests and revision numbers.
+Miscellaneous other small changes.
+
+Revision 1.1  2004/05/27 22:00:11  campbell
+Job: 187
+Introduced.
+
+Revision 1.1  2004/05/25 17:34:08  campbell
+Job: 187
+Introduced.

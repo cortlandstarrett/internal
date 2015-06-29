@@ -1,0 +1,918 @@
+========================================================================
+
+File:      $RCSfile: i214.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2004-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+OAL Parser Testing
+
+Abstract
+--------
+This note describes changes to improve the robustness of the OAL
+parser.
+
+History
+-------
+
+update i214-061404-01.rvm
+update i214-061604-01.rvm
+final i214-061604-02.rvm
+
+Document References
+-------------------
+1- Issue 214
+2- Issue 189
+3- Issue 186
+
+Background
+----------
+
+While the OAL parser has a large test suite, there is a desire to execute
+the parser against real-life models, particularly the MC-2020 test suite.
+Some other problems are:
+
+ - assure that bp issue 3185 is not a problem
+ - add a thread name for the parser thread.
+ - relationship specifications without a number cause a NullPointerException
+ - some error messages are labeled as internal, when they aren't
+
+Also, BP 6.1 has a bug concerning polymorphic events with data.
+The value of the SM_SUPDT.Non_Local attribute is sometimes false
+when it should be true.   Part of the work for this issue is
+to modify the import code to make sure this attribute always has the correct
+value.
+
+Design
+------
+
+BP issue 3185 is a problem where the date and the timestamp datatypes
+are considered the same by the parser.  The OAL tests testAssignTime2Date
+and testAssignDate2Time verify that this can't happen in Tiger.
+
+i214.1 Fix relationship validation
+
+The null pointer exception caused by the invalid relationship specification
+is due to the following validation functions not checking that a valid relationship
+id was passed into it:
+
+  - is_valid_relationship
+  - is_valid_assoc_relationship
+
+The functions are modified to check the relationship id.  If the 
+relationship id is null, the error message "Invalid relationship specification"
+is generated.
+
+i214.2 Fix invalid parse error for polymorphic events
+
+The OAL "generate D_TST7* to d;" where d is an instance of D_TST
+causes a syntax error stating that the '*' should not be used on non-polymorphic
+events.  This is incorrect, because D_TST7 is a polymorphic event. The OAL parser 
+test checked for polymorphic events being sent to the subtype, but not to the supertype that defines
+the polymorphic event.  The validation function process_instance_event is changed
+to check if the event is polymorphic before issuing an error message
+when a '*' is present on the event label.  The unit tests are extended to
+add tests for sending polymorphic events to the class that defines them.
+  
+i214.3 Allow multiple parses to occur simultaneously 
+
+The OAL for a body is parsed by a separate thread.  It is possible
+that multiple parse threads can exist, in the case where multiple
+activities are being modified.  The design of the parser and architecture 
+is changed to allow multiple threads.
+
+i214.3.1  Change current scope implementation
+
+The current scope of the parse is determined by which instance of Block
+has an attribute IsCurrentScope with a value of true.  If there are 
+multiple parses executing, then there will be multiple instances of
+Block with an IsCurrentScope attribute equal to true.
+
+i214.3.1.1  The IsCurrentScope attribute is removed, and a relationship
+(R699) from Block to Body is created, with the meaning 'is current scope for'.
+The validation functions block_start, block_end, and get_current_scope, as well 
+as the operation Block.ClearCurrentScope, are updated to use the new relationship.
+
+i214.3.1.2 This still leaves the problem of how to associate a thread with the
+Body that it is parsing.  We solve this problem by changing the generated OAL validation
+code to be non-static, and we create an instance of the OAL validation class
+for each parser.  As part of the parser initialization, the OAL validation instance
+is initialized with the identifier for the Body instance that the parser is
+processing in the validation function action_start.  The utility function set_current_context
+is used to save the Body instance id. We also add a function, get_current_context, which returns that
+value to the validation routine get_current_scope.
+
+i214.3.2 Add synchronized access to instance collections
+
+Since the instance collections in the Body subsystem can now be accessed 
+from multiple threads, all places in the code where instance collection
+access occurs are placed in a synchronized block.  This prevents multiple
+threads from updating the collections simultaneously.
+
+i214.3.3 Improve instance handling code
+
+The instance search functions are inefficient, and are rewritten to
+use built-in functions for iterating through vectors and copying the
+vectors to arrays.  We want to make the functions efficient, since 
+they are now synchronized between threads.
+
+i214.4 Add code to assure Non_Local attribute value
+
+As part of the import code, the last activity of completing the import is 
+to verify that the SM_SUPDT.Non_Local attribute has the correct value.
+We verify this by executing the following OAL:
+
+select many supdt_set from instance of SM_SUPDT;
+for each supdt in supdt_set
+  select many nle_set related by supdt->SM_EVT[R520]->SM_SEVT[R525]->SM_NLEVT[R526];
+  supdt.Non_Local = not_empty nle_set;
+end for;
+
+The attribute is set to true if pevt_set is not empty.
+
+i214.5 Move removeTics code to import class
+
+The function removeTics is generated in the domain root class by MC-Java.
+This function is only used by the import routines.  It is removed from MC-Java,
+and placed in the generated import code.
+
+i214.6 Only generate addTics when persistence is enabled
+
+The function addTics is only needed when persistence is enabled.  A test
+is added to only generate the function when persistence is enabled.
+
+i214.7 Change parser thread naming
+
+The parser thread name is change to include the name of the activity being parsed.
+
+i214.8 Allow same reserved words as identifiers as BP 6.1
+
+The following keywords can be used as identifiers in BP 6.1, but
+not in Tiger:  end, empty, not_empty, cardinality, transform.
+
+i214.8.1 empty, not_empty, cardinality
+
+These keywords were part of the kw_as_id2 rule.  Adding them to the 
+rule causes an ambiguity with when they are used as operators.  The
+operator rules are changed to add a syntactic lookahead for the
+operators to disambiguate them from use as an identifier.
+
+i214.8.2 transform
+
+This keyword was part of the kw_as_id2 rule.  Adding it to the 
+rule causes no other problems.
+A rule for the old-style transform invocation (transform x = <KL>::<op>();)
+is added for backwards compatibility.
+
+i214.8.3 end
+
+This keyword was part of the kw_as_id1 rule.  Adding it to the 
+rule causes ambiguity problems with usage of the word as an
+end statement (end if, end for, end while).  The ambiguity occurs in the
+block rule, since that is where the various statements are parsed.
+The block rule is changed so that the greedy option is set to 
+false when looping through the statements.  This instructs the
+parser to not try to complete rules using as many tokens as possible.
+That way, if an 'end' is used as an identifier, it will be recognized
+as such, rather than as an incomplete end statement.
+
+i214.9 Distinguish different uses of invocation parameters
+
+Validation of invocation parameter names is used for both parameter lists 
+to invocations as well as accessing parameters in the OAL of
+an invocation.  
+
+i214.9.1  Add parameter to data_item rule
+
+The parameter isAccess (boolean) is added to the data_item rule.
+Each reference to the rule has the parameter added to it, true for
+when we are accessing the parameter, and false for when it's part of
+a parameter list.
+
+i214.9.2  Process new parameter
+
+The validation function Data_item_validate is changed to 
+check the parameter isAccess.  If the parameter is true,
+then the current rule id is returned, since no further validation
+can be done at this time.  If it is false,
+then the previous processing in the function is performed,
+which was written for validating parameters to invocations.
+
+i214.10 Implicit declaration by assignment incorrect for inst_ref
+
+Statements of the form "x = y;" where x is implicitly declared,
+and y has a type of inst_ref<Object> or inst_ref_set<Object>,
+are not parsed correctly.  The error is manifested by trying
+to use the new variable to, for example, access an attribute value.
+
+The validation function Assignment_expr_end is changed, in the
+case of an assignment to an implicitly declared variable, to 
+check the type of the r-value, and if it is an inst_ref, 
+migrate the newly declared variable to be an Instance (V_INT)
+subtype.  A similar check for inst_ref_set is made, and
+if true, the variable is migrated to Instance Set (V_INS).
+
+i214.11 Implement MDA parsing
+
+Support for parsing mathematically dependent attributes
+is added.
+
+i214.11.1 Define self variable for MDA's
+
+The code for declaring the self variable, in the validation
+function self_validate, is extended to work for MDA's.
+
+i214.11.2 Allow assignment to MDA in MDA's activity
+
+The value of the MDA is assigned to the MDA attribute,
+i.e., self.<mda>, during the processing of the activity.
+All assignments to MDA's are currently logged as errors.
+The validation function Assignment_expr_end is changed
+to allow assignment to the MDA in the MDA's activity.
+Note that we must check that the MDA being assigned to 
+is in fact the MDA that owns this activity.
+
+i214.11.3 Verify that attribute assigned to by activity
+
+We need to verify that there is at least one assignment
+to the MDA in the activity.
+
+The attribute DerivedAttributeBody.AttributeWritten
+of type boolean is added to the application model.
+
+The validation function action_start is changed to
+initialize AttributeWritten to false before the
+parse of the MDA starts.
+
+The validation function Assignment_expr_end is changed
+to set AttributeWritten to true when the MDA is
+assigned to.
+
+The validation function action_end is changed to
+add a check that AttributeWritten is true for
+MDA activities.  Otherwise, an error is raised with the
+following message: "You must assign a value to the 
+derived attribute self.<mda>", with <mda> having the
+actual attribute name.
+
+i214.11.4 Allow return from MDA
+
+The return statement is allowed for an MDA (to allow
+early exit, for example).  The validation function
+return_statement_end is modified to allow return
+statements in MDA activities.
+
+i214.12 Bridge as second event data item fails
+
+An event specification with two data items, with the
+the second item assigned the result of a bridge invocation,
+fails to parse.  The problem occurs because the attribute
+Block.TempBuffer is used for both the event data name,
+and the bridge keyletters, with the bridge keyletters overwriting
+the event data name before it can be validated.
+
+i214.12.1  Create attributes specific to event data items
+
+The class Block is changed to have parsing buffer attributes
+specific for event data item list parsing.  The attribute
+Block.TempBuffer2 is renamed to SupData1 and the attribute 
+Block.SupData2 is added.  SupData1 contains the name of 
+the first data item in the event parameter list.  SupData2
+contains each subsequent data item name as it is processed.
+
+i214.12.2  Change code to use new attributes
+
+The validation functions Supp_data_start, Supp_data_item_validate, 
+Supp_data_end, and Supp_data_loop6_end are changed to use the
+new attributes SupData1 and SupData2.
+
+i214.13 Allow UDTs as unary operands
+
+The use of a variable with a user-defined type as the operand to
+a unary operator fails to parse.  The validation functions
+unary_operation_validate (boolean not) and sign_expr_end 
+(unary +,-) are changed to get the core type of the variable
+in the case where the variable is a user-defined type.
+
+i214.14 Use CDT when operating on two identical UDT's
+
+When a binary operator has two operands that are both the same
+user-defined type, the parser incorrectly flags the operands as
+incompatible, when they should be.  The validation function
+data_types_compatible is modified to get the core data type
+of the operands when they are the same user-defined type.
+Note that this is different from the condition for issue 186[3],
+where the two datatypes were different, but compatible.
+
+i214.15 Parse identifiers starting with a relationship id correctly
+
+Identifiers (variables, attribute names, etc.) starting with a relationship
+id (e.g., r1rel) are parsed as a relationship id (r1) rather than
+as an identifier (r1rel).  The lexer is modified to only match a
+relationship id if the next character after the number is not part
+of the character set that can be used for identifiers.
+
+i214.16 Debug keywords used as identifiers
+
+The debug keywords trace, dump, sor, on, off can be used as 
+identifiers, because when used in a debug statement, they
+are prefixed with an underscore.   The parser, however, specifies
+the underscore character separately, which leads to parse errors
+if a debug keyword is used.   The parser and lexer are changed to specify
+the debug keywords with the underscore included, e.g., "_trace"
+instead of TOK_UBAR "trace".  The TOK_UBAR token is no longer needed
+and is removed.
+
+i214.17 Remove 'internal error' prefix from error messages that aren't
+
+All cases of 'Internal ERROR' are removed from error messages in
+the following validation functions:
+
+binary_operation_validate
+unary_operation_validate
+get_enclosing_block
+has_valid_phrase
+Block_end
+Local_variable_validate
+For_statement_end
+If_statement_loop3_end
+If_statement_end
+While_statement_end
+Attribute_validate
+Sign_expr_end
+
+i214.18 Verify relationship phrase is on the correct R_OIR
+
+When validating a relationship navigation with a text phrase, the 
+function (is_valid_relationship) that determines the instances
+of ClassInAssociation (R_OIR) on each side of the navigation
+must check that the R_OIR for the destination of the navigation
+has the correct relationship phrase specified.  Checks are added for both
+binary and associative reflexive relationships.
+
+i214.19 Fix association multiplicity lookup for reflexive associative
+
+When determining the multiplicity from navigating a relationship,
+the multiplicity for navigating an associative reflexive relationship
+should be reversed from the logic for traversing a non-reflexive 
+associative relationship. The validation utility function 
+get_right_object_multiplicity is changed to account for this case.
+
+Work Required
+-------------
+
+i214.1 Fix relationship validation
+
+The validation functions are updated as described in the design
+in function_import.sql.
+
+i214.2 Fix invalid parse error for polymorphic events
+
+The validation function process_instance_event in function_import.sql
+is updated to check that the event is polymorphic before issuing an error message
+when a '*' is present on the event label.  OalParserTest.java is changed
+to add the new tests.
+
+i214.3 Allow multiple parses to occur simultaneously 
+
+i214.3.1  Change current scope implementation
+
+i214.3.1.1  The IsCurrentScope attribute is removed, and a relationship
+(R699) from Block to Body is created, in ooaofooa.bak. The operation
+Block.ClearCurrentScope is also updated in ooaofooa.bak.  The validation
+functions block_start, block_end, and get_current_scope are updated in
+function_import.sql
+
+i214.3.1.2 The validation functions are changed to be non-static in
+validate_gen.arc.  The validation instance has a public non-static data
+member named m_act_id which holds the id of the Body instance being parsed.
+We add a public non-static instance handle to the validation instance 
+named m_oal_context to oal.bnf.  The m_oal_context data member is
+initialized in TextParser.java before starting the parse.  The utility function
+get_validation_context_name (which returns the string "m_oal_context") 
+is added to get_names.inc, and invoked by the function 
+get_validate_constants in grammar_enhancer.arc.
+
+The validation functions get_current_context and set_current_context are
+created in function_import.sql.  These functions have native implementations 
+that get/set the m_act_id data member.  
+
+Since we now have native functions in function_import.sql, als_sql.arc is changed
+to preserve the 'Translate: native' parse keyword in the description.  Native functions
+also have the parse on apply checkbox unchecked.
+
+The validation functions are now non-static, so their invocations are changed
+to use the non-static data member 'Self'.  The data member is initialized to 
+'this' in the constructor.  The MC-Java code generator assumes the function
+definitions are static, so we need to supply the instance handle.  The name 'Self'
+was chosen because MC-Java capitalizes ($c) the instance handle name, so 'this'
+couldn't be used. These changes are made to validate_gen.arc.
+
+i214.3.2 Add synchronized access to instance collections
+
+The synchronized access blocks are added to the instance operations
+in java.arc and referring.inc.
+
+i214.3.3 Improve instance handling code
+
+The changes to the search routines are made in java.arc.
+
+i214.4 Add code to assure Non_Local attribute value
+
+The new code (hand translated from the OAL listed in the design section)
+is added to gen_import_java.arc.
+
+i214.5 Move removeTics code to import class
+
+The function is removed from java.arc and placed in gen_import_java.arc.
+
+i214.6 Only generate addTics when persistence is enabled
+
+The change is made to java.arc.
+
+i214.7 Change parser thread naming
+
+The change is made to ActivityEditor.java.
+
+i214.8 Allow same reserved words as identifiers as BP 6.1
+
+i214.8.1 empty, not_empty, cardinality
+
+The changes are made to oal.bnf.
+
+i214.8.2 transform
+
+The changes are made to oal.bnf.
+
+i214.8.3 end
+
+The changes are made to oal.bnf.  The option warnWhenFollowAmbig = false; 
+is added as well to silence an unneeded warning.
+
+i214.9 Distinguish different uses of invocation parameters
+
+i214.9.1  Add parameter to data_item rule
+
+The changes are made to oal.bnf.  Processing for the new parameter
+is added to grammar_enhancer.arc.
+
+i214.9.2  Process new parameter
+
+The change is made to function_import.sql.
+
+i214.10 Implicit declaration by assignment incorrect for inst_ref
+
+The change is made to function_import.sql.
+
+i214.11 Implement MDA parsing
+
+i214.11.1 Define self variable for MDA's
+
+The change is made to function_import.sql.
+
+i214.11.2 Allow assignment to MDA in MDA's activity
+
+The change is made to function_import.sql.
+
+i214.11.3 Verify that attribute assigned to by activity
+
+The changes are made to ooaofooa.bak and function_import.sql.
+
+Since there is no token text associated with this
+error (it just points to the last character in the activity),
+the methods pt_SemanticException.toString() and TextParser.reportError()
+have checks for null token text added to them.
+
+i214.11.4 Allow return from MDA
+
+The change is made to function_import.sql.
+
+i214.12 Bridge as second event data item fails
+
+i214.12.1  Create attributes specific to event data items
+
+The change is made to ooaofooa.bak.
+
+i214.12.2  Change code to use new attributes
+
+The changes are made to function_import.sql.
+
+i214.13 Allow UDTs as unary operands
+
+The changes are made to function_import.sql.
+
+i214.14 Use CDT when operating on two identical UDT's
+
+The changes are made to function_import.sql.
+
+i214.15 Parse identifiers starting with a relationship id correctly
+
+The change is made to oal_lex.g.
+
+i214.16 Debug keywords used as identifiers
+
+The changes are made to oal.bnf and oal_lex.g.
+
+i214.17 Remove 'internal error' prefix from error messages that aren't
+
+The changes are made to function_import.sql.
+
+i214.18 Verify relationship phrase is on the correct R_OIR
+
+The changes are made to function_import.sql.
+
+i214.19 Fix association multiplicity lookup for reflexive associative
+
+The change is made to function_import.sql.
+
+
+Implementation Comments
+-----------------------
+
+- als_sql.inc was added to the dependency list for the grammar_enhancer target
+in build.xml.  build.xml was renamed to generate.xml, and create_nightly_build.sh
+was updated, completing the work for issue 189[2].  OAL Builder.launch is also
+updated with the new file name.
+
+- The attribute S_SYNC.Description in grammar.bak was renamed to Descrip, to make it
+consistent with ooaofooa.bak, and allow the als_sql.inc archetype to work.
+
+- The enumeration data type 'End' was added to the testOAL model.  It has
+enumerators: Start, End, Start_Fixed, End_Fixed, Middle, None.
+
+- The derived attributes test_mda, test_mda2, and unparsed_mda (all integer) 
+are added to the Test class in the testOAL model.
+
+- The reflexive relationship R18 (0..1 - *) is added to the Test Class
+with the phrases 'has parent' (0..1) and 'is parent of' (*).
+
+- The associative reflexive relationship R19 (0..1 - *) is added to the Test Class
+with the phrases 'has parent' (0..1) and 'is parent of' (*).
+
+- The activity for the Test Class.mda attribute is changed to parse
+without error in ui.text.test/mdl/testDescrip1.bak.
+
+Unit Test
+---------
+
+Add the following tests to OalParserTest:
+
+// testInvalidRelSpecInChain
+select any h from instances of D_H; select one d related by h->D_D[R];
+
+// testInvalidRelSpecInRelate
+select any h from instances of D_H; select any d from instances of D_D; 
+relate d to h across R;
+
+// testInvalidRelSpecInRelateUsing
+select any h from instances of D_H; select any d from instances of D_D; 
+create object instance dq of D_DQ;
+relate d to h across R using dq;
+
+// testPolyEventNoParmsToSuper
+select any tst from instances of D_TST;  generate D_TST7* to tst;
+
+- Rename testPolyEventNoParms to testPolyEventNoParmsToSub
+
+// testPolyEventTwoParmsToSuper
+select any t from instances of D_TST;  generate D_TST8*(i:2, r: 1.1) to t;
+
+- Rename testPolyEventTwoParms to testPolyEventTwoParmsToSub
+
+// testReservedWordAsEnumDTName
+x = End::Start;
+
+// testReservedWordAsEnumeratorName
+x = End::End;
+
+// testVarCaseSensitivity
+thiS = 1; thIs = 1.1;  (no error)
+
+// testParamCaseSensitivity (test2 function)
+x = param.I;  (error)
+
+// testEventTwoParmsToInstanceWithBridgeParms
+select any t from instances of D_TST;  
+generate D_TST3(i: T::testIntNoParm(), s:T::testStringNoParm()) to t;
+
+// testEventTwoParmsToAssignerWithBridgeParms
+generate D_TST_A3(i:T::testIntNoParm(), s:T::testStringNoParm()) to D_TST assigner;
+
+// testEventTwoParmsToCreatorWithBridgeParms
+generate D_TST3(i:T::testIntNoParm(), s:T::testStringNoParm()) to D_TST creator;
+
+// testMultExprNotUDTAttr
+select any t from instances of D_TST; x = not t.u_bool;
+
+// testUnaryPlusIUDTAttr
+select any t from instances of D_TST; x = +t.u_int;
+
+// testUnaryMinusRUDTAttr
+select any t from instances of D_TST; x = -t.u_real;
+
+// testAssignTypeIRO2IROImplicit
+select any x from instances of D_D; assign y = x; z = y.Disk_ID;
+
+// testAssignTypeIRS2IRSImplicit
+select many x from instances of D_D; assign y = x; for each y1 in y end for;
+
+// testVarStartingWithRelid
+r1rel = 1;
+// testVarStartingWithRelid2
+r12rel = 1;
+// testVarStartingWithKeyword1
+inbox = 1;
+// testVarStartingWithKeyword2
+notok = 1;
+// testVarStartingWithKeyword3
+selfish = 1;
+// testVarStartingWithKeyword4
+oracle = 1;
+// testInvalidVarName
+1bad = 1;
+
+// testDebugKeywordAsVar
+debug = 1; trace = 2; on = 3; off = 4; dump = 5; sor = 6;
+// testDebugStatements
+_debug _on; _debug _off; _debug _stat; 
+_debug _dump _off; _debug _dump _on; 
+_debug _trace _off; _debug _trace _on; 
+_debug _sor _off; _debug _sor _on;
+
+// testParseMDA (Test.test_mda)
+self.test_mda = 1;
+// testParseMDAReturn (Test.test_mda)
+self.test_mda = 1; return;
+// testParseMDAWrongAttr (Test.test_mda)
+self.test_mda = 1;
+self.test_mda2 = 2;
+// testMDANotAssigned (Test.test_mda)
+x = 1;
+// testParseMDAReturnValue (Test.test_mda)
+self.test_mda = 1; return 5;
+// testAssignUnparsedMDA
+select any t from instances of D_TST; t.unparsed_mda = 3;
+
+// testSelectOneGoodReflexive3
+select any t from instances of D_TST; select one t2 related by t->D_TST[R18.'has parent'];
+
+// testSelectAnyGoodReflexive2
+select any t from instances of D_TST; select any t2 related by t->D_TST[R18.'is parent of'];
+
+// testSelectManyGoodReflexive2
+select any t from instances of D_TST; select many t2 related by t->D_TST[R18.'is parent of'];
+
+// testSelectOneAssocGoodReflexive3
+select any t from instances of D_TST; select one t2 related by t->D_TST[R19.'has parent'];
+
+// testSelectAnyAssocGoodReflexive2
+select any t from instances of D_TST; select any t2 related by t->D_TST[R19.'is parent of'];
+
+// testSelectManyAssocGoodReflexive2
+select any t from instances of D_TST; select many t2 related by t->D_TST[R19.'is parent of'];
+
+// testSelectOneAssocRelGoodReflexive
+select any t from instances of D_TST; select one t2 related by t->D_N[R19.'has parent'];
+
+// testSelectAnyAssocRelGoodReflexive2
+select any qp from instances of D_QP; select any qp2 related by qp->D_QPO[R13.'precedes']->D_QP[R13.'precedes'];
+
+// testSelectAnyAssocRelGoodReflexive3
+select any qp from instances of D_QP; select any qp2 related by qp->D_QPO[R13.'precedes']->D_QP[R13.'follows'];
+
+// testSelectAnyAssocRelGoodReflexive4
+select any t from instances of D_TST; select any t2 related by t->D_N[R19.'is parent of'];
+
+// testSelectOneAssocBadReflexive
+select any t from instances of D_TST; select one t2 related by t->D_TST[R19.'is parent of'];
+
+// testSelectAnyAssocBadReflexive
+select any t from instances of D_TST; select any t2 related by t->D_TST[R19.'has parent'];
+
+- Rebuild All projects
+R All projects rebuild without error
+- Run OalParserTest
+R Test passes
+- Run IOTest
+R Test passes
+- Run UIText test
+R Test passes
+- Run canvas test
+R Test passes
+
+- Create unit test ParseAllInDomain.java
+that parses all activities in the following domains:
+
+ooaofooa with OAL validation functions added
+ooaofgraphics
+
+This list of domains from the MC-2020 test suite was
+compiled from the file nextgen:/test_specs/mc2020/pr/prods/mc2020.prod.
+The domains used in the test variations listed in the variables 
+PR_variation_set and PR_variation_set_perform were used.
+All domains used for coloring tests (CLR_*) were not included.
+
+asc
+BP50_evt
+BP50_evt2
+br1
+br1f
+br2
+br2f
+bridges
+cl
+dogs
+enum1
+enum2
+enum3
+enum4
+event
+ex1
+ex2
+ex3
+
+G_ALL_G_EVT_LE_precreated
+G_ALL_R_BRG_tim
+G_ALL_multiple_exit_return
+G_ALL_nested_invoke
+G_ALL_performance_test1
+G_ALL_performance_test2
+G_ALL_performance_test3
+G_ALL_performance_test4
+G_ALL_performance_test5
+G_ALL_performance_test6
+G_ALL_performance_test7
+G_ALL_select_where_enum
+G_BRG_G_ALL_interop
+G_COP_R_ALL_interop
+G_EVT_PE_G_EVT_NLE_nle_ignored
+G_IOP_MDA_self_event
+G_IOP_R_ALL_interop
+G_MDA_R_ALL_interop
+G_STE_G_COP_compare_date
+G_STE_G_EVT_PE_subtype_no_state
+G_STE_G_EVT_PE_to_creation
+G_STE_G_STE_pe_le_same_state
+G_STE_assoc_rel
+G_STE_del_inst_mult
+
+im1
+im2
+im3
+im4
+ims
+ims2
+imx
+init1
+init2
+interop_otherdom
+
+memleak
+mt1
+no_inst
+poly
+reflexive
+select
+self
+sm
+sync
+syntax
+trans
+wim2
+wim3
+wims
+wimx
+
+- Run ParseAllInDomain test
+R Test passes
+
+
+Code Changes
+------------
+
+com.projtech.bp.als/.externalToolBuilders/OAL Builder.launch
+Initial version:  1.1   Final version: 1.2
+
+com.projtech.bp.als/arc/als_sql.inc
+Initial version:  1.1   Final version: 1.2
+
+com.projtech.bp.als/arc/get_names.inc
+Initial version:  1.4   Final version: 1.5
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version:  1.13  Final version: 1.14
+
+com.projtech.bp.als/arc/validate_gen.arc
+Initial version:  1.7   Final version: 1.8
+
+com.projtech.bp.als/mdl/grammar.bak
+Initial version:  1.3   Final version: 1.4
+
+com.projtech.bp.als/build.xml
+Deleted version: 1.23
+
+com.projtech.bp.als/generate.xml
+Introduced version: 1.1
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version:  1.13  Final version: 1.14
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version:  1.28  Final version: 1.29
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/oal_lex.g
+Initial version:  1.1   Final version: 1.2
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/pt_SemanticException.java
+Initial version:  1.1   Final version: 1.2
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/OalParserTest.java
+Initial version:  1.10  Final version: 1.11
+
+com.projtech.bp.als.oal.test/src/com/projtech/bp/als/oal/test/ParseAllInDomain.java
+Introduced version:  1.1
+
+com.projtech.bp.als.oal.test/mdl/*.sql
+Introduced version:  1.1
+
+com.projtech.bp.als.oal.test/mdl/testOAL1.bak
+Initial version:  1.3  Final version: 1.4
+
+com.projtech.bp.core/mdl/ooaofooa.bak
+Initial version:  1.39  Final version: 1.40
+
+com.projtech.bp.core/tools/create_nightly_build.sh
+Initial version:  1.14  Final version: 1.19
+
+com.projtech.bp.io.sql/arc/gen_import_java.arc
+Initial version:  1.12  Final version: 1.13
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/ActivityEditor.java
+Initial version:  1.7   Final version: 1.8
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/activity/TextParser.java
+Initial version:  1.6   Final version: 1.7
+
+com.projtech.bp.ui.text.test/mdl/testDescrip1.bak
+Initial version:  1.4   Final version: 1.5
+
+MC-Java/java.arc
+Initial version:  1.9   Final version: 1.10
+
+MC-Java/referring.inc
+Initial version:  1.4   Final version: 1.5
+
+
+End
+---
+
+$Log: i214.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.9  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.8.162.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.8  2004/06/16 22:01:34  greg
+Job: 214
+Update history
+
+Revision 1.7  2004/06/16 21:48:53  greg
+Job: 214
+Update from review
+
+Revision 1.6  2004/06/15 16:26:19  greg
+Job: 214
+update create_nightly_build.sh version
+
+Revision 1.5  2004/06/15 00:03:12  greg
+Job: 214
+Update from review
+
+Revision 1.4  2004/06/14 16:47:26  greg
+Job: 214
+Added more unit tests
+
+Revision 1.3  2004/06/11 21:58:31  greg
+Job: 214
+Additional minor edits
+
+Revision 1.2  2004/06/11 21:36:04  greg
+Job: 214
+Ready for review
+
+

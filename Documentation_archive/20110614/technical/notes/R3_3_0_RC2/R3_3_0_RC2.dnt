@@ -1,0 +1,243 @@
+========================================================================
+
+File:      $RCSfile: R3_3_0_RC2.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+
+
+
+
+1. Abstract
+-----------
+This note is to describe the required changes to resolve the recent issues
+found against R3.3.0
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] SMA QA dts0100744728 - Instance Reference array manual test
+[2] Test model :  InstanceReferenceArray.xtuml 
+   <cvs> Model_sf/InstanceReferenceArray.xtuml 
+[3] SMA QA dts0100720592 - Instance Reference verifier test
+[4] ClearQuest DEI dts0100775633 - NPE's when attempting to access empty
+    instances in Verifier
+[5] ClearQuest DEI dts0100775497 - Assure that existing EP_PKGs are properly
+    imported/upgraded in BP 3.3.
+[6] SMA QA dts0100696697 - Verifier test plan
+[7] ClearQuest DEI dts0100775666 - Timer threads can be stopped prematurely
+[8] ClearQuest DEI dts0100759157 - Polymorphic events test
+[9] R3_3_0_RC1.dnt
+    This is a design note written for issues that were resolved in 
+    branch Review-R3_3_0-RC1.
+[10] ClearQuest DEI dts0100775689 - Remove model debugger files from 
+    MicrowaveOven sample project    
+[11] ClearQuest DEI dts0100769023
+     Verify deterministic behavior
+[12] ClearQuest DEI dts0100696901
+     Errors found while running the SMA QA Verifier Test plan.
+[13] ClearQuest DEI dts0100775795     
+     Timers are not being properly destroyed in TIM.terminate()
+
+4. Background
+-------------
+None.
+
+5. Analysis
+-----------
+5.1 There are two failures when matching the variable view contents with 
+    the expected result. The variable view shows one more extra field than
+    the expected result.
+
+5.2 Exceptions seen when reproducing Instance Reference test failures.
+    When investigating [3] it was noticed that there were some Null Pointer
+    Exceptions being thrown and a runtime error was causing an internal error
+    message to show incorrectly. The fix is tracked by [4].
+
+5.3 Convert to generic Packages option does not convert old format packages.
+    This issue is tracked by [5]
+
+5.4 Stopping one simulation will stop the timer threads, even if another
+    simulation is running. This was found during execution of [6] and the fix is
+    tracked by [7].
+
+5.5 The previous release candidate design note explained investigation and 
+    actions taken to resolve an issue that was observed during code review.
+    As explained in that note [9 section 6.3.3], the action taken was determined 
+    to not be necessary.  Therefore, we shall back-out the changes made at this 
+    time.
+
+6. Design
+---------
+6.1 The actual variable view contents is correct and the expected result (
+	that are commented in the TestClass::run [2] )  need to be updated. 
+
+6.2 The NPE is being thrown by the native bridge implementation of
+GD::instance_to_unique_id(). GD::string_to_unique_id() was found to be throwing
+a UUID format exception. The unwanted error message was being logged in
+AttributeValueReference.getRuntimeValue().
+
+6.2.1 GD::instance_to_unique_id()
+This is modified to test for a null passed instance. If true a null UUID is
+returned.
+
+6.2.1 GD::string_to_unique_id()
+The instance reference default value is "<Class Name>::Unknown". This causes
+this bridge call to throw a UUID number format exception. This bridge is
+modified to return a null UUID if the string "::Unknown" is found. Since this
+bridge is called only in contexed where the string is expected to contain a
+UUID, this is a safe solution.
+
+6.3 Convert old format packages
+A new method, upgradePackage is added to the ImportHelper class. It collects the
+child elements of the old format package and calls on to the existing upgrade
+code as required. Finally it removes package in package and specification
+package super type instances as required.
+
+6.4 Fix premature timer stoppage
+The call to TIM.stopTimers() is currently made from Tim.terminate(). This is
+incorrect, since more than one simulation may have been running. The required
+change is to remove the call to stopTimers() from terminate. Instead, a list of
+running Debug targets is maintained as a static member of BPDebugTarget. Targets
+are added in the constructor and removed in the BPDebugTarget.terminate() call.
+If the list becomes empty, the timers are stopped. 
+
+6.4.1 A last-minute problem was found while running the final manual test [11].
+Timers were not being properly cleaned up during termination.  The problem is 
+that not all timers are being cleared from the timer list.   This problem was 
+introduced by a change for [12] (see TIM.java v1.17.12.1).  That 
+change was made to fix a problem where we were deleting too many timers in the 
+situation where multiple models were executing at once.  The current behavior 
+is much worse then the prior behavior.  Therefore, that change was reverted 
+and we now, once again, simply clear the entire timerlist and eelist in 
+TIM.terminate.  An issue has been raised to revisit this, [13].
+
+6.5 Do not try to resolve polymorphic events at fully contained level
+
+Recently a change was made that allowed calling signal resolution at all levels
+of the tool.  This includes Component, Component Package, Domain, System and
+Package.  The change followed the same pattern as the existing resolution, which
+also means that resolution is attempted on polymorphic events when it should not
+be.  The highest levels that we need to resolve polymorphic events is at the
+Subsystem and Package.  When fully contained (meaning it is guaranteed that all
+parts exist, super class and associations) we do not need to resolve.  This is
+true when pasting a Component, Component Package, and Domain.
+
+The existing OAL is reworked such that a new operation chain is added,
+removeIncompleteSignalEvents.  The end of this call will result in only signal
+resolution code being called.  The Package.pasteModelClass() and
+Package.removeIncompleteSignalEvents()  will still call into the old chain to
+allow polymorphic event resolution.
+
+6.6 Back out changes associated with C_C.getRootComponentID as required 
+    by [9 section 6.3.3.3]
+
+    To back out these changes we simply revist the file xtuml files that were 
+    previously modified for this issue.  The changes followed a pattern as 
+    described in [9 section 6.3.3.1.1].  However, the changed list of files was
+    kept by the engineer, so this change was simply a matter of using the
+    resource history to restore the prior state of the file.  24 files were 
+    changed.  They were:
+	/Association/Association/Association.xtuml 
+	/Component/Component/Component.xtuml 
+	/Component/Component Library/Component Reference/Component Reference.xtuml 
+	/Component/Interface Operation/Interface Operation.xtuml 
+	/Component/Interface Reference/Interface Reference.xtuml 
+	/Component/Property Parameter/Property Parameter.xtuml 
+	/Component/Requirement/Requirement.xtuml 
+	/Domain/Bridge/Bridge.xtuml 
+	/Domain/Bridge Parameter/Bridge Parameter.xtuml 
+	/Domain/Function/Function.xtuml 
+	/Domain/Structure Member/Structure Member.xtuml 
+	/Domain/User Data Type/User Data Type.xtuml 
+	/Instance/Component Instance/Component Instance.xtuml 
+	/Instance/Value in Stack Frame/Value in Stack Frame.xtuml 
+	/Interaction/Class Instance Participant/Class Instance Participant.xtuml 
+	/Interaction/Class Participant/Class Participant.xtuml 
+	/Interaction/Component Participant/Component Participant.xtuml 
+	/Interaction/External Entity Participant/External Entity Participant.xtuml 
+	/Message/Message/Message.xtuml 
+	/State Machine/State Machine/State Machine.xtuml 
+	/State Machine/Transition/Transition.xtuml 
+	/Subsystem/Imported Class/Imported Class.xtuml 
+	/Subsystem/Model Class/Model Class.xtuml 
+	/Subsystem/Operation Parameter/Operation Parameter.xtuml     
+    
+6.7 Update MicrowaveOven sample project [10]
+6.7.1  The MicrowaveOven sample project still includes an EXE built for the old
+       BridgePoint Model Debugger.  We haven't shipped that tool in years.
+       Update the sample data to no longer ship this EXE as it confuses users.
+6.7.2  During testing, it was found that the proper pre-built EXE and the source
+       files were not copied into the sample project.  Fix the project creator
+       to copy these files into place.
+6.7.3  There is a domain marking file that includes the initialization function
+       markings.  This file is currently placed into 
+       gen/MicrowaveOven_domain.mark.  We need to copy this into gen/domain.mark
+       instead so if the user builds the project it will be runnable.
+        
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+None.
+
+9. Unit Test
+------------
+- Run JUnit tests
+
+
+End
+---
+
+$Log: R3_3_0_RC2.dnt,v $
+Revision 1.9  2011/06/04 00:13:44  rmulvey
+job:dts0100775666
+Updated to account for a last-minute change to TIM.java::terminate.
+
+Revision 1.8  2011/06/03 16:49:49  kbrown
+job:dts0100775689
+Updated the design note where the changes are captured.
+
+Revision 1.7  2011/06/03 15:16:19  tlondon
+Job: dts0100759157
+
+Add note about new operation chain for signal resolution
+
+Revision 1.6  2011/06/03 14:36:28  rmulvey
+job:dts0100743436
+Updated the note for the changes associated with C_C.getRootComponentID
+
+Revision 1.5  2011/06/03 13:52:33  tlondon
+Job: dts0100759157
+
+Add change documentation
+
+Revision 1.4  2011/06/03 13:47:33  campbell
+Job: dts0100775666
+Add required references.
+
+Revision 1.3  2011/06/03 13:43:30  campbell
+Job: dts0100775666
+Document timers being stopped later.
+
+Revision 1.2  2011/06/03 11:28:48  campbell
+Job: dts0100775633
+Document empty Instance Reference handling fixes.
+
+Revision 1.1  2011/06/02 20:49:14  nmohamad
+job:dts0100744728
+Create
+

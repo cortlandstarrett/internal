@@ -1,0 +1,155 @@
+========================================================================
+
+File:      $RCSfile: dts0100628281.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Allow referencing a record component in a state action context using the Param
+keyword.
+
+
+1. Abstract
+-----------
+This note describes the work done to eliminate the parsing error seen when 
+referencing a structure's member in a state action context using the 'param'
+keyword.
+
+
+2. History
+----------
+
+3. Document References
+----------------------
+
+[1] ClearQuest DEI dts0100628281
+
+[2] ClearQuest DEI dts0100525576  
+    use rcvd_evt instead of param 
+    
+[3] Bugzilla issue 2772 
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=2772
+    Parser allows param keyword in place of rcvd_evt in state action, crashes 
+    editor and Verifier.
+
+4. Background
+-------------
+When accessing event parameters in an instance based state machine a user
+may use the param keyword instead of the rcvd_evt keyword to access values that
+are passed-in. Previous issue[3] allowed the param and rcvd_evt keywords to be
+used interchangeably in this situation, but introducing the Structural Data
+Types (SDTs) regenerated the problem, so now accessing members of an event 
+parameter of type structure is flagged as an error in the OAL parser.
+
+5. Analysis
+-----------
+5.1 Allow structure member access using the 'param' keyword [1]
+
+In a state machine that contains a parameter that consists of a structure,
+accessing the components of the structure using 
+param.<struct_name>.<struct_component> is not possible and is flagged as
+an error by the OAL parser. It is possible to access the parameter using
+rcvd_evt.<struct_name>.<struct_component>.
+Further adding to the confusion: it is possible to access a simple parameter
+(with no members) using the param syntax.
+As a fix for this, validation flow of the param syntax inside a state action 
+context must be totally migrated to the validation flow of the rcvd_evt syntax. 
+
+6. Design
+---------
+6.1 ::param_data_access_start
+This function should check the current action block.
+If either a state action block or a transition action block is found, 
+an event datum value (V_EDV) instance is created and related with a value
+(V_VAL) instance, and the V_VAL instance is returned by the function.
+Doing so will pass the control immediately to the validation operation for 
+rcvd_evt.
+While if the current action block is found to be neither a state action block
+nor a transition action block, create a parameter value (V_PVL) instance and
+relate it with value (V_VAL) instance then return it.
+
+6.2 ::param_validate
+As the work done in [6.1] will pass the control to the validation 
+operation of the rcvd_evt, the state action specific oal in param_validate
+[3] would now be redundant and should be removed.
+ 
+6.3 ::event_root validate
+6.3.1 This function was previously modified to return a value_id to 
+	  'param_validate' [3], this should be reverted as param_validate was 
+	  modified here to not call 'event_root_validate'.
+6.3.2 Type migration from Parameter Value (V_PVL) to Event Data Value (V_EDV)
+	  will now be redundant and should be removed.
+
+6.4 ::member_access_end  ::member_access_loop11_end
+	These two functions were updated to discard the return value of the
+	operation, 'event_root_validate', this should be reverted as 
+	'event_root_validate' now has no return value.
+
+
+7. Design Comments
+------------------
+
+
+8. Work Required
+----------------
+The work required is fully detailed in the design section.
+
+9. Unit Test
+------------
+9.1 Test to assure the rcvd_evt and param keywords are interchangeable in an
+    ISM, and accessing a struct member. 
+_- Create a new structure data type called my_struct with one member called 
+   'member' of type int.
+_- Create an ISM with 2 states A and B
+_- Create a transition from A to B
+_- Create an Event E1 with a parameter named P1 which is of type my_struct.
+_- Assign E1 to the transition between States A and B
+_- Put the following OAL in State B
+   a = rcvd_evt.p1.member;
+   b = param.p1.member;
+   if (a == b) and (a == 1)
+     LOG::LogSuccess(message:"Param and rcvd_evt values are the same");
+   else
+     LOG::LogFailure(message:"Param and rcvd_evt values are NOT the same");
+   end if;
+_R No parse errors are present 
+_- Execute the above OAL using verifier.
+_R The param and rcvd_evt values are the same
+
+9.2 Run existing OAL unit test and verify it passes.
+
+End
+---
+
+$Log: dts0100628281.dnt,v $
+Revision 1.6  2010/01/05 04:32:18  kbrown
+job:dts0100644853
+Batch commit of copyright change from 2009 to 2010 for BP CVS projects.
+
+Revision 1.5  2009/12/15 16:34:23  ayoussef
+dts:0100628281
+Design note after review.
+
+Revision 1.4  2009/12/15 14:48:56  ayoussef
+dts:0100628281
+Design note.
+
+Revision 1.3  2009/12/15 13:31:14  ayoussef
+dts:0100628281
+Design note.
+
+Revision 1.2  2009/12/15 09:47:54  ayoussef
+dts:0100628281
+Design note.
+
+Revision 1.1  2009/12/13 11:27:23  ayoussef
+dts:0100628281
+Design note draft
+

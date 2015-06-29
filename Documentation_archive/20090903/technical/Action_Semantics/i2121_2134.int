@@ -1,0 +1,175 @@
+========================================================================
+
+File:      $RCSfile: i2121_2134.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Fix parser bugs
+
+Abstract
+--------
+This note describes changes to fix two parser bugs.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 2121
+[2] Issue 2134
+
+Background
+----------
+[1] describes a bug where passing a by reference parameter to an invocation
+that takes a by reference parameter gives a parse error.
+
+[2] describes a bug where the following legal OAL gives a parse error:
+
+select one d related by d->D_H[R4.'is permanently assigned to']->D_D[R4];
+
+Design
+------
+
+1. Allow by reference parameters to be passed as by reference parameters
+
+The OAL validation function is_readonly_value is called when validating
+parameters to an invocation to confirm that a value being passed to a
+by reference parameter is not readonly.   The function doesn't check if
+a value is a by reference parameter.  The following OAL is added to the
+function in function_import.sql (where val is an instance of V_VAL):
+
+select one pvl related by val->V_PVL[R801];
+if ( not_empty pvl )
+  select one bparm related by pvl->S_BPARM[R831];
+  if ( not_empty bparm )
+    return bparm.By_Ref == 0;
+  end if;
+  select one sparm related by pvl->S_SPARM[R832];
+  if ( not_empty sparm )
+    return sparm.By_Ref == 0;
+  end if;
+  select one tparm related by pvl->O_TPARM[R833];
+  if ( not_empty tparm )
+    return tparm.By_Ref == 0;
+  end if;
+end if;
+
+All the other subtypes of V_VAL were examined.  is_readonly_value now checks
+all possible subtypes that could be read-write.
+
+2. Remove interaction between links in a relationship chain
+
+2.1  The Oal validation function phrase_validate writes the phrase to
+the attribute Block.TempBuffer.  This value is then used by the validation
+function Instance_chain_loop5_end. The 'loop end' function is called each
+time an instance chain link is parsed.  The 'loop end' function is changed
+to set the Block.TempBuffer attribute to the empty string after the value
+has been saved to a (newly created) Link (ACT_LNK) instance.  This prevents
+the phrase from being used for following links in the chain.
+
+2.2 Each time the Instance_chain_loop5_end function is called it is passed
+the id value for the phrase for that link.  However, if there was no phrase
+for the link, the phrase id value for the previous link is passed in.  In
+order to clear this value before each link is processed, we need to add
+a check in grammar_enhancer.arc to output a statement that clears the 
+phrase id value, to ensure the phrase id value applies only to the current
+link.
+
+Implementation Comments
+-----------------------
+The parser bnf file was checked for any other occurances of a multiple
+occurance rule (*, +) where a sub-rule was optional.  There were none found.
+
+When initially creating action within an operation, the actual action instance
+may be null.  This causes a parser crash and throws an NPE.  To prevent this an
+if not_empty test was added around the call to Block.clearCurrentScope().
+
+Unit Test
+---------
+
+- (Manual) The sample model from issue 2134 parses without error.
+
+- The following test is implemented in TestInvocation.java:
+
+testInvocationPassByRefToByRef()
+    for op_type in [function, bridge, cb_operation, ib_operation ]
+       Parse the following in an 'op_type' that has a by reference parameter
+	     paramRef(s: param.s);
+	end for
+
+- The following tests are implemented in TestSelect.java:
+
+testSelectOneRelatedBy2LinksWith1PhraseFirst
+	select any d from instances of D_D;
+    select one d related by d->D_H[R4.'is permanently assigned to']->D_D[R4];
+
+testSelectOneRelatedBy2LinksWith1PhraseSecond
+	select any d from instances of D_D;
+    select one d related by d->D_H[R4]->D_D[R4.'is permanent home for'];"
+
+testSelectOneRelatedBy3LinksWith1PhraseMiddle
+	select any d from instances of D_D;
+	select one h related by d->D_H[R4]->D_D[R4.'is permanent home for']->D_H[R4];
+
+The unit test code was refactored to handle validating a navigation that 
+has three links.
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.als/arc/grammar_enhancer.arc
+com.mentor.nucleus.bp.als.oal/sql/function_import.sql
+com.mentor.nucleus.bp.als.oal.test/src/.../TestInvocation.java
+com.mentor.nucleus.bp.als.oal.test/src/.../TestSelect.java
+
+com.mentor.nuclues.bp.core/models/ooaofooa.xtuml
+
+End
+---
+
+$Log: i2121_2134.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.6  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.5.16.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.5  2006/05/25 15:22:26  tlondon
+Job: 2121
+
+Add note about possible NPE on initial action creation.
+
+Revision 1.4  2006/05/24 17:56:18  greg
+Job: 2121
+Job: 2134
+Addressed observations
+
+Revision 1.3  2006/05/23 20:24:42  greg
+Job: 2121
+Job: 2134
+Minor update
+
+Revision 1.2  2006/05/23 20:16:10  greg
+Job: 2121
+Job: 2134
+Minor update
+
+Revision 1.1  2006/05/23 20:03:48  greg
+Job: 2121
+Job: 2134
+Introduce

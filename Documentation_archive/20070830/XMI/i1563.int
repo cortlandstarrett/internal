@@ -1,0 +1,206 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Model Compiler Implementation Note
+Support XMI Export in Tiger
+
+
+1. Abstract
+-----------
+This note will describe the implementation of a new feature to support export 
+of a BridgePoint model in XMI format.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] SRS 1.05 <CVS>/Documentation/external/requirements/SRS 105.doc
+[2] bug 1563. http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=1563
+[3] i1563.dnt <CVS>/Documentation/internal/technical/XMI/i1563.dnt
+[4] bug 1400. http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=1400
+
+4. Background
+-------------
+We have had customer requests to export in XMI format.  Marketing 
+believes lack of XMI support is a sales inhibitor.  Our task is to export our 
+xtUML models in XML, adhering to the OMG's version 2.1 of the XMI specification.
+
+There are two parts to supporting XMI export inside EDGE:  1) the Eclipse
+integration, and 2) the model compiler support.
+
+5. Design
+---------
+5.1     "Create builder class"
+5.1.1   Created com.mentor.nucleus.bp.mc.xmiexport plugin
+5.1.2   Contains classes:
+            o XMIExport - manages the plugin lifecycle
+            o XMIExportNature - manages the builder lifecycle
+            o XMIExportBuilder - adds builder to project to provide checkbox for 
+                XMI Export
+        
+5.2     "Set it up when xtUML nature is configured"
+5.2.1   Made updates to com.mentor.nucleus.bp.mc.mc(2/3)020 plugins
+5.2.1.1 MCX020NewProjectWizard::performFinish() now adds the XMIExportNature
+        immediately after adding the MCX020Nature
+5.2.1.2 MCX020ResourceListener::processEvent() now notices when the "XMI Export"
+        builder comes and goes from the project build specification.  When it is
+        in the build specification, the "-i" argument is added to the commands
+        passed to xtumlmc_build
+
+5.3     "Modify xtumlmc_build to handle "-i" argument"
+5.3.1   xtumlmc_build now watches for the "-i" command line argument
+5.3.2   If "-i" is specified, xtumlmc_build processes the 
+        xtuml_xmi2.1_export.arc against the models passed to the build
+5.3.3   xtumlmc_build copies the output xml file(s) to the "<project name>/src"
+        folder
+        
+5.4     "Update the Model Compiler User Guide with a description of the new
+        feature and its usage"
+5.4.1   The "Features" section was updated to include a note on XMI Export.
+
+6. Implementation Comments
+--------------------------
+6.1     The design [3] called for the builder to live in the 
+        com.mentor.nucleus.bp.core.util package.  The task of adding the builder
+        was designed to happen in bp.core's XtUMLNature class.  Due to 
+        difficulties encountered during the development phase working with 
+        bp.core and roadblocks with the original design, the builder was 
+        actually created as a separate plugin (see 5.1.1).  This plugin includes
+        the builder and a nature to manage its lifecycle per the standard 
+        Eclipse paradigm.
+
+6.2     xtumlmc_test will be augmented to include support for automated testing 
+        of XMI Export.
+
+6.3     While working on updates to the User Guide, we took the opportunity to
+        remove the "Nucleus" name from all the BridgePoint related plugins as
+        specified in [4].
+        
+7. Unit Test
+------------
+7.1     Setup
+7.1.1   Install the new model compiler and XMI Export plugins into the EDGE 
+            installation
+7.1.2   Install the new xtumlmc_build(.exe) into the EDGE installation
+7.1.3   Install the XMI Export archetypes into the EDGE installation
+
+7.2     Verify No Side Effects
+            _- Create a new xtUML project
+            _- Import an existing model that has 2 domains
+            _- Select the Navigator view
+            _- Select the "Properties" of the project
+            _- Show the "Builders" page
+            _R- Verify the "XMI 2.1 Export" builder is unchecked
+            _- Close the "Properties" dialog
+    
+            _- Build the project
+            _R-Verify the project builds successfully and produces an executable
+    
+7.3     Verify Correct Operation
+            _- Select the "Properties" of the project
+            _- Show the "Builders" page
+            _- Check the "XMI 2.1 Export" builder
+            _- Close the "Properties" dialog
+    
+            _- Build the project
+            _R-Verify the project builds successfully and produces an output 
+                file <domain>_xmi_2_1.xml for each domain in the "src" 
+                directory
+
+8. Code Changes
+---------------
+This project touched a lot of files in a lot of projects.  These are spread
+among a number of branches.
+
+com.mentor.nucleus.bp.mc.mc2020  (mcplugins-SKB-i1563)
+    o plugin.xml
+    o src/com/mentor/nucleus/bp/mc/mc2020
+        - MC2020NewProjectWizard.java
+        - MC2020ResourceListener.java
+        
+com.mentor.nucleus.bp.mc.mc2020.pkg-feature  (mcplugins-SKB-i1563)
+    o feature.xml
+    
+com.mentor.nucleus.bp.mc.mc3020  (mcplugins-SKB-i1563)
+    o plugin.xml
+    o src/com/mentor/nucleus/bp/mc/mc3020
+        - MC3020NewProjectWizard.java
+        - MC3020ResourceListener.java
+
+com.mentor.nucleus.bp.mc.mc3020.pkg-feature  (mcplugins-SKB-i1563)
+    o feature.xml
+    
+com.mentor.nucleus.bp.mc.xmiexport (already in HEAD)
+    o This project was newly introduced, so all the files are already in HEAD
+
+com.mentor.nucleus.help.bp.mc (mc_doc-SKB-i1563)
+    o META-INF
+        - MANIFEST.MF
+        
+com.mentor.nucleus.help.bp.mc2020 (mc_doc-SKB-i1563)
+    o META-INF
+        - MANIFEST.MF
+        
+MC-Documentation/external/mc3020/ug/xml (mc3020_doc-SKB-i1563)
+    o c2.xml
+    o c6.xml
+    o eclipse.xsl
+    o plugin.xml
+    o toc.xml
+    o ug.xml
+
+model_compilers/mccommon/bin (mccommon-SKB-i1563)
+    o xtumlmc_build
+    o xtumlmc_test
+
+End
+---
+
+$Log$
+Revision 1.4  2009/01/01 23:13:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.3.4.1  2008/12/31 16:11:12  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.3  2007/08/31 21:16:19  rmulvey
+Job:2673
+Moved the XMI folder to Documentation/technical/archive/20070830
+
+Revision 1.1.2.1  2007/08/31 20:30:14  rmulvey
+Job:2673
+Commiting changes that archive the files and folders under /Documentation/technical as specified by i2673.int.  This is being done in branch Review-i2673-Documentation to test that resource history is not lost in the folder that are moved.
+
+Revision 1.5  2006/03/28 16:35:59  kbrown
+Job:1563
+Removed changes that no longer are relevant.
+
+Revision 1.4  2006/03/06 17:01:15  kbrown
+Job:1563
+Added to int that xtumlmc_test changed.
+
+Revision 1.3  2006/03/05 21:09:37  kbrown
+Job:1563
+Completed updates from int review.
+
+Revision 1.2  2006/03/03 17:58:05  kbrown
+Job:1563
+Completed implementation note.  Ready for review.
+
+Revision 1.1  2006/03/02 20:01:38  kbrown
+Job:1563
+Partially complete implementation note.

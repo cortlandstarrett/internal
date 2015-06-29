@@ -1,0 +1,214 @@
+========================================================================
+
+File:      $RCSfile: dts0100777594.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Fix derived attribute handling in Verifier.
+
+1. Abstract
+-----------
+Part of the work for R3_3_0 broke derived attribute handling in Verifier. This
+note covers the changes needed to restore and improve this feature.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100777594 - GPS Watch Example - Mode switch fails
+    (derived attribute execution is not working properly)
+[2] ClearQuest DEI dts0100598688 - Variables view shows Derived attribute values
+    as "not participating"
+[3] ClearQuest DEI dts0100709965 - NPE when Verifier attempts to display derived
+    attribute value
+[4] Clearquest DEI dts0100724622 - Verifier : Implement single path for
+    assignment statement execution
+[5] Clearquest DEI dts0100771666 - Automate Verifier testing under generic
+    packages
+[6] Clearquest DEI dts0100778900 - Sender value not accessible in state machine
+    activities.
+[7] Clearquest DEI dts0100779085 - Arrays passed with a signal event do not work
+
+4. Background
+-------------
+Derived attributes are computed just in time when the attribute is read. The
+changes made for [4] considerably simplified runtime value handling within
+Verifier by providing a single execution path for all kinds of variables. This
+work introduced a defect in derived attribute handling that went undetected.
+
+5. Analysis
+-----------
+5.1 Previous operation
+In the original implementation, Value.computeValue() called getRuntimeValue() on
+the AttributeValueReference instance. This attempts to obtain a runtime value
+from the target AttributeValue instance across R3304. If none is found, a new
+stack frame is created and pointed at the derived attribute OAL. Then
+getRuntimeValue() returns and allows the new OAL to complete computation. When
+it completes, the stack is popped and the original stack frame attempts to read
+the derived value again and Value.computeValue() again calls getRuntimeValue()
+on the AttributeValueReference. This time, a runtime value is found as a result
+of the derived attribute OAL computation. The value is taken and the computed
+runtime value stored for the derived attribute is disposed. This last action is
+required so that a derived attribute accessed in an iteration is recomputed each
+time. If it was left in place, the first value computed would be reused and the
+derived attribute OAL would not be executed.
+ 
+5.2 Failure analysis
+The simplified code path introduced[4], also calls getRuntimeValue() on
+AttributeValueReference. However, the code to remove runtime value was left in
+place and the simplified calling structure calls getRuntimeValue() more often
+than the previous implementation.
+
+The next call is for the attribute assignment inside the OAL body, where the
+derived attribute is the lValue. AttributeValueReference.getRuntimeValue() has
+no way to know whether it is being accessed in an lValue or rValue context, with
+the consequence that a runtime value is never found at the point the value is
+expected. Thus, the new computation architecture keeps adding new stack frames
+onto the stack for the activity OAL and the statement accessing the derived
+value never completes execution.
+
+During analysis of the problem, it was noted that there are several sub optimal
+consequences for the original design[2,3]. So a rework of derived attribute
+computation is indicated.
+
+Note: this failure occurs under both generic and specific packages.
+
+6. Design
+---------
+6.1 Change the Derived Attribute computation mechanism
+The UI issues observed with derived attributes[2,3] are because Verifier expects
+that there will always be a runtime value found across R3304 for any attribute
+value. Since this was not the case in the old implementation, inappropriate
+UI messages, NPE's and error log entries were observed when running models with
+derived attributes. To resolve this, and fit in better with the simplified
+getRuntimeValue() mechanism, new association R3312 is added between RuntimeValue
+and AttributeValue. The latest computed value is always found across R3304 as
+for other attributes thus resolving the UI issues[2,3].
+
+The new association R3312 is now used instead to track when the value needs to
+be recomputed. The association is set up in Assign to Member.execute, when the
+derived attribute is in an lValue context. It is done here because the Assign to
+Member instance has the necessary contextual knowledge about this. The only
+time it is legal to write a derived attribute is inside the body of its OAL, so
+the parser assures that this will always be legal.
+
+R3312 still needs to be torn down after the value is read for the reasons given
+above in 5.1. This cannot be done in AttributeValueReference.getRuntimeValue()
+because it is now called in both lValue and rValue contexts. Instead, the
+association is torn down in Value.computeValue() at the moment the required
+value has been taken and used to complete the operation dependent on it.
+
+7. Design Comments
+------------------
+7.1 Sender access in state model actions
+While addressing the headline issue, another high priority defect was reported
+from the field[6]. The problem here was that the stack frame set up carried out
+for the signal event assumed that there would be a remote component stack frame
+available. In the case of signal events, this assumption is invalid. The
+required fix is to use a component identifier if no stack frame identifier is
+available in the call to Body.createStackFrame(). The argument name is changed
+to stack_frame_or_component_id to reflect the changed usage. There were 19
+references to this operation. For 17 cases, it is simply necessary to change the
+name of the argument. In the other 2 cases, both in Class In Engine.takeEvent()
+we traverse R2976 and if a component instance is found we pass its identifier so
+that the sender instances can be initialized.
+
+7.2 Array access in state model actions
+During construction of the extended test for the fix for[6], another defect was
+observed. Attempts to access a passed array in a state machine action failed
+with an 'Array index out of bounds' error. These tests had previously passed in
+other contexts, such as interface operation OAL. This problem is tracked by a
+separate issue[7] but the fix will be included with this work.
+
+The fault was traced to the parser, which calls getArrayLength() on the Value
+class to obtain the array length for each dimension of an lValue. This operation
+checks the subtypes of value and performs the appropriate processing to obtain
+the correct S_DIM instance. For the event parameter reference variant, it 
+checked only the dimensions found for an event data item. In the case of signal
+events, there are no event data items. Instead in this case we must check by
+traversing to the Property Parameter associated with the signal the event is
+assigned to. 
+
+8. Work Required
+----------------
+8.1 Instance.initialize()
+This previously special cased the derived attribute case and did not provide an
+initial value for it. Consequently the UI issues[2,3] will still be seen until
+the first time a derived attribute is computed. Since R3304 is no longer used to
+determine that derived computation, this special casing can be removed and a
+derived attribute initialized just like any other.
+
+8.2 Required dispose() changes
+Since a new association is added, the dispose operations for AttributeValue and
+RuntimeValue must be extended to tear down R3312.
+
+8.3 AttributeValueReference.getRuntimeValue()
+This replaces the code to unrelate R3304 with code which updates the runtime
+value to reflect the latest computed value.
+
+8.4 Note to Model Compiler development team
+The changes above do not affect any schemas. However, there will be changes to
+instance populations in two cases:
+
+8.4.1 Runtime Value
+The runtime value population found by traversing I_AVL->RV_RVL[R3304] will now
+contain values for derived attributes. They will contain either the default
+value for the core type or the last computed value depending on whether they
+were computed or not.
+
+8.4.2 Dimension values
+Transient values assigned from a signal event parameter previously had an
+incorrect array length. This is now corrected.
+
+9. Unit Test
+------------
+Rather than create a new test for derived values, we urgently need to get all
+model compiler test suite models running as part of the Verifier JUnit. If this
+had happened in the previous development cycle, this defect would have been
+detected a long time prior to release. An issue is already raised to track this
+work[5]. The first models to be incorporated will be those that test the derived
+attributes and will be done as part of this work to provide appropriate cover.
+
+Since only Verifier specific OAL has been modified, the Verifier JUnit test is
+the only one which requires to be rerun for this issue.
+
+A new test component package is added to the VerifierMessageTest to test the
+correct operation for[6].
+
+The extended test in VerifierMessageTest also covers the fix for[7], since this
+is how the original failure was trapped. However, the Parser JUnit tests should
+also be rerun.
+
+End
+---
+
+$Log: dts0100777594.dnt,v $
+Revision 1.5  2011/06/21 16:23:55  campbell
+Job: dts0100777594
+Add MC Team note.
+
+Revision 1.4  2011/06/21 13:20:23  campbell
+Job: dts0100777594
+Add note to rerun parser JUnits.
+
+Revision 1.3  2011/06/21 12:58:57  campbell
+Job: dts0100777594
+Include documentation for dts0100779085.
+
+Revision 1.2  2011/06/20 17:44:49  campbell
+Job: dts0100777594
+Added fix for dts0100778900.
+
+Revision 1.1  2011/06/16 13:26:16  campbell
+Job: dts0100777594
+Introduced.
+

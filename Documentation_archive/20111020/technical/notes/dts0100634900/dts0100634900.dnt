@@ -1,0 +1,204 @@
+========================================================================
+
+File:      $RCSfile: dts0100634900.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Enable model compilation under Linux
+
+
+1. Abstract
+-----------
+This note describes the changes and fixes for several issues that enable 
+BridgePoint to support model compilation under Linux.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100634900 - Modify xtumlmc_build to use the call to wine
+[2] ClearQuest DEI dts0100634901 - Implement EDGE builder support for 
+      BridgePoint in Linux
+[3] ClearQuest DEI dts0100638163 - Support CDT
+[4] Wine, a Windows Emulator. http://www.winehq.com
+[5] Eclipse CDT.  http://www.eclipse.org/cdt
+[6] Running the BP Model Compiler in Linux.  In Mentor Google Docs, created by
+      keith_brown@mentor.com
+[7] ClearQuest DEI dts0100777845 - Generate code under Linux (QA Test)
+[8] OSS request 1369 (Eclipse CDT). 
+    http://chopper/oss/oss_request_form.php?requestID=1369&
+[9] ClearQuest DEI dts0100782784 - BridgePoint - Vista unified Linux workflow
+[10] ClearQuest DEI dts0100721210 - Include CDT in Eclipse distribution
+      
+4. Background
+-------------
+BridgePoint has supported running on Linux for some time.  More specifically, it
+has supported editing and verifying models but not translating the models to 
+target code.  The primary reasons for this is the MC's reliance on the Windows-
+based generator application and a lack of EDGE toolchain for code compilation
+under Linux.
+
+The author assimilated manual steps for getting things working from various 
+engineers into a GoogleDoc [6].  Some of the manual configuration done in that 
+document is moved to the base Linux installation by this work.  Specifically, 
+the following steps specified in the doc are now handled by the BridgePoint 
+installation:
+  "2 Install CDT"
+  "3 Add new BrdigePoint/CDT integration plugin"
+  "4 Using Wine to allow the MC to run under Linux"
+  
+Several customers are beginning to use BridgePoint ahead of the Mentor Graphics
+Vista tool for SystemC-based development.  As Vista only runs on Linux, 
+customers are interested in having full BridgePoint capability on Linux [9] so
+they are not forced to switch back and forth between Windows and Linux.
+
+The work described in this note will allow us to close [1], [2], and [10].
+
+5. Analysis
+-----------
+5.1  We first investigated using Wine [4] to run generator on Linux in 2009.  At
+     the time, we were unable to make it work.  Wine is an active project and is
+     constantly undergoing improvements.
+     
+5.2  EDGE is never going to support Linux the way we need it to, so we must find
+     another way.
+5.2.1  The eclipse CDT [5] is an attractive toolset for C/C++ development that 
+       provides the Windows and Linux support we need.  It is now a popular 
+       mainstream eclipse project.
+
+6. Design
+---------
+6.1  Integrate CDT
+6.1.1  We will add the latest CDT associated with eclipse "galileo" to our 
+       OS-specific eclipse installations on the build server (svr-azt-eng-01):
+          Windows: C:/BridgePoint_e3.5
+          Linux:   C:/BridgePoint_for_Linux_e3.5
+6.1.1.1  Before adding CDT, back up the existing eclipse 3.5.2 bases to
+          \\wv\dfs\bridgepoint\eclipe_3.5.2_preCDT_backup_win
+          \\wv\dfs\bridgepoint\eclipe_3.5.2_preCDT_backup_linux
+6.1.1.2  To add the CDT, use the eclipse director application using a command
+         similar to this one:
+           C:/MentorGraphics/BridgePoint/eclipse/eclipsec.exe  
+             -application org.eclipse.equinox.p2.director  
+             -repository http://download.eclipse.org/releases/galileo/   
+             -installIU org.eclipse.cdt.feature.group   
+             -destination C:/BridgePoint_e3.5/EclipseDeliverables/eclipse
+             -profile epp.package.modeling
+6.1.2  Get OSS approvals for Windows and Linux CDT packages [8]
+6.1.3  Close [2] as it is no longer valid.  State in the resolution notes that
+       the issue is being closed because EDGE is deprecated.
+
+6.2  Update xtumlmc_build to use Wine
+6.2.1  During release development for BP3.3.0, we explored calling a font
+       removal tool from xtumlmc_build.  This did not work, but during the
+       development the call to use wine was added to xtumlmc_build as part of
+       dts0100693490.  This code was promoted and as such, the work to call wine
+       around generator is already done in xtumlmc_build.
+6.2.2  As Wine must be installed on the system outside of the BridgePoint
+       installation process, we shall add some documentation about how to do
+       this.  The following GoogleDoc [6] items will be covered in the new help:
+         "1 Configure network settings"
+         "6 Build your project in eclipse"
+         "Other Linux Variants"
+       A new help document will be created.  We will need to update the 
+       MRC/README creation script used in the release process to account for the
+       new document.  
+              
+6.3  Update installer to configure DLLs and Licensing for Wine
+6.3.1  To run generator under Wine on Linux, there are some VisualC++ DLLs that
+       must be in place as siblings to the gen_erate.exe application.  In
+       addition, the Windows licensing provider MGLS.DLL and mgc.pkginfo files 
+       must live as generator siblings.
+6.3.2  The BridgePoint installer post-install script already moves some files 
+       from an "extras" folder to various places in the install tree to perform
+       final configuration.  This same method will be applied here.
+6.3.2.2  The post_install_script.sh is modified to copy: MGLS.DLL, msvcirt.dll,
+         msvcp60.dll, msvcrt.dll, and mgc.pkginfo (windows version) from 
+           <install location>/extras/wine_addons 
+           to
+           <install location>/eclipse_extensions/BridgePoint/eclipse/plugins/
+             com.mentor.nuclues.bp.dap.pkg_<ver>/bridgepoint/win32/client/bin
+6.3.2.3  The post_install_script.sh is modified to move: MGLS.DLL, msvcirt.dll,
+         msvcp60.dll, msvcrt.dll, and mgc.pkginfo (windows version) from 
+           <install location>/extras/wine_addons 
+           to
+           <install location>/eclipse_extensions/BridgePoint/eclipse/plugins/
+             com.mentor.nuclues.bp.mc.mc3020_<ver>/mc3020/bin
+             
+6.4  Integrate CDT-based New Project Wizard
+6.4.1  A new CDT-based New Project Wizard is being created by Abdelhalim Ragab. 
+       This work is handled in [3]. 
+6.4.2  This plugin needs to be integrated into our BridgePoint installation.
+       
+6.5  The Linux installer is updated to move the xtumlmc_build.exe to 
+     xtumlmc_build.exe.orig.  Then, the perl script xtumlmc_build is copied to
+     xtumlmc_build.exe.
+6.5.1  The post-install script needs to run chmod 775 on xtumlmc_build.exe
+
+6.6  Remove the EDGE plugins from the Linux distro.  We were only shipping
+     plugins for licensing and they are no longer needed.
+6.6.1  Update the launcher shell script to remove any EDGE-specific config-
+       uration.
+            
+6.7  Modify the post-install script to show the Linux release notes in the 
+     background.
+     
+6.8  Modify the perl invocation in the xtumlmc_build script. Change the default 
+     path to perl from /bin/perl to /usr/bin/perl.  The latter is what 
+     "which perl" returns on cygwin, debian, and RHEL4 and RHEL5
+
+6.9  Modify the BridgePoint perspective 
+     com.mentor.nucleus.bp.core.ui.perspective.BridgePointPerspective to add
+     a launch shortcut to the new CDT-based new project wizard.
+         
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+Described in §6.
+
+9. Unit Test
+------------
+9.1  The manual unit test is captured in [7].  The test creates a project and 
+     performs code generation and code compilation under Linux.
+
+End
+---
+
+$Log: dts0100634900.dnt,v $
+Revision 1.6  2011/08/03 22:18:39  kbrown
+job:dts0100634900
+Additional updates as work was completed.
+
+Revision 1.5  2011/07/14 23:01:22  kbrown
+job:dts0100634900
+Addressed review items.
+
+Revision 1.4  2011/07/13 19:04:06  kbrown
+job:dts0100634900
+Updated to account for Medtronic Linux workflow issue.
+
+Revision 1.3  2011/07/12 20:33:21  kbrown
+job:dts0100634900
+Added info on moving mingw so it can be found by default by CDT.
+
+Revision 1.2  2011/07/07 19:36:51  kbrown
+job:dts0100634900
+Updated DNT.
+
+Revision 1.1  2011/07/07 15:11:55  kbrown
+job:dts0100634900
+First pass at DNT for Linux build support.
+

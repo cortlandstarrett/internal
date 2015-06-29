@@ -1,0 +1,298 @@
+========================================================================
+
+File:      $RCSfile: i74.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2003-2009 Mentor Graphics Corporation All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Project Technology, Inc. and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Add start column info to Recognition Exception
+
+Abstract
+--------
+This note describes adding the start column information for error reporting
+
+History
+-------
+
+final i74-080803-01.rvm
+
+Document References
+-------------------
+Issue 74
+
+Background
+----------
+
+The action editor requires both the beginning and end of the
+text that causes an error to report it properly. Currently 
+the OAL validation functions throw the RecognitionException
+when there is an error. The RecognitionException class only
+has data for one column position (currently reported as
+the end of the text that caused the error).
+
+Examining how Antlr reports errors (the NoViableAltException),
+we see that the token causing the exception is part of the
+exception data.  From the token, all the positioning information
+can be determined.   
+
+Currently, the validation design passes an AST to the validation
+functions.  We will change it to pass an instance of the Token
+class.  We can then remove the line and col parameters passed
+to all the validation functions.
+
+Design
+------
+
+i74.1  Change AST parameter to Token parameter
+
+i74.1.1 The datatype AST is changed to Token in all sql files where
+it is defined.
+
+i74.1.2 All generated code that has ast as part of the variable name
+has the 'ast' changed to 'token'.
+
+i74.1.3 In each of the generated validation function invocations, 
+where the AST was passed to the function, the value LT(0) (the 
+current token being examined by the parser) is passed in.  The 
+line and column parameters are removed.
+
+i74.1.4 Since the line and column parameters are no longer needed,
+the m_scanner data member is also not needed.  It and the function
+setScanner() are removed from the parser class.
+
+i74.2 Extend SemanticException class
+
+The class pt_SemanticException is created.  It extends the
+antlr.SemanticException class.  
+
+i74.2.1 The class has one public data member, token, of type
+antlr.Token. The data member is public to follow the pattern
+of the Antlr exception classes.
+
+i74.2.2 A constructor is added to the class that
+takes the error message, and the token instance.  The token
+instance is used to find the line and column to pass to
+the super class.  The token instance is saved in the 
+token member data.
+
+i74.2.3 The function toString() is added to override the
+base class's function.  This function outputs the same data
+as the base class's, with the addition of the end column information.
+
+i74.3  Create pt_SemanticException instance
+
+i74.3.1 The signature of the ERR::reportParseError() function is changed
+to take a string (the error message) and a token.
+
+i74.3.2 All invocations of ERR::reportParseError() are changed
+to match the new signature.
+
+i74.3.3 The file Err_c.java is modified to create a pt_SemanticException
+instance instead of a RecognitionException instance.  The signature
+of the function is changed to take a string and a Token instance.
+
+i74.4 Usage
+
+The exception is caught in the function OalParser.reportError(),
+or a function that overrides it in a derived class.
+The parameter ex is of type RecognitionException.  To determine
+the starting column, call ex.getColumn().  To determine the ending
+column, cast ex to a pt_SemanticException (for semantic errors)
+or to NoViableAltException (for syntax errors), then calculate the
+end column position from the length of the token.
+
+E.g.,
+
+    int endCol = -1;
+    if ( ex instanceof NoViableAltException )
+        endCol = startCol + ((NoViableAltException)ex).token.getText().length() - 1;
+    else if ( ex instanceof pt_SemanticException )
+		endCol = startCol + ((pt_SemanticException)ex).token.getText().length() - 1;
+
+
+Work Required
+-------------
+
+i74.1  Change AST parameter to Token parameter
+
+i74.1.1 Change 'AST' to 'Token' in err_ee.sql, err_ee_w_graphics.sql,
+udt.sql, and function_import.sql.  Also change the data type description
+in each of these files.
+
+i74.1.2 In grammar_enhancer.arc, make the following changes:
+
+- Globally replace 'astclass' with 'tokenclass'
+- Change "AST" to "Token" in the function get_validate_constants
+- Globally replace 'rule_ast' with 'rule_token'
+- Globally replace 'literal_ast' with 'rule_token'
+
+i74.1.3 In grammar_enhancer.arc, make the following changes:
+
+- Change AST arguments to LT(0)
+- Remove all lines that look like:
+
+${s}     m_scanner.getLine(), m_scanner.getColumn(),
+
+- Remove the definition of the line and col parameters 
+from the function create_new_function.
+
+i74.1.4 In oal.bnf, remove the indicated function and data member.
+
+i74.2 Extend RecogitionException class
+
+i74.2.1 Create the class, add the data member.
+
+i74.2.2 Add the constructor to the class.
+
+i74.2.3 Add the toString() function
+
+i74.3  Create pt_SemanticException instance
+
+i74.3.1 In err_ee.sql, and err_ee_w_graphics.sql modify the
+ERR::reportParseError() signature.
+
+i74.3.2 In functions.pei.sql, change all ERR::reportParseError() 
+invocations to match the new signature.
+
+i74.3.3 Modify Err_c.java as described in the design.
+
+i74.4 Usage
+
+Change TextParser.java to use new class.
+
+
+Implementation Comments
+-----------------------
+
+- All line and col parameters are removed from function.pei.sql
+  and function_import.sql
+    
+- Removed RecognitionException import from Err_c.java
+
+- Changed OalParserTest since the format of the error message
+changed.
+
+- Removed the setScanner() calls from OalParserTest.java, 
+TestParser.java, and ActionEditor.java.
+
+- Changed import from AST to Token in validate_gen.arc
+
+- Deleted com.projtec.bp.ui.text/src/Ooaofooa.java
+
+Unit Test
+---------
+
+- Run OalParserTest
+R All tests pass
+
+- Start Tiger app in debugger
+- Set a breakpoint at com.projtech.bp.ui.text/src/TextParser.reportError()
+- Load odms2.sql
+- Edit action for PIO_robot_move_complete
+- On the first line, change D_R to Dx_R
+R Breakpoint hit
+R Variable ex has a type of pt_SemanticException
+R ex.line == 1
+R ex.column == 36
+R ex.token.text == "Dx_R"
+
+Code Changes
+------------
+
+com.projtech.bp.als/arc/grammar_enhancer.arc
+Initial version: 1.3  Final version: 1.4
+
+com.projtech.bp.als/arc/validate_gen.arc
+Initial version: 1.6  Final version: 1.7
+
+com.projtech.bp.als/sql/err_ee.sql
+Initial version: 1.3  Final version: 1.4
+
+com.projtech.bp.als/sql/err_ee_w_graphics.sql
+Initial version: 1.2  Final version: 1.3
+
+com.projtech.bp.als/sql/udt.sql
+Initial version: 1.2  Final version: 1.3
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/Err_c.java
+Initial version: 1.1  Final version: 1.2
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/OalParserTest.java
+Initial version: 1.9  Final version: 1.10
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/pt_SemanticException.java
+Introduced version: 1.1
+
+com.projtech.bp.als.oal/src/com/projtech/bp/als/oal/TestParser.java
+Initial version: 1.2  Final version: 1.3
+
+com.projtech.bp.als.oal/bnf/oal.bnf
+Initial version: 1.3  Final version: 1.4
+
+com.projtech.bp.als.oal/sql/function.pei.sql
+Initial version: 1.3  Final version: 1.4
+
+com.projtech.bp.als.oal/sql/function_import.sql
+Initial version: 1.2  Final version: 1.3
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/ActionEditor.java (DEF_sandbox)
+Initial version:  1.1.6.7  Final version:  1.1.6.8
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/TextParser.java (DEF_sandbox)
+Initial version:  1.2.6.6  Final version:  1.2.6.7  
+
+com.projtech.bp.ui.text/src/com/projtech/bp/ui/text/Ooaofooa.java (DEF_sandbox)
+Deleted version:  1.1.2.1
+
+End
+---
+
+$Log: i74.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.8  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.7.168.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.7  2003/08/14 19:18:53  campbell
+Job: 74
+Corrected final version number of TestParser.java.
+
+Revision 1.6  2003/08/08 20:05:55  greg
+Job: 74
+Update from review
+
+Revision 1.5  2003/08/08 15:46:07  greg
+Job: 74
+Updated unit test
+
+Revision 1.4  2003/08/08 15:40:32  greg
+Job: 74
+Add toString() function to derived class
+
+Revision 1.3  2003/08/08 01:30:52  greg
+Job: 74
+Redo design
+
+Revision 1.2  2003/08/07 19:37:47  greg
+Job: 74
+Fix typo
+
+Revision 1.1  2003/08/07 19:33:46  greg
+Job: 74
+Introduced
+

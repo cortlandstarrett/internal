@@ -1,0 +1,233 @@
+========================================================================
+
+File:      $RCSfile: dts0100684884-2.int,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+OAL Parser (or runtime) fails to detect typing error when confusing arrays and 
+inst_ref. This issue is raised to fix that
+
+1. Abstract
+-----------
+The Instance Reference array is not fully supported in BridgePoint. This issue
+is to fix that.
+
+2. History
+----------
+None.
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100684884.
+[2] SMA QA Manual Test dts0100744728 - Instance Reference array manual test.
+[3] ClearQuest DEI dts0100732443 - Verifier failed to compare instance 
+    references and instance reference sets correctly.
+4. Background
+-------------
+This issue had to be reopened due to unfixed bugs in the first implementation.
+This implementation note describes these bugs and their resolution.
+
+5. Design
+---------
+5.1 Storing the instance reference array dimensions. This can be done by 
+    relating Variable instance with Dimensions instances. This logic is already
+    implemented for Transient Variable array and need to be extended to include 
+    Instance Reference array.
+5.1.1 Dimensions setting code that exists in the else-statement block starting 
+      from line 106 to 131 at ooaofooa::Functions::OAL Validation Functions
+      ::Assignment_expr_end v1.56  has been moved out this if-else if-else 
+      statements block, so it is now applied for all subtypes of Variable model 
+      class.
+
+5.2 Compute the dimension count for Instance Reference array.
+5.2.1 Value::getDimensionCnt() operation does not support Instance Reference
+      as one of the Value subTypes. This causes the parser to be unable to validate
+      the instance reference array dimension properly.
+5.2.2 It is required to query for Instance Reference subType, and return the
+	  correct dimensions count for it.      
+5.3 Compute the array length of specific dimension correctly for Instance 
+    Reference array.
+5.3.1 Value::getArrayLength() operation does not support Instance Reference
+      as one of the Value subTypes. This causes the parser to be unable to validate
+      the instance reference array indices properly.
+5.3.2 It is required to query for Instance Reference subType, and return the 
+      elements count for specified dimension. 
+
+6. Implementation Comments
+--------------------------
+6.1 By resolving issue [3], fall out occurred that break the Boolean
+  data type comparison. This fall out causes the automated test 
+  com.mentor.nucleus.bp.debug.engine.TimerTest.testOutput() -in Verifier Test 
+  Suite- to fail. 
+  In BinaryOperation::getBoolean v1.13 from line 147 to 183:
+
+  elif not_empty irdtLeft 
+	// The operands are either Instance Reference or Instance Reference Set
+	// The RuntimeValue instance will be queried for both Left and Right 
+	// value and compare them using compareInstRefSets()
+
+    // Instance Reference and Instance Reference Set are handled in the same way
+    lVal_ID = leftOperand.getRuntimeValue(stack_frame_id:param.stack_frame_id);
+    if lVal_ID != GD::NULL_UNIQUE_ID()
+      select any lRtVal from instances of RV_RVL where
+                                           selected.RuntimeValue_ID == lVal_ID;
+                               
+	  rVal_ID = rightOperand.getRuntimeValue(stack_frame_id:param.stack_frame_id);
+	  if rVal_ID != GD::NULL_UNIQUE_ID()
+        select any rRtVal from instances of RV_RVL where
+                                          selected.RuntimeValue_ID == rVal_ID;
+                                            
+	    if ( not_empty rRtVal and not_empty lRtVal)
+          result = self.compareInstRefSets(rRtVal:rVal_ID,lRtVal: lVal_ID);
+          if (self.Operator == "==")
+            return result;
+          else
+            return not result;
+          end if;
+        end if;                                            
+      end if;                                            
+                                            
+  else
+      // There is no real, int, instance handle, or instance set, so just compare as a boolean
+      if (self.Operator == "==")
+        return (GD::instance_to_boolean(value:leftRtVal.getValue())
+        		== GD::instance_to_boolean(value:rightRtVal.getValue()));
+      else
+        return (GD::instance_to_boolean(value:leftRtVal.getValue())
+        		!= GD::instance_to_boolean(value:rightRtVal.getValue()));
+      end if;
+    end if;
+  end if;  // end if (dtLeftRealorInt) 
+...
+...
+
+  The else-statement in line 97 -based on this document line numbering-  is 
+  associated incorrectly with the if-statement in line 78 instead of the 
+  if-statement in line 71.
+  To fix it, move the "end if;" statement in line 106  to line 96.
+
+  Also The two queried RuntimeValue instances in lines 79 and 84 have been 
+  deleted since they are never used.
+
+6.2 The initialized Timestamp, Event, Date and Timer data types values are
+    displayed inconsistently in Variable and Session Explorer views 
+    as follows :
+    - Uninitialized Timestamp causes an NPE in both Variable View and Session 
+      Explorer views
+    - Uninitialized Event, Date and Timer values are displayed in Variable view 
+      as blank field, i.e. empty string.
+    - Uninitialized Event, Date and Timer values are displayed in Session 
+      Explorer view as 'null'
+ 
+    The uninitialized values for these data type should be displayed as "empty" 
+    in both views.
+    Fixing the Variable view value displaying is done in 
+    com.mentor.nucleus.bp.debug.ui.model.BPValue.getValueString(RuntimeValue_c).
+    
+    Before :
+    ...
+    if ( scv != null){
+				if ( irdt != null )
+				{
+					return "empty";
+				}
+				result = scv.getValue().toString();
+	...
+	
+    After :
+    ....
+    if ( irdt != null )
+				{
+					return "empty";
+				}
+				Object value = scv.getValue();
+				if (value == null){
+					value = "empty";
+				}
+				result = value.toString();
+	...
+    
+    Fixing the Session Explorer view is done in 'Graphics Domain' at  
+    ooaofooa::External Entities in the following bridges : 
+    - date_to_string
+    - event_to_string
+    - timer_to_string
+    - timestamp_to_string
+  
+6.3 Added ILinkWithEditorListener.java to the cvs_java_files variable in
+    bp.ui.explorer/generate.xml.  It was left out of a prior promotion and
+    therefore the file was being deleted by a "clean" build.
+    
+7. Unit Test
+------------
+7.1 Run the manual test [2].
+7.2 com.mentor.nucleus.bp.debug.engine.TimerTest.testOutput() must pass
+7.3 Testing Timestamp, Date, Event and Timer data types values in Variable and
+Session Explorer views :-
+_- Create new xtUML project
+_- Create new Domain
+_- Create new Subsystem
+_- Create new Model Class
+_- Add four Attributes, assign Timestamp, Date, Event and Timer to them
+_- Create new Function Package, add new Function to it
+_- Inside the function body, create an instance of previous created model class
+   and assign proper value for each one of its attributes
+_- Set a breakpoint on the first line
+_- Launch Verifier, and execute the function
+_- step over create-statement line
+_- Expand the create instance in the Variable and Session Explorer views
+_R All four attributes have "empty" value
+_- Step over the assign statement for each of the defined attributes
+_R The attribute value is properly updated in Variable and Session Explorer view
+
+
+8. Code Changes
+---------------
+Branch name: R3_2_3-NM-dts0100684884
+>com.mentor.nucleus.bp.core/>models/com.mentor.nucleus.bp.core/ooaofooa/
+    External Entities/External Entities.xtuml
+>com.mentor.nucleus.bp.core/>models/com.mentor.nucleus.bp.core/ooaofooa/
+    Functions/OAL Validation Functions/OAL Validation Functions.xtuml
+>com.mentor.nucleus.bp.core/>models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Binary Operation/Binary Operation.xtuml
+>com.mentor.nucleus.bp.core/>models/com.mentor.nucleus.bp.core/ooaofooa/Value/
+    Value/Value.xtuml
+
+>com.mentor.nucleus.bp.debug.ui/>src/com.mentor.nucleus.bp.debug.ui.model/
+    BPValue.java
+    
+com.mentor.nucleus.bp.ui.explorer/generate.xml
+
+
+End
+---
+
+$Log: dts0100684884-2.int,v $
+Revision 1.5  2011/01/25 21:58:04  rmulvey
+job:dts0100684884
+Added ILinkWithEditorListener.java to the cvs_java_files variable in
+    bp.ui.explorer/generate.xml.  It was left out of a prior promotion and
+    therefore the file was being deleted by a "clean" build
+
+Revision 1.4  2011/01/24 15:14:50  nmohamad
+job:dts0100684884
+Exclude dts0100743865 from the note
+
+Revision 1.3  2011/01/19 18:56:22  nmohamad
+job:dts0100684884
+Addressing review minutes
+
+Revision 1.2  2011/01/19 11:31:10  nmohamad
+job:dts0100684884
+Note revision
+
+Revision 1.1  2011/01/18 17:17:56  nmohamad
+job:dts0100684884
+Create implementation note.

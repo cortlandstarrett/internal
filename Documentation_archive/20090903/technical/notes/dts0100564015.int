@@ -1,0 +1,536 @@
+========================================================================
+
+File:      $RCSfile: dts0100564015.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:09 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Inter-Component MC-3020
+
+1. Abstract
+-----------
+MC-3020 has been enhanced and major sections have been re-written and/or
+repackaged.  Besides a model-based metamorphosis described below, several
+new features are added.  The major ones are support for:
+  - Inter-Component Messaging
+  - Actions on Transitions
+  - Structured Data Types
+  - Arrays
+A number of issues have been addressed during this development.  See the
+Document References for a list of ClearQuest and Bugzilla issues impacted
+by these changes.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100564015 - Inter-Component MC-3020
+    addressed
+[2] i1021-02.ant - Model-based MCs (Cloverdale)
+[3] i1021.dnt - Model-based MCs (Cloverdale)
+[4] ClearQuest DEI dts0100472592 - Trying to translate a system with multiple
+    domains using a single xtuml file.
+    addressed
+[5] ClearQuest DEI dts0100538073 -  errors during code generation when data is
+    passed in a creation transition
+    addressed
+[6] ClearQuest DEI dts0100564585 - Export entire system.
+    (These model compiler changes depend upon dts0100564585 resolution.)
+[7] Bugzilla 4030 - Event struct not emitted in .h for class-based event
+    when event not generated (optimized out)
+    addressed
+[8] Bugzilla item 1021 - Model-based MCs (Cloverdale)
+[9] Bugzilla item 1486 - Too many generated enum files.
+    addressed
+[10] Bugzilla item 2055 - OAL Persistence Parent Bug
+    addressed
+[11] Bugzilla item 2057 - Perform code generation with OAL subsystem.
+    addressed
+[12] Bugzilla item 2670 - MC does not handle EEs accessed from 2 domains.
+    addressed
+[13] Bugzilla item 2723 - Support actions on transitions in MC-3020.
+    addressed
+[14] Bugzilla item 2738 - Support structured data type in MC-3020.
+    addressed
+[15] Bugzilla item 2745 - Support arrays in MC-3020.
+    addressed
+[16] Bugzilla item 2896 - Optimize out events in SEM when never generated.
+    addressed
+[17] Bugzilla item 3037 - MC does not scan for timers in all OAL homes. 
+    addressed
+[18] Bugzilla item 3223 - model compilers must change traversal of R18
+    addressed
+[19] Bugzilla item 3411 - xtumlmc_build cleanse does not assign null UUIDs
+    addressed
+[20] Bugzilla item 3416 - need support for generating system level files
+    addressed
+[21] Bugzilla item 3446 - Code generation fails to include sys_events.h for
+    class-based events.
+    addressed
+[22] Bugzilla item 3371 - Remove support for model debugger.
+    addressed
+[23] Bugzilla item 3498 - ExcludeFromGen is not working correctly. 
+    addressed
+[24] Bugzilla item 3519 - crash running creation event with parameters
+    addressed
+[25] Bugzilla item 3521 - Deprecate init objects, bridge objects, string enums.
+    addressed
+
+4. Background
+-------------
+MC-3020 is becoming "model-based".  This means that it is slowly transforming
+from a special-purpose technology implementation to a fairly general xtUML
+modeled application.  The model compiler is moving away from "scripting" and
+toward a Query-View-Transformation (QVT) flow xtUML application model.  The
+work described in this note takes MC-3020 a few more steps toward model-based
+model compilation.
+
+This build also includes deprecation of al_xlate in the generator.  OAL
+is translated from the xtUML meta-model OAL instance population rather than
+by (re)parsing the action language during the code generation process.
+
+5. Design
+---------
+5.1.  Inter-Component Messaging
+      The introduction of inter-component messaging has a very deep
+      impact on the model compiler.  Fundamentally, translation
+      transcends the domain which formerly was the broadest scoped
+      translatable element.  Now multiple components with or without
+      multiple domains are visible to the translator.  Bridging with
+      External Entities and Functions and special wiring marks have been
+      mostly superseded (although remain available).
+      Registration deployed in registry.mark will no longer be
+      needed or used.  Stub functionality will remain for backwards
+      project compatibility.
+      Support for synchronous and asynchronous message passing between
+      components is supported.  The mapping of inbound signals to events
+      on class-based state machines is supported.
+      Multi-component systems are translated into a single executable
+      running in a markable number of threads running in a single memory
+      space.
+5.1.1.  Port Message Packaging
+        All component port messages inbound and outbound are translated
+        into C functions.  The functions are named by concatenating forms
+        of the component name, port name and message name.  Uniqueness is
+        assured, because xtUML assures it.  All port messages for all
+        ports on a component are deployed into a C source pair named by
+        component/domain prefix and appended with "_ports.[c|h]".
+        The return type of signals is "void".
+        The return types of port operations and of message parameters are
+        derived from the types defined in the input model.
+5.1.2.  Transmission OAL
+        OAL for message transmission is translated into simple invocations
+        of the outbound port message functions.  An alternative was
+        explored (and in fact was the first choice implementation).
+        Signal transmission for signals mapped to destination class state
+        model transitions was translated directly into the event
+        generate implementation for the mapped event.  This code was output
+        in the transmitting component.  This required a greater amount of
+        #include-sion mixing between components and also resulted in more
+        code.  The current function invocation wiring allows a
+        centralization of the event generation in the destination input
+        port message function.  Also, the current packaging makes tasking,
+        wiring and AUTOSAR modifications simpler and easier to understand.
+5.1.3.  Port Messages without OAL
+        If an interface reference is satisfied, the translated outbound
+        port message function will invoke the inbound port message function
+        on the foreign component (across the satisfaction).  Otherwise,
+        this message transmission is a NOP.
+5.1.4.  Port Messages with OAL
+        OAL in port messages is translated into the body of the port
+        message functions in all cases.  We considered the following
+        alternative but decided to stay simple to begin with.
+5.1.4.1.  We considered that in the case of signals which are transmitted
+          across satisfied interfaces to a destination in which they are
+          mapped to class-based state machine transitions, the OAL in
+          both outbound and inbound port message activities will be bypassed.
+          The benefit of this approach is treating OAL in ports as test
+          stubbing.  When the interface reference is satisfied, the test
+          OAL is bypassed.  It might be a good idea when/if operations
+          were mapped to class operations.
+
+        REJECTED PROPOSAL
+
+        OAL in activity | not       |         satisfied              
+                        | satisfied | not mapped       mapped
+        ----------------+-----------+-------------v------------------
+               inbound  |   OAL     |     OAL     |  n/a (bypassed)
+        operation       >-----------+-------------+------------------
+              outbound  |   OAL     |     OAL?    |  n/a (bypassed)
+        ----------------+-----------+-------------+------------------
+               inbound  |   OAL     |     OAL     |    bypassed      
+        signal          >-----------+-------------+------------------
+              outbound  |   OAL     |     OAL?    |    bypassed      
+
+5.2.  Actions on Transitions
+      Support for actions on transitions is added.  This support has
+      been implemented by modifying the event dispatcher and the
+      two-dimensional state event matrix array used to capture the
+      customer state model.
+5.2.1.  Transition Actions
+        Transition actions are translated just like state actions are
+        translated in previous versions of MC-3020.  The naming is
+        distinct and is number sequenced arbitrarily.
+        In the same fashion as the current array of state activities is
+        implemented (as an array of pointers to functions), an array of
+        pointers to transition actions is now generated.
+        The state matrix is modified to contain information about
+        transition actions.  The contents of the cells of the state table
+        are expanded to include an index reference to a transition action
+        (in addition to the existing next state index).  During dispatch,
+        the cell is interrogated for the presence of a transition activity
+        reference.  If it exists, the transition action is dispatched
+        first followed by the state action.
+
+5.3.  Structured Data Types
+      Structured Data Types (SDTs) were not difficult to implement and
+      did not require a large amount of code.  The changes were made to
+      the model.  The Value subsystem traversal was updated to deal
+      with the possible recursion.  The TE_MBR class was added and
+      linked to S_MBR to provide a home for translation artifacts.
+
+5.4.  Arrays
+5.4.1.  Arrays have had a deeper impact on MC-3020.  Arrays require
+        recursion and percolation in the Value and Body subsystems.  An
+        "array spec" (array brackets and index information) needs to be
+        carried around with any value that can possibly be an array.  It
+        then must be recursed upwards (percolated) as values are combined
+        into unary and binary expressions and parameter values, etc.
+5.4.2.  Arrays are treated differently in C than other types.  Arrays are
+        always passed and returned by reference.  This aspect of the
+        target language provides the largest impact on generation as this
+        distinction needs to be provided (special-cased) where ever arrays
+        are a possibility.
+5.4.3.  Even though arrays are treated specially by C, C implements
+        strings as arrays.  MC-3020 has always treated strings as special
+        cases.  Now, strings are no longer special cased; they are simply
+        treated like the arrays that they are.
+
+5.5.  Model of Model Compiler
+      The model of the MC-3020 model compiler is stored as a branch to
+      bp.core.  Only the ooaofooa is modified.  The branch is called
+      MC-3020-HEAD.  The Translation Extensions subystem represents the
+      model compiler meta-model.  This model is maintained mostly
+      independently of the oofofooa and is not technically a part of the
+      xtUML meta-model proper.  This branch will be treated as HEAD but is
+      indeed a branch of the HEAD bp.core.
+5.5.1.  Classes Removed from Translation Extensions Subsystem
+5.5.1.1.  TE_DLSP - Domain Limits System Populator
+          This class was used to propagate information from domain
+          translations into the system-level translation.  The
+          propagation was carried through output SQL that was input
+          during the "system pass" of generation.
+5.5.1.2.  TE_SAIB - Static Analysis Information Block
+          This class carried statistics for a domain during a single
+          invocation of al_xlate.  It is no longer needed.
+5.5.2.  Classes Added to Translation Extensions Subsystem
+5.5.2.1.  TE_C - Extended Component
+5.5.2.2.  TE_CALLOUT - System User Callouts
+5.5.2.3.  TE_CONTAINER - Container
+5.5.2.4.  TE_COPYRIGHT - Copyright
+5.5.2.5.  TE_DIM - Extended Dimension
+5.5.2.6.  TE_DLIST - Doubly Linked List
+5.5.2.7.  TE_DMA - Dynamic Memory Allocation
+5.5.2.8.  TE_EQ - Event Queue
+5.5.2.9.  TE_EXTENT - Instance Extent
+5.5.2.10.  TE_FILE - File
+5.5.2.11.  TE_ILB - Inter-Leaved Bridge
+5.5.2.12.  TE_INSTANCE - Instance
+5.5.2.13.  TE_MACT - Extended Message Activity
+5.5.2.14.  TE_MBR - Extended Structure Member
+5.5.2.15.  TE_PAR - Extended Actual Parameter
+5.5.2.16.  TE_PERSIST - Persistence
+5.5.2.17.  TE_PREFIX - Prefix
+5.5.2.18.  TE_RELINFO - Relationship Information
+5.5.2.19.  TE_RELSTORE - Relationship Storage
+5.5.2.20.  TE_SET - Set
+5.5.2.21.  TE_SLIST - Singly Linked List
+5.5.2.22.  TE_SM - Extended State Machine
+5.5.2.23.  TE_STRING - String
+5.5.2.24.  TE_THREAD - Thread
+5.5.2.25.  TE_TIM - Timer
+5.5.2.26.  TE_TRACE - Trace
+5.5.2.27.  TE_TYPEMAP - Type Mapping
+5.5.3.  Statement Classes
+        The following classes reflect the OAL subsystem but are modeled to
+        carry implementation artifacts.  This subsystem is not completed
+        but in progress.  It will be completed as part of the model-based
+        model compiler work.
+        TE_ASSIGN, TE_BRIDGE, TE_CREATE_EVENT, TE_CREATE_INSTANCE,
+        TE_DELETE_INSTANCE, TE_ELIF, TE_EVENT_PARAMETERS, TE_FOR,
+        TE_FUNCTION, TE_GENERATE, TE_GENERATE_CREATOR_EVENT,
+        TE_GENERATE_PRECREATED_EVENT, TE_GENERATE_TO_CLASS, TE_IF,
+        TE_IOP, TE_OPERATION, TE_RELATE, TE_RELATE_USING, TE_RETURN,
+        TE_SELECT, TE_SELECT_RELATED, TE_SELECT_RELATED_WHERE,
+        TE_SELECT_WHERE, TE_SGN, TE_UNRELATE, TE_UNRELATE_USING, TE_WHILE
+5.5.4.  1567 --> 414 RSL functions
+        Information encoded in RSL functions (xtUML Processing) has been
+        migrated to modeled classes (xtUML Data).  Shlaer-Mellor and
+        Object-Oriented literature predict higher stability and 
+        maintainability with an emphasis on modeling the world in data
+        rather than in processing.
+        There were 1567 RSL (OAL) functions in the previous release of
+        MC-3020.  There are now roughly 414 RSL functions.  Much of this
+        reduction in called functions is due to migration of information
+        from these functions into classes and attributes in the model of
+        the model compiler.
+5.5.5.  Defaulting
+        In a recent release, a new attribute was added to O_ATTR called
+        "DefaultValue".  This attribute is presented to the BridgePoint
+        user interface in the Properties View.  MC-3020 is taking advantage
+        of this attribute to provide default initialization of various
+        singleton class attribute values.  Thus, the model compiler 
+        maintainer has the choice of initializing attributes in the OAL
+        (RSL) of a query or by setting the default in the data of the 
+        model.  There is a translation step that must occur to cause these
+        default values to be assigned to a default instance.
+5.5.6.  Generation
+        The archetype q.mc3020.arc is generated from q.mc3020meta.arc.
+        q.mc3020meta.arc is run against the model compiler meta-model.
+        The archetype finds all classes marked for translation and generates
+        an initialization function that creates and initializes an instance
+        of the marked class.  This accomplishes the Defaulting described
+        in the previous section.
+5.5.7.  Translation from OAL Instance Population
+5.5.7.1.  Expression (Value) Percolation
+          One design point to be documented is the bottoms up percolation of
+          the expression (Value) subsystem.  The Value subsystem is modeled as
+          a large subtype/supertype hierarchy.  MC-3020 uses a strategy
+          similar to that employed by MC-Java in starting at the bottom of the
+          hierarchy and populating attribute value information from the leaves
+          of the tree first whenever possible.  The syntax tree is then
+          combined up the sub/super hierarchy.  Traversal downwards is done
+          only when necessary.  This approach simplifies and speeds up
+          translation by avoiding the "multiple select and test" traversals
+          from super to sub.
+          Contrast this with common Recursive Descent parser technologies.
+          Recursive descent starts at the root of the syntax tree and
+          recursively traverses down until a leaf node is reached.  It then
+          combines up.  In a class model, we have the option of starting
+          anywhere in the tree that we like.  We therefore start at the leaf
+          nodes as much as possible saving the descent traversals.
+5.5.7.3.  Statement Percolation
+          The Body subsystem is processed ("percolated" bottoms up) in the
+          same manner as the Value subsystem.
+5.5.7.4.  Statement Modeling
+          Statements have begun to be modeled so that the queries are less
+          procedural and so the implementation artifacts for the OAL
+          statement translation is more visible to the maintainer.
+5.5.8.  Single Pass Single Entry Point
+        MC-3020 is now single pass with a single entry point.  sys.arc is
+        invoked by the generator with a fully populated generation database.
+        All code generation occurs with this single invocation of the
+        generator.  This is a very large simplification.  The previous
+        version of MC-3020 had several entry points into the archetypes
+        for coloring, bridging, domains, system, documentation, etc.
+5.5.9.  QVT Style Query, Creation, Population, Transformation
+        The model compiler meta-model extensions subsystem has been segregated
+        from the xtUML meta-model proper for a few releases now.  This
+        segregation is maintained and extended.  Additional classes have
+        been added to the model compiler meta-model.  A model-to-model 
+        transformation is the first step of code generation.  The query
+        q.mc_metamodel.populate.arc is a large query that reads the xtUML
+        meta-model, creates instances of the model compiler meta-model
+        (extensions) and populates the attribute values of the MC model
+        instance data.  The activities of these queries are compatible with
+        OAL and will easily migrate into an xtUML model in the future.
+5.5.10.  OAL and RSL (In)Compatibility
+         The RSL in the current archetype queries will some day be OAL in
+         the xtUML model of the model compiler.  With this future in mind,
+         as code changes were made an effort was expended to make the
+         future transition of RSL to OAL smoother.  The biggest change is
+         the naming of instance reference variables.  Since RSL does not
+         explicitly type, I adopted a naming convention that uses the
+         lower case version of the key letters to tacitly type an instance
+         reference (set) variable.  Additionally, frag_refs are mostly
+         removed.  Where frag_refs were (and some still are) instances of
+         explicitly modeled classes replace them.
+5.5.11.  Segregation of Query from Template
+         Archetypes are composed of queries and templates, which are often
+         mixed more than we would like.  However, segregating the template
+         text from the query logic yields a more maintainable and
+         accessible model compiler.  It also opens the door to move the
+         queries into the activities of a standard xtUML model.  During
+         the developments of these model compiler changes, a great deal of
+         this segregation occurred.  However, there is more to do.
+5.5.12.  Archetype File Naming
+         Archetype file names represent the most obvious move toward
+         model-based translation.  Templates and queries are named to be
+         distinct from one another.  Archetypes which are predominantly
+         queries are named with q. at the begining.  Template archetypes
+         are named t..  Marking files are named with m. at the front.
+         Template files are named such that it is as easy as possible to
+         navigate from generated code to the template that produces the
+         generated code.  This is simple for system-level files but is a
+         bit more tricky for modeled elements.  Query names are meant to
+         reflect the artifact in the model of the model compiler
+         (translation extensions) around which they perform most of their
+         traversal.
+
+5.6.  xtumlmc_build Changes
+      Changed xtumlmc_build to deal with a single-file output containing
+      all components/domains (if any) from the system.  This simplified
+      the file tremendously.
+      Makefile outputs from this program were eliminated.  (EDGE is
+      doing the compilation these days.)
+      The folder structure created by xtumlmc_build is now much simpler.
+      The folder structure is created under /gen/code_generation.
+      (Note that we may want to change code_generation to something different
+      to allow other natures to gen code into the /gen folder (like VSI.))
+      
+5.7.  Deprecation of Init Objects, (Funky) Bridge Objects and String Enumerators
+      Subject artifacts have been removed.  May they rest in peace.
+
+5.8.  Removal of HTML Reports
+      HTML reports were added with help from customers in Japan.  They
+      have been largely unused and had fallen into disuse.  The summer
+      release plans to have document generation which will replace these.
+
+5.9.  Makefile Generation Elimination
+      MC-3020 generated an extensive directory structure with makefiles
+      in various "nodes".  This added a lot of complexity and has not
+      been used since moving BridgePoint into an Eclipse/EDGE environment.
+      One small bit of makefile generation remains but may later be
+      removed.  This small bit is generated into the code_generate/_ch
+      folder to be used by batch automatic generation and testing.
+
+5.10.  Removal of Model Debugger Support
+5.10.1.  Model Debugger is a Windows-only (non-eclipse) program that is largely
+         superseded by the new BridgePoint Verifier.  Marketing and Sales
+         have agreed to discontinue promoting the product.  VSI
+         functionality will further replace the functionality delivered in
+         the old Model Debugger.
+5.10.2.  Removed the model debugger templates.
+5.10.3.  Removee the various debugger-specific inline code.
+5.10.4.  Dealt with the marks that are now deprecated.
+
+5.11.  #inline (Code in Models) Is Broken
+       The Code in Models feature using an OAL multi-line comment no longer
+       works now that we are not using al_xlate.  We will need to bring
+       this back soon.
+
+
+6. Implementation Comments
+--------------------------
+6.1.  Delegation
+      Delegation has not been thoroughly explored and tested and will need
+      to be further addressed in the next release.
+
+6.2.  Imported Components
+      Subject has not been thoroughly explored and tested and will need
+      to be further addressed in the next release or as it is supported in
+      Verifier.
+
+6.3.  User Guide
+      The User Guide is not heavily impacted by these changes, so it will
+      not be updated for this release.  A significant update will be
+      required in the Summer 2009 release.
+
+7. Unit Test
+------------
+7.1.  New test models.
+      For each of the new models, import the model into an xtUML project.
+      Compile the model with MC-3020.  Compile the code with gcc.
+      Run the executable.  Note any failure messages (by searching for
+      "ailure") and/or any segment faults.  I ran gcc under cygwin for
+      convenience.
+7.1.1.  SeatHeater (svn:tenmile Models/Demo/SeatHeater)
+7.1.2.  Tick (svn:tenmile Models/Demo/Tick)
+7.2.  Existing test models.
+7.2.1.  Models from the run_unit_tests_clean script have been run successfully.
+7.3.  Testing difficulty.
+7.3.1.  Testing is hindered due to these changes.  The test models must be
+        updated to include OAL.  xtumlmc_test is not able to automatically
+        compile the generated code any more.
+
+8. Code Changes
+---------------
+8.1.  This work is contained in branch R2_1_3-RWM-dts0100564585-dts0100584008.
+
+8.2.  Added/Removed Files
+8.2.1.  Archetype Files in model_compilers/mc3020/arc
+        The files in model_compilers/mc3020/arc folder are completely
+        different.  Virtually all files are affected by removal, addition
+        or renaming.  Therefore, to merge with HEAD, plan on deleting the
+        files from the arc folder in your workspace project and replacing
+        them with the contents from the branch.
+        There are a few files that remain from HEAD, but even those have
+        been modified to an extent that diff/merge is not profitable.
+8.2.2.  Files Added but just for Convenience Purposes in the Branch
+        The following two files are in the branch for the convenience
+        of note taking and to help me remember the issue number and to
+        collect commit comments.
+        model_compilers/mc3020/arc/MCissues.txt
+        model_compilers/mc3020/arc/dts0100564015
+        Leave these files in the branch and do not promote them to HEAD.
+8.2.3.  Schema Files Removed
+        These model files were down-level and of no use.
+        model_compilers/mc3020/schema/sql/Escher_OOAofOOA_V2.sql
+        model_compilers/mc3020/schema/sql/mc3020_meta.xtuml
+        model_compilers/mc3020/schema/sql/mcmetamodel.xtuml
+
+8.3.  Modified Files
+      model_compilers/mc3020/mech/indep/source/sys_user_co.c
+      model_compilers/mc3020/schema/colors/bridge.jap
+      model_compilers/mc3020/schema/colors/bridge.mark
+      model_compilers/mc3020/schema/colors/system.mark
+      model_compilers/mc3020/schema/sql/xtumlmc_schema.sql
+      model_compilers/mc3020/translate/pt_trans.c
+      model_compilers/mc3020/translate/reftable.arc
+      model_compilers/mccommon/bin/xtumlmc_build
+      model_compilers/mc3020/default-manifest.xml
+      model_compilers/mc3020/arc/m.bridge.arc
+      model_compilers/mc3020/arc/m.registry.arc
+      model_compilers/mc3020/schema/colors/bridge.jap
+      model_compilers/mc3020/schema/colors/bridge.mark
+
+DO NOT PROMOTE THIS BRANCH (MC-3020-HEAD) TO HEAD!!!
+8.3.  xtUML Meta-Model + MC-3020 Translation Extensions branch MC-3020-HEAD
+8.3.1.  com.mentor.nucleus.bp.core/
+        This is bp.core with some functions removed (to reduce the amount
+        of OAL being "carried around").
+8.3.2.  An MC-3020 nature was added to this model project to allow 
+        generation of the schema using schema_gen.arc.
+8.3.3.  com.mentor.nucleus.bp.core/gen/schema_gen.arc.
+8.3.4.  com.mentor.nucleus.bp.core/gen/q.mc3020meta.ark.
+        This file is used to generate q.mc3020.arc.
+DO NOT PROMOTE THIS BRANCH (MC-3020-HEAD) TO HEAD!!!
+
+End
+---
+
+$Log: dts0100564015.int,v $
+Revision 1.1  2009/09/03 18:21:09  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.5  2009/05/08 18:40:13  cstarret
+job:dts0100564015
+changed branch name.  The issue is now in a branch merged with the
+co-dependent BP plugin issues:  R2_1_3-RWM-dts0100564585-dts0100584008
+
+Revision 1.4  2009/05/08 00:25:46  cstarret
+job:dts0100564015
+observations addressed
+
+Revision 1.3  2009/05/06 17:03:40  cstarret
+job:dts0100564015
+ready for review
+
+Revision 1.2  2009/05/05 21:59:56  cstarret
+job:dts0100564015
+more content
+
+Revision 1.1  2009/05/05 17:46:10  cstarret
+job:dts0100564015
+introducing implementation note for MC modifications
+just starting
+

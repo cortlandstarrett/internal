@@ -1,0 +1,269 @@
+========================================================================
+
+File:      $RCSfile: dts0100668202.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Application server consumes only a single license regardless of the number of 
+users
+
+
+1. Abstract
+-----------
+Saab uses an application server and thin clients to host BridgePoint for their
+development team.  We have discovered that the current BridgePoint licensing
+hooks only consume one license even though many users are running the tool. This
+note describes how we will fix BridgePoint to count license usage correctly.
+
+2. History
+----------
+Documentation/internal/review_minutes/R3_2_1/dts0100668202.rvm
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100668202
+[2] MGLS API. 
+    http://devnet.wv.mentorg.com/assets/licensing/lsunix/MGLS_V1_Client_API.doc
+[3] Corporate Licensing Solutions. 
+    http://devnet.wv.mentorg.com/assets/licensing/
+[4] ClearQuest DEI dts0100727619 - Test license system connection
+    
+4. Background
+-------------
+BridgePoint plugins currently request licenses in the Java domain using the EDGE
+licensing plugins com.mentor.nucleus.product*.  EDGE provides licensing support
+for both Windows and Linux.
+
+5. Analysis
+-----------
+5.1  Counting licenses properly
+5.1.1  We read the MGLS API [2] and talked to Dion Dock of the corporate lic-
+       ensing team.  There are several attributes that are available in the 
+       license interface to consume licenses more aggressively.  These are imp-
+       lemented as attributes that are set via the MGLS API.  They are 
+       MGLS_ATTR_MULTIPLE_COUNTS and MGLS_ATTR_LIC_PER_INVOKE.  The current 
+       implementation ties license request to the HOST/DISPLAY.  In the applica-
+       tion server the display (at least as far as the licensing is concerned)
+       is the same.
+5.1.2  During investigation and in discussions with Dion it became clear that 
+       MGLS_ATTR_MULTIPLE_COUNTS would not work for us because it did not handle
+       composite licenses the way we want it to.  Basically, if you check out a 
+       feature in a composite, the entire composite is locked against any
+       further checkouts.  So a request for a different feature that lives in 
+       the same composite would actually require a second instance of the comp-
+       osite instead of sharing the composite for the multiple features it 
+       contains.
+5.1.3  The MGLS_ATTR_LIC_PER_INVOKE attribute does, however, work the way we
+       desire.  It ties license requests to the process ID.  So each new
+       BridgePoint application will use a new set of licenses.  This attribute
+       also allows composites to be handled in the manner we desire.  That is,
+       two feature requests from the same composite will come from 1 composite,
+       not two.
+5.1.3.1  Since lic per invoke locks the composite (and individual) license to a
+         process ID, we have an issue when the user wants to use a binary model
+         compiler license inside a composite.  This is because generator will
+         run under a different process ID than eclipse.
+5.1.3.2  To work around the issue of sharing composites between the eclipse and 
+         generator processes, we need a way to pass the eclipse process ID or 
+         the MGLS_ATTR_DISPLAY string as set by lic per invoke to the generator 
+         so it can use the same value.  We could pass it as a command line 
+         parameter or use subprocess-inherited environment variables.
+5.1.3.3  Both methods will require that we touch the model compiler launch file
+         in the external tool builders folder at least once per application run
+         because that file is our communication link between eclipse and the
+         generator.  We will update it at least once per run because we will
+         always have to write the new PID info into the file.
+5.1.3.4  Passing the value on the command line would require us to add parameter
+         handling to xtumlmc_build as well as generator.  Whereas if we pass the
+         value via the environment, we can bypass changes to xtumlmc_build and
+         parameter handling in generator.  We only have to add a call to read 
+         the environment variable in the generator. This is the method we will 
+         use.
+       
+5.2  Options
+5.2.1  There are three options: enhance EDGE, use Corporate license components, 
+       use VSA.  
+5.2.2  None of these options support setting the license per invoke right now.
+5.2.3  We investigated adding the needed enhancement in all 3 options.
+5.2.3.1 EDGE: The edge licensing code is pretty complex.  It is not easy to 
+        modify.  Adding new product codes requires rebuilding the licensing 
+        plugins.  We have long thought that decreasing our coupling to EDGE in 
+        this area would be a good thing to do.  On the plus side, if we could 
+        implement the necessary change in EDGE simply and quickly, it may be the
+        shortest path to resolving the issue.
+5.2.3.2 Corporate licensing components: Mentor has a full-time group that
+        supports the corporate licensing API [3].  They maintain and distribute
+        the interface to FlexNet as well as a JNI-based Java licensing 
+        component.  They support both Windows and UNIX variants.  The corporate
+        solution provides an easy to understand and thin Java API.  It already
+        supports setting the multiple count attribute.  All we need is an almost
+        identical interface to support the license per invoke.
+5.2.3.3 VSA: the VSA team in Budapest has implemented their own Java interface 
+        on top of the corporate licensing solution for Windows.
+        
+5.3  Decision
+5.3.1  After investigating all the options, we have decided to go with option 
+       two, the corporate solution.  The corporate licensing team has given us
+       great support during the investigation phase and has been responsive with
+       code changes to provide the needed API.  Also, we like the fact that the 
+       API is thin and simple and is available for both Windows and Linux.  
+5.3.2  The VSA team has been open to our discussions about enhancing and using
+       their API.  But, it may make the most sense to just request their changes
+       be added to the corporate solution, rather than for them to continue to 
+       maintain their own API.
+5.3.3  The EDGE solution is simply too cumbersome to bother with enhancements
+       when other options provide quicker solutions. 
+       
+5.4  By removing our license dependencies on EDGE, the BridgePoint licenses will
+     no longer show up in the Help > License Information dialog that EDGE 
+     provides.
+5.4.1  I ran this by John Wolfe, Staffan Kjellberg and Bill Chown.  John was the
+       only one to comment and he said:
+       "Thanks for the heads up.  So long as we have some way to view the 
+        licenses that are available, even if it’s the FlexLM admin. tool, this 
+        is fine.  In fact, it may be an advantage, as we won’t have people 
+        calling us asking why they don’t have licenses for some product they 
+        didn’t buy (e.g., DAP, Model Debugger, etc.)."
+5.4.2  Users of floating licenses can inspect the available licenses by running
+       the lmtools utility application on the license server.  Then go to the
+       Server Status tab, enter the server name, and click "Perform Status 
+       Inquiry".  The information returned shows all the available licenses on 
+       the server.
+5.4.3  Users of node locked licenses will simply open the license.dat file
+       pointed at via the ENV vars LM_LICENSE_FILE or MGLS_LICENSE_FILE.  Each
+       of the available composites or individual feature codes has it's own
+       stanza in the file.  Each INCREMENT stanza shows the license name as 
+       well as the expiration date.
+        
+6. Design
+---------
+6.1  Get the modified Java JNI interface from the Corporate team.
+
+6.2  Modify BridgePoint to use the corporate solution rather than EDGE.
+6.2.1  Modify the license calls.
+6.2.2  Remove unneeded product files and plugin.xml license definitions.
+
+6.3  Make required changes to the build server scripts to incorporate the new
+     licensing.
+     
+6.4  The licensing team told us that when MGLS_LIC_PER_INVOKE is set, the 
+     MGLS_ATTR_DISPLAY value used is "<DISPLAY ENV var>_<PID>".  The model
+     compiler plugin will be modified to update the launch file to set the
+     environment variable MGLS_ATTR_DISPLAY to the aforementioned value.  
+6.4.1  The generator will be modified to read the MGLS_ATTR_DISPLAY value from
+       the environment and pass it on to MGLS using core_Mheap_set(). 
+     
+7. Design Comments
+------------------
+None.
+
+8. Work Required
+----------------
+8.1  Add corporate JNI file here: com.mentor.nuclues.bp.core/src/com/mentor/
+     jeda/comps/JetInitHeap.java
+     
+8.2  Modify bp.core/src/com/mentor/nucleus/bp/core/util/
+     BridgePointLicenseManager.java
+8.2.1  Remove usages of the EDGE product plugin
+8.2.2  Add function initConnection() to: 
+         - make sure the license connection is set up
+         - turn off dialog popups
+         - set the license per invoke attribute
+       
+8.3  Integrate the source and libraries from the licensing team.  The JNI source
+     code will live in a new package in bp.core/com.mentor.jeda.comps.  
+8.3.1  Add new plugin fragment projects.  These fragments are hosted by the 
+       bp.core plugin.  They provide operating system specific libraries for the
+       JNI calls.  The fragments are:
+         - com.mentor.nucleus.bp.core.linux.x86 (contains libJetInitHeap.so)
+         - com.mentor.nucleus.bp.core.win32.x86 (contains JetInitHeap.DLL)
+       
+8.4  Modify build server scripts create_release_functions.sh, 
+     create_tiger_release.sh, tag_bp_nb.sh, and tag_bp.sh to handle building and
+     tagging the new plugin fragment projects.
+      
+8.5  Remove EDGE license product definitions that are no longer used.  
+8.5.1  Remove plugin build and runtime dependencies on 
+       com.mentor.nucleus.product.
+       
+       
+9. Unit Test
+------------
+See [4] for a generic reusable form of these tests
+
+9.1  Configure our build server as a floating license server to serve 
+     BridgePoint features and composite licenses.
+9.1.1  Set up the license service to have 2 xtumlbld feature codes
+9.1.2  Verify the license is currently unused:
+         _- Launch lmtools.exe using the desktop shortcut
+         _- Click the Server Status tab
+         _- Enter "svr-azt-eng-01" in the server name field
+         _- Click Perform Status Enquiry
+         _R Scroll down to find xtumlbld and see that 2 licenses are available
+            and 0 are in use.
+
+9.2  Prove existing setup shows the error:
+       _- Configure the VSx_Dev environment to use the 1717@svr-azt-eng-01 
+          server.  Use the HEAD code.
+       _- Launch VSx_Dev, run the BP Application launch config
+       _- In both environments, switch to the xtUML Modeling perspective
+       _R Using the steps in 9.1.2, see that 2 licenses are available and 1 is 
+          in use
+
+9.3  Prove new licensing setup does not show the error when using individual 
+     license features:
+       _- Configure the VSx_Dev environment to use the 1717@svr-azt-eng-01 
+          server.  Use the branch code.
+       _- Launch VSx_Dev, run the BP Application launch config
+       _- In both environments, switch to the xtUML Modeling perspective
+       _R Using the steps in 9.1.2, see that 2 licenses are available and 2 are 
+          in use
+
+9.4  Prove new licensing setup does not show the error when using composites:
+       _- Configure the VSx_Dev environment to use the 1717@svr-azt-eng-01 
+          server.  Reconfigure the license server to not use the xtumlbld
+          feature codes, but to use the bpumlb_c composite instead. Use the
+          branch code.
+       _- Launch VSx_Dev, run the BP Application launch config
+       _- In both environments, switch to the xtUML Modeling perspective
+       _R Using the steps in 9.1.2, see that 2 licenses are available and 2 are 
+          in use
+       _- Start a verifier session in both
+       _R Confirm verifier starts and runs in both
+         
+9.5  Prove new setup does not provide licenses when none are available.
+       _- As a continuation of test 9.4, create a new launch config in VSx_Dev
+          that duplicates BP Application but uses a different workspace.
+       _- Launch the new application.  You will get error dialogs that no
+          licenses are available.
+  
+9.6  Existing JUnit tests must pass
+
+9.7  Run the unit tests above on Linux as well as Windows
+
+9.8  Run the unit tests above as appropriate with a node locked license. 
+             
+End
+---
+
+$Log: dts0100668202.dnt,v $
+Revision 1.3  2010/11/03 14:28:20  kbrown
+job:dts0100668202 dts0100717647
+Updating notes.
+
+Revision 1.2  2010/10/29 20:50:04  kbrown
+job:dts0100668202
+Work done to address review minutes.
+
+Revision 1.1  2010/10/19 19:30:25  kbrown
+job:dts0100668202
+DNT for review.
+

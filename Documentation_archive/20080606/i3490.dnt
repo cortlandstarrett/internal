@@ -1,0 +1,260 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Provide generic model packaging
+
+1. Abstract
+-----------
+This note describes the changes required to support a general package, which for
+this work will contain system level packages.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3490
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3490
+[2] 3490.ant
+
+4. Background
+-------------
+See background in [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Create metamodel for packaging
+
+A new subsystem is added, Element Packaging.  This subsystem contains the
+following new classes.
+
+Package, Specification Package, Package In Package
+
+The Package class is what will represent the generic package.  At this point it
+can only contain system level packages, these packages are represented as
+subtypes to the Specification Package class.  The imported subtypes are:
+
+Activity, Communication, Component Package, Data Type Package, Interface
+Package, Sequence, and Use Case Diagram.
+
+This change moves the unique identifier up to the supertype.  Upgrade code is
+added to create the Specification Package supertype if it does not exist for
+each of the subtypes.  The unique identifier in the old subtype is then used for
+the supertype.
+
+At a later time we will be getting rid of these "Specification Packages" and
+will be left with just the Package class.  Given this direction, no effort is
+made to move all drawing logic to the supertype Specification Package class.
+
+A Package for now may live under a System Model, or another Package.  To support
+this the System Model class is imported, and associated with the Package class.
+For nesting support the Package In Package class is used.
+
+Rename and Delete menu items are added for Packages.
+
+The Package class has all necessary operations added such that it may display in
+the canvas properly.
+
+The Package class has operations added to allow creation of all the
+Specification Package subtypes.
+
+All of the necessary dispose operations are in place and have been updated to
+dispose each element properly.
+
+At this time the tool will assume all elements defined within a Package are
+visible.  At a later time we will add package import support, and allow
+private/public settings.  At that time we will filter what elements can be used
+from a Package based on the imports and the private/public settings.
+
+The last bit of work, which added interaction diagrams to the system level, did
+not fully support the elements as root elements.  There are a few places which
+deal with the element being renamed, or the System Model being renamed, that
+require the model root id to change with the name.  These places are updated to
+account for the Package class and the interaction elements.
+
+6.2 Support interface reference formalization
+
+The formalization support for interface references, required that the interface
+was defined along the path up to the system in order for an interface package to
+be used.  This limitation is removed.
+
+As long as the new Interface Packages created under a Package are associated
+with the system across R4304, all interfaces are available for formalization.
+Therefore in the Package.newInterfacePackage operation this association is
+setup.
+
+6.3 Support importing components
+
+The same limitation in 6.2 was imposed on imported component assignment.  This
+limitation is also removed.
+
+Such an association as in 6.2 exists for Component Packages.  Therefore the
+Package.newComponentPackage operation sets up the association to the System
+Model.
+
+6.4 Data type support
+
+All that is required to fully support data types that are defined in a package
+is to add support for finding the system in the new* operations.  Then we simply
+need to let the existing oal associate the created data types to the system.  At
+that point all other code will be able to access the data types which are under
+packages.
+
+There was a bug in the code which searched all roots for data types that should
+be available to interface operations and property parameters.  This bug was
+incorrectly partially matching an excluded type to the Package component type.
+This is fixed, leaving another bug which allows formal component data types in
+the properties list.  This was due to the fact that a root can now contain both
+valid data types as well as formal component data types.  A check is added to
+make sure that the list only contains system level data types.  This check
+asserts that System Level Data Type instances are associated with each of the
+available data types.
+
+All other elements which can use a data type will be able to use data types
+defined under a package.
+
+6.5 Canvas support for packages
+
+The necessary xml entries are added to allow the Package class to be represented
+by a diagram.  The necessary xml entries are also added to allow the
+Specification Package subtypes to be created on the Package diagram.
+
+Code is added to allow a content outline for the Package diagram.
+
+A bug was found where provisions and requirements could not be drawn.  This was
+due to a name matching bug, which was incorrectly matching the Terminal
+Specification to the Component Container Element Specification.  The Terminal
+Specification was expected to be associated with the Component Element
+Specification.  This bug is fixed by checking the Element Specifications name as
+well as class type.
+
+6.6 Extend trees
+
+The hierarchy tree is updated to include the Package class, and to use the
+Specification Package when subtypes exist.
+
+The explorer tree is updated in the same way as the hierarchy tree.
+
+The persistence tree is modified to allow persistence of the new elements.  Copy
+and paste support is not added at this time.
+
+A group of methods in the generated class PersistenceHierarchyMetaData.java
+included duplicated tests.  Some of these were fixed, to have no duplicates.
+
+After removing the duplicates it was determined that not all component types
+were being returned by the method:
+
+PersistenceHierarchyMetaData.getComponentRootRootModelElementTypes
+
+The function which helps to generate this method is updated to find all possible
+component types.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+Work required is captured fully in the design section.
+
+9. Unit Test
+------------
+_- Create a package under the system
+_R The package is created appropriately
+_- Create each subtype specified above in the package
+_R Each subtype is created appropriately
+
+_- Repeat above, except create a Package in another Package
+_R All results above are good
+
+_- Create an interface under a Package
+_- Create an interface reference under a different package
+_- Assign the interface to the interface reference
+_R The interface can be assigned to the interface reference
+
+_- Create a component under a Package
+_- Create an imported component under a different package
+_- Assign the component to the imported component
+_R The component can be assigned to the imported component
+
+_- Create a data type under a Package
+_- Create an interface operation under a different package
+_- Assign the return type to the data type
+_R The data type can be used as the return type
+_- Create a interface operation parameter
+_- Assign the parameter type to the data type
+_R The data type can be used as the parameter type
+
+_- Create a data type under a Package
+_- Create a formal component under a different package
+_- Create an attribute under the formal component
+_- Assign the data type to the attribute
+_R The data type can be used as the attribute type
+
+_- Create a data type under a formal component within a Package
+_- Create an interface operation under the same Package
+_- Try to assign the data type as the return type of the interface operation
+_R The data type is not available for selection
+_- Repeat the above test using an interface operation parameter
+_R The data type is not available for selection
+
+- Test upgrade
+
+_- Create a test model which contains all the subtypes of Specification Package
+   using a pre-package version of the tool
+_- Import the model
+_- Export the model (this will need to concatenate all files until export is
+   supported)
+_R The exported file contains the Specification Package instances
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:21  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.4  2008/05/02 17:49:48  tlondon
+Job: 3490
+
+Fix typo.
+
+Revision 1.3  2008/05/01 15:31:45  tlondon
+Job: 3490
+
+Add upgrade code test.
+
+Revision 1.2  2008/05/01 00:35:37  tlondon
+Job: 3490
+
+Remove line explaining addition of elements to stream pei
+
+Revision 1.1  2008/04/30 23:59:09  tlondon
+Job: 3490
+
+Introduce design note
+

@@ -1,0 +1,320 @@
+========================================================================
+
+File:      $RCSfile: dts0100632984-01.dnt,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Update MCs to work with proposed meta-model change 
+(phase I:  Upgrade Select Related)
+
+1. Abstract
+-----------
+As we move away from special-purpose packages [2], there will be significant
+meta-model change.  The update described by this note is a preliminary step
+in preparation for the upcoming meta-model modifications.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100632984
+[2] ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+[3] RSL Reference (part of BridgePoint Help)
+[4] snippet of OAL Translation Subsystem
+    <cvs>/.../notes/dts0100632984/select_related_3020_model.png
+[5] select_related_test test model
+    <cvs>Models_SF/select_related_test.xtuml
+[6] assoc_unformal test model
+    <cvs>Models_SF/assoc_unformal.xtuml
+
+4. Background
+-------------
+The "select related" OAL statement is one of the most powerful statements
+in xtUML.  It brings the power of relational data base management to the
+special purpose developer and especially to the embedded engineer.  Efficient
+code can be generated to traverse and access complex data models.
+
+5. Analysis
+-----------
+5.1     Current Implementation Problems
+5.1.1   The existing select related statement translation in MC-3020 is a
+        mess and a maintenance headache.  It uses fully procedural, fragment-
+        based, mixed query/template archetypes that are not modeled.  It
+        interacted with the meta-model in a fashion that made it necessary
+        to upgrade before we make additional meta-model changes.
+5.1.2   The current implementation uses fragments.  Fragments are an
+        invention of the BridgePoint RSL [3] language and not compatible with
+        a model-based approach to model compiler development.  A model-
+        based approach models data in the model of the architecture.
+
+5.2     Updated Implementation of Select Related
+5.2.1   The refactored implementation is more model-based.
+5.2.1.1 A model of the select related statement and its links is built as
+        part of the model compiler extensions to the xtUML meta-model
+        proper [4].
+5.2.1.2 The Translation Extensions subsystem was split with a resulting
+        Translation OAL subsystem.  Translation OAL contains the model of the
+        select related statement and associated link chain and related
+        classes.
+5.2.1.3 A clear separation of queries and templates will be made.
+5.2.1.4 A query/populate, [validate], render pattern will be followed in
+        the queries and templates.
+5.2.1.5 The new implementation reduces the amount of OAL/RSL by nearly
+        1000 lines.  Complexity is reduced by a subjective factor of 4.
+5.2.1.6 Additional robustness is added.  The new implementation translates 
+        models that fail on the existing implementation.
+
+5.3     Select Related Generation Truth Table
+5.3.1   Analysis determined that there exists a finite set of source model
+        artifacts that determines the required translation output.  These
+        deterministic values have been captured in the model of the select
+        related statement and used in a truth table that governs the 
+        code generation.
+5.3.2   first
+5.3.2.1 This boolean value is true on the first instance of TE_LNK in a
+        selection chain.  It is false otherwise.
+5.3.3   last
+5.3.3.1 This boolean value is true on the last instance of TE_LNK in a
+        selection chain.  It is false otherwise.
+5.3.4   multiplicity
+5.3.4.1 Multiplicity is "one", "any" or "many" and comes from the modeled
+        OAL select related statement.
+5.3.5   linkmult
+5.3.5.1 Link multiplicity is modeled as an attribute of the TE_LNK class.
+        On each instance of TE_LNK, "Mult" is 0 for a traversal across
+        the link with multiplicity of one (1 or 0..1).  Mult is 1 for a
+        traversal across a link with multiplicity many (* or 1..*).
+        This value originates in the xtUML Association subsystem.
+5.3.6   by_where
+5.3.6.1 By_where is modeled as a boolean attribute on TE_SELECT_RELATED.
+        It is true when there exists a where clause on this statement
+        instance.
+5.3.7   start_many
+5.3.7.1 Start_many is interesting, because it determines whether an
+        iteration is needed even before traversing across a link.
+5.3.8   What about link conditionality?
+5.3.8.1 Note that link conditionality does not show up as a determiner
+        of code generation.  To make the generated code robust in the 
+        face of "weak OAL modeling habits", all traversals are treated
+        as conditional.  BridgePoint does not enforce conditionality and
+        does not detect violations of association conditionality.  Therefore,
+        the code generation will be tolerant.  The result is fewer segment
+        violations in C (and fewer NPEs in Java).  The cost overhead is
+        minimal.
+5.3.9   Single and Multi-Link Chains
+5.3.9.1 Single-link chains can be handled separately from multi-link chains.
+        There are special cases in the single-link statements.  And there are
+        generalities in chaining across many links.  Thus, the cases are 
+        handled separately but do reuse some templates.
+5.3.10  Truth Table
+5.3.10.1 The following table can be found in the source archetype file,
+         q.smt.generate.arc.
+
+Truth Table
+
+Notes:
+1) Selecting "many" or "any" through a chain that has multiplicity 1
+   all the way through should not be allowed by the OAL parser.
+   However, maybe a parser will not catch it.  Therefore, we will
+   support the construct in the code generator.  We will treat it
+   like the corresponding "one" case but populate a result set.
+2) Selecting "one" through a chain that has multiplicity M should
+   not be allowed by the OAL parser.  However, maybe a parser will
+   miss it.  Therefore, we will do something that makes sense.  We
+   treat it like the "any" case in the code generator.
+
+  A <*----R1----1> B <*----R2----1> C
+    <1----R9----*>   <1----R8----*>  
+
+single-link chains
+Declaration based upon multiplicity.
+ #  | first | last | startmany | multiplicity | linkmult | by_where | example
+ 1  |   T   |  T   |     F     |   "one"      |  0:one   |    F     | select one b related by a->B[R1];
+ 2  |   T   |  T   |     F     |   "one"      |  0:one   |    T     | select one b related by a->B[R1] where ( selected.i == 7 );
+ 3  |   T   |  T   |     F     | "one"->"any" |  1:many  |    F     | select one b related by a->B[R9];                              // Note 2
+ 4  |   T   |  T   |     F     | "one"->"any" |  1:many  |    T     | select one b related by a->B[R9] where ( selected.i == 7 );    // Note 2
+ 5  |   T   |  T   |     F     |   "any"      |  0:one   |    F     | select any b related by a->B[R1];                              // Note 1
+ 6  |   T   |  T   |     F     |   "any"      |  0:one   |    T     | select any b related by a->B[R1] where ( selected.i == 7 );    // Note 1
+ 7  |   T   |  T   |     F     |   "any"      |  1:many  |    F     | select any b related by a->B[R9];
+ 8  |   T   |  T   |     F     |   "any"      |  1:many  |    T     | select any b related by a->B[R9] where ( selected.i == 7 );
+ 9  |   T   |  T   |     F     |   "many"     |  0:one   |    F     | select many bs related by a->B[R1];                            // Note 1
+10  |   T   |  T   |     F     |   "many"     |  0:one   |    T     | select many bs related by a->B[R1] where ( selected.i == 7 );  // Note 1
+11  |   T   |  T   |     F     |   "many"     |  1:many  |    F     | select many bs related by a->B[R9];
+12  |   T   |  T   |     F     |   "many"     |  1:many  |    T     | select many bs related by a->B[R9] where ( selected.i == 7 );
+13  |   T   |  T   |     T     | "one"->"any" |  0:one   |    F     | select one b related by as->B[R1];                             // Note 2
+14  |   T   |  T   |     T     | "one"->"any" |  0:one   |    T     | select one b related by as->B[R1] where ( selected.i == 7 );   // Note 2
+15  |   T   |  T   |     T     | "one"->"any" |  1:many  |    F     | select one b related by as->B[R9];                             // Note 2
+16  |   T   |  T   |     T     | "one"->"any" |  1:many  |    T     | select one b related by as->B[R9] where ( selected.i == 7 );   // Note 2
+17  |   T   |  T   |     T     |   "any"      |  0:one   |    F     | select any b related by as->B[R1];
+18  |   T   |  T   |     T     |   "any"      |  0:one   |    T     | select any b related by as->B[R1] where ( selected.i == 7 );
+19  |   T   |  T   |     T     |   "any"      |  1:many  |    F     | select any b related by as->B[R9];
+20  |   T   |  T   |     T     |   "any"      |  1:many  |    T     | select any b related by as->B[R9] where ( selected.i == 7 );
+21  |   T   |  T   |     T     |   "many"     |  0:one   |    F     | select many bs related by as->B[R1];
+22  |   T   |  T   |     T     |   "many"     |  0:one   |    T     | select many bs related by as->B[R1] where ( selected.i == 7 );
+23  |   T   |  T   |     T     |   "many"     |  1:many  |    F     | select many bs related by as->B[R9];
+24  |   T   |  T   |     T     |   "many"     |  1:many  |    T     | select many bs related by as->B[R9] where ( selected.i == 7 );
+multi-link chains
+Declaration/initialization based upon multiplicity.
+First iterator based upon startmany.
+Chaining based upon multiplicity (and "any").
+ #  | first | last | multiplicity | linkmult | by_where | example
+ 1m |   T   |  F   |   "one"      |  0:one   |    F     | select one c related by a(s)->B[R1]->C[R2];
+ 2m |   T   |  F   |   "one"      |  0:one   |    T     | select one c related by a(s)->B[R1]->C[R2] where ( selected.i == 7 );
+ 3m |   T   |  F   | "one"->"any" |  1:many  |    F     | select one c related by a(s)->B[R9]->C[R8];                              // Note 2
+ 4m |   T   |  F   | "one"->"any" |  1:many  |    T     | select one c related by a(s)->B[R9]->C[R8] where ( selected.i == 7 );    // Note 2
+ 5m |   T   |  F   |   "any"      |  0:one   |    F     | select any c related by a(s)->B[R1]->C[R2];                              // Note 1, 2
+ 6m |   T   |  F   |   "any"      |  0:one   |    T     | select any c related by a(s)->B[R1]->C[R2] where ( selected.i == 7 );    // Note 1, 2
+ 7m |   T   |  F   |   "any"      |  1:many  |    F     | select any c related by a(s)->B[R9]->C[R8];
+ 8m |   T   |  F   |   "any"      |  1:many  |    T     | select any c related by a(s)->B[R9]->C[R8] where ( selected.i == 7 );
+ 9m |   T   |  F   |   "many"     |  0:one   |    F     | select many cs related by a(s)->B[R1]->C[R2];                            // Note 1
+10m |   T   |  F   |   "many"     |  0:one   |    T     | select many cs related by a(s)->B[R1]->C[R2] where ( selected.i == 7 );  // Note 1
+11m |   T   |  F   |   "many"     |  1:many  |    F     | select many cs related by a(s)->B[R9]->C[R8];
+12m |   T   |  F   |   "many"     |  1:many  |    T     | select many cs related by a(s)->B[R9]->C[R8] where ( selected.i == 7 );
+
+
+5.4     Coercion of ONE and ANY
+5.4.1   There are action language select constructs that are not stricly legal
+        but do make some sense.  The BridgePoint OAL parser seems to attempt
+        to enforce the use of legal constructs only.  However, there are
+        some illegal (but sensible) constructs that are permitted.  Thus, the
+        model compilation will support those.  In addition, it will support
+        others.  Illegal but sensible constructs that will be supported
+        are constructs that add no cost to the model compiler, because they
+        represent a coercion of "one" to "any" or allowing a "many" result
+        across a link with multiplicity "one".  See the above truth table
+        for the supported cases (marked with "Note").
+5.4.2   It is interesting that the "one" case and "any" case are effectively
+        the same.  Where they are both legal, the same code works.  Where one
+        is legal and the other not, the same code serves as backup for "loose"
+        parsers. 
+
+6. Design
+---------
+6.1     Modeling Select Related
+6.1.1   Select related will be modeled in the model of the MC-3020
+        architecture.  Classes TE_SELECT_RELATED, TE_LNK, TE_CLASS, TE_VAR,
+        TE_VAL are added, linked and populated.  See [4].
+6.1.2   Refactor the Translation Extensions and pull OAL-related classes into
+        a new subsystem called Translation OAL.  The classes listed in
+        6.1.1 will exist (or be imported) here.
+6.2     Updating the Schema
+6.2.1   Once the model of the architecture is complete, the schema will be
+        generated from it using schema_gen.arc as found in the /gen folder
+        of the MC-3020-HEAD branched bp.core.
+6.3     OAL (RSL) Queries
+6.3.1   The OAL is organized to populate, validate and render and in that
+        order.  The model of the architecture is populated by reading 
+        application model data from the structure of the xtUML meta-model
+        and creating/initializing instances of classes in the target
+        architecture model (MC-3020 Extensions).  This model exists as
+        extensions to a branched version of bp.core.
+6.4     Single-Link and Multi-Link Chains (Truth Table)
+6.4.1   The above truth table will is copied into the implementation.  The
+        single-link truth table is executed first.  If the chain has multiple
+        links, declarations, allocation and initializations are dealt with
+        first.  Then, based on startmany, an initial starting set iteration
+        may be generated.  Then, then chaining and finally the second part of
+        the truth table.
+6.5     "Implied Associator Traversal"
+6.5.1   BridgePoint xtUML OAL allows selection across an associative
+        relationship directly between the participants.  It is not necessary
+        in the OAL to name the associator class as part of the traversal.  The
+        OAL is traversing directly from the R_AONE ("one side") participant in
+        the associative relationship to the R_ATOTH ("other side") without
+        going through the R_ASSR ("associator").
+        This can be considered an "implied associator traversal".  And this
+        is what we call it.
+6.5.2   The query/populate phase of select related translation detects this
+        scenario and creates, initializes and inserts an additional instance
+        of TE_LNK between the AONE participant link and the AOTH participant
+        link.
+6.5.3   The render phase of select related translation emits the link code
+        with no knowledge of "implied associator traversal".  The render
+        phase remains blissfully ignorant and traverses through the associator
+        in all cases.
+6.6     Templates
+6.6.1   The shape of the generated code is captured in a set of templates
+        that are included in line at the appropriate places in the queries.
+        A template for each uniquely generated version of the select related
+        statement is supplied.
+6.6.2   The templates will be named in a way that maps them to the queries
+        and to the truth table.
+6.7     Test Model (select_related_test)
+6.7.1   There exists a very good test model for selection testing [6].
+        However, a new one is created to give coverage in the form as
+        shown in the above truth table.  Additional shapes and paths are
+        exercised by this model.  It is believed that all paths in the
+        new design are exercised by the new test model.
+
+7. Design Comments
+------------------
+7.1.    Optimization of Select where ( FALSE )
+7.1.1   Due to the scoping strategy and implicit declaration nature of
+        BridgePoint OAL, a very common statement is:
+        select any my_instance from instances of KL where ( false );
+        and
+        select many my_set from instances of KL where ( false );
+7.1.2   This construct is used to declare an instance reference or instance
+        set reference at a particular outer scope.  It works fine in this role.
+7.1.3   Some implementations of the statements listed in 7.1.1 are very
+        expensive in terms of time and code space.  In the worst case,
+        lots of useless code is generated that takes a long time to run.
+7.1.4   It is a simple matter to detect this statement during code generation.
+7.1.5   Code generation of the select_where statement is hereby optimized
+        to simply generate the initializer that declares and/or initializes
+        the result variable.
+
+8. Work Required
+----------------
+8.1     Work Required is outlined above in the Design.
+
+9. Unit Test
+------------
+9.1     Run MicrowaveOven from the QuickStart.
+9.2     Run GPS from the QuickStart.  (Note, it runs for a while and then
+        runs out of resource after it has created too many points.)
+9.3     Run assoc_unformal [6].
+9.3.1   Mark the following functions as initialization functions.
+        .invoke MarkInitializationFunction( "*", "setup" )
+        .invoke MarkInitializationFunction( "*", "test" )
+9.3.2   Search output text for "ailur".  If none, test is successful.
+9.4     Run select_related_test [5].
+9.4.1   Mark the following functions as initialization functions.
+        .invoke MarkInitializationFunction( "*", "setup" )
+        .invoke MarkInitializationFunction( "*", "test" )
+        .invoke MarkInitializationFunction( "*", "test_associatives" )
+        .invoke MarkInitializationFunction( "*", "test_reflexives" )
+        .invoke MarkInitializationFunction( "*", "test_simple_coverage" )
+        .invoke MarkInitializationFunction( "*", "test_subsuper" )
+9.4.2   Be sure test runs and exits without a segment fault.  If none, test
+        is successful.
+
+End
+---
+
+$Log: dts0100632984-01.dnt,v $
+Revision 1.4  2010/01/20 18:46:32  cstarret
+job:dts0100632984
+naming convention for templates
+
+Revision 1.3  2010/01/20 18:36:46  cstarret
+job:dts0100632984
+updates from pre-review
+
+Revision 1.2  2010/01/19 23:17:03  cstarret
+job:dts0100632984
+second pass, ready for review
+
+Revision 1.1  2010/01/19 21:21:25  cstarret
+job:dts0100632984
+introducing design note and model of OAL select related
+

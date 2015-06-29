@@ -1,0 +1,214 @@
+========================================================================
+
+File:      $RCSfile: i2495.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:18:45 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Too many parse dialogs being shown
+
+Abstract
+--------
+When a CVS Team operation is run we receive a notification for each indivigual
+file.  In the case where a large model is replaced this can lead to hundreds
+of dialogs being displayed.  It is desirable to have only one dialog for this
+Team operation.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 2495
+    http://phoenix.projtech.com/bugzilla/show_bug.cgi?id=2495
+
+Background
+----------
+An email was sent that describes this issue and has a bearing on the solution
+that was used.  Because of its relevance, I am including it with my response
+here.
+> -----Original Message-----
+> From: Mulvey, Robert
+> Sent: Tuesday, October 10, 2006 8:33 PM
+> To: Starrett, Cortland; McCausland, Campbell; Brown, Keith;
+> London, Travis
+> Subject: RE: event accumulation pattern
+>
+>
+> The example that comes to mind for me is a simple wrapper
+> object.  For example, managed pointers in C++.  Of course
+> this a wrapper around an object that allows some processing
+> to occur on data associated with an enclosed object before
+> the enclosed object is returned to the user.  The enclosed
+> object is managed based on  the status of the data in this wrapper.
+>
+> I've handled this type of thing by adding this layer of
+> abstraction at the point where the event is received.   I
+> don't think it would be a singleton, just an interface and
+> class that implements the interface (there will probably be
+> multiple implementations).  A collection of the events being
+> maintained would be held in the interface class (the events
+> would be stored in a standard collection class (a list by
+> default)).    This interface would provide a method that
+> allowed elements to be added.
+>
+> There are different ways to handle the case when, in our
+> situation, the collection threshold is encountered.  I
+> sort-of like using a call-back mechanism.  So, perhaps
+> AccumulaterInterface would be implemented as a subject in an
+> observer pattern.  When the NotificationThreshold is reached
+> observers would be notified. The observers would be passed
+> the processed result (whatever that may be for the specific
+> implementation of AccumulaterInterface).  Of course this
+> callback would be asynchronous with the add() of an event to
+> AccumulaterInterface.
+>
+> A critical detail we would have to account for is, when
+> accumulating objects like this we must handle the situation
+> where the threshold is not reached.  More specifically, we
+> must define the threshold in a way that assure we never
+> orphan events. Therefore, perhaps our threshold should be
+> timer-based (as opposed to a count) to avoid this problem.
+> Actually, I guess the threshold could be different based on
+> different implementations.  Some may be timer based, some may
+> be trigged based on receipt of a particular event. So, in the
+> case of mouse events, it may be timer-based.  In the case of
+> something where we know the value of the last element
+> received, it could be based on that last element.  Or,
+> perhaps it could be some combination of counter and timer
+> (whatever makes the most sense for the situation).
+>
+> Bob
+>
+> > -----Original Message-----
+> > From: Starrett, Cortland
+> > Sent: Tuesday, October 10, 2006 5:49 PM
+> > To: McCausland, Campbell; Brown, Keith; London, Travis;
+> Mulvey, Robert
+> > Subject: RE: event accumulation pattern
+> >
+> > Yes.  I have in mind a "gathering" or "substitution".  For example,
+> > considering mouse wheel clicks... maybe the "high level"
+> would detect
+> > that 10 or more individual (sequenced) events exist and
+> replace them
+> > with two events each going 5 times the distance of scroll.  Perhaps
+> > there is a singleton managing the resource and keeping track of
+> > instances....
+> >
+> > I will term the above "group substitution" until a better name is
+> > supplied.
+> >
+> > Cort
+> >
+
+
+
+Design
+------
+The issue has to do with the fact that the Team plugin gives us the list of
+files modified one at a time.  It would be nice if:
+1) We knew the list of files to be changed.
+or
+2) We knew when the end of the list was received
+
+We do NOT have access to either of these pieces of information.  The list of
+files selected could possibly be derived, but it would not be the same list that
+Team was working from and it may even be incorrect (it could change), so we can
+not count on it.
+
+What we can do is setup a timer when the first file is received that will fire
+the code currently in-place to ask if a parse should be done and to perform the
+parse. As we receive files, we can keep bumping this timer back.  Eventually the
+timer will fire, and it will ask the user if they want to parse and then parse
+if needed.
+
+
+Implementation Comments
+-----------------------
+1. A class name AccumulationInterface was introduced that extends Observable.
+   This class is meant to serve as an interface for creating different types of
+   Accumulators to help solve the general problem outlined in the email
+   included in the Background section above.
+1.1 This solution uses a standard observer pattern.  The Accumulator is the
+    subject in this pattern, and places that need to be notified when
+    Accumlulation is complete register as observers to this subject.
+2. AccumulatorTimer is introduced as an implementation of
+   AccumulationInterface.
+2.1 AccumulatorTimer collects descrete events for a given time interval.  The
+    interval defaults to 2 seconds, but is configurable by the user of the
+    class.
+2.2 AccumulatorTimer also is implemented to not notify Observers as long as
+    any resource change listeners are still being notified.  It does this by
+    calling ResourcesPlugin.getWorkspace().isTreeLocked() when the timer fires
+    but before notification.  If listeners are still being notified, then
+    the timer is reset.
+
+3. An unrelated 1-line change was made to ComponentResourceListerner.java to
+   fix a problem found where after closing and re-opening a project, the
+   project was not automatically opened in ModelExplorer (an explicit
+   refresh was required).  To fix this, a call to UIUtil.refresh(null) was
+   added.
+
+
+Unit Test
+---------
+1. This is a manual test.
+_- Import bp.core from CVS
+_- Delete the ooaofooa model
+_- Recreate from the single file model
+_- Replace with the latest from the repository
+_R Only one parse all dialog is shown
+
+2. This is a manual test.
+_- Open Resource Navigator
+_- Close a project that has an xtUML nature
+_- Switch to ME
+_R The closed project is NOT present
+_- Switch to Resource Navigator
+_- Open the project that was closed previously
+_- Switch to ME
+_R The project is present in ME
+
+
+Code Changes
+------------
+This work in branch Review-i2595-01.
+
+com.mentor.nucleus.bp.core/src/.../core/common/ComponentResourceListener.java
+com.mentor.nucleus.bp.core/src/.../core/util/AccumulatorInterface.java (added)
+com.mentor.nucleus.bp.core/src/.../core/util/AccumulatorTimer.java  (added)
+com.mentor.nucleus.bp.core/generate.xml
+com.mentor.nucleus.bp.ui.text/src/.../ui/text/TextPlugin.java
+
+End
+---
+
+$Log: i2495.int,v $
+Revision 1.1  2009/09/03 18:18:45  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:12  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.16.1  2008/12/31 16:10:16  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/10/12 20:03:02  rmulvey
+Job:2495
+Noted the branch name (Review-i2595-01).  This only affects 4 files, and 2 of them were introduced.
+
+Revision 1.1  2006/10/12 19:56:06  rmulvey
+Job:2495
+Introduced

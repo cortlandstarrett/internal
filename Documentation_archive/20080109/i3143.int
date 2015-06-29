@@ -1,0 +1,123 @@
+========================================================================
+
+File:      $RCSfile: i3143.int,v $
+Version:   $Revision: 1.2 $
+Modified:  $Date: 2009/01/01 23:12:52 $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+Stack overflow during model export
+
+1. Abstract
+-----------
+A customer reported that model export failed with a stack overflow for one of
+his models.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] Bugzilla item 3143
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3143
+[2] Bugzilla item 3115
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3115
+    
+4. Background
+-------------
+The customer reported this problem against BridgePoint 1.5.0.  When it was 
+reported we did not have a reproducible case, and we were not seeing the problem
+internally.  When version 1.5.1 was sent out, the customer still had the 
+problem.  At that time a model was sent to us that reproduced the issue.
+
+Investigation uncovered 2 problems:
+1) The reason for the stack overflow is a problem in the model export wizard in
+the case where the root package for selection is also the package that has
+dependences.  The key to reproduction is the provided customer model is that the 
+interface package was created inside the component package and then an interface 
+from it was assigned in the component diagram.  A work-around was provided.  The
+workaround is to create the interface package at the system level.
+
+2) In attempting to duplicate the problem the customers models was recreated by 
+hand.  During this procedure we were still unable to duplicate the stack 
+overflow.  We found that the reason was that the new model was corrupt.  This
+led us to discover that this issue has another closely-related bug [2].  The 
+problem is that R4304 is not being setup during import/paste.  R4304 relates
+System to Interface Package.  When an IP is created inside a component package
+or inside a component this problem occurs during import/paste.
+  
+5. Design
+---------
+5.1 Prevent recursion (and stack overflow) by not checking the referred-to 
+element when the referred-to root is the current element.  This is done for all
+dependency checks in ModelExportPage.java:selectReferredToElements().
+
+6. Implementation Comments
+--------------------------
+None
+
+7. Unit Test
+------------
+7.1 Verify that the problem with the customer model is fixed.
+_- Get the customer workspace from [1] comment 6.
+_- extract the workspace_BP150_CrashOnExport.zip to a location that you can
+   select as an Eclipse workspace (nothing else should be in this folder)
+_- Launch BP and point to the workspace created above
+_- Open the SPD
+_R See one orphaned element, one CP, and one DT package
+_- In the xtuml perspective select the model, right click and select
+   Export->BridgePoint Model
+_- Select Next
+_- Unselect the CPP model
+_R No stack overflow occurs
+_- select the CPP model
+_R No stack overflow occurs
+_- Export the model
+_R No Stack overflow occurs
+
+7.2 Test case built while isolating the problem
+_- Create a xtUML project (i3143)
+_- Create a CP (cp1)
+_- Create an IP in cp1 (ip1)
+_- In ip1 create 2 interfaces (i1, i2)
+_- In cp1 create a component (c1)
+_- c1 has a provision formalized to i1
+_- Export->BridgePoint Model
+_- Select Next
+_- Uncheck cp1
+_R No stack overflow.
+
+8. Code Changes
+---------------
+The changes are in R1_5_1-RWM-i3143
+
+com.mentor.nucleus.bp.io.mdl/src/com/mentor/nucleus/bp/io/mdl/wizards/
+    ModelExportPage.java
+
+
+End
+---
+
+$Log: i3143.int,v $
+Revision 1.2  2009/01/01 23:12:52  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:09:54  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/01/09 20:55:33  rmulvey
+Job:3358
+Archives notes from issues completed in the following versions: "R1_5_1, R1_5_2, R1_5_3".
+
+Revision 1.1  2007/09/25 18:31:08  rmulvey
+Job:3143
+Introduced

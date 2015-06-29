@@ -1,0 +1,405 @@
+========================================================================
+
+File:      $RCSfile: dts0100631941-06.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Migrate away from specialized packages continuation.
+
+1. Abstract
+-----------
+This note describes the design for allowing BridgePoint to stop enforcing the
+use of single purpose, specialized packages.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1]  ClearQuest DEI dts0100631941 - Migrate away from specialized packages
+[2]  dts0100631941.ant
+     This issue analysis note.
+[3]  dts0100631941.dnt
+     This is the design note used for all incremental promotions of the
+     generic package work prior to the work described by this design note.
+[4]  dts0100631941.tnt
+     This technical note captures problems found during development. 
+[5]  dts0100631941.tnt (section 6.30)
+     This describes a problem with generic package persistence that is
+     not being addressed in this promotion.
+             
+4. Background
+-------------
+See [2].
+
+5. Analysis
+-----------
+See [2].
+
+6. Design
+---------
+6.1 Previously promoted work
+For details of this, see [3]. While this note will cover wrap up activities
+associated with the previous work, its main focus will be on Verifier
+functionality.
+
+6.2 Add support for Interaction Participants created under EP_PKG.
+    The approach taken here is that for every relationship between an
+    Interaction Participant and a specialized package, a new relationship
+    shall be created between EP_PKG and SQ_P inside of the PE subsystem to
+    provide the same functionality currently present in specialized packages.
+    Existing OAL that navigates these relationships shall be modified by 
+    following the guidelines called out in [3] to leave the existing code and
+    add new code for the specialized package case.  In this situation, the
+    new code shall use the new relationship.
+6.2.1 A new link class named Participant in Package (PE_PIP) is created to allow
+    relationships between EP_PKG and SQ_P to be formalized.
+6.2.2 The SQ_P and EP_PKG dispose operations are updated to account for the 
+    new relationship.
+6.2.3 Create a relationship, R8009, between EP_PKG and SQ_P to allow an 
+    interaction participant to be formalized against a package.  R8009
+    is analogous to R932 for specialized packages.  This new relationship
+    is required because R932 is dependent on specialized packages and the
+    specialized packages are deprecated when working under a generic package.
+6.2.3.1 Places in the ooaofooa that reference R932 are updated to use
+    R8009 when the SQ_P instance is under a generic package.    
+6.2.4 Create a relationship, R8010, between EP_PKG and SQ_P to allow an 
+    interaction participant to be displayed under a package.  R8010
+    is analogous to R1126 for specialized packages.  This new relationship
+    is required because R1126 is dependent on specialized packages and the
+    specialized packages are deprecated when working under a generic package.
+6.2.4.1 Places in the ooaofooa that reference R1126 are updated to use
+    R8010 when the SQ_P instance is under a generic package.    
+6.2.5 Create a relationship, R8011, between EP_PKG and MSG_M to allow a 
+    message to be displayed under a package.  R8011 is analogous to R1135 
+    for specialized packages.  This new relationship is required because R1135 
+    is dependent on specialized packages and the specialized packages are 
+    deprecated when working under a generic package.
+6.2.5.1 A new link class named Message in Package (PE_MIP) is created to allow
+    relationships between EP_PKG and MSG_M to be formalized.
+6.2.5.2 Places in the ooaofooa that reference R1135 are updated to use
+    R8011 when the MSG_M instance is under a generic package.    
+
+6.3  Fix handling for Copy context menu entry
+6.3.1  CL_c.supportsCopy() is modified to no longer check for a paste* function
+       as a precondition for Copy CME enablement.  It is not needed.  Any graph-
+       ical element is now pasteable into a generic package.  So, PE_PE always
+       contains the necessary paste function.  Instead, we default to always 
+       allow copy, unless there is a canCopy* function that tells us otherwise.
+6.3.1.1  Added canCopyUserDataType to Package.  It is identical to the same 
+         function in Data Type Package.  It allows copying of UDTs except for
+         the 3 UDTs that are actually core types: date, inst_ref<Timer> and
+         timestamp.
+6.3.1.2  Added canCopyCoreDataType to Package and Data Type Package.  It just 
+         returns false so Cut/Copy of CDTs is disallowed.
+6.3.2  Fixed outstanding JUnit test. 
+       ui/canvas/test/CanvasCopyTests.java::testCutCopyNotAllowedOnBuiltInUDT()       
+       Code in this test was commented out with a TODO:FIXME comment.  This 
+       test is restored to active duty.
+6.4 Modify Context Menu Entry functions to support generic packages.  These are 
+   functions are found in:
+   ooaofooa/Functions/Context Menu Entry Functions/Context Menu Entry Functions.xtuml   
+   For each CME operation with a "TODO: PE_PE..." comment, repeat the following 
+   procedure.
+   
+	_- Examine the OAL and determine if new OAL is required to handle generic 
+	   packages.  If new OAL is required continue, if not remove the "TODO:" 
+	   form the comment and move on to the next function.
+	_- Open the CME PEI file:   
+	   com.mentor.nucleus.bp.core/sql/context_menu.pei.sql
+	_- Find the CME entry for the operation being modified.
+	_- Copy the CME entry and paste it creating a second (duplicate) entry.
+	_- Modify the first attribute (Specialism), making one of the Specialisms 
+	   'Specialized Package' and the other 'Generic Package'.   If a specialism 
+	   is already present, then 'Specialized Package'/'Generic Package' shall
+	   be prepended to it.
+	   Here is an example from the O_IOBJ > Assign Class CME:
+	
+		INSERT INTO CME VALUES ('Specialized Package',       'Assign Class',       'O_IOBJ',   '',        false, 'Select class this imported class represents' );
+		INSERT INTO CME VALUES ('Generic Package',           'Assign Class',       'O_IOBJ',   '',        false, 'Select class this imported class represents' );
+	_- Find the MEF entry for the operation being modified
+	   (in context_menu.pei.sql).
+	_- Copy the MEF entry and paste it creating a second (duplicate) entry.
+	_- Modify the first attribute (Specialism), making one of the Specialisms 
+	   'Specialized Package' and the other 'Generic Package'.  If a specialism 
+	   is already present, then 'Specialized Package'/'Generic Package' shall
+	   be prepended to it.
+	   Also modify the "value" attribute (5th attribute) and set it to 
+	   'spec pkg' for Specialized Package and 'generic pkg' for the 
+	   Generic Package entry.  If there is already data in the "value"
+	   attribute, then 'spec pkg'/'generic pkg' shall be appended to it.
+	   Here is an example from the O_IOBJ > Assign Class MEF:
+	
+	   INSERT INTO MEF VALUES ('Specialized Package',   'Assign Class',  'O_IOBJ', 'unassigned', 'spec pkg' );
+	   INSERT INTO MEF VALUES ('Generic Package',       'Assign Class',  'O_IOBJ', 'unassigned', 'generic pkg' );
+	
+	_- Modify the actionFilter operation of the the model element the CME 
+	   action is performed on so it handles the new "'unassiged' > 'spec pkg'" 
+	   and "'unassigned' > 'generic pkg'" filters.  Following is an example 
+	   from O_IOBJ.actionFilter:
+			if (param.name == "unassigned" )
+			  // See if it is already assigned and if it is return false
+			  select one obj related by self->O_OBJ[R101];
+			  if (not_empty obj) 
+			    return false;
+			  end if;
+			  
+			  select one packageableElem related by self->PE_PE[R8001];
+			  select one package related by packageableElem->EP_PKG[R8000];
+			  select one component related by packageableElem->C_C[R8003];
+			  isInGenericPackage = not_empty package or not_empty component;
+			  
+			  if (param.value =="generic pkg" )
+			    return isInGenericPackage;
+			  elif (param.value =="spec pkg")
+			    return (not isInGenericPackage);
+			  end if;
+			end if;
+			return false; 
+	  
+	   
+	_- Modify the Context Menu Entry functions and add the new functions
+	   that are associated with the context_menu.pei.sql entries added in the 
+	   previous steps.  
+	   Since a "specialism" was added, the existing CME function must be 
+	   renamed to account for the added specialism, and a second function must 
+	   then be added to account for the fact that there are 2 CME entries (one 
+	   for Specialized Package, and one for Generic Package)
+	   For example, for the O_IOBJ > Assign Class example, there shall be 2 
+	   operations:
+  	     O_IOBJ_GenericPackageAssignClass
+	     O_IOBJ_SpecializedPackageAssignClass
+	_- Assure both of the new CME functions have the following mark in their 
+	   description:
+	   ContextMenuFunction: TRUE
+	_- Assure both functions have a "PE_PE... comment".  The "TODO: " portion 
+	   of the comment can be removed at this time.
+
+6.4 Verifier updates
+6.4.1 Support generic package execution
+      Since domains are being eliminated, support is added to allow Verifier to
+      execute bare packages of executable model artifacts.
+6.4.1.1 Allow packages to be shown in the Launcher
+        BPDebugUtils.getVerifiableElements() is modified to handle packages.
+        Multiple changes are made to the launch persistence and tree selection
+        infrastructure to support package selection. Only packages containing
+        executable elements; functions, components, operations should appear as
+        candidates in the Launcher. Accordingly, the VerifiableElementComposite
+        method, isVerifiableElement() is modified to make this determination for
+        Packages. This check is made only across R8003 and R8001 so that
+        Packages will not appear in the Launcher unless the user has constructed
+        a Generic Package model. Components contained in a package are added to
+        the Launcher tree to enable selective launching. The utility methods,
+        getEnabledElementsFromEntries() and updateEntries() are added to clean
+        up the tree handling code.
+
+6.4.1.2 Allow Component References to be shown in the Launcher
+        Changes analogous to those made in 6.4.1.1 for packages are made to
+        DebugUtils and VerifiableElementComposite for Component References.
+
+6.4.1.3 Modify Model Explorer
+        Explorer has a convenience method, traverseToExecutionEngine() that
+        looks for the correct ComponentInstance for any given element. This
+        method did not support a Package as the starting point. It is modified
+        to do so.
+6.4.1.4 Show executing Packages in the Session Explorer
+        The getChildren method of RootAdapter was modified to support this. The
+        UITree pei data was also modified to show executing packages.
+
+6.4.1.5 Model changes
+        A new association, R2970 is introduced so that a running Package is
+        provided with a Component Instance to execute it. This calls into
+        question the change to the I_EXE class name. However, since this is
+        provided mostly for backwards compatibility the name is accurate for
+        the primary use case. Package has three added convenience operations,
+        isExecutingOrIsChildExecuting(), isExecutingOrOwnsExecutableElements()
+        and ownsExecutableElementsOrChildOwnsExecutableElements(). These
+        recursive operations support the appearance of the package instance in
+        the Session Explorer tree without the tree being cluttered with packages
+        which are not executing. The Component Instance.stop(), reset() and
+        dispose() operations are extended to dispose runtime instances
+        associated with a package. Component Instance.initializeClasses()
+        operation is modified to initialize classes under a package.
+
+6.4.2 Support execution with delegation
+6.4.2.1 Inter-component wiring
+      For Verifier to support delegation, a very significant rework of the
+      wiring mechanism is performed. This wiring mechanism was originally
+      developed for multi-component execution[??]. In that work, the concept
+      of a Runtime Channel was introduced to model the connection between one
+      running component instance and another to implement a satisfaction at
+      runtime. This idea is now extended to also apply to delegations. A new
+      association, R2972 is introduced between Delegation and Runtime Channel.
+      This association is mutually exclusive with R2969 between Runtime Channel
+      and Satisfaction. Thus, a Runtime Channel instance implements either a
+      Delegation or a Satisfaction. With this change, Components are no longer
+      necessarily directly connected to each other over a Runtime Channel. When
+      delegation is present, a chain of Runtime channels, one for the
+      satisfaction and one for each delegation between the local component and
+      its remote counterpart. To simply traversing this chain of runtime
+      channels, a new reflexive association, R2973 is added to Runtime Channel
+      to capture the order in which Channels should be navigated to find the
+      remote component instance to deliver the message to.
+
+      Note also that both the local and the remote components may themselves be
+      references to a component defined elsewhere.
+
+6.4.2.2 BPDebugTarget: Wiring Setup      
+      BPDebugTarget is where Runtime Channels get created prior to launching a
+      configuration of components. This class is extensively reworked to create
+      the new runtime channel instances. Once these have been created, Verifier
+      need not refer to the complex static structure of components, delegations
+      and satisfactions and merely traverses the chains of runtime channels
+      linked together across R2973.
+
+      During the rework of BPDebugTarget, difficulty was encountered in wiring
+      the delegations and satisfactions in a consistent manner. One problem was
+      that no component instance containment hierarchy existed. This is now
+      introduced through R2974, Component Instance Container and R2975. The
+      BPDebugTarget method addComponentToContainmentHierarchy() is added to
+      populate this association.
+
+6.4.2.3 Model changes
+      The Delegation class is extended to dispose associated Runtime Channels.
+      The Component Instance class is modified to dispose runtime instances
+      associated with nested components by descending the tree created by the
+      new associations R2974 and R2975.
+      
+      Interface Operation Invocation.execute() is extensively reworked to
+      traverse the chain Runtime Channels to find the recipient of an
+      invocation. Analogous changes are made to Signal Invocation and Message
+      Value. For Signal Invocation the chain traversal had to be repeated in
+      setUpParameterValues().
+      
+6.4.3 Simplify execution infrastructure where possible
+      In BPThread.getName() Domains, Packages, Component References and
+      Components all need to show their name and status. Some repeated code was
+      modified to be the same for all four cases.
+      
+7. Design Comments
+------------------
+7.1 Fixed a problem in several places where 
+    PE_PE.resolveDataTypeRelativeToSelf() was being called.  After resolving a 
+    named datatype using PE_PE.resolveDataTypeRelativeToSelf(), find the S_DT instance 
+    by navigating across R8002/R8004 instead of R8001.  Using R8001 is very inefficient 
+    and R8002/R8004 are always properly populated because the call to 
+    PE_PE.resolveDataTypeRelativeToSelf() requires it.  
+    Note that this issue was fixed in ~30 places.
+7.2 In calls made to PE_PE.collectVisibleElementsForName(), the parameter named 
+    originatingContainerId must be set to the UUID of the model element's container.   
+    It was incorrectly being set to the UUID of PE_PE subtype Model Element.  
+    This change was made in ~20 places.
+7.3 During development of Verifier delegation and package execution support, it
+    was noticed that some of the infrastructure in VerifiableCompositeElement
+    was loading elements outside of the scope of the project being launched.
+    This was leading to long startup times for Verifier. The getElementVector()
+    method of this class is modified to only consider elements from within the
+    project being launched.
+7.4 It was found that executing Component Instances representing Component
+    References were not being shown correctly in the Session Explorer View. This
+    was fixed with a change the session explorer UITree pei data.
+7.5 During the initial Delegation work, it was found that Satisfactions and
+    Delegations were not being stored correctly under a generic package. This
+    was fixed by including them in the Packageable Element subtype hierarchy.
+7.6 A special case was added to io.mdl/arc/create_persistence_meta_data.arc
+    that effects code generation of 
+    PersistenceHierarchyMetaData.java::getComponentRootRootModelElementType() 
+    for the following types:
+		DataType_c
+		Dimensions_c
+		CoreDataType_c
+		UserDataType_c
+		EnumerationDataType_c
+
+	This is a "hack" that allows specialized package functionality to operate 
+	as it did prior to generic packages.    As long as this special-case hack is 
+	in place, persistence of these special-cased elements will not work properly 
+	if these elements are created under a generic package.  The reason is that 
+	these  elements had only 1 possible root before generic packages were 
+	introduced.  However, with generic packages there  are multiple possible 
+	roots.  The code code generation is not correct for the case where there 
+	are multiple roots (thus the need for the hack).  Too see this, look at 
+	the generated code for these model elements.  You will notice that one 
+	error, for example is that SystemModel is listed as a root.  This is 
+	wrong.   It has been difficult to find a solution to this problem that 
+	fixes this problem without effect other things.  However, as long as 
+	generic packages are not being used, it is not needed.  Therefore, this 
+	hack is being used for now.   An issue is raised to address this [5].
+7.7 Added a helper function to InstanceList.java named report(String msg) that 
+    prints a line of information to the console that shows the class name and 
+    model root of the instance, and a count of the number of elements in the 
+    Vector for this root.  
+7.7.1 Added a helper function to NonModelRootElement.java named
+    printInstanceListInfo(String msg) that calls getInstanceList().report(msg)
+    to report information about the instances of the type of element 
+    represented by this NonModelRootElement instance.
+    This routine may be used to debug the InstanceList population.
+    
+8. Work Required
+----------------
+8.1 Outstanding issues
+8.1.1  Issues that are outstanding or uncovered during development are captured
+       in [4]
+
+9. Unit Test
+------------
+                   
+End
+---
+
+$Log: dts0100631941-06.dnt,v $
+Revision 1.12  2010/05/27 23:39:54  rmulvey
+job:dts0100631941
+Captured information above the latest changes made to the branch during testing.
+
+Revision 1.11  2010/05/27 15:59:05  campbell
+Job: dts0100631941
+Updated with work in progress.
+
+Revision 1.10  2010/05/27 14:57:33  campbell
+Job: dts0100631941
+Updated with work in progress.
+
+Revision 1.9  2010/05/21 13:49:10  rmulvey
+job:dts0100631941
+Added comments about recent fixes in the branch.
+
+Revision 1.8  2010/05/14 01:54:15  rmulvey
+job:dts0100631941
+Added detail to section 6.3 about work to support generic packages in CME operations.
+
+Revision 1.7  2010/05/11 20:48:16  rmulvey
+job:dts0100631941
+Updated the todo PE_PE count to account for the fact that only CMEs remain.
+
+Revision 1.6  2010/05/11 20:41:32  rmulvey
+job:dts0100631941
+Added section 6.4 to describe how support for generic packages shall be added to the CME functions.
+
+Revision 1.5  2010/04/30 01:59:33  rmulvey
+job:dts0100631941
+Updated 6.2 to describe the new relationships created.
+
+Revision 1.4  2010/04/29 15:59:14  rmulvey
+job:dts0100631941
+Added an description about the new Participant in Package (PE_PIP) link class created to allow formalization on R8009.
+
+Revision 1.3  2010/04/29 14:37:40  kbrown
+job:dts0100631941
+Updated -06.dnt and tnt.
+
+Revision 1.2  2010/04/29 13:29:54  rmulvey
+job:dts0100631941
+Added an description about R8009 being created between EP_PKG and SQ_P.  This relationship replaces R932 when the participant in under a generic package.
+
+Revision 1.1  2010/04/16 13:56:00  campbell
+Job: dts0100631941
+Introduced to cover documentation for next cycle.

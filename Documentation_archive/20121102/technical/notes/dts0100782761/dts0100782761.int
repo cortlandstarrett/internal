@@ -1,0 +1,379 @@
+========================================================================
+
+File:      $RCSfile: dts0100782761.int,v $
+Version:   $Revision: 1991 $
+Modified:  $Date: 2012-11-02 14:29:43 -0700 (Fri, 02 Nov 2012) $
+
+(c) Copyright 2007-2012 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Implementation Note
+System-C modules are not reusable in multiple projects
+
+
+
+1. Abstract
+-----------
+Support outputting components as independent modules.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100782761
+[2] dts0100782761.dnt
+[3] ClearQuest DEI dts0100851175 - Generated code modularization enhancements
+[4] "dogs" Test Model - svn://phoenix.azt.mentorg.com/arch1/products/tiger/
+       doc_repository/trunk/AE/SKB/Models/Test/dogs
+[5] "dog_pal" Test Model - svn://phoenix.azt.mentorg.com/arch1/products/tiger/
+       doc_repository/trunk/AE/SKB/Models/Test/dog_pal
+
+4. Background
+-------------
+The initial design called out in [2] is implemented as a first step.  During 
+development some future enhancements and ideas were generated that should be 
+revisited in the future as a next step.  These items are called out in [3].
+ 
+5. Design
+---------
+5.1  The original design described in [2] where the system services are made 
+     into inheritable classes was followed.
+5.1.1  There are now classes sys_events, sys_sets, and sys_factory.  Class 
+       sys_factory inherits from sys_sets. Application components inherit from 
+       sys_factory and sys_events.
+5.1.2  Application classes do not inherit from any system services.  They get 
+       all the system service functionality they need through their containing
+       component.  The parent component is made available as a runtime pointer
+       named "thismodule" that is available either inside event data or passed 
+       directly as a parameter to functions that need it.  The "thismodule" 
+       pointer is also set up in component level functions as a copy of the 
+       standard "this" pointer to facilitate writing reusable code coming out of
+       the model compiler.
+5.1.3  The model compiler can optimize out some functionality that is not need-
+       ed by the project currently being compiled.  However, when the generated
+       system services are used in a scenario that combines several projects,
+       the functionality may be needed after all.  Thus, for SystemC, this 
+       optimization is turned off.  The archetypes are are forced to not omit 
+       "unnecessary" functions as they may be necessary if used in a larger 
+       context.
+5.1.4  As archetype changes were made, care was taken when adding the class
+       structure.  The class structure is protected by target language checks 
+       and only emitted for SystemC.  Function declarations and definitions are 
+       made either extern or class operations using substitution variables that 
+       are set up appropriately given the desired target language.  The goal was
+       to make files that live in the general arc/ area work cleanly for all
+       language types. 
+       
+5.2 Model Compiler Metamodel Schema changes
+5.2.1 TE_SET
+      Added two new string elements, "scope" and "module". In the model compiler
+      setup in q.mc3020.arc, the scope is set to "sys_sets::" and module is
+      set to "thismodule->".  These variables keep us from polluting many arch-
+      etypes with hardcoded string data as well as allowing a single point to
+      override and blank this data in the case that a different target language
+      wants to handle scoping or module access differently.
+5.2.2 TE_INSTANCE
+      This translation extension already contains the "scope" element.  It is 
+      set to "sys_factory::" in q.mc3020.arc.  Added string elements: "get_dci",
+      "get_event_dispatcher", "get_thread_assignment", and "module".  The 
+      "get_*" elements are for new function names that return data from 
+      implemented components that used to live in global variables.  The 
+      "module" element and the reasons for the functions in TE_INSTANCE are the 
+      same as in 5.2.1.  
+      
+      Since TE_INSTANCE.module is a duplication of the data in TE_SET.module, 
+      one _could_ be eliminated.  However, these TE_ classes are not currently 
+      always available in the same scope.  A select of the needed class could be
+      performed.  However, the selection would only be done to get at this one 
+      variable in the class.  There were enough places where this selection 
+      would have to be added that I deemed it to be cleaner to just add the 
+      module element in both classes. 
+
+5.3 t.sysc_main.c
+5.3.1 The class factory initialization is moved into module constructors instead
+      of being a static system service called from 
+      ApplicationLevelInitialization().
+5.3.2 Set factory initialization is moved to be module specific instead of 
+      being done system-wide in sc_main().
+5.3.3 The sc_main() function contains calls to initialize and clean up the 
+      Escher architecture at runtime.  When the model is wired inside Vista 
+      instead of inside BridgePoint, the BridgePoint generated main() is renamed
+      and not used.  Instead the sc_main() created by Vista Model Builder is 
+      used. However, the Escher infrastructure still needs to be initialized and
+      cleaned up at the proper times.  The Vista user must add the necessary 
+      function calls to their code to do this.
+      
+      In order to make the hand edits as simple as possible, I created three
+      functions:
+        xtuml_pre_init() - xtML initialization stage 1. Called before the system
+          top is created.
+        xtuml_post_init() - xtUML initialization stage 2. Called after the 
+          system top is created but before simulation starts.
+        xtuml_cleanup() - xtUML cleanup. Performs cleanup after simulation ends.
+        
+      The BridgePoint generated sc_main() is modified to use these functions as
+      well to provide an example users can reference and to avoid code duplica-
+      tion.
+      
+5.4 t.sys_factory.h
+5.4.1 Changed core behavior of this class such that it no longer operates with 
+      all methods being class statics.  Instead the functionality is made to be 
+      instance-based so it can be inherited by ooa modules.
+5.4.2 Added a virtual function "Escher_GetDCI(...)" which modules can override 
+      to return their class info extents.  This is used in place of the formerly
+      global domain_class_info array.
+
+5.5 t.sys_factory.c
+5.5.1 Removed usage of system class info array "domain_class_info[]".  
+5.5.2 Use call to Escher_GetDCI() instead of array math on domain_class_info. 
+      
+5.6 t.sys_sets.h/c
+5.6.1 Made sys_sets a class
+5.6.2 Added a constructor/destructor
+5.6.2.1 As noted in the generated comments, there are two constructors.  The
+        primary constructor takes an argument that specifies the size of the 
+        node1s array to allocate.  However, a no-param constructor is also
+        created and used by the runtime during static initialization.   The 
+        static creation of the <ooa_class>_instances[...] will cause compile 
+        errors against the parent module if this constructor is removed.  This 
+        is due to the set manipulation done via the module instance in the link 
+        functions of the <ooa_class>.
+5.6.3 node1s is now dynamically allocated in the constructor instead of being 
+      statically allocated at the global scope.
+5.6.4 Updated all the places where ${te_set.base_class} is used to add scope 
+      as in "${te_set.scope}${te_set.base_class}".  We could have gotten the 
+      scope using the component instead; since the component inherits the 
+      datatype from sys_sets (via sys_factory), 
+      "<component>::${te_set.base_class}" is valid as well.
+      However, the component approach is not as easy to control because it would
+      require more management in the archetypes, versus the single point the 
+      "sys_sets::" approach uses via the TE_SET class.
+
+5.7 t.sys_events.h/c
+5.7.1  Made sys_events a class.  
+5.7.2  Modules inherit this class.  Modules implement two virtual functions that
+       are used at the system level to get domain specific data for thread
+       assignment (currently unused in SystemC) and the event dispatcher
+       function. For example:
+       
+         virtual Escher_ClassNumber_t * Escher_GetThreadAssignment( void ) { return &dogs_task_numbers[0]; }
+         virtual EventTaker_t * Escher_GetEventDispatcher( void ) { return dogs_EventDispatcher; }    
+
+       Additional information about these is found in 5.8.
+5.7.3  Made (previously global) self and non-self event queues into class 
+       sys_events member attributes.
+5.7.4  The previously global static event functions DequeueOoa(Non)SelfEvent() 
+       in sysc_main.cpp have been moved to sys_events class member functions.
+5.7.5  SystemC no longer uses the Escher_systemxtUMLevents super-union like C 
+       does.  The size of the domain events union is passed to the sys_events 
+       constructor and used to initialize the size of the event pool array.
+       
+5.8  Infrastructure to get domain-specific data from the domain itself rather
+     than storing it in global arrays. This facilitates the effort to modularize
+     components by eliminating domain data at the system level.
+5.8.1  The domain_class_info array was previously a global array in the 
+       generated code that mapped domains and classes.  A virtual function 
+       (Escher_GetDCI) is added to the sys_factory class.  Each component/domain
+       inherits and overrides this function to provide the class mapping for the
+       classes that live inside the component. This obviates the global 
+       domain_class_info array.
+5.8.2  A similar mechanism is used to get rid of the global array 
+       class_thread_assignment[].  The sys_events class has a virtual function 
+       named Escher_GetThreadAssignment to get the needed thread assignment data
+       from the component instead of storing it in a global array. 
+5.8.3  The implementation also uses a virtual function in the sys_events class
+       (Escher_GetEventDispatcher) to replace the DomainDispatcherTable[].  This
+       provides the function pointers for the class dispatchers inside the 
+       domain.
+
+5.9  Removed #includes for <component>.h in sys_types.h and sys_factory.cpp.  
+     Added them to <component>_<keyletter>_class.cpp.
+
+5.10 Moved "#define <component>_DOMAIN_ID <n>" from sys_types.h to 
+     <component>.h. Hardcoded the domain IDs to be 0 as they don't need to be 
+     unique when the services are inherited.
+                  
+5.11 <component>_classes.h is no longer being generated to a separate file.  
+     Prior work has now made it part of <component>.h.  The boilerplate header 
+     and the #ifdef that were needed when it was its own file, but are no longer
+     needed when included inside the <component>.h, are now enclosed in a 
+     te_target.language == "C" check.  Some of data in this file is needed in 
+     the component class setup, specifically <component>_MAX_CLASS_NUMBERS.  So, 
+     this data is moved to be before class <component> is declared rather than 
+     after.
+
+6. Implementation Comments
+--------------------------
+6.1  Jon McDonald (Vista TME) and Dean McArthur (BridgePoint TME) requested some
+     changes in the generated code. The following were implemented:
+6.1.1  #define SC_INCLUDE_FX which is defined in sys_types.h causes compile 
+       errors with gcc4.3.  The generated code is changed to comment this out
+       by default.  Jon said: "If you want fixed point arithmetic I would 
+       suggest using the catapult ac_fixed headers.  These can be included 
+       and distributed freely."
+6.1.2  Fixed path in the briva_all comment about "Please add..." to not have 
+       "vista_tlm/" on the end.
+6.1.3  Created xtuml_pre_init(), xtuml_post_init(), and xtuml_cleanup() to wrap 
+       our application-specific code inside sc_main().  These can then be called
+       easily by a sc_main created inside Vista. "externs" for these three 
+       xtuml_* functions were added to sys_types.h.
+6.1.4  The pv_template.cpp files include "#ifdef MB_DEBUG" lines which print out
+       debug information. This debug code has been moved to the base models and 
+       no longer needed to be included in the pv_template files.  The 
+       "#ifdef MB_DEBUG" sections are removed from the pv_template.cpp files.
+6.1.5  The pv_template.cpp files had a line #include "mb/sysc/parameters.h".  
+       This has been changed,in the current Model Builder (Vista 3.1.2) this 
+       file has been moved and you do not have to include it.  It will be 
+       included automatically.  Thus, we removed this line from *template.cpp 
+       generated files.
+
+6.2  In <component>.h, there were domain functions being generated outside the 
+     class declaration as well as inside.  We didn't want the outside ones.
+     Modified t.domain_classes.h with a language check to skip the declarations 
+     if not "C".
+
+6.3  The *template.cpp file class constructor initializes the bpCallBackIF 
+     before the main class module.  This results in a compile time warning.  The
+     order of the initialization in the *template.cpp should be reversed.  For
+     example, in the dogs_pv_template.cpp the change is
+  
+         : $(PV_BASE  : $(PV_BASE_CLASS_NAME)(module_name) , m_Port1_bpCallBackIF("Port1_bpCallBackIF", this), m_dogs("dogs")
+         
+          to
+          
+         : $(PV_BASE  : $(PV_BASE_CLASS_NAME)(module_name) , m_dogs("dogs"), m_Port1_bpCallBackIF("Port1_bpCallBackIF", this)
+
+7. Unit Test
+------------
+7.1 Test models [4] and [5] were created in order to run the test scenario called
+out in [2].  
+
+The "dogs" project contains our standard dogs model as a component along with
+another component "test".  The two components share an simple interface with a 
+single message that is called by the dogs startup domain function.
+
+The "dog_pal" project contains a component "Owner" that implements the same
+interface (technically a project local redefinition of the interface).
+
+For testing, both projects have their "library" packages generated (with unwired
+individual components).  The components and infrastructure are used from the
+dogs project.  Only the owner_*.c/h files are used from the dog_pal project.
+The test is then run wiring the projects inside Vista, proving that the dogs,
+test, and Owner components are truly modular.  Either test or Owner can be
+wired to dogs and the compilation and execution still succeed.
+
+A detailed description of how to run the test is in the dogs model [4] in 
+README.txt.
+
+7.2  The test was repeated with generic package versions of the models with the 
+same success.
+
+8. Code Changes
+---------------
+Branch name: sysc804169-782761-2
+
+mc/arc/frag_util.arc
+mc/arc/q.class.factory.arc
+mc/arc/q.class.link.arc
+mc/arc/q.class.poly.arc
+mc/arc/q.class.sem.arc
+mc/arc/q.class.where.arc
+mc/arc/q.domain.classes.arc
+mc/arc/q.domain.sync.arc
+mc/arc/q.names.arc
+mc/arc/sys_util.arc
+mc/arc/t.class.extent.c
+mc/arc/t.class.idispatch.c
+mc/arc/t.class.relate_assoc.c
+mc/arc/t.class.relate_assoc.h
+mc/arc/t.class.relate_assref.c
+mc/arc/t.class.relate_assref.h
+mc/arc/t.class.relate_reflex.c
+mc/arc/t.class.relate_reflex.h
+mc/arc/t.class.relate_simple.c
+mc/arc/t.class.relate_simple.h
+mc/arc/t.class.relate_subtype.c
+mc/arc/t.class.relate_subtype.h
+mc/arc/t.class.reset_refs.c
+mc/arc/t.class.select_where.c
+mc/arc/t.class.set_refs.c
+mc/arc/t.class.sm_act.c
+mc/arc/t.domain_classes.h
+mc/arc/t.domain_init.dci.h
+mc/arc/t.domain_init.factories.c
+mc/arc/t.domain_init.h
+mc/arc/t.smt_sr.chaintom.c
+mc/arc/t.smt_sr.deallocate_set.c
+mc/arc/t.smt_sr.declare_set.c
+mc/arc/t.smt_sr.many_astob1.c
+mc/arc/t.smt_sr.many_astob1where.c
+mc/arc/t.smt_sr.many_astobm.c
+mc/arc/t.smt_sr.many_astobmwhere.c
+mc/arc/t.smt_sr.many_atob1.c
+mc/arc/t.smt_sr.many_atob1where.c
+mc/arc/t.smt_sr.many_atobm.c
+mc/arc/t.smt_sr.many_atobmwhere.c
+mc/arc/t.smt_sr.multi_many_astob1.c
+mc/arc/t.smt_sr.multi_many_astob1where.c
+mc/arc/t.smt_sr.multi_many_astobm.c
+mc/arc/t.smt_sr.multi_many_astobmwhere.c
+mc/arc/t.smt_sr.multi_oneany_astobmwhere.c
+mc/arc/t.smt_sr.oneany_astob1.c
+mc/arc/t.smt_sr.oneany_astob1where.c
+mc/arc/t.smt_sr.oneany_astobm.c
+mc/arc/t.smt_sr.oneany_astobmwhere.c
+mc/arc/t.smt_sr.oneany_atobmwhere.c
+mc/arc/t.smt_sr.result_set_init.c
+mc/arc/t.smt_sr.start_many.c
+mc/arc/t.smt.c
+mc/arc/t.sys_events.c
+mc/arc/t.sys_events.h
+mc/arc/t.sys_factory.c
+mc/arc/t.sys_persist.c
+mc/arc/t.sys_sets.c
+mc/arc/t.sys_sets.h
+mc/arc/xtumlmc_schema.sql
+mc/arc/specialized/q.class.arc
+mc/arc/specialized/q.component.arc
+mc/arc/specialized/q.components.arc
+mc/arc/specialized/q.mc3020.arc
+mc/arc/specialized/q.val.translate.arc
+mc/arc/specialized/sys.arc
+mc/arc/specialized/t.component.class.sm.c
+mc/arc/specialized/t.component.messages.c
+mc/arc/specialized/t.component.module.h
+mc/arc/specialized/t.component.regdefs.h (removed)
+mc/arc/specialized/t.component.tlm_wrapper.tcl
+mc/arc/specialized/t.component.vista.pv_template.c
+mc/arc/specialized/t.component.vista.pv_template.port.c
+mc/arc/specialized/t.domain_init.c
+mc/arc/specialized/t.sys_factory.h
+mc/arc/specialized/t.sys_types.h
+mc/arc/specialized/t.sysc_main.c
+
+
+
+End
+---
+
+$Log: dts0100782761.int,v $
+Revision 1.4  2012/02/13 20:34:54  kbrown
+job:dts0100782761
+INT updates, review min updates, final review checklist.
+
+Revision 1.3  2012/02/10 22:13:47  kbrown
+job:dts0100782761
+Completed INT.
+
+Revision 1.2  2012/02/10 02:57:51  kbrown
+job:dts0100782761
+Committing work in progress updates for DNT and INT.
+
+Revision 1.1  2012/02/09 21:41:39  kbrown
+job:dts0100782761
+Committing work in progress updates for DNT and INT.

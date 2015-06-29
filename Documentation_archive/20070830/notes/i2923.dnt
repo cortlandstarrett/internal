@@ -1,0 +1,146 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Prevent computed parameter values causing unwanted extra stack frame creations
+
+1. Abstract
+-----------
+This note describes the design change needed to fix the above issue.
+
+2. History
+----------
+    final - i2923-051607-01.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 2923
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2923
+
+4. Background
+-------------
+While testing Verifier for the 1.4.4 alpha release, an issue was noticed that
+left a large amount of cruft in the Debug stack display.
+
+5. Analysis
+-----------
+This problem was ocurring because the setUpParameters operations on
+'Bridge Invocation', 'Bridge Value', 'Operation Invocation', 'Operation Value',
+'Function Invocation' and 'Function Value' had the following logic:
+
+create a new stack frame
+for each argument
+  if parameter is a return value
+    if the value is available
+      copy the value to the argument in the new stack frame
+    else
+      set up the invocation of the action that returns the required value
+      return // allows the invoked action to run
+    end if
+  end if
+end for
+// Now all parameter values are available
+set up the invocation of the required activity
+for each argument
+  pop the argument value from the stack
+end for
+
+This is plain wrong, because this operation is re-entered multiple times, once
+for each argument that needs computed and then once more.
+
+The correct logic is:
+
+for each argument
+  if parameter is a return value
+    if the value is not available
+      set up the invocation of the action that returns the required value
+      return // allows the invoked action to run
+    end if
+  end if
+end for
+// Now all parameter values are available
+create a new stack frame
+set up the invocation of the required activity
+for each argument
+  copy the value to the argument in the new stack frame
+  pop the argument value from the stack
+end for
+
+Thus, no new stack frames or local argument instances are created until all the
+required computations are complete. Then they are created once.
+
+6. Design
+---------
+The OAL for the six setUpParameters() operations are modified as described in
+the analysis.
+
+7. Design Comments
+------------------
+The Bridge setUpParameters had an almost identical operation called
+setUpWiredParameters(). The only difference between this and the one being
+changed was which stack the values were being copied to (for a wired call, the
+stack is the one controlling execution of the remote domain). This operation was
+removed and an extra targetStackFrame_ID argument added to the setUpParameters()
+operation. If a null id is passed, then setUpParameters allocates a new stack
+frame on the local stack, if a non null id is passed, the parameter values are
+added to the stack frame identified by the passed value.
+
+8. Work Required
+----------------
+See Design.
+
+9. Unit Test
+------------
+_- Run test model ex2
+_R Stack is only 2 frames deep when the model hits the 'control stop' statement
+in ARCH::shutdown().
+
+All other Verifier and Builder unit tests must pass.
+
+End
+---
+
+$Log$
+Revision 1.3  2009/01/01 23:12:57  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.4.1  2008/12/31 16:10:00  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2007/08/31 21:26:35  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.5  2007/05/16 22:00:35  campbell
+Job:2923
+Finalized.
+
+Revision 1.4  2007/05/16 21:38:38  campbell
+Job:2923
+Addressed review observations.
+
+Revision 1.3  2007/05/16 20:33:50  campbell
+Job:2923
+Fixed list of operations affected.
+
+Revision 1.2  2007/05/16 20:19:47  campbell
+Job:2923
+Clarified pseudocode.
+
+Revision 1.1  2007/05/16 20:17:19  campbell
+Job:2923
+Introduced.
+

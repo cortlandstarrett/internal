@@ -1,0 +1,208 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+DT locating broken for packages
+
+
+1. Abstract
+-----------
+Currently, there are places in OAL where a datatype is located through the
+system on R4400. We need to investigate all places where a system is required,
+and search through the packages as well.
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] Bugzilla item 3542
+    http://tucson.wv.mentorg.com/bugzilla/show_bug.cgi?id=3542
+
+4. Background
+-------------
+We need to be robust in supporting datatypes nested in the new generic packages.
+
+5. Analysis
+-----------
+5.1  Searched all .xtuml files for "S_SYS[R4400]".  This yielded 20 hits:
+
+    /Domain/Data Type/Data Type.xtuml:23
+    /Domain/Data Type/Data Type.xtuml:26
+    /Domain/Data Type Package/Data Type Package.xtuml:2901
+    /Domain/Data Type Package/Data Type Package.xtuml:4322
+    /Domain/Data Type Package/Data Type Package.xtuml:4325
+    /Domain/Data Type Package/Data Type Package.xtuml:6737
+    /Domain/Data Type Package/Data Type Package.xtuml:6749
+    /Domain/Data Type Package/Data Type Package.xtuml:13525
+    /Domain/Domain/Domain.xtuml:1823
+    /Domain/Domain/Domain.xtuml:2583
+    /Domain/Domain/Domain.xtuml:2586
+    /Domain/Domain/Domain.xtuml:9165
+    /Domain/Structure Member/Structure Member.xtuml:5288
+    /Domain/Structure Member/Structure Member.xtuml:5296
+    /Domain/Structured Data Type/Structured Data Type.xtuml:1137
+    /Domain/Structured Data Type/Structured Data Type.xtuml:1145
+    /Subsystem/Model Class/Model Class.xtuml:13872
+    /Subsystem/Model Class/Model Class.xtuml:13875
+    /Subsystem/Model Class/Model Class.xtuml:37224
+    /Subsystem/Model Class/Model Class.xtuml:37229
+
+
+6. Design
+---------
+6.1 Code changes
+
+    The system in these cases is found by OAL similar to this:
+
+        select one rootPkg related by self->S_DIP[R39]->S_DPK[R39];
+        select one sys related by rootPkg->SLD_SDP[R4400]->S_SYS[R4400];
+        if(empty sys)
+          while(not_empty rootPkg)
+            select one sys related by rootPkg->SLD_SDP[R4400]->S_SYS[R4400];
+            select one rootPkg related by rootPkg->S_DPIP[R38]->S_DPK[R37];
+          end while;
+        end if;
+
+    Here is what the OAL should look like in the S_DT.dispose operation:
+
+        select one rootPkg related by self->S_DIP[R39]->S_DPK[R39];
+        + actualRootPkg = rootPkg;
+        select one sys related by rootPkg->SLD_SDP[R4400]->S_SYS[R4400];
+        if(empty sys)
+          while(not_empty rootPkg)
+            select one sys related by rootPkg->SLD_SDP[R4400]->S_SYS[R4400];
+            select one rootPkg related by rootPkg->S_DPIP[R38]->S_DPK[R37];
+        +    if(not_empty rootPkg)
+        +      actualRootPkg = rootPkg;
+        +    end if;
+          end while;
+        end if;
+        + if(empty sys)
+        +   select one sys related by actualRootPkg->EP_SPKG[R1402]->EP_PKG[R1400]
+                                                                 ->S_SYS[R1405];
+        + end if;
+        if((empty intdt) and (not_empty sys))
+
+6.2 Of the 20 places called out in 5.1, any references in *_PROXY elements will
+    be ignored.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+8.1 OAL in the following functions must be updated to account for this new
+    functionality.
+  8.1.1 Data Type::dispose()
+    Will be modified according to 6.1.
+  8.1.2 Domain::pasteDataTypePackage()
+    Will be modified to look like Package::pasteDataTypePackage().  That is, it
+    will use the same pattern, calling DataType Package::associateWithDomain().
+
+8.2 OAL in the following functions made similar traversals, but is not changed
+    as part of this issue.  These cases all deal with systems that are directly
+    related to the DTP in question.  They do not require an iterative search of
+    the parent system.
+  8.2.1 Data Type Package::internal_dispose()
+  8.2.2 Data Type Package::getSystemId()
+  8.2.3 Data Type Package::deassociateFromParent()
+
+8.3 Collateral changes required.  The dispose chain initiated at the package
+    level can lead to data type packages (and hence datatypes) being disposed.
+    Since datatype disposal can now sometimes use R1400 and R1402 to locate the
+    system, we have to make sure we unrelate across those relationships *after*
+    calling subpackage disposal.  Right now we unrelate before calling sub-
+    package disposal.
+  8.3.1 Package::dispose()
+  8.3.2 Specification Package::dispose()
+
+9. Unit Test
+------------
+9.1 Manual Test
+
+    _- Create a package "p" at the system level
+    _- Create a package "q" in "p"
+    _- Create a data type package "dtp1" in "q"
+    _- Create a data type package "dtp2" in "dtp1"
+    _- Create a user data type "udt1" in "dtp2"
+    _- Create an operation "op1" in a class, under a formal component
+    _- Assign "udt1" as the return type of "op1"
+    _- Delete "udt1"
+    _R "op1" return type is changed to "void"
+
+    _- Create a user data type "udt2" in "dtp2"
+    _- Assign "udt2" as the return type of "op1"
+    _- Delete "dtp2"
+    _R "op1" return type is changed to "void"
+
+    _- Create a data type package "dtp3" in "dtp1"
+    _- Create a user data type "udt3" in "dtp3"
+    _- Create a parameter "p1" to "op1"
+    _- Assign "udt3" as the type of "p1"
+    _- Delete "dtp1"
+    _R "p1" type is changed to "integer"
+
+    _- Create a data type package "dtp1" in "q"
+    _- Create a data type package "dtp2" in "dtp1"
+    _- Create a user data type "udt4" in "dtp2"
+    _- Assign "udt4" as the type of "p1"
+    _- Delete "q"
+    _R "p1" type is changed to "integer"
+
+    _- Create a package "q" in "p"
+    _- Create a data type package "dtp1" in "q"
+    _- Create a data type package "dtp2" in "dtp1"
+    _- Create a user data type "udt5" in "dtp2"
+    _- Assign "udt5" as the type of "p1"
+    _- Delete "p"
+    _R "p1" type is changed to "integer"
+
+9.2 Automated tests
+
+  9.2.1 Existing JUnit tests must pass
+
+  9.2.2 New JUnit test
+    Create new unit tests that essentially duplicate the manual testing outlined
+    above.
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:18  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.3  2008/05/29 16:03:58  kbrown
+Job:3542
+Updated DNT to note new changes required to Element packaging dispose chains.
+
+Revision 1.2  2008/05/28 17:23:09  kbrown
+Job:3542
+Updated DNT.
+
+Revision 1.1  2008/05/28 16:44:24  kbrown
+Job:3542
+Initial checkin.  Still a work in progress.
+

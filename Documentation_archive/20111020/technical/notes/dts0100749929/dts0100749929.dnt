@@ -1,0 +1,190 @@
+========================================================================
+
+File:      $RCSfile: dts0100749929.dnt,v $
+Version:   $Revision: 1296 $
+Modified:  $Date: 2011-10-20 15:06:12 -0700 (Thu, 20 Oct 2011) $
+
+(c) Copyright 2007-2011 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Produce warning when importing an identical project into workspace
+
+
+1. Abstract
+-----------
+Currently, the user can not import existing project twice into workspace even 
+when he changes one of projects name. Attempting to do this results in a project 
+with duplicate elements.  This work will prevent this problem, not allow it.  
+Another issue [3] is raised to fix the problem in a way that allows duplicates.
+ 
+
+2. History
+----------
+None.
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100749929 - Produce warning when importing an identical 
+	project into workspace.
+[2] ClearQuest DEI dts0100802714 - Allow an xtuml nature to be added to a 
+	project
+[3] ClearQuest DEI dts0100802994 - Support normal viewing, editing and execution 
+	of duplicate models
+
+4. Background
+-------------
+None.
+
+5. Analysis
+-----------
+5.1 The problem happened because when user import existing project, the import
+	process check for previous created System Model instance with the same ID 
+	persisted in the imported project file. If an instance found, then the 
+	import process would not create new instance, instead it will hook up the 
+	rest of model elements with this System Model instance.
+
+    Therefore, the second project elements will be placed under the first
+    project tree in the ME view.
+
+5.2 The problem can not be reproduced by import xtUML file, because the import
+	process generate new ID for each model element including System Model 
+
+5.3 There are different approach to resolve this problem : 
+5.3.1 Approaches to allow having the two duplicated models in BridgePoint 
+5.3.1.1 Change System Model identifier from 'sys_id' to combined identifier 
+		from 'sys_id' and 'name'
+  	
+  	This approach will cause changes in meta model due to the identifier 
+  	change, and the data persisted in model files. Therefore it can not be 
+  	accepted as solution since it goes against the requirement which state
+  	that no changes are to be made to the users files when duplicate projects
+  	are added to the workspace.
+ 
+		
+5.3.2 Approach to allow duplicate project import by disabling BridgePoint 
+	  functionality in the imported project.
+5.3.2.1 Add algorithm to detect duplication while importing and checking out,
+		if found, then cancel SQL parsing and remove xtUML nature with 
+		informative pop up window
+		
+
+5.4 Approach 5.3.2.1 is selected to implement based on :  
+5.4.1 The issue basic requirement is to only disable the importing of the 
+	  duplicated project. So disabling the xtuml model will be enough to prevent 
+	  model elements mixing, and the user will have ability to get use of the 
+	  other files of the imported project
+5.4.2 The approaches 5.3.1.1 and 5.3.1.2 would cause changes in the persisted 
+	  file, and would raise the need for data upgrade, also changing 
+	  the project name will cause data changes in multiple files which is not 
+	  good practice specially when working with revision control.
+	  	   
+
+6. Design
+---------
+6.1 Add new method readSystemModel(InputStream) to IModelImport.IFileHeader
+6.1.1 Implement the previous added method in  CoreImport.FileHeader class. The
+	  method should use the inputStream argument to read the file contents, 
+	  parse contents to get 'sys_id', query for existing System Model instance 
+	  in the instanceList using "sys_id", and return it if found, null otherwise
+
+6.2 Implement algorithm to detect model duplication :
+6.2.1 Change ComponentResourceListener.visit() to get the imported project file
+	  that contains the system model instance, get the input steamer and pass 
+	  it to readSystemModel(InputStream), if return value is 'null' then there 
+	  is no duplication.
+	  
+	  If duplication is found, an information box shall pop up with the 
+	  following message : 
+	  
+	"The project being imported or checked out contains an xtUML model with 
+	content that conflicts with another model already present in the workspace.
+
+	Your selected project has been brought into the workspace, but its 
+	BridgePoint features have been disabled."
+
+6.3 Add new method removeNature(IProject) to  XtUMLNature java class in order 
+	to remove xtuml nature for passed project.
+
+7. Design Comments
+------------------
+7.1 When this issue is complete, a user may import a duplicate and the BP
+	functionality shall be disabled [5.3.2.1].   If the user then takes an 
+	action that prevents the duplicates, for example closing the original 
+	project, then the project for which the BP functionality was disabled can 
+	have the BP functionality enabled.
+	A separate issue is raised to enable the functionality in this situation [2]
+
+7.2 A separate issue is raised to Support normal viewing, editing and execution 
+	of duplicate models [3] 
+
+8. Work Required
+----------------
+Fully outlined in the design section.
+
+9. Unit Test
+------------
+9.1 All JUnit test must pass.
+9.2 Automate the following tests : 
+9.2.1 Importing duplicate model
+	_- From Welcome page, import the microwave oven model.
+	_- Copy the project directory from file system into your desktop
+	_- Back to BridgePoint, Rename MicrowaveOven project
+	_- Right click on ME and select import
+	_- Import -> Existing Project ->  select the MO project from desktop
+	_R Pop up window with the following message : 
+	
+	"The project being imported or checked out contains an xtUML model with 
+	content that conflicts with another model already present in the workspace.
+
+	Your selected project has been brought into the workspace, but its 
+	BridgePoint features have been disabled."
+	
+	_- Close the window, check ME view
+	_R The most recent imported project not found
+	_- Switch to Resource view
+	_R The most recent imported project is found
+	_- Using navigator view, open '.project' file, and go to nature section
+	_R xtuml nature not exist.
+	
+9.2.2 Checking out duplicate model
+    _- Using CVS perspective, setup cvs connection  : 
+     . Host: tucson.wv.mentorg.com
+     . Repository Path: /arch1/products/tiger/repository
+   _- Checkout Head/MicrowaveOven
+   _- Check project name
+   _- Re checkout the project.
+   _R The most recent imported project not found
+   _- Switch to Resource view
+   _R The most recent imported project is found
+   _- Using navigator view, open '.project' file, and go to nature section
+   _R xtuml nature not exist.
+   
+End
+---
+
+$Log: dts0100749929.dnt,v $
+Revision 1.5  2011/09/28 22:22:34  nmohamad
+job:dts0100749929
+Addressing review minutes
+
+Revision 1.4  2011/09/27 09:54:22  nmohamad
+job:dts0100749929
+Feedback addressing
+
+Revision 1.3  2011/09/26 15:45:47  nmohamad
+job:dts0100749929
+Refining..
+
+Revision 1.2  2011/09/26 15:35:40  nmohamad
+job:dts0100749929
+Add document reference [2], and reference it in 7.1
+
+Revision 1.1  2011/09/26 15:07:14  nmohamad
+job:dts0100749929
+Create..
+

@@ -1,0 +1,258 @@
+========================================================================
+
+File:      $RCSfile: dts0100735213.dnt,v $
+Version:   $Revision: 1094 $
+Modified:  $Date: 2011-06-14 12:33:49 -0700 (Tue, 14 Jun 2011) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Revise Visibility support.
+
+1. Abstract
+-----------
+The current visibility support has some subtle defects that make it difficult to
+document, understand and implement.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100735213 - Revise visibility support.
+[2] ClearQuest DEI dts0100631941 - Migrate away from specialized packages.
+[3] ClearQuest DEI dts0100631408 - Support Package namespacing.
+[4] svn:Documentation_archive/20100712/technical/notes/
+                                                 dts0100631408/dts0100631408.dnt
+[5] svn:Documentation_archive/20100712/technical/notes/
+                                                 dts0100631408/dts0100631408.ant
+[6] ClearQuest DEI dts0100740568 - extend the Visibility feature to cover all 
+	model elements
+[7] ClearQuest DEI dts0100740570 - Support Qualified names	
+
+[8] ClearQuest DEI dts0100740571 - Support duplicate model element names in 
+	model complier
+[9] ClearQuest DEI dts0100740573 - Decorate model elements in ME  based on 
+	their visibility 
+[10] NamespaceTest.xtuml  - Namespace test model
+	<cvs>Documentation\internal\technical\notes\dts0100735213\ 
+[11] Googledoc generic package working document, section 6.3
+
+4. Background 
+-------------
+Difficulty was experienced during implementation of the visibility support being
+added for generic packages. This was traced to a slight irregularity in the
+visibility rules as they relate to packages. In addition, this work adds some
+UI enhancements that will make working with visibility control easier.
+
+5. Analysis
+-----------
+5.1 Enhance the visibility rules
+The visibility rules currently state that package visibility affects the
+visibility of elements declared inside it. This is incorrect and leads to
+various unexpected consequences, such as elements being visible when it would
+be expected that they are not. The visibility rules are simplified by this work
+to be easier to understand by being more regular throughout the hierarchy.
+
+5.2 Add the UML standard 'protected' visibility type
+The UML standard 'private' semantic restricts access to private elements from
+child packages whereas the existing BridgePoint 'private' semantic is that child
+package elements _can_ access elements declared as private when ascending the
+package hierarchy. 
+
+5.3 Make visibility state easily seen by the user
+The current Visibility implementation is restricted to data type selection. Once
+this is extended to classes, we really need an easy way for users to see what is
+visible and what is not. We therefore require diagram and browser support for
+visibility display.
+
+5.4 Applicability
+Visibility rules shall apply to Data Types, to Model Classes, to Packages, and 
+to Components for the first release of this functionality. Full support for 
+other elements specified in the analysis note[5] will be added in a later 
+development cycle [6].
+
+5.5 Qualified names
+This shall not be supported for the first release. We need more time to
+implement the necessary parser changes and to think through the necessary
+enhancements to allow importing model artifacts to support qualified name short-
+cuts (analogous to the java import statement) [7]. For the moment, name-spacing
+shall be supported and managed entirely by means of visibility. i.e. two
+elements with the same name are permitted provided that they are not
+simultaneously public in any action language scope. More than one type found
+during parsing shall be indicated by a parse error.
+
+6. Design
+---------
+6.1 Revised Visibility matrix
+
+Referred to \
+Element is   \             Referred to Element is
+              \ public         protected         private
+  Above in    |    V              V                I(4)
+  same Pkg    |
+              |
+  Below in (1)|    V              I                I(5)
+  Pkg         |
+              |
+  Peer        |    V              V                V
+              |
+  Above in (1)|    V              I                I(5)
+ sibling Pkg  |
+              |
+  Above in    |    V              V(3)             I(2)
+  same Comp   |
+              |
+   System     |    V              V(3)             I(2)
+   Level      |
+
+Legend: V = Visible, I = Invisible
+
+Notes:
+(1) Assumes parent package is visible according to the same rules.
+(2) A private element immediately under the system or component has very limited 
+    visibility, limited only to peer elements at the declared level.
+(3) Marking an element as protected in a system or component level context is
+    meaningless since the semantics are no different from the public semantic.
+(4) Changed from original definition to comply with UML standard.
+(5) Changed from original definition to remove dependency on owning container
+    visibility and simplify the visibility rules.
+
+This matrix should be compared with the one originally published and reviewed in
+[4]. Cells marked with notes 4 and 5 denote changes from one or other of the
+major columns of the original matrix.
+
+The first thing to observe is that the column for owning package visibility is
+removed. This reflects the fact that visibility of the owning container has no
+bearing on the visibility of the referred to element, except in as much as an
+invisible container exposes neither itself nor any of its content. Secondly note
+that since Components are black boxes, there is by definition no visibility of
+anything declared in them (notes 2 and 3 in the same Comp row allude to this).
+Consequently, the rows relating to non-same components are removed. Finally,
+note that even with the addition of the protected column, the overall matrix is
+smaller. This underlines the increased simplicity this work will bring.
+
+6.2 UI changes
+To make this feature more easily usable, the diagram editors and Model Explorer
+need to be enhanced to show the element visibility.
+
+6.2.1 Diagram enhancements
+Elements whose access is controllable shall be prefixed with + (public), -
+(private) and # (protected).
+
+6.2.2 Explorer decoration
+All BP tree displays shall be decorated with Eclipse compatible symbols
+indicating the same information. That is, a green circle for public, a yellow
+diamond for protected or a red square for private [9].
+
+7. Design Comments
+------------------
+7.1 Fix Component Reference Assignment rules
+During preparation of the test model, a defect was encountered[11]. This defect
+causes a hang in Component Reference.canAssignToComp(). The while loop condition
+meant that it would never exit. Also, the traversals used were for the old, non-
+generic metamodel and so could not work in a generic package environment. The
+generic package section is redesigned to prevent a component reference being
+assigned to any component above it in the hierarchy.
+
+The referred to document[11] should be updated to mark this defect as fixed when
+this work is promoted.
+
+8. Work Required
+----------------
+The tasks shall be addressed in the following order:
+
+8.1 Simplify visibility rules (public and private only)
+This will require rework of the collectVisibleElementsForChildren operations. 
+
+8.2 Apply visibility rules to classes
+This will require modification of the Imported class assignment wizard and the
+parser checking for class references. Make private/public/protected menus are
+required for Classes.
+
+8.3 Apply visibility rules to components
+This will require modification of the Component Reference assignment wizard.
+Make private/public/protected menus will also be required.
+
+8.4 Add visibility mark-up to the diagrams 
+This will require that the get_text operations on the Data Type and Model Class
+elements be visited to add the necessary mark-up to the labels. It is expected
+that this will also cause very many tests to fail.
+
+8.5 Add protected visibility type
+This will require changes to collectVisibleElementsForChildren(), plus extending
+the definition of the visibility enumeration plus adding some new menus.
+the previous enumeration names are "visible" and "not invisible". Now it is 
+"private", "public" and  "protected".
+
+8.6 Fix JUnit tests
+The changes above cause 4 compile errors in core.test.AssignClassTestGenerics.
+
+These errors are due to the move from a 'classic' wizard to a 'chooser' style
+wizard. I have not examined the errors in detail, but I expect the fix just
+needs to achieve the same results as before but by accessing the equivalent
+chooser wizard widgets.
+
+8.7 Correct Assign Menu entries
+To leverage the Generic Packages infrastructure, the Specialism field was reused
+to contain the value 'Generic Package'. This enables the new wizards for generic
+packages only (i.e. the assign class/assign component functionality under
+specialized packages remains the 'classic' style dialog). Unfortunately a side
+effect of this is the unwanted words 'Generic Package' appear in the context
+menu label. This does not happen for other generic package context menus, so it
+is being somehow special cased out. The combination of leveraging the chooser
+wizard infrastructure is likely by-passing this special casing, so the special
+case probably just needs to be replicated in the chooser style archetypes.
+
+8.8 Correct Chooser labels
+The labels shown on the component and class selector chooser dialogs does not
+read correctly. It appears to be derived from the label fields in the pre-
+existing instance data. Previously, the chooser infrastructure was only applied
+to data type selection, so most likely the archetypes need some tweaking to make
+them more generic.
+
+8.9 Add visibility decoration to the browser trees
+This will require some new icons, plus the logic to select them.
+A separate issue is raised to complete this work [9].
+
+9. Unit Test
+------------
+We already have a visibility test model. This will require to be modified and
+extended to test the behavior specified in the matrix above (6.1) [10].
+
+All existing JUnit tests must pass, some with modified expected results as
+required.
+
+End
+---
+
+$Log: dts0100735213.dnt,v $
+Revision 1.6  2011/01/06 09:29:11  campbell
+Job: dts0100735213
+Updated with details of fix for component reference assignment hang.
+
+Revision 1.5  2010/12/23 20:48:59  nmohamad
+job:dts0100735213
+Addressing review minutes
+
+Revision 1.4  2010/12/13 13:26:01  campbell
+Job: dts0100735213
+Updated with outstanding work.
+
+Revision 1.3  2010/12/08 13:24:41  campbell
+Job: dts0100735213
+Updated with discovered work.
+
+Revision 1.2  2010/12/03 14:03:58  campbell
+Job: dts0100735213
+Add Background, correct some references.
+
+Revision 1.1  2010/12/03 13:55:12  campbell
+Job: dts0100735213
+Introduced.
+

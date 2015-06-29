@@ -1,0 +1,135 @@
+========================================================================
+
+File:      $RCSfile: i2225.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:20:33 $
+
+(c) Copyright 2006-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Project Implementation Note
+Bidirectional References
+
+
+Abstract
+--------
+This note describes the implementation of bidirectional references between
+associated model element instances.
+
+History
+-------
+
+Document References
+-------------------
+[1] Bugzilla issue 2225
+
+Background
+----------
+Most of the implementation was created by Greg about a year and a half ago. 
+I made some fixes to get that implementation to pass the tests.
+
+Analysis
+--------
+Currently, when two classes are related by an association, a direct pointer 
+between instances of those classes is created in only one direction.  This
+means that if the instance in the opposite direction is desired, all the 
+instances on that side have to be examined until the one with the matching
+IDs is found, which amounts to a lot of extra work.  Adding a pointer
+in the opposite direction would eliminate this oft-repeated iteration. 
+
+Design
+------
+1. Add a back-pointer from the referred-to class to the referring class
+
+In MC-Java's referred_to.inc, such a pointer (or a list of such pointers,
+depending on the association's multiplicity) is added as a field.  Code to 
+generate methods to set and clear that pointer is also added.
+
+In referring.inc, the code which generates the methods to retrieve instances
+across associations is changed to return the matching (or only) back-pointer 
+value in those cases where it previously was trying to match against the entire 
+set of instances.  Also, the code which generates the relate/unrelate methods 
+is modified to set or clear the back-pointer value as necessary, using the 
+above-mentioned methods added to referred_to.inc.  One such call worth 
+mentioning specifically is that, on a relate, if the callee is already related 
+to an instance other than that given, the back-pointer to that previous 
+instance is cleared, so that unrelates (from previous instances) don't have to 
+be added where they currently aren't being performed before relates (to other 
+instances).  However, since this situation sometimes indicates a potential 
+bug in the developer's code, an informative consistency message is logged.
+
+A couple of the graphics instances in io.sql.test's odms.sql results shifted
+position within the file a little bit, likely as some side effect of the use
+of back-pointers.
+
+2. Change not-participating value of Subsystem.'Class Identifier Attribute'.
+Oid_ID
+
+The previous value of 0 was also one of the participating values, which was
+causing equals() to erroneously return true in some cases.
+
+3. Fix bug in Interaction.'Class Instance Participant'.dispose()
+
+Two relationship numbers that are errantly swapped in this operation are 
+unswapped.
+
+4. Change 'Use Case'.'Participant in Use Case' identifiers to be primary
+
+The identifiers of this class are changed from I2 to I, as the class 
+previously had no primary identifier, which goes against what MC-Java expects.
+
+5. Add represents to 'Graphical Data'.'Client Class Dependency' identifier
+
+Currently, the class is only identified by its OOA_Type attribute, which 
+holds the same value for all the instances that are associated with one 
+instance of Element Specification across R17.  The represents field is added
+to be able to distinguish between these instances.
+
+
+Implementation Comments
+-----------------------
+
+Unit Test
+---------
+The existing tests cover the changes made for this issue.
+
+Code Changes
+------------
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms.sql
+
+com.mentor.nucleus.bp.ui.canvas/models/ooaofgraphics.xtuml
+
+MC-Java/referred_to.inc
+MC-Java/referring.inc
+
+
+End
+---
+
+$Log: i2225.int,v $
+Revision 1.1  2009/09/03 18:20:33  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:16  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.16.1  2008/12/31 16:10:23  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2006/07/25 18:24:41  jmather
+Job: 2225
+Added a note about logging a message when a relate is performed without unrelating the prior instance.
+
+Revision 1.1  2006/07/21 22:39:51  jmather
+Job: 2225
+Introduced.

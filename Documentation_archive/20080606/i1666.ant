@@ -1,0 +1,260 @@
+========================================================================
+
+File:      $RCSfile$
+Version:   $Revision$
+Modified:  $Date$
+
+(c) Copyright 2007-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Analysis Note
+Instance reference datatype
+
+1. Abstract
+-----------
+This note defines what changes are needed to the backend of the tool to support
+instance reference data types.
+
+2. History
+----------
+    final - i1666-102607.rvm
+
+3. Document References
+----------------------
+[1] Bugzilla item 1666
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=1666
+[2] Bugzilla item 477
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=477
+[3] Bugzilla item 478
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=478
+[4] Bugzilla item 530
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=530
+[5] Bugzilla item 2788
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=2788
+[6] Bugzilla item 3248
+    http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3248
+[7] Bugzilla item 3231
+        http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3231
+[8] Bugzilla item 3085
+        http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3085
+[9] Bugzilla item 3208
+        http://tucson.wv.mentorg.com//bugzilla/show_bug.cgi?id=3208
+
+4. Background
+-------------
+Many customers have asked for instance reference passing. Providing instance
+reference data types is less work and goes one step further and allows for
+instance reference attributes and arrays (with [2]) etc.
+
+5. Analysis
+-----------
+5.1 General comments
+    There direction to take to solve the issue requires a philisophical choice.
+    Either a class must be explicitly "published" in order to make it available
+    for instance reference access, or all classes will automatically be avail-
+    able for instance reference access.
+
+    5.1.1 Option 1, explicit instance references
+    Requiring the user to "publish" the desired classes makes datatype selection
+    for attributes, parameters, etc... simpler because it provides a much
+    shorter list to the user.  However, it also provides a layer of "annoyance"
+    to some users and requires acrobatics in the metamodel to expose and hide
+    appropriate classes.
+
+    5.1.2 Option 2, implicit instance references
+    The alternative, making all classes automatically "inst ref available"
+    allows us to provide a much cleaner implementation in the metamodel at the
+    expense of some "clutter" in the UI.
+
+    The rest of this note discusses analysis of the latter approach, which is
+    the chosen direction.  A separate issue [6] is opened to deal with improving
+    the user interface for data type selection.
+
+    5.1.3 Datatype scoping
+    Instance reference datatypes will have component scoping, meaning visibility
+    only within one component.  Therefore, instance refs will not be valid
+    parameters to interface operations and signals.
+
+5.2 Metamodel changes
+    A new subtype of Data Type is added, 'Instance Reference'. It has a
+    conditional one to unconditional one association with Model Class. Each time
+    a new class is added to the model, two new data type references will be
+    created; one for the inst_ref and one for the set. A set shall be
+    distinguishable from an instance reference by some means, this could be by
+    naming convention (name ends in set) or by the value of a boolean attribute
+    of the new subtype.
+    
+    5.2.1 V_VAR changes
+    The V_TRN.Dimensions attribute will be promoted to V_VAR*. The variable
+    V_INT.IsImplicitInFor will be promoted to V_VAR as well.
+    * Note that by the time this work is merged, the Fixed Length Array[8] work
+    will be completed. This work removes or deprecates the Dimensions attribute.
+    The change proposed here will need to promote to V_VAR whatever behavior
+    is added by that work to V_TRN.
+
+    5.2.2 R821 promoted
+    R821 will be moved from V_TRN to V_VAR, thereby associating all variables
+    with their datatype instance.
+
+    5.2.3 R814 removed
+    The Value subsystem will be reworked so that the subtypes V_INT, V_INS, and
+    V_TRN are removed.  This will also mean the subtype heirarchy R814 is re-
+    moved.
+    
+5.3 Model compiler changes
+    For the same reasons specified in [9 section 6.3] the changes proposed for
+    the schema are only additions, not substitutions i.e. the V_VAR subtypes
+    shall not be removed. Again, as for [9], Model compilers must traverse both
+    the old and the new paths to obtain their required data. The required model
+    compiler change work shall be covered under issues yet to be raised and is
+    not specified further here.
+
+5.4 Parser changes
+    Changes to the parser grammar for member attribute access has already
+    been made for the Structured Data Types work[3]. However, any syntax
+    previously legal on instance reference or instance reference set lValues
+    may now potentially be done to parameters, event data items and attribute
+    values. The parser must be modified to permit these operations. Variables of
+    type inst_ref<classname> shall be compatible with and assignable from the
+    products of select statements.
+
+    Note that the syntax instRefOp().AttrRef will not be supported[5].
+
+    While we are modifying the parser in this area, we should enable the set
+    operations '+' and '-' on inst_ref_set values (also inst_ref_set '+' and
+    '-' inst_ref to allow individual instances to be added and removed from a
+    set). See [4].
+
+5.5 User interface changes
+    The necessary changes shall be made to the BridgePoint user interface so
+    that it provides access to the instance reference datatypes specified or
+    implied above. This work has been broken out to an independent issue [6].
+
+5.6 Verifier changes
+    The necessary changes shall be made to Verifier so that it honors the
+    execution semantics specified or implied above. Though not especially
+    technically challenging, there are many places where changes will have to
+    be made.  This work has been broken out to an independent issue [7].
+
+6. Work Required
+----------------
+6.1 Metamodel changes
+    Add the new data type subtype and association with Model Class. Make
+    appropriate fallout changes to the OAL required by removing R818, R819 and
+    moving R821.  Make other changes as specified or implied in the Analysis
+    section above.
+
+6.2 Parser changes
+    No grammar changes are needed. Modify the validation functions to check for
+    the element being accessed (parameter/event data/attribute value) being an
+    instance reference type, validate the member accessed and instantiate the
+    proper Value subsystem instances.
+
+    Modify the Variable (V_VAR) instantiation patterns.
+
+    Extend binary operator validate to allow inst_ref_set and inst_ref types to
+    occur on either side of the  operators '+' and '-'. The result is always of
+    type inst_ref_set. Mixed type sets are not allowed. Mixing instance
+    references to different classes in the same set will of course be illegal.
+
+6.3 Persistence
+    Add the new data type subtype to the file_io.pei.sql and stream.pei.sql
+    files. Extend ooa_hierarchy.pei.sql to cover the new subtype of data type.
+    Persistence shall be through the Model Class hierarchy so that instance
+    reference data types are persisted in the model class file, not in an
+    arbitrary data type package or, worse, the domain file itself.
+
+7. Acceptance Test
+------------------
+- Check that the type of an attribute can be set to a class instance reference.*
+- Check that the return type of an operation can be set to a published class
+  reference. **
+- Check that attributes, including structured data type and inst_ref attributes
+  of inst_ref type instances can be accessed as expected.*
+- Check that Mathematically Derived Attributes may be of type inst_ref and
+  inst_ref_set.
+- Check that inst_ref_set types may be used in for each loops.
+- Check that inst_ref types may be used as a loop variable in for each loops.
+- Check that sets can be subtracted from and added to each other
+- Check that an instance can be subtracted from and added to a set.
+- Check that an appropriate error is given when mixed types are added to an
+  inst_ref_set.
+- Build a test matrix that covers all instance reference and set behavior.
+- Build a model based on this matrix.
+- Check that it parses correctly.
+- Check that element data types that have been set to an instance reference
+  data type are still set to the same instance reference data type after a tool
+  restart.
+
+* Repeat for parameters, event data items
+** Repeat for bridge and function return.
+
+End
+---
+
+$Log$
+Revision 1.2  2009/01/01 23:13:01  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.1.4.1  2008/12/31 16:10:04  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.1  2008/06/06 14:47:19  rmulvey
+Job:3526
+Archived the issues resolved during the R2_0_0 thru R2__0_2 releases into the Documentation/archive/20080606 folder.  Updated the Documentation/archive/20080606/README.tnt note accordingly.
+
+Revision 1.8  2007/11/07 00:00:32  campbell
+Job: 1666
+Removed references to UI Properties tweak. This additional work is unnecessary. The new DT instances can be related across R14 where the properties view will find it without additonal work.
+
+Revision 1.7  2007/11/06 23:42:52  campbell
+Job: 1666
+Cosmetic change only.
+
+Revision 1.6  2007/11/06 23:40:18  campbell
+Job: 1666
+Minor adjustments and clarifications.
+
+Revision 1.5  2007/11/06 22:07:01  kbrown
+Job:1666
+Completly reworked the ANT based on new design decisions.
+
+Revision 1.4  2007/10/31 22:54:50  campbell
+Job: 1666
+Finalize note.
+
+Revision 1.3  2007/10/26 22:31:10  campbell
+Job: 1666
+Address review observations, restore from archive.
+
+Revision 1.6  2007/10/25 20:36:26  campbell
+Job: 1666
+Fix typos.
+
+Revision 1.5  2007/10/24 23:09:52  campbell
+Job: 1666
+Remove references to 'Recall' functionality.
+
+Revision 1.4  2007/10/24 22:53:45  campbell
+Job: 1666
+Complete Work Required and Acceptance test sections.
+
+Revision 1.3  2007/10/18 19:06:47  campbell
+Job: 1666
+Requirements reworked after conversation with CSS.
+
+Revision 1.2  2007/08/31 21:26:36  rmulvey
+Job:2673
+Moved the notes associated with closed issue into Documentation/technical/archive/20070830/notes
+
+Revision 1.1  2007/02/02 17:14:21  campbell
+Job: 1666
+Introduced.
+

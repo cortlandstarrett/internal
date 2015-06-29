@@ -1,0 +1,464 @@
+========================================================================
+
+File:      $RCSfile: dts0100673102-01.dnt,v $
+Version:   $Revision: 804 $
+Modified:  $Date: 2010-07-12 08:36:39 -0700 (Mon, 12 Jul 2010) $
+
+(c) Copyright 2007-2010 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+BridgePoint Project Design Note
+Resolve a number of issues from technical note
+
+1. Abstract
+-----------
+This note describes the changes required to resolve a number of small issues
+from the technical note [2] that accompanies this issue.
+
+2. History
+----------
+
+3. Document References
+----------------------
+[1] ClearQuest DEI dts0100673102
+[2] dts0100673102.tnt
+[3] dts0100678629
+[4] svn://tucson.wv.mentorg.com/arch1/products/tiger/doc_repository/trunk/Models
+        /Test/Looper
+        
+4. Background
+-------------
+A technical note [2] was created to capture issues that were found during the
+initial testing of the GEF graphics work.
+
+5. Analysis
+-----------
+5.1 New > Imported Component should be New > Component Reference
+
+Section 1.8 of [2] describes an issue where the menu text is incorrect for
+creating new component references.  The proper text should read Component
+Reference, but instead reads Imported Component.
+
+Section 1.11 of [2] mentions the text for New > Subsystem incorrectly showing as
+New > SubSystem.  The second "S" should not be capitalized.
+
+5.2 Make palette view visible by default
+
+Section 1.12 of [2] describes an enhancement request, where the Palette view is
+enabled by default.  The BridgePoint Modeling perspective shall be changed to
+open the Palette view by default.  The palette shall open to the right of the
+diagram and consume around the same amount of space as when the palette is
+attached to the diagram.
+
+5.3 Invalid connections allowed during drag and drop
+
+Section 1.10 of [2] describes a situation where dragging and dropping an
+interface allows two incompatible interfaces to become connected.  The code in
+ui.graphics that handles a drag and drop for connector ends did not check the
+result of the linkConnector call.  This result must be checked and honored.  If
+the call returns true the link was made in the client and therefore the
+graphical link shall proceed, otherwise the graphical link shall be ignored.
+Additionally, a check shall be done before calling linkConnector so that the GEF
+approach of user indication can be followed.  This will let a user know that a
+certain target is not a valid location to drop the connector end.
+
+5.4 Prevent creation of edit parts for FloatingText_c instances that have no
+string value
+
+Currently, the tool will create an edit part for every FloatingText_c instance
+found in the model.  The tool creates a FloatingText_c instance for all possible
+floating text support for a given graphical element.  For instance, a connector
+can have floating text at the start, end, and middle of it.  This is regardless
+of whether or not the user has set or can set the text value for the
+FloatingText_c instance.  The tool should not create edit parts for
+FloatingText_c instances unless they are in use by the user.
+
+5.5 Select floating text when selecting parent element
+
+Section 1.1 of [2] indicates that the old graphical tool used to select floating
+text and the parent element should be selected together, and that we should
+continue this behavior.
+
+When selecting an element's floating text, the element itself shall also be
+selected.  Also when selecting an element it's floating text shall also be
+selected.
+
+5.6 Predefine diagram size
+
+Section 1.36 of [2] notes that the available diagram space is limited to the
+extent of the children within the diagram.  This causes the outer most elements
+to always be right against the viewable area of the diagram.
+
+The tool shall support the original view port design, which was to set the
+diagram to a predefined size.  Currently, the tool will auto size the diagram
+depending on the contents of the diagram.
+
+5.7 Display parent contents in properties view when floating text is selected 
+
+Currently the properties view will contain nothing if floating text is selected.
+The properties view shall show the properties of the parent of the floating
+text.
+
+5.8 Allow selection of shapes, connectors and text together
+
+Recent work was done to allow the default selector tool to select shapes,
+connectors, and text.  This work has a bug which prevents its original goal.
+The selector shall be able to select all graphical symbol types on a diagram.
+
+5.9 Correctly generate images for doc gen
+
+The documentation generator does not properly generate images for diagrams.  The
+generated images are missing connectors.  [3] will be resolved by this work.
+
+The code shall change such that the image generator will generate an image that
+contains all diagram elements and is shown at 1x zoom.
+
+5.10 Cancel auto reconcile transaction when an exception is hit
+
+See design section 6.10 for details.
+
+5.11 Provide better container symbol support
+
+Currently the container symbol support is broken.  The overall feel is not good.
+We need it to resemble that of the old BP graphics as closely as possible.
+
+5.12 Support diagram redrawing for verifier
+
+The symbol highlighting during a verifier session is not currently working.  The
+highlighting shall work just as it did in the old graphics.
+
+5.13 Introduce zoom tool
+
+In order to provide something similar to what we had for zooming in the old
+graphics, a new tool shall be created.  This tool shall be a zoom tool and shall
+cover all possible zoom operations.  The zoom operations and the key modifier
+are listed below:
+
+- Zoom in, no modifier just left click (default)
+- Zoom out, shift modifier and left click
+- Zoom all, ctrl modifier and left click
+- Zoom selection, left click and drag
+
+5.14 Change expected results
+
+The expect results for unit tests shall be updated to account for the change
+back to using the old BridgePoint scrolling system, see section 5.6.
+
+6. Design
+---------
+6.1 New > Imported Component should be New > Component Reference
+
+The context_menu.pei.sql file shall be changed to rename the menu entry from
+Imported Component to Component Reference.  The same file shall be changed to
+change SubSystem to Subsystem.
+
+The .cvsignore shall be updated to account for the new class that will be
+generated.
+
+6.2 Make palette view visible by default
+
+The class, BridgePointPerspective.java, in bp.core shall be changed to add the
+palette view as one that is part of the perspective configuration.  It shall be
+configured such that the view is to the right of the editor area and consumes
+15% of the view area.
+
+6.3 Invalid connections allowed during drag and drop
+
+The Component.initializeProvision and initializeRequirement operations are
+modified to take a new boolean parameter which determines if the operation shall
+make modifications or simply test the current situation.
+
+In the ooaofooa model the following operations are created:
+
+Imported Provision.canLinkConnector(unique_id)
+Imported Requirement.canLinkConnector(unique_id)
+Provision.canLinkConnector(unique_id)
+Requirement.canLinkConnector(unique_id)
+
+These operations call the above modified operations passing false so that they
+make no modifications.
+
+All other places which call the initializeProvision and initializeRequirement
+operations are changed to pass true to the operation as they expect
+modifications to occur.
+
+The graphics code is changed to call the canLinkConnector method through java
+reflection if such a method exists.  If the canLinkConnector method returns
+false the graphics code will give indication to the user that the drop location
+is invalid.
+
+6.4 Prevent creation of edit parts for FloatingText_c instances that have no
+string value
+
+In the getModelChildren() operation for ShapeEditPart and ConnectorEditPart, the
+code is changed to check the text value of the current FloatingText_c instance
+for an empty string before creating an edit part for it. 
+
+6.5 Select floating text when selecting parent element
+
+The ConnectorEditPart and ShapeEditPart classes are modified to override the
+setSelected(int) method.  The overridden version now selects all floating text
+children.
+
+In the TextEditPart class the setSelected(int) method is overridden to call the
+setSelected method of it's parent, this will in turn select all child floating
+text.
+
+To prevent an infinite loop, the parent calls a new internal method to set the
+selection of a child.
+
+6.6 Predefine diagram size
+
+Originally the code was designed to convert the old BridgePoint graphics scroll
+coordinates to GEF based ones, which allow an auto sizing diagram.  This code is
+all removed.
+
+Additionally, the FreeformLayer figure created for the diagram edit part is set
+to a size of 8000, 6000 (original BP graphics sizing).  Even with this change
+the GEF code ignores the freeform layer's size, and simply checks it's children.
+Therefore, the method getFreeformExtent() from the FreeformLayer class is
+overridden to simply return the layer's bounds.  One exception is that if the
+children's bounds extend passed this default then we must increase the overall
+size.
+
+Container symbols are changed to be created at the new default location of
+4100, 3100 to account for the new scroll positions.
+
+6.7 Display parent contents in properties view when floating text is selected
+
+The GraphicsPropertySourceProvider class is used to convert edit part selections
+to client elements for use in the properties view.  This class simply did not
+have a case for the TextEditPart class.  This case has been added.
+
+6.8 Allow selection of shapes, connectors and text together
+
+Recently an issue was addressed which changed the selection tool to support
+selection of connectors and floating text.  This issue however broke support for
+selecting all three together.
+
+To address this issue the class GraphicsScalableFreeformEditPart is modified so
+that when adding connectors and text to the shape selection we append instead of
+overwrite.
+
+6.9 Correctly generate images for doc gen
+
+The code which sets up a diagram for generation is refactored into a new class,
+PrintDiagramOperation.  This new class is now used for both printing and image
+generation.  The refactoring takes advantage of some common code used in both
+cases.  Additionally, during setup for image generation the connection layer is
+validated.  This has the effect of giving proper coordinate values for the
+associations allowing the generated image to contain connectors.
+
+The image size will depend on the diagram content's extent at a 1x zoom level.
+
+6.10 Cancel auto reconcile transaction when an exception is hit
+
+During testing it was found that if an exception occurs during the reconciler
+transaction run, the transaction was not cancelled.  This prevents any new
+transaction from starting.  The code which starts the auto reconciler
+transaction is changed to catch all exceptions and cancel the transaction in the
+case of an exception.
+ 
+6.11 Provide better container symbol support
+
+At first an attempt was made to allow auto resizing on demand for a container
+symbol.  This was causing many problems due to our mix of old BP logic and new
+GEF logic.  After many failed attempts it was decided that we will simply resize
+the container after any operation that changes a symbols attributes.  The
+behavior of such support is what we want with the exception that the container
+symbol is not resized until the user completes an action.
+
+6.12 Support diagram redrawing for verifier
+
+Previously we were calling refresh on the child edit parts of the given editor.
+This does not guarantee that the graphics will be redrawn.  Therefore the
+redrawAll method is changed to call erase() and then performUpdate() to cause
+a redraw on the child element.
+
+6.13 Introduce zoom tool
+
+A new class is introduced, GraphicalZoomTool.  This class handles zooming to the
+analysis spec above in section 5.14.
+
+The new tool is added to the palette under the default selector tool.
+
+6.14 Change expected results
+
+All graphical expected results are updated to account for the scroll position,
+which no longer starts at 0,0 but rather at 4000,3000.
+
+7. Design Comments
+------------------
+
+8. Work Required
+----------------
+See design.
+
+9. Unit Test
+------------
+9.1
+
+_- Right click on a Component Package
+_R The New > Component Reference entry is present
+_R The New > Imported Component entry is not present
+_- Right click on a Component
+_R The New > Component Reference entry is present
+_R The New > Imported Component entry is not present
+_- Right click on a Domain
+_R The New > Subsystem entry is present
+_R The New > SubSystem entry is not present
+
+9.2
+
+_- Start a clean workspace
+_R The Palette view is present and shown on the right side of the editor area
+
+9.3
+
+_- Grab the end of a requirement that is currently not attached to any provision
+_- Drag the end over a provision that is formalized to a different interface
+_R The cursor indicates that the target is not a valid location
+_- Let go of the end
+_R The end returns to its original location
+_- Grab the end of a requirement that is not attached to any provision
+_- Drag the end over a provision that is formalized to the same interface
+_R The cursor indicates that the target is a valid location
+_- Let go of the end
+_R The connection is made
+
+9.4
+
+_- Create a new simple association
+_- Hold ctrl key and press A
+_R Only the association number text is selected, i.e, no selection boxes around
+   blank space
+   
+9.5
+
+_- Select a connector
+_R All floating text for the connector is selected
+_- Deselect everything
+_- Select a floating text instance for a connector
+_R The connector and all other floating text is selected
+
+9.6
+
+_- Open an empty diagram
+_R The scroll bars are present
+_R The scroll bars are centered
+
+9.7
+
+_- Select a floating text instance
+_R Its parent's properties are shown in the properties view
+
+9.8
+
+_- Draw a selection marquee (using the selection tool) around some shapes,
+   connectors and floating text
+_R All elements are selected graphically
+
+9.9
+
+_- Create MicrowaveOven project
+_- Run doc gen
+_- Examine the created graphical images
+_R Each image shows all diagram contents
+_R Each image is properly zoomed to fit
+
+9.10
+
+_- Open a component diagram
+_- Make sure the component container symbol has a connector on the right edge
+   and perform the following such that the container symbol is resized to the
+   right
+_- Create a symbol, dragging such that the created symbol will be outside of the
+   container symbol
+_R The container symbol is resized to fit
+_R The attached connector is still attached to the container
+   (moved appropriately)
+_R The attached connector's floating text is moved appropriately 
+_- Drag the symbol further out of the container symbol
+_R The container symbol is resized to fit
+_R The attached connector is still attached to the container
+   (moved appropriately)
+_R The attached connector's floating text is moved appropriately 
+_- Create a connection such that the end is outside of the container symbol
+_R The container symbol is resized to fit
+_R The attached connector is still attached to the container
+   (moved appropriately)
+_R The attached connector's floating text is moved appropriately 
+_- Drag the connection end such that it is further outside of the container
+   symbol
+_R The container symbol is resized to fit
+_R The attached connector is still attached to the container
+   (moved appropriately)
+_R The attached connector's floating text is moved appropriately 
+_- Drag some floating text outside of the container symbol
+_R The container symbol is resized to fit
+_R The attached connector is still attached to the container
+   (moved appropriately)
+_R The attached connector's floating text is moved appropriately 
+_- Create and drag a bendpoint on a connector such that it is outside of the
+   container symbol
+_R The container symbol is resized to fit
+_R The attached connector is still attached to the container
+   (moved appropriately)
+_R The attached connector's floating text is moved appropriately 
+_- Copy a component and paste such that the resulting symbol will be outside of
+   the container symbol
+_R The container symbol is resized to fit
+_R The attached connector is still attached to the container
+   (moved appropriately)
+_R The attached connector's floating text is moved appropriately 
+
+9.11 
+
+_- Start verifier on the Looper model [4]
+_- Place the two LoopClass classes in the spotlight
+_- Open the state machine diagrams for both classes such that they are both
+   visible
+_- Begin execution of the looper model
+_R Highlighting switches between states
+
+9.12
+
+_- Open a diagram with some elements
+_- Select the zoom tool
+_- Left click in the diagram
+_R The diagram is zoomed in
+_- Hold shift and left click
+_R The diagram is zoomed out
+_- Hold ctrl and left click
+_R The diagram is zoomed to fit all
+_- Left click and drag around some symbols
+_R The diagram is zoomed to the new selection
+
+End
+---
+
+$Log: dts0100673102-01.dnt,v $
+Revision 1.4  2010/06/03 23:15:50  tlondon
+job: dts0100673102
+
+Address according to review minutes
+
+Revision 1.3  2010/06/03 18:03:56  tlondon
+job: dts0100673102
+
+Update doc
+
+Revision 1.2  2010/05/18 20:07:58  tlondon
+job: dts0100673102
+
+Add fix for selection tool, when selecting shapes and connectors together.
+
+Revision 1.1  2010/05/10 21:21:51  tlondon
+job: dts0100673102
+
+Add design note for a group of issue from the tech note
+

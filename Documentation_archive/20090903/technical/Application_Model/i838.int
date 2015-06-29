@@ -1,0 +1,181 @@
+========================================================================
+
+File:      $RCSfile: i838.int,v $
+Version:   $Revision: 1.1 $
+Modified:  $Date: 2009/09/03 18:21:19 $
+
+(c) Copyright 2005-2009 by Mentor Graphics Corp. All rights reserved.
+
+========================================================================
+This document contains information proprietary and confidential to
+Mentor Graphics Corp., and is not for external distribution.
+========================================================================
+
+Tiger Implementation Note
+Fix referential attribute naming
+
+Abstract
+--------
+This note describes changes to fix the code that get the attribute name for 
+referential attributes that refer to referential attributes.
+
+History
+-------
+
+Document References
+-------------------
+[1] Issue 838
+
+Background
+----------
+The issue [1] describes a scenario where the referential attributes have
+the incorrect name when the referential they refer to (that is also referential)
+is renamed.
+
+Design
+------
+
+The attribute Attribute.Name is derived.  The OAL for the derived attribute
+contains code that checks if this attribute is a referential attribute.  If 
+the referential attribute is supposed to use the referred to name, the code 
+currently uses the referred to attribute's Root_Nam attribute value. 
+
+1. Add operation to get referential attribute root name
+
+The operation O_RATTR.get_root_name() (returning string) is created.  The 
+operation has the following activity:
+
+if ( self.Ref_Mode == 0 )  // use local root
+  select one attr related by self->O_ATTR[R106];
+  return attr.Root_Nam;
+else
+  select any rattr_root related by 
+      self->O_REF[R108]->O_RTIDA[R111]->O_OIDA[R110]->O_ATTR[R105];
+  if (not_empty rattr_root)
+    select one rattr_root_rattr related by rattr_root->O_RATTR[R106];
+    if ( not_empty rattr_root_rattr )
+      return rattr_root_rattr.get_root_name();
+    else
+      return rattr_root.Root_Nam;
+    end if;
+  else
+    return ::getOrphanedElementName();
+  end if;
+end if;
+
+The operation is invoked in the Attribute.Name activity. 
+
+2. Add operation to get referential prefix
+
+It was also noticed that the code that gets the referred to prefix suffers
+from the same defect as that which gets the Root_Nam.  The operation
+O_RATTR.get_prefix() is added with the following activity:
+
+select any rattr_root related by 
+    self->O_REF[R108]->O_RTIDA[R111]->O_OIDA[R110]->O_ATTR[R105];
+if (not_empty rattr_root)
+  if ( rattr_root.Pfx_Mode == 1 )  // use local prefix
+    return rattr_root.Prefix;
+  elif ( rattr_root.Pfx_Mode == 2 )  // use referred to prefix
+    select one rattr related by rattr_root->O_RATTR[R106];
+    if ( empty rattr )
+      return ::getOrphanedElementName();
+    else
+      return rattr.get_prefix();
+    end if;
+  else  // no prefix
+    return "";
+  end if;
+else
+  return ::getOrphanedElementName();
+end if;
+
+Implementation Comments
+-----------------------
+
+- Corrected the headers in DerivedAttributeTest.java and GetNameTest.java
+
+- The added invocations of get_root_name caused changes in the expected results
+for internal.io.sql.test, io.mdl.test and io.sql.test.
+
+- A Display.readAndDispatch() wait loop was added to 
+I697OpenActivityEditorFromMarker.testOpenActivityEditorFromTask as this test
+sometimes failed.
+
+Unit Test
+---------
+
+- In the testRename1 model, in the GetName test data subsystem, we add a
+class 'Class D' that has three relationships with 'Class B'.  All three 
+relationships are formalized using Class B's *2, with the referential attributes
+using each having a different prefix mode (none, local, referred to).
+The attribute that uses the referred to prefix is made identifying.  The class
+'Class E' is added, with a relationship to Class D, formalized with the
+Class D primary identifier.  The referential attribute in Class E is changed 
+to use the referred to prefix.
+
+testReferentialAttributeReferringToRefAttrGetName (added to GetNameTest)
+- select 'Class D'
+- assert attributes are named correctly
+- select 'Class C'
+- rename attribute 'C.id' to 'C.idx'
+- assert all attributes of Class D are named correctly
+- select 'Class E'
+- assert attribute named correctly
+- change prefix for B.sup_id to supx_
+- assert all attributes of Class D are named correctly
+- assert all attributes of Class E are named correctly
+
+
+- The derived attribute test is updated to work for the new implementation
+of get_prefix().  
+
+Code Changes
+------------
+
+com.mentor.nucleus.bp.core/models/ooaofooa.xtuml
+com.mentor.nucleus.bp.core/models/ooaofooa.bak
+
+com.mentor.nucleus.bp.core.test/models/testRename1.xtuml
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/DerivedAttributeTest.java
+com.mentor.nucleus.bp.core.test/src/com/mentor/nucleus/bp/core/test/GetNameTest.java
+
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/cme1.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/oal_function1.exp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/oal3.imp
+com.mentor.nucleus.bp.internal.io.sql.test/expected_results/oal4.imp
+
+com.mentor.nucleus.bp.io.mdl.test/expected_results/odms.exp
+com.mentor.nucleus.bp.io.mdl.test/expected_results/odms_ng.exp
+
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms.exp
+com.mentor.nucleus.bp.io.sql.test/expected_results/odms_ng.exp
+
+com.mentor.nucleus.bp.ui.text.test/src/com/mentor/nucleus/bp/ui/text/test/
+   activity/I697OpenActivityEditorFromMarker.java
+
+End
+---
+
+$Log: i838.int,v $
+Revision 1.1  2009/09/03 18:21:19  rmulvey
+job:dts0100616734
+Archive documentation and other development notes following the R3_0_0 release.  These are being archived under Documentation/internal/technical/archive/20090903
+
+Revision 1.3  2009/01/01 23:13:13  rmulvey
+Job:4060
+Batch promotion of copyright changes from Review-i4060 and Review-i4060-01.
+
+Revision 1.2.38.1  2008/12/31 16:10:19  rmulvey
+Job:4060
+This is a batch commit of 2009 copyright changes to branch Review-i4060.  This includes the
+report that outlines all changes made (before/after for each line changed).  This report is found here: <cvs>/Documentation/internal/test_results/R2_1_2/i4060/update-copyright-results.txt.
+
+Revision 1.2  2005/04/13 01:04:15  greg
+Job: 838
+Ready for final review
+
+Revision 1.1  2005/04/11 23:23:41  greg
+Job: 838
+Introduce
+
